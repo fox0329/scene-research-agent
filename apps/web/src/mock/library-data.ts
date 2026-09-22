@@ -4,13 +4,13 @@
  */
 
 /* ── 质量总评 ── */
-export interface QualityDimension {
+export type QualityDimension = {
   dimension: string;
   rating: "pass" | "warn" | "fail";
   note: string;
 }
 
-export interface ReminderItem {
+export type ReminderItem = {
   table: string;
   missing: string;
   impact: string;
@@ -32,7 +32,7 @@ export const reminders: ReminderItem[] = [
 ];
 
 /* ── M1 产品清单 ── */
-export interface ProductItem {
+export type ProductItem = {
   id: string;
   model: string;
   name: string;
@@ -50,7 +50,7 @@ export const products: ProductItem[] = [
 ];
 
 /* ── M2 规格书 ── */
-export interface SpecItem {
+export type SpecItem = {
   category: string;
   param: string;
   value: string;
@@ -66,7 +66,7 @@ export const specs: SpecItem[] = [
 ];
 
 /* ── M3 能力清单 ── */
-export interface CapabilityItem {
+export type CapabilityItem = {
   name: string;
   description: string;
   maturity: "已交付" | "组件具备" | "在研";
@@ -82,7 +82,7 @@ export const capabilities: CapabilityItem[] = [
 ];
 
 /* ── M5 已知限制 ── */
-export interface LimitItem {
+export type LimitItem = {
   product: string;
   limit: string;
   severity: "高" | "中" | "低";
@@ -97,7 +97,7 @@ export const limits: LimitItem[] = [
 ];
 
 /* ── M6 内部费率 ── */
-export interface RateItem {
+export type RateItem = {
   category: string;
   item: string;
   unitPrice: string;
@@ -112,7 +112,7 @@ export const rates: RateItem[] = [
 ];
 
 /* ── O 可选材料：已交付案例 ── */
-export interface CaseItem {
+export type CaseItem = {
   name: string;
   client: string;
   scene: string;

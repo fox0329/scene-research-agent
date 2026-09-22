@@ -1,22 +1,46 @@
 import React from "react";
+import { ProjectList } from "./ProjectList";
+import type { Project } from "../mock/project-data";
 
 interface SidebarProps {
   activeView: string;
   onViewChange: (view: string) => void;
+  projects: Project[];
+  activeProjectId: string;
+  /** 选中项目：父级切换 activeProjectId 并切到项目工作台视图 */
+  onSelectProject: (id: string) => void;
 }
 
 /**
  * 左栏导航
- * 入口：产品资料库 / 知识库 / 设置
+ * 顶部：产品名 + 新建按钮
+ * 中部：项目列表（项目/会话管理，见 ProjectList）
+ * 底部：产品资料库 / 知识库 / 设置 视图入口
  */
-export const Sidebar: React.FC<SidebarProps> = ({ activeView, onViewChange }) => {
+export const Sidebar: React.FC<SidebarProps> = ({
+  activeView,
+  onViewChange,
+  projects,
+  activeProjectId,
+  onSelectProject,
+}) => {
   return (
     <nav className="side">
       <div className="side-hd">
         <h1>方案助手</h1>
+        {/* 新建项目：对话框在后续任务接入，当前为占位入口 */}
+        <button className="nbtn" type="button" aria-label="新建项目">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <line x1="12" y1="5" x2="12" y2="19" />
+            <line x1="5" y1="12" x2="19" y2="12" />
+          </svg>
+          <span>新建</span>
+        </button>
       </div>
 
-      <div className="side-body" />
+      <div className="side-body">
+        <ProjectList projects={projects} activeProjectId={activeProjectId} onSelectProject={onSelectProject} />
+      </div>
       <div className="side-foot">
         <button
           className={`nav-item${activeView === "library" ? " active" : ""}`}

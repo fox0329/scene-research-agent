@@ -32,7 +32,7 @@ export const SpecPanel: React.FC = () => (
       <span className="badge primary">4 参数类</span>
     </div>
     <div className="pnl-b flush">
-      <SceneTable columns={specColumns} data={specs as unknown as Record<string, unknown>[]} />
+      <SceneTable columns={specColumns} data={specs} />
     </div>
   </div>
 );
@@ -72,7 +72,7 @@ export const CapabilityPanel: React.FC = () => (
       <span className="badge primary">18 项 · 已交付 9</span>
     </div>
     <div className="pnl-b flush">
-      <SceneTable columns={capColumns} data={capabilities as unknown as Record<string, unknown>[]} />
+      <SceneTable columns={capColumns} data={capabilities} />
     </div>
   </div>
 );
@@ -151,7 +151,7 @@ export const LimitPanel: React.FC = () => (
       <span className="badge primary">{limits.length} 条</span>
     </div>
     <div className="pnl-b flush">
-      <SceneTable columns={limitColumns} data={limits as unknown as Record<string, unknown>[]} />
+      <SceneTable columns={limitColumns} data={limits} />
     </div>
   </div>
 );
@@ -183,7 +183,7 @@ export const RatePanel: React.FC = () => (
       <span className="badge primary">{rates.length} 项</span>
     </div>
     <div className="pnl-b flush">
-      <SceneTable columns={rateColumns} data={rates as unknown as Record<string, unknown>[]} />
+      <SceneTable columns={rateColumns} data={rates} />
     </div>
   </div>
 );
@@ -216,7 +216,7 @@ export const OptionalPanel: React.FC = () => (
         <span className="badge primary">{cases.length} 案例</span>
       </div>
       <div className="pnl-b flush">
-        <SceneTable columns={caseColumns} data={cases as unknown as Record<string, unknown>[]} />
+        <SceneTable columns={caseColumns} data={cases} />
       </div>
     </div>
     <div className="bnr warning" style={{ margin: "var(--s3) 0 0" }}>

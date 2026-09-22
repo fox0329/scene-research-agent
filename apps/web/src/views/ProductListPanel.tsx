@@ -86,7 +86,7 @@ export const ProductListPanel: React.FC = () => {
       <div className="pnl-b flush">
         <SceneTable
           columns={productColumns}
-          data={data as unknown as Record<string, unknown>[]}
+          data={data}
           onCellChange={handleCellChange}
         />
       </div>
