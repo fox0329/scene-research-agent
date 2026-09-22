@@ -1,0 +1,277 @@
+/**
+ * @scene/contract — 数据契约 v0.1
+ *
+ * 本文件是场景通 15 张数据表的唯一 TypeScript 类型来源。
+ * 对应设计文档：`03-数据契约与API.md`
+ *
+ * 变更纪律：冻结后修改须登记 docs/项目变更表.md 并升版本。
+ */
+
+// ─── 通用枚举 ─────────────────────────────────────────────
+
+/** 数据来源类型（G-R0 溯源铁律） */
+export type SourceType = "AI提取" | "AI推断" | "用户确认" | "用户补充";
+
+/** 来源权威性分级（G-R1） */
+export type Authority = "T1" | "T2" | "T3" | "T4";
+
+/** 证据分级（G-R2）：A=直接可验证 B=间接有据 C=架构推断 D=过度宣称 */
+export type EvidenceLevel = "A" | "B" | "C" | "D";
+
+/** 阶段编号 0-8 */
+export type StageId = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
+
+/** 建议三档 */
+export type AdviceLevel = "强烈建议" | "建议" | "可选";
+
+// ─── 通用溯源字段 ──────────────────────────────────────────
+
+/** 含溯源表共用的溯源列 */
+export interface TraceableFields {
+  source_type?: SourceType;
+  source?: string;
+  source_authority?: Authority;
+  evidence_level?: EvidenceLevel;
+}
+
+// ─── 第一层 · 产品资料库（8 表） ───────────────────────────
+
+/** 产品线 */
+export interface ProductLine {
+  id: string;
+  name: string;
+  created_at: string;
+  updated_at: string;
+}
+
+/** 产品型号（M1，含溯源） */
+export interface Product extends TraceableFields {
+  id: string;
+  product_line_id: string;
+  model: string;
+  name: string;
+  status: "在售" | "停售" | "在研" | "规划" | "待确认";
+  launch_date: string;
+  former_name?: string;
+  position_desc: string;
+}
+
+/** 规格参数（M2，含溯源） */
+export interface SpecParam extends TraceableFields {
+  id: string;
+  product_id: string;
+  param_class: string;
+  param_name: string;
+  value: string;
+  measured: "实测" | "宣称" | "未提及";
+}
+
+/** 能力清单（M3，含溯源） */
+export interface Capability extends TraceableFields {
+  id: string;
+  product_line_id: string;
+  domain: string;
+  name: string;
+  description: string;
+  maturity: "已交付" | "组件具备" | "在研" | "规划";
+  dependency: string;
+  inapplicable_scene?: string;
+}
+
+/** 边界/不做什么（M4，含溯源） */
+export interface Boundary extends TraceableFields {
+  id: string;
+  product_line_id: string;
+  /** 不做的事 */
+  description: string;
+  reason: string;
+  has_plan: "有" | "无" | "未定";
+  /** 客户要求时怎么办 */
+  response: string;
+  owner: string;
+  plan_date?: string;
+}
+
+/** 已知局限（M5，含溯源） */
+export interface Limitation extends TraceableFields {
+  id: string;
+  product_line_id: string;
+  product_name: string;
+  description: string;
+  impact: "高" | "中" | "低";
+  fix_status: "已修复" | "修复中" | "无计划" | "硬件限制";
+  external_visible: "可提" | "内部可提" | "不可提";
+  owner: string;
+}
+
+/** 成本单价（M6） */
+export interface CostRate {
+  id: string;
+  product_line_id: string;
+  category: "实施" | "商务";
+  item: string;
+  /** 单价 */
+  rate: number;
+  unit: string;
+  standard_hours: number;
+  data_source: "历史项目" | "内部报价" | "行业均值" | "待确认";
+}
+
+/** 可选材料（O1-O6，含溯源） */
+export interface OptionalMaterial extends TraceableFields {
+  id: string;
+  product_line_id: string;
+  category: "O1认证" | "O2案例" | "O3价格" | "O4SDK" | "O5路线图" | "O6生态";
+  /** JSON，结构按 category 异构 */
+  payload: Record<string, unknown>;
+}
+
+// ─── 第二层 · 场景分析项目（6 表） ─────────────────────────
+
+/** 场景分析项目 */
+export interface Scenario {
+  id: string;
+  name: string;
+  product_line_id: string;
+  status: "进行中" | "已完成" | "已归档";
+  current_stage: StageId;
+  created_at: string;
+  updated_at: string;
+}
+
+/** 场景级材料覆盖（不写资料库） */
+export interface ScenarioMaterial extends TraceableFields {
+  id: string;
+  scenario_id: string;
+  ref_table: string;
+  ref_id: string;
+  /** JSON，覆盖值 */
+  override_value: Record<string, unknown>;
+  reason: string;
+}
+
+/** 阶段数据（行式存储，55 张表共用） */
+export interface StageData extends TraceableFields {
+  id: string;
+  scenario_id: string;
+  stage: StageId;
+  /** 如 "表1-3"、"表2-2" */
+  table_code: string;
+  /** JSON，结构由该表 schema 定义 */
+  row: Record<string, unknown>;
+  /** 资料失效标记 */
+  is_stale: boolean;
+}
+
+/** 会话（与 DSH session 一一映射） */
+export interface Conversation {
+  id: string;
+  scenario_id: string;
+  title: string;
+  status: "活跃" | "已归档";
+  dsh_session_id: string;
+  created_at: string;
+  updated_at: string;
+}
+
+/** 消息 */
+export interface Message {
+  id: string;
+  conversation_id: string;
+  role: "用户" | "系统";
+  content: string;
+  stage?: StageId;
+  /** 引用表格行 */
+  table_ref?: string;
+  created_at: string;
+}
+
+/** 质量关检查记录 */
+export interface QualityGate {
+  id: string;
+  scenario_id: string;
+  stage: StageId;
+  item_no: string;
+  title: string;
+  result: "通过" | "不通过" | "未检";
+  detail: string;
+  /** JSON，抽查采样记录 */
+  evidence_refs: Record<string, unknown>;
+  checked_at: string;
+}
+
+// ─── 第三层 · 知识库（1 表） ────────────────────────────────
+
+/** 知识库条目 */
+export interface Knowledge {
+  id: string;
+  product_line_id?: string;
+  scene?: string;
+  category: "竞品" | "需求" | "趋势" | "成本";
+  content: string;
+  source: string;
+  source_authority: Authority;
+  from_scenario_id: string;
+  created_at: string;
+}
+
+// ─── API 相关类型 ──────────────────────────────────────────
+
+/** 统一错误响应 */
+export interface ApiError {
+  code: string;
+  message: string;
+  detail?: string;
+}
+
+/** SSE 事件类型 */
+export type SseEventType =
+  | "text"
+  | "tool_call"
+  | "progress"
+  | "row"
+  | "gate"
+  | "advice"
+  | "done"
+  | "error";
+
+/** SSE follow 事件 */
+export interface FollowEvent {
+  type: SseEventType;
+  [key: string]: unknown;
+}
+
+/** DSH 会话句柄 */
+export interface SessionHandle {
+  sessionId: string;
+}
+
+/** DSH 客户端接口（技术方案 §5.3，冻结后不可变） */
+export interface DshClient {
+  createSession(opts: {
+    title: string;
+    preset?: string;
+  }): Promise<SessionHandle>;
+  prompt(
+    h: SessionHandle,
+    input: {
+      system: string;
+      user: string;
+      outputContract: Record<string, unknown>;
+    },
+  ): AsyncIterable<FollowEvent>;
+  cancel(h: SessionHandle): Promise<void>;
+}
+
+/** 用户决定动作 */
+export type DecisionAction = "继续" | "补充" | "停止" | "重算";
+
+/** 成本估算输入 */
+export interface CostEstimateInput {
+  scenario_id: string;
+  product_line_id: string;
+  /** 工时明细 */
+  labor_items: Array<{ item: string; hours: number; rate: number }>;
+  /** 其他费用 */
+  other_costs: Array<{ item: string; amount: number }>;
+}
