@@ -7,7 +7,11 @@
  */
 
 // 阶段 0 — 证据采集与溯源
-export { } from "./evidence.js";
+export {
+  gradeSource,
+  gradeEvidence,
+  verifyCitation,
+} from "./evidence.js";
 
 // 阶段 0 — 材料解析与入表
 export {
@@ -32,7 +36,15 @@ export type {
 export { } from "./parse-plan.js";
 
 // 阶段 2 — 门槛筛查
-export { } from "./barrier-scan.js";
+export {
+  judgeBarrier,
+  planStrategy,
+} from "./barrier-scan.js";
+export type {
+  BarrierType,
+  BarrierJudgment,
+  StrategyRecommendation,
+} from "./barrier-scan.js";
 
 // 阶段 3 — 市场分析
 export { } from "./market.js";
@@ -47,10 +59,30 @@ export { } from "./cost-estimate.js";
 export { } from "./value-verify.js";
 
 // 全局 — 质量关检查
-export { } from "./gate.js";
+export {
+  runGate,
+  sampleSources,
+  decideAdvice,
+  GATE_CHECK_TITLES,
+  MIN_SAMPLE_SIZE,
+} from "./gate.js";
+export type {
+  GateCheckInput,
+  GateCheckResult,
+} from "./gate.js";
 
 // 全局 — 工作流编排
-export { } from "./workflow.js";
+export {
+  advance,
+  canAdvance,
+  rollback,
+  markStale,
+  getRiskChain,
+  STAGES,
+  FIRST_STAGE,
+  LAST_STAGE,
+} from "./workflow.js";
+export type { StaleMark } from "./workflow.js";
 
 // 全局 — 会话管理
 export { } from "./session.js";
