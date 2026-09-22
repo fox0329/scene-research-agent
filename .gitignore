@@ -1,0 +1,11 @@
+# 依赖
+node_modules/
+
+# DSH 源码（git clone，有自己的 .git，不入库；构建见 AGENTS.md）
+vendor/
+
+# DSH 实例数据（运行时生成/迁移，不入库；配置与凭据共享方式见 AGENTS.md 第二章）
+.dsh/
+
+# 系统文件
+.DS_Store

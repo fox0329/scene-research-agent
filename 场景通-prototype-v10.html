@@ -1,0 +1,1325 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>场景通原型 v10</title>
+<style>
+:root{--cp:#2563eb;--cp-h:#1d4ed8;--cp-s:#eff6ff;--cs:#059669;--cs-s:#ecfdf5;--cs-h:#047857;--cw:#d97706;--cw-s:#fffbeb;--cw-h:#b45309;--cw-b:#fde68a;--ce:#dc2626;--ce-s:#fef2f2;--ce-h:#b91c1c;--cf:#fff;--cpg:#fafaf9;--csr:#fff;--cm:#f4f4f5;--ci:#18181b;--ct:#18181b;--ct2:#63636b;--ct3:#a1a1aa;--cb:#e4e4e7;--cis:#eff6ff;--f:"SF Pro Text","PingFang SC",system-ui,sans-serif;--fh:"SF Pro Display","PingFang SC",system-ui,sans-serif;--fm:"SF Mono","Menlo","PingFang SC",monospace;--fm2:500;--fb:700;--t2x:11px;--tx:12px;--ts:14px;--tb:16px;--tl:18px;--s2:8px;--s3:12px;--s4:16px;--s5:20px;--s05:2px;--s15:6px;--r4:4px;--r8:8px;--r12:12px;--rp:999px;--sh:0 1px 2px rgba(0,0,0,.05);--d:150ms;--e:cubic-bezier(.4,0,.2,1);--sw:256px;--dw:280px}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--f);font-size:var(--ts);line-height:1.5;color:var(--ct);background:var(--cpg);-webkit-font-smoothing:antialiased;height:100vh;overflow:hidden}
+.shell{--app-sw:var(--sw);--app-dw:var(--dw);display:grid;grid-template-columns:var(--app-sw) minmax(0,1fr) var(--app-dw);height:100vh;overflow:hidden}
+/* 收起态：网格轨道归 0，列隐藏出 Tab 序 */
+.shell.side-collapsed{grid-template-columns:0 minmax(0,1fr) var(--app-dw)}
+.shell.det-collapsed{grid-template-columns:var(--app-sw) minmax(0,1fr) 0}
+.shell.side-collapsed.det-collapsed{grid-template-columns:0 minmax(0,1fr) 0}
+.shell.side-collapsed>.side{visibility:hidden;overflow:hidden;border-right-width:0}
+.shell.det-collapsed>.det{visibility:hidden;overflow:hidden;border-left-width:0}
+/* 列宽拖拽热区（参照质序 col-resizer）：骑在分割线上，不新增线条 */
+.col-resizer{position:absolute;top:0;bottom:0;width:10px;cursor:col-resize;background:transparent;z-index:11;touch-action:none}
+.col-resizer--side{right:-5px}
+.col-resizer--detail{left:-5px}
+.side:has(.col-resizer--side:hover),.shell.drag-side>.side{border-right-color:var(--cp);box-shadow:5px 0 12px -11px var(--cp)}
+.det:has(.col-resizer--detail:hover),.shell.drag-detail>.det{border-left-color:var(--cp);box-shadow:-5px 0 12px -11px var(--cp)}
+.shell.side-collapsed .col-resizer--side,.shell.det-collapsed .col-resizer--detail{display:none}
+/* 内缘收起/展开柄（参照质序 edge-toggle）：20×44 胶囊箭头，垂直居中 */
+.edge-toggle{position:fixed;top:50%;transform:translateY(-50%);width:20px;height:44px;display:grid;place-items:center;padding:0;border:1px solid var(--cb);border-radius:var(--rp);background:var(--csr);color:var(--ct2);opacity:.55;cursor:pointer;z-index:12;transition:opacity var(--d) var(--e),color var(--d) var(--e),border-color var(--d) var(--e)}
+.edge-toggle:hover,.edge-toggle:focus-visible{opacity:1;color:var(--cp);border-color:var(--cp)}
+.edge-toggle svg{width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:2}
+.edge-toggle--side{left:calc(var(--app-sw) - 10px)}
+.edge-toggle--detail{right:calc(var(--app-dw) - 10px)}
+.edge-toggle--side.is-collapsed{left:0}
+.edge-toggle--detail.is-collapsed{right:0}
+.edge-toggle .chev-expand{display:none}
+.edge-toggle.is-collapsed .chev-collapse{display:none}
+.edge-toggle.is-collapsed .chev-expand{display:block}
+
+/* ===== 左栏 ===== */
+.side{position:relative;background:var(--csr);border-right:1px solid var(--cb);display:flex;flex-direction:column;overflow:hidden}
+.side-hd{height:48px;padding:0 var(--s4);border-bottom:1px solid var(--cb);display:flex;align-items:center;justify-content:space-between}
+.side-hd h1{font-family:var(--fh);font-size:var(--tb);font-weight:var(--fb)}
+.nbtn{display:inline-flex;align-items:center;gap:var(--s05);height:28px;padding:0 var(--s3);background:var(--cp);color:var(--cf);border:none;border-radius:var(--r4);font-size:var(--tx);font-weight:var(--fm2);cursor:pointer}.nbtn:hover{background:var(--cp-h)}
+.proj-list{flex:1;overflow-y:auto;padding:var(--s2) 0}
+.proj{border-bottom:1px solid var(--cb)}
+.proj-hd-wrap{display:flex;align-items:center}
+.proj-hd{display:flex;align-items:center;gap:var(--s2);padding:var(--s3) 0 var(--s3) var(--s4);cursor:pointer;border:none;background:none;flex:1;min-width:0;text-align:left;font-family:inherit;transition:background var(--d) var(--e)}
+.proj-hd:hover{background:var(--cm)}.proj-hd.active{background:var(--cp-s)}
+.proj-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+.proj-dot.on{background:var(--cp)}.proj-dot.done{background:var(--cs)}
+.proj-nm{flex:1;min-width:0;font-size:var(--ts);font-weight:var(--fm2);color:var(--ct);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* 更多按钮 */
+.more-btn{width:26px;height:26px;flex-shrink:0;display:flex;align-items:center;justify-content:center;border:none;background:none;color:var(--ct3);font-size:var(--tl);line-height:1;cursor:pointer;border-radius:var(--r4);opacity:0;transition:all var(--d) var(--e)}
+.proj-hd-wrap:hover .more-btn,.cvi:hover .more-btn,.proj-hd-wrap:focus-within .more-btn,.cvi:focus-within .more-btn,.more-btn:focus-visible,.more-btn.visible{opacity:1}
+.more-btn:hover{background:var(--cm);color:var(--ct)}
+/* 会话项：首字与项目名首字对齐（16+7+8=31px） */
+.proj-convs{display:none;padding:0 var(--s2) var(--s2) 0}
+.proj.exp .proj-convs{display:block}
+.cvi{display:flex;align-items:center;gap:var(--s2);padding:var(--s15) var(--s2) var(--s15) 31px;cursor:pointer;border:none;background:none;width:100%;text-align:left;font-family:inherit;font-size:var(--txs);color:var(--ct2);transition:background var(--d) var(--e);border-radius:var(--r4)}
+.cvi:hover{background:var(--cm);color:var(--ct)}.cvi.on{color:var(--cp);font-weight:var(--fm2);background:var(--cp-s)}
+.cvx{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* 右键菜单 */
+.ctx-menu{position:fixed;z-index:300;background:var(--csr);border:1px solid var(--cb);border-radius:var(--r8);box-shadow:0 4px 16px rgba(0,0,0,.12);padding:var(--s1) 0;min-width:104px;animation:fadeIn .15s var(--e)}
+.ctx-item{display:block;width:100%;padding:var(--s15) var(--s3);font-size:var(--txs);color:var(--ct);border:none;background:none;text-align:left;font-family:inherit;cursor:pointer;border-radius:var(--r4)}
+.ctx-item:hover{background:var(--cm)}
+.ctx-item.danger{color:var(--ce-h)}
+.side-foot{border-top:1px solid var(--cb);padding:var(--s2) var(--s4);display:flex;flex-direction:column;gap:var(--s1)}
+.foot-btn{display:flex;align-items:center;gap:var(--s2);padding:var(--s2) var(--s3);border-radius:var(--r4);cursor:pointer;border:none;background:none;width:100%;text-align:left;font-family:inherit;font-size:var(--txs);color:var(--ct2);transition:all var(--d) var(--e)}
+.foot-btn:hover{background:var(--cm);color:var(--ct)}.foot-btn svg{width:14px;height:14px;flex-shrink:0}
+.foot-btn .count{margin-left:auto;font-size:var(--t2x);color:var(--ct3)}
+
+/* ===== 中栏 ===== */
+.main{display:flex;flex-direction:column;overflow:hidden;background:var(--cpg);position:relative}
+.pgh{display:flex;align-items:center;justify-content:space-between;height:48px;padding:0 var(--s5);background:var(--csr);border-bottom:1px solid var(--cb)}
+.pgt{font-family:var(--fh);font-size:var(--tl);font-weight:var(--fb)}
+.pgs{font-size:var(--txs);color:var(--ct2)}
+.pga{display:flex;gap:var(--s2)}
+.stabs{display:flex;background:var(--csr);border-bottom:1px solid var(--cb);overflow-x:auto;padding:0 var(--s5)}
+.stab{padding:var(--s3) var(--s4);font-size:var(--txs);font-weight:var(--fm2);color:var(--ct2);border:none;background:none;cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap;transition:all var(--d) var(--e)}
+.stab:hover{color:var(--ct)}.stab.active{color:var(--cp);border-bottom-color:var(--cp)}.stab.done{color:var(--cs)}
+.stab .sd{display:inline-block;width:5px;height:5px;border-radius:50%;margin-right:var(--s05);vertical-align:middle}
+.stab.done .sd{background:var(--cs)}.stab.active .sd{background:var(--cp)}
+
+.ws{flex:1;overflow-y:auto;padding:var(--s4) var(--s5)}
+.pnl{background:var(--csr);border-radius:var(--r8);border:1px solid var(--cb);box-shadow:var(--sh)}
+.pnl+.pnl{margin-top:var(--s3)}
+.pnl-h{display:flex;align-items:center;justify-content:space-between;padding:var(--s3) var(--s4);border-bottom:1px solid var(--cb)}
+.pnl-h h2{font-size:var(--ts);font-weight:var(--fb)}.pnl-h p{font-size:var(--t2x);color:var(--ct2);margin-top:1px}
+.pnl-b{padding:var(--s3) var(--s4)}.pnl-b.flush{padding:0}
+.tw{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:var(--txs)}
+thead{background:var(--cm);position:sticky;top:0;z-index:1}
+th{padding:var(--s2) var(--s3);text-align:left;font-weight:var(--fm2);color:var(--ct2);border-bottom:1px solid var(--cb);white-space:nowrap;font-size:var(--t2x)}
+td{padding:var(--s2) var(--s3);border-bottom:1px solid var(--cb);vertical-align:top}
+tr:hover{background:var(--csu)}.tr.sel{background:var(--cp-s)}
+td.ed{cursor:text}.ed:hover{background:var(--cp-s);outline:2px solid var(--cp);outline-offset:-2px}
+.ed:focus{outline:2px solid var(--cp);outline-offset:-2px;background:var(--csr)}
+.stag{display:inline-flex;padding:1px 5px;font-size:var(--t2x);border-radius:2px;font-weight:var(--fm2)}
+.stag.ai{background:var(--cis);color:var(--cp)}.stag.u{background:var(--cs-s);color:var(--cs-h)}.stag.inf{background:var(--cw-s);color:var(--cw-h)}
+.badge{display:inline-flex;padding:1px 6px;font-size:var(--t2x);font-weight:var(--fm2);border-radius:var(--rp)}
+.badge.p{background:var(--cp-s);color:var(--cp)}.badge.s{background:var(--cs-s);color:var(--cs-h)}.badge.w{background:var(--cw-s);color:var(--cw-h)}.badge.e{background:var(--ce-s);color:var(--ce-h)}
+.bnr{display:flex;align-items:center;gap:var(--s2);padding:var(--s2) var(--s3);border-radius:var(--r4);font-size:var(--txs);margin-bottom:var(--s3)}
+.bnr.w{background:var(--cw-s);border:1px solid var(--cw-b);color:var(--cw-h)}.bnr svg{width:14px;height:14px;flex-shrink:0}
+.cl{list-style:none}.cli{display:flex;align-items:flex-start;gap:var(--s2);padding:var(--s2) 0;border-bottom:1px solid var(--cb);font-size:var(--txs)}.cli:last-child{border-bottom:none}
+.ci{width:14px;height:14px;flex-shrink:0;margin-top:2px}.ci.pass{color:var(--cs)}.ci.fail{color:var(--ce)}
+.ct{font-weight:var(--fm2)}.cd{font-size:var(--t2x);color:var(--ct2);margin-top:1px}
+
+/* ===== 对话抽屉：几乎完全透明 ===== */
+.conv-layer{position:absolute;left:0;right:0;bottom:0;z-index:10;display:flex;flex-direction:column;pointer-events:none}
+
+/* 拖拽热区（工程壳配方 §5：顶缘横条，不画底色块，全宽好点） */
+.conv-resize{
+  height:10px;cursor:ns-resize;flex-shrink:0;
+  pointer-events:auto;touch-action:none;
+  display:flex;align-items:center;justify-content:center;
+  background:transparent;
+}
+.conv-resize::before{
+  content:"";width:48px;height:4px;
+  border-radius:var(--rp);
+  background:rgba(0,0,0,0.22);
+  transition:background var(--d) var(--e);
+}
+.conv-resize:hover::before{background:var(--cp)}
+
+/* 对话流 */
+.conv-stream-wrap{
+  height:0;
+  overflow:hidden;
+  pointer-events:none;
+  transition:height 250ms var(--e);
+}
+.conv-stream-wrap.is-dragging{transition:none}
+.conv-stream-wrap.open{pointer-events:auto}
+
+.conv-stream{
+  height:100%;
+  overflow-y:auto;
+  padding:var(--s3) var(--s5);
+  display:flex;flex-direction:column;gap:var(--s3);
+  /* 半透明浮层：圆角+上浮阴影+顶缘渐隐 */
+  background:rgba(250,250,249,0.6);
+  border:1px solid rgba(228,228,231,0.5);
+  border-bottom:none;
+  border-radius:var(--r12) var(--r12) 0 0;
+  box-shadow:0 -8px 24px rgba(0,0,0,0.06);
+  mask-image:linear-gradient(to bottom,transparent 0,#000 14px);
+  -webkit-mask-image:linear-gradient(to bottom,transparent 0,#000 14px);
+}
+
+.msg{display:flex;gap:var(--s2);max-width:80%}.msg.u{align-self:flex-end;flex-direction:row-reverse}.msg.ai{align-self:flex-start}
+.bub{padding:var(--s2) var(--s3);border-radius:var(--r12);font-size:var(--txs);line-height:1.7}
+.msg.u .bub{background:rgba(37,99,235,0.85);color:var(--cf);border-bottom-right-radius:2px}
+.msg.ai .bub{background:rgba(24,24,27,0.5);color:var(--cf);border-bottom-left-radius:2px}
+.msg-meta{font-size:var(--t2x);color:rgba(99,99,107,0.7);margin-top:var(--s05);padding:0 var(--s1)}
+.msg.u .msg-meta{text-align:right}
+
+/* 输入栏 */
+.conv-input{
+  display:flex;gap:var(--s2);
+  padding:var(--s3) var(--s5) var(--s4);
+  flex-shrink:0;pointer-events:auto;
+  background:rgba(250,250,249,0.7);
+  border-top:1px solid rgba(228,228,231,0.5);
+}
+.conv-ta{
+  flex:1;min-height:52px;max-height:100px;
+  padding:var(--s2) var(--s3);
+  font-family:inherit;font-size:var(--txs);line-height:1.5;
+  color:var(--ct);background:var(--csr);
+  border:1px solid var(--cb);border-radius:var(--r8);
+  resize:none;outline:none;
+}
+.conv-ta:focus{border-color:rgba(99,99,107,0.45)}
+.conv-ta:focus-visible{outline:none}
+.conv-ta::placeholder{color:var(--ct3)}
+.conv-send{
+  height:32px;padding:0 var(--s4);
+  font-size:var(--txs);font-weight:var(--fm2);
+  background:var(--cp);color:var(--cf);
+  border:none;border-radius:var(--r4);cursor:pointer;
+}
+.conv-send:hover{background:var(--cp-h)}
+
+.btn{display:inline-flex;align-items:center;gap:4px;height:26px;padding:0 var(--s3);font-size:var(--txs);font-weight:var(--fm2);border-radius:var(--r4);border:1px solid var(--cb);background:var(--csr);color:var(--ct);cursor:pointer}.btn:hover{background:var(--cm)}.btn.p{background:var(--cp);color:var(--cf);border-color:var(--cp)}.btn.p:hover{background:var(--cp-h)}
+
+/* ===== 右栏：决策支撑 ===== */
+.det{position:relative;background:var(--csr);border-left:1px solid var(--cb);display:flex;flex-direction:column;overflow:hidden}
+.det-h{height:48px;padding:0 var(--s4);border-bottom:1px solid var(--cb);display:flex;align-items:center}.det-h h3{font-size:var(--ts);font-weight:var(--fb)}
+.det-body{flex:1;overflow-y:auto;padding:0}
+
+/* 来源与证据区 */
+.det-section{padding:var(--s3) var(--s4);border-bottom:1px solid var(--cb)}
+.det-section:last-child{border-bottom:none}
+.det-label{font-size:var(--t2x);font-weight:var(--fm2);color:var(--ct3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:var(--s2)}
+
+.kv-grid{display:grid;grid-template-columns:auto 1fr;gap:var(--s1) var(--s3);align-items:baseline}
+.kv-k{font-size:var(--t2x);color:var(--ct2);white-space:nowrap}
+.kv-v{font-size:var(--txs);color:var(--ct);font-weight:var(--fm2)}
+
+/* 风险与缺口 */
+.risk-item{padding:var(--s2) 0;border-bottom:1px solid var(--cb);font-size:var(--txs)}.risk-item:last-child{border-bottom:none}
+.risk-tag{display:inline-flex;padding:1px 5px;font-size:var(--t2x);border-radius:2px;font-weight:var(--fm2);margin-right:var(--s1)}
+.risk-tag.inherit{background:var(--cw-s);color:var(--cw-h)}
+.risk-tag.gap{background:var(--ce-s);color:var(--ce-h)}
+.risk-tag.ok{background:var(--cs-s);color:var(--cs-h)}
+.risk-title{font-weight:var(--fm2);color:var(--ct)}
+.risk-detail{font-size:var(--t2x);color:var(--ct2);margin-top:2px;margin-left:var(--s1)}
+
+/* 质量关快照 */
+.gate-snap{display:flex;align-items:center;gap:var(--s2);padding:var(--s2) 0;font-size:var(--txs)}
+.gate-bar{flex:1;height:6px;background:var(--cm);border-radius:3px;overflow:hidden}
+.gate-fill{height:100%;background:var(--cs);border-radius:3px}
+.gate-num{font-size:var(--t2x);font-weight:var(--fm2);color:var(--ct2);flex-shrink:0}
+
+/* 上下游依赖 */
+.dep-item{display:flex;align-items:flex-start;gap:var(--s2);padding:var(--s15) 0;font-size:var(--txs)}
+.dep-arrow{color:var(--ct3);font-size:var(--t2x);flex-shrink:0;margin-top:2px}
+.dep-text{color:var(--ct);font-weight:var(--fm2)}
+.dep-sub{font-size:var(--t2x);color:var(--ct2)}
+
+/* ===== 多视图 / 表单 / 对话框（v10） ===== */
+.app-view{display:none;flex:1;min-height:0;flex-direction:column;overflow:hidden}
+.app-view.active{display:flex}
+.foot-btn.on{background:var(--cp-s);color:var(--cp)}
+/* 知识库列表行 */
+.srow{display:flex;align-items:center;justify-content:space-between;gap:var(--s3);padding:var(--s3) var(--s4);border-bottom:1px solid var(--cb);cursor:pointer}
+.srow:last-child{border-bottom:none}
+.srow:hover{background:var(--csu)}
+.smain{flex:1;min-width:0}
+.smain strong{display:block;font-size:var(--ts);font-weight:var(--fm2)}
+.smain span{display:block;font-size:var(--t2x);color:var(--ct2);margin-top:1px}
+/* 设置页表单 */
+.fld{display:flex;flex-direction:column;gap:4px;max-width:420px;margin-bottom:var(--s3)}
+.fld>label{font-size:var(--t2x);font-weight:var(--fm2);color:var(--ct2)}
+.fld input,.fld select{height:34px;border:1px solid var(--cb);border-radius:var(--r8);padding:0 var(--s3);font:inherit;font-size:var(--txs);background:var(--csr);color:var(--ct)}
+.fld input:focus,.fld select:focus{border-color:var(--cp);outline:none;box-shadow:0 0 0 2px var(--cp-s)}
+.krow{display:flex;align-items:center;justify-content:space-between;gap:var(--s3);padding:var(--s2) 0;border-bottom:1px solid var(--cb);font-size:var(--txs)}
+.krow:last-child{border-bottom:none}
+.kk{color:var(--ct2)}
+.kv2{font-weight:var(--fm2)}
+/* 新建项目对话框 */
+.dlg-bk{position:fixed;inset:0;background:rgba(24,24,27,0.35);z-index:250;display:none;align-items:center;justify-content:center}
+.dlg-bk.open{display:flex}
+.dlg{background:var(--csr);border-radius:var(--r12);box-shadow:0 20px 50px rgba(0,0,0,0.2);width:min(420px,92vw);padding:var(--s5)}
+.dlg h3{font-size:var(--ts);font-weight:var(--fb);margin-bottom:var(--s2)}
+.dlg p{font-size:var(--t2x);color:var(--ct2);margin-bottom:var(--s3)}
+.dlg-actions{display:flex;justify-content:flex-end;gap:var(--s2);margin-top:var(--s4)}
+
+/* 阶段面板与阶段建议卡（对应工作流标准） */
+.stage-pane{display:none}
+.stage-pane.active{display:block}
+.rec{background:var(--csr);border-radius:var(--r8);border:1px solid var(--cb);box-shadow:var(--sh);padding:var(--s4)}
+.rec-hd{display:flex;align-items:center;gap:var(--s3);margin-bottom:var(--s3)}
+.rec-badge{padding:4px 12px;border-radius:var(--rp);font-weight:var(--fb);font-size:var(--ts)}
+.rec-badge.pass{background:var(--cs-s);color:var(--cs-h)}
+.rec-badge.cond{background:var(--cw-s);color:var(--cw-h)}
+.rec-badge.no{background:var(--ce-s);color:var(--ce-h)}
+.rec-badge.none{background:var(--cm);color:var(--ct2)}
+.rec-title{font-size:var(--ts);font-weight:var(--fb)}
+.rec-sec{margin-top:var(--s3)}
+.rec-sec h4{font-size:var(--t2x);font-weight:var(--fm2);color:var(--ct2);margin-bottom:4px;text-transform:uppercase;letter-spacing:.05em}
+.rec-list{list-style:none}
+.rec-list li{padding:2px 0 2px 12px;position:relative;font-size:var(--txs)}
+.rec-list li::before{content:"·";position:absolute;left:0;color:var(--ct2)}
+.rec-actions{display:flex;gap:var(--s2);margin-top:var(--s4)}
+
+@media(max-width:1320px){
+  .shell,.shell.det-collapsed,.shell.side-collapsed.det-collapsed{grid-template-columns:var(--app-sw) minmax(0,1fr) 0}
+  .shell.side-collapsed{grid-template-columns:0 minmax(0,1fr) 0}
+  .det{display:none}
+  .col-resizer--detail,.edge-toggle--detail{display:none}
+}
+@media(max-width:940px){
+  .shell,.shell.side-collapsed,.shell.det-collapsed,.shell.side-collapsed.det-collapsed{grid-template-columns:1fr}
+  .side{display:none}
+  .col-resizer--side,.edge-toggle--side{display:none}
+}
+:focus-visible{outline:2px solid var(--cp);outline-offset:-2px}
+@media(prefers-reduced-motion:reduce){*{animation-duration:.01ms!important;transition-duration:.01ms!important}}
+</style>
+</head>
+<body>
+<div class="shell">
+
+<!-- 左栏 -->
+<nav class="side">
+  <div class="side-hd"><h1>场景通</h1><button class="nbtn" onclick="openDlg()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>新建</button></div>
+  <div class="proj-list">
+    <div class="proj exp">
+      <div class="proj-hd-wrap">
+        <button class="proj-hd active" onclick="toggleProj(this)"><span class="proj-dot on"></span><span class="proj-nm">智慧会议室</span></button>
+        <button class="more-btn" onclick="toggleMenu(this,event,'项目：智慧会议室')">⋯</button>
+      </div>
+      <div class="proj-convs">
+        <div class="cvi on"><span class="cvx">补充 M4 边界声明</span><button class="more-btn" onclick="toggleMenu(this,event,'会话：补充 M4 边界声明')">⋯</button></div>
+        <div class="cvi"><span class="cvx">阶段 2 质量关检查</span><button class="more-btn" onclick="toggleMenu(this,event,'会话：阶段 2 质量关检查')">⋯</button></div>
+        <div class="cvi"><span class="cvx">上传产品白皮书并解析</span><button class="more-btn" onclick="toggleMenu(this,event,'会话：上传产品白皮书并解析')">⋯</button></div>
+        <div class="cvi"><span class="cvx">阶段 1 门槛筛查</span><button class="more-btn" onclick="toggleMenu(this,event,'会话：阶段 1 门槛筛查')">⋯</button></div>
+      </div>
+    </div>
+    <div class="proj">
+      <div class="proj-hd-wrap">
+        <button class="proj-hd" onclick="toggleProj(this)"><span class="proj-dot on"></span><span class="proj-nm">工业设备预测性维护</span></button>
+        <button class="more-btn" onclick="toggleMenu(this,event,'项目：工业设备预测性维护')">⋯</button>
+      </div>
+      <div class="proj-convs">
+        <div class="cvi"><span class="cvx">匹配矩阵分析</span><button class="more-btn" onclick="toggleMenu(this,event,'会话：匹配矩阵分析')">⋯</button></div>
+        <div class="cvi"><span class="cvx">商业分析：利润池</span><button class="more-btn" onclick="toggleMenu(this,event,'会话：商业分析：利润池')">⋯</button></div>
+        <div class="cvi"><span class="cvx">上传 IoT 产品资料</span><button class="more-btn" onclick="toggleMenu(this,event,'会话：上传 IoT 产品资料')">⋯</button></div>
+      </div>
+    </div>
+    <div class="proj">
+      <div class="proj-hd-wrap">
+        <button class="proj-hd" onclick="toggleProj(this)"><span class="proj-dot done"></span><span class="proj-nm">智慧园区</span></button>
+        <button class="more-btn" onclick="toggleMenu(this,event,'项目：智慧园区')">⋯</button>
+      </div>
+      <div class="proj-convs">
+        <div class="cvi"><span class="cvx">生成交付物</span><button class="more-btn" onclick="toggleMenu(this,event,'会话：生成交付物')">⋯</button></div>
+        <div class="cvi"><span class="cvx">价值验证完成</span><button class="more-btn" onclick="toggleMenu(this,event,'会话：价值验证完成')">⋯</button></div>
+        <div class="cvi"><span class="cvx">方案与成本分析</span><button class="more-btn" onclick="toggleMenu(this,event,'会话：方案与成本分析')">⋯</button></div>
+      </div>
+    </div>
+  </div>
+  <div class="side-foot">
+    <button class="foot-btn" onclick="setView('library',this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg><span>产品资料库</span><span class="count">2 线</span></button>
+    <button class="foot-btn" onclick="setView('knowledge',this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg><span>知识库</span><span class="count">23 条</span></button>
+    <button class="foot-btn" onclick="setView('settings',this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg><span>设置</span></button>
+  </div>
+  <div class="col-resizer col-resizer--side" title="拖拽调整宽度"></div>
+</nav>
+
+<!-- 中栏 -->
+<main class="main">
+  <!-- ===== 视图：项目工作台 ===== -->
+  <div class="app-view active" id="view-project">
+  <div class="pgh"><div style="display:flex;align-items:center;gap:var(--s3)"><div class="pgt">智慧会议室</div><span class="badge p">阶段 2 认识场景</span></div><div class="pga"><button class="btn" onclick="toast('上传材料')">上传材料</button><button class="btn p" onclick="toast('完成阶段')">完成阶段</button></div></div>
+  <div class="stabs">
+    <button class="stab done" onclick="stab(this,'stage-0')"><span class="sd"></span>材料入库</button>
+    <button class="stab done" onclick="stab(this,'stage-1')"><span class="sd"></span>门槛筛查</button>
+    <button class="stab active" onclick="stab(this,'stage-2')"><span class="sd"></span>认识场景</button>
+    <button class="stab" onclick="stab(this,'stage-3')"><span class="sd"></span>理解商业</button>
+    <button class="stab" onclick="stab(this,'stage-4')"><span class="sd"></span>匹配决策</button>
+    <button class="stab" onclick="stab(this,'stage-5')"><span class="sd"></span>方案实现</button>
+    <button class="stab" onclick="stab(this,'stage-6')"><span class="sd"></span>价值验证</button>
+    <button class="stab" onclick="stab(this,'stage-7')"><span class="sd"></span>总结沉淀</button>
+    <button class="stab" onclick="stab(this,'stage-8')"><span class="sd"></span>交付物</button>
+  </div>
+
+  <div class="ws" id="ws">
+
+    <!-- ===== 阶段 0：材料入库（引用资料库 + 场景补充，无质量关） ===== -->
+    <div class="stage-pane" id="stage-0">
+      <div class="bnr w"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><span>引用产品资料库：感知与控制产品线 · M1-M6 已同步 · 资料更新自动带入</span></div>
+      <div class="pnl">
+        <div class="pnl-h"><div><h2>完成度检查</h2><p>不阻断，仅记录缺失风险（对应 00b §2.4）</p></div><span class="badge w">6/8 通过</span></div>
+        <div class="pnl-b flush"><div class="tw"><table>
+          <thead><tr><th>#</th><th>检查项</th><th>状态</th><th>缺失风险（后续阶段继承）</th></tr></thead>
+          <tbody>
+            <tr><td>1</td><td>M1 产品清单已填写</td><td><span class="badge s">✅ 3 型号</span></td><td>—</td></tr>
+            <tr><td>2</td><td>M2 规格书已填写</td><td><span class="badge s">✅ 4 参数类</span></td><td>—</td></tr>
+            <tr><td>3</td><td>M3 能力清单已填写</td><td><span class="badge s">✅ 18 项</span></td><td>—</td></tr>
+            <tr><td>4</td><td>M4 边界声明已填写</td><td><span class="badge e">❌ 空白</span></td><td>阶段 1 门槛判据缺失，阶段 4 边界只能推断</td></tr>
+            <tr><td>5</td><td>M5 已知限制已填写</td><td><span class="badge w">⚠️ 仅 2 条</span></td><td>阶段 6 验收约束不完整</td></tr>
+            <tr><td>6</td><td>M6 成本结构已填写</td><td><span class="badge s">✅ 3 项</span></td><td>—</td></tr>
+            <tr><td>7</td><td>来源抽查</td><td><span class="badge w">⚠️ 未抽查</span></td><td>证据可信度未验证</td></tr>
+            <tr><td>8</td><td>质量六维已评估</td><td><span class="badge s">✅ 已评估</span></td><td>—</td></tr>
+          </tbody>
+        </table></div></div>
+      </div>
+      <div class="pnl">
+        <div class="pnl-h"><div><h2>场景级覆盖</h2><p>本场景对资料库的补充与覆盖（不影响资料库本身）</p></div><button class="btn" onclick="toast('新增场景覆盖')">添加覆盖</button></div>
+        <div class="pnl-b flush"><div class="tw"><table>
+          <thead><tr><th>覆盖项</th><th>资料库值</th><th>场景值</th><th>原因</th><th>来源标记</th></tr></thead>
+          <tbody>
+            <tr><td class="ed" contenteditable>协议支持</td><td style="color:var(--ct2)">Modbus/MQTT/OPC UA</td><td class="ed" contenteditable>仅 Modbus/MQTT</td><td class="ed" contenteditable>客户网络封闭 OPC 端口</td><td><span class="stag u">用户</span></td></tr>
+            <tr><td class="ed" contenteditable>部署规模</td><td style="color:var(--ct2)">—</td><td class="ed" contenteditable>12 间会议室</td><td class="ed" contenteditable>客户现场勘测</td><td><span class="stag u">用户</span></td></tr>
+          </tbody>
+        </table></div></div>
+      </div>
+      <div class="rec">
+        <div class="rec-hd"><span class="rec-badge none">阶段 0 · 无质量关</span><span class="rec-title">材料解析完成，不阻断</span></div>
+        <div class="rec-sec"><h4>补充提醒（不阻断，风险向后传递）</h4>
+          <ul class="rec-list">
+            <li>M4 边界声明为空 → 已在右栏登记为继承风险</li>
+            <li>来源未抽查 → 阶段 1 起每质量关将自动抽查 ≥3 条</li>
+          </ul>
+        </div>
+        <div class="rec-actions">
+          <button class="btn p" onclick="toast('进入阶段 1：门槛筛查')">进入阶段 1</button>
+          <button class="btn" onclick="setView('library', document.querySelectorAll('.side-foot .foot-btn')[0])">回资料库补充</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== 阶段 1：门槛筛查（质量关 0 · 10 项） ===== -->
+    <div class="stage-pane" id="stage-1">
+      <div class="pnl">
+        <div class="pnl-h"><div><h2>表 1-1 · 场景定义</h2><p>一句话说清这个场景是什么、谁在买</p></div></div>
+        <div class="pnl-b flush"><div class="tw"><table>
+          <tbody>
+            <tr><td style="width:120px;color:var(--ct2)">场景名称</td><td class="ed" contenteditable>智慧会议室（存量改造）</td></tr>
+            <tr><td style="color:var(--ct2)">场景边界</td><td class="ed" contenteditable>覆盖会议室环境感知与设备联动 / 不含安防监控、消防联动</td></tr>
+            <tr><td style="color:var(--ct2)">买方类型</td><td class="ed" contenteditable>企业行政/IT 部门（存量楼宇优先）</td></tr>
+            <tr><td style="color:var(--ct2)">决策链</td><td class="ed" contenteditable>拍板：行政总监 / 使用：IT 运维 / 付费：年度预算</td></tr>
+            <tr><td style="color:var(--ct2)">核心业务流程</td><td class="ed" contenteditable>预约 → 签到 → 环境联动 → 释放 → 数据报表</td></tr>
+          </tbody>
+        </table></div></div>
+      </div>
+      <div class="pnl">
+        <div class="pnl-h"><div><h2>表 1-3 · 门槛扫描</h2><p>五类门槛：技术 / 行业准入 / 经济 / 生态锁定 / 一票否决者</p></div><span class="badge s">5/6 过得了</span></div>
+        <div class="pnl-b flush"><div class="tw"><table>
+          <thead><tr><th>类别</th><th>门槛</th><th>否决者</th><th>现状</th><th>权威性</th></tr></thead>
+          <tbody>
+            <tr><td><span class="badge p">A 技术</span></td><td class="ed" contenteditable>存量中控协议私有（快思聪）</td><td class="ed" contenteditable>IT 运维</td><td><span class="badge w">借道</span></td><td><span class="badge p">T3</span></td></tr>
+            <tr><td><span class="badge p">B 准入</span></td><td class="ed" contenteditable>无国家强制认证要求</td><td class="ed" contenteditable>—</td><td><span class="badge s">过得了</span></td><td><span class="badge s">T1</span></td></tr>
+            <tr><td><span class="badge p">C 经济</span></td><td class="ed" contenteditable>预算科目：智慧办公专项（有）</td><td class="ed" contenteditable>财务</td><td><span class="badge s">过得了</span></td><td><span class="badge s">T2</span></td></tr>
+            <tr><td><span class="badge p">D 生态</span></td><td class="ed" contenteditable>预约入口被钉钉/飞书占据</td><td class="ed" contenteditable>IT 部门</td><td><span class="badge w">绕道</span></td><td><span class="badge s">T2</span></td></tr>
+            <tr><td><span class="badge e">E 一票否决</span></td><td class="ed" contenteditable>信息条线：数据不得出园区</td><td class="ed" contenteditable>信息中心</td><td><span class="badge s">已识别</span></td><td><span class="badge s">T1</span></td></tr>
+          </tbody>
+        </table></div></div>
+      </div>
+      <div class="pnl">
+        <div class="pnl-h"><div><h2>质量关 0 · 门槛筛查</h2><p>10 项检查（示意 5 项，完整清单见 00b §3.3）</p></div><span class="badge s">8/10 通过</span></div>
+        <div class="pnl-b"><ul class="cl">
+          <li class="cli"><svg class="ci pass" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg><div><div class="ct">能明确写出我方角色，不需我方不持有的认证</div><div class="cd">角色：辅助（存量改造集成方）</div></div></li>
+          <li class="cli"><svg class="ci pass" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg><div><div class="ct">买方有预算科目可挂</div><div class="cd">智慧办公专项，T2</div></div></li>
+          <li class="cli"><svg class="ci fail" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg><div><div class="ct">门槛扫描表无"不知道"状态</div><div class="cd">快思聪协议适配深度待确认</div></div></li>
+          <li class="cli"><svg class="ci fail" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg><div><div class="ct">来源抽查至少 3 条通过</div><div class="cd">仅抽查 2 条，1 条内容不一致</div></div></li>
+        </ul></div>
+      </div>
+      <div class="rec">
+        <div class="rec-hd"><span class="rec-badge cond">建议有条件进入</span><span class="rec-title">先打存量中控改造细分</span></div>
+        <div class="rec-sec"><h4>建议理由</h4>
+          <ul class="rec-list">
+            <li>无强制认证门槛，预算科目明确（B/C 类门槛均过）</li>
+            <li>存量改造切入不触碰新建市场竞争</li>
+          </ul>
+        </div>
+        <div class="rec-sec"><h4>建议前提条件</h4>
+          <ul class="rec-list">
+            <li>确认快思聪协议适配方案（借道策略）</li>
+            <li>补 1 条 T2 以上来源通过抽查</li>
+          </ul>
+        </div>
+        <div class="rec-actions">
+          <button class="btn p" onclick="toast('进入阶段 2：认识场景')">进入阶段 2</button>
+          <button class="btn" onclick="toast('补充门槛判据')">补充判据</button>
+          <button class="btn" onclick="toast('已停止分析，进度已保存')">停止分析</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== 阶段 2：认识场景（质量关 1 · 9 项） ===== -->
+    <div class="stage-pane active" id="stage-2">
+    <div class="bnr w"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><span>引用产品资料库：感知与控制产品线 · M1-M6 已同步</span></div>
+    <div class="pnl">
+      <div class="pnl-h"><div><h2>场景要素清单</h2><p>关键要素：硬件、软件、服务</p></div><div style="display:flex;gap:8px;align-items:center"><span class="badge p">12 项</span><button class="btn" onclick="toast('添加')">添加</button></div></div>
+      <div class="pnl-b flush"><div class="tw"><table><thead><tr><th>#</th><th>要素名称</th><th>类型</th><th>功能</th><th>关键参数</th><th>供应商</th><th>竞争</th><th>来源</th></tr></thead><tbody>
+        <tr class="sel" onclick="pick(this)"><td>1</td><td class="ed" contenteditable>会议平板</td><td><span class="badge p">硬件</span></td><td class="ed" contenteditable>触控展示、白板、投屏</td><td class="ed" contenteditable>65"/86" 4K</td><td class="ed" contenteditable>MAXHUB、华为</td><td><span class="badge e">高</span></td><td><span class="stag ai">AI</span></td></tr>
+        <tr onclick="pick(this)"><td>2</td><td class="ed" contenteditable>中控主机</td><td><span class="badge p">硬件</span></td><td class="ed" contenteditable>集中控制、场景切换</td><td class="ed" contenteditable>RS232/485</td><td class="ed" contenteditable>快思聪、AMX</td><td><span class="badge w">中</span></td><td><span class="stag ai">AI</span></td></tr>
+        <tr onclick="pick(this)"><td>3</td><td class="ed" contenteditable>预约系统</td><td><span class="badge p">软件</span></td><td class="ed" contenteditable>预约、签到、释放</td><td class="ed" contenteditable>并发500</td><td class="ed" contenteditable>钉钉、飞书</td><td><span class="badge e">高</span></td><td><span class="stag u">用户</span></td></tr>
+        <tr onclick="pick(this)"><td>4</td><td class="ed" contenteditable>环境传感器</td><td><span class="badge p">硬件</span></td><td class="ed" contenteditable>温湿度、光照、人流</td><td class="ed" contenteditable>±0.5°C</td><td class="ed" contenteditable>自研 SEN-200</td><td><span class="badge s">低</span></td><td><span class="stag ai">AI</span></td></tr>
+        <tr onclick="pick(this)"><td>5</td><td class="ed" contenteditable>智慧空间平台</td><td><span class="badge p">软件</span></td><td class="ed" contenteditable>云端管理、数据分析</td><td class="ed" contenteditable>SaaS</td><td class="ed" contenteditable>自研 SW-500</td><td><span class="badge w">中</span></td><td><span class="stag inf">推断</span></td></tr>
+      </tbody></table></div></div>
+    </div>
+    <div class="pnl">
+      <div class="pnl-h"><div><h2>质量关 1 · 认识场景</h2><p>9 项检查</p></div><span class="badge s">7/9 通过</span></div>
+      <div class="pnl-b"><ul class="cl">
+        <li class="cli"><svg class="ci pass" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg><div><div class="ct">完整架构图+要素间关系</div><div class="cd">4 层架构 + 8 种交互</div></div></li>
+        <li class="cli"><svg class="ci fail" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg><div><div class="ct">重要结论来源权威性达标</div><div class="cd">协议/接口缺 T1 来源</div></div></li>
+        <li class="cli"><svg class="ci fail" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg><div><div class="ct">适用标准号与合规路径</div><div class="cd">缺等保二级具体标准号</div></div></li>
+        <li class="cli"><svg class="ci pass" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg><div><div class="ct">关键设备有价格量级与竞争强度</div><div class="cd">12 项要素均已标注</div></div></li>
+      </ul></div>
+      </div>
+      <div class="rec">
+        <div class="rec-hd"><span class="rec-badge pass">建议通过</span><span class="rec-title">场景已摸清，可进入商业分析</span></div>
+        <div class="rec-sec"><h4>检查项完成情况</h4>
+          <div style="display:flex;gap:var(--s2)"><span class="badge s">通过 7 项</span><span class="badge e">不通过 2 项</span></div>
+        </div>
+        <div class="rec-sec"><h4>不满足项</h4>
+          <ul class="rec-list">
+            <li>协议/接口缺 T1 来源 → 建议补官方协议文档</li>
+            <li>缺等保二级具体标准号（GB/T 22239-2019）→ 待确认版本</li>
+          </ul>
+        </div>
+        <div class="rec-actions">
+          <button class="btn p" onclick="toast('进入阶段 3：理解商业')">进入阶段 3</button>
+          <button class="btn" onclick="toast('补充材料')">补充材料</button>
+          <button class="btn" onclick="toast('已停止分析，进度已保存')">停止分析</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== 阶段 3：理解商业（质量关 2 · 8 项） ===== -->
+    <div class="stage-pane" id="stage-3">
+      <div class="pnl">
+        <div class="pnl-h"><div><h2>表 3-1 · 利润池</h2><p>产业链每个环节赚多少，决定往哪挤</p></div></div>
+        <div class="pnl-b flush"><div class="tw"><table>
+          <thead><tr><th>环节</th><th>毛利率</th><th>代表企业</th><th>数据来源</th><th>权威性</th></tr></thead>
+          <tbody>
+            <tr><td class="ed" contenteditable>设备厂商</td><td class="ed" contenteditable>35-45%</td><td class="ed" contenteditable>MAXHUB、华为</td><td style="font-size:var(--t2x);color:var(--ct2)">年报 2026-08</td><td><span class="badge s">T1</span></td></tr>
+            <tr><td class="ed" contenteditable>系统集成商</td><td class="ed" contenteditable>15-25%</td><td class="ed" contenteditable>本地弱电集成商</td><td style="font-size:var(--t2x);color:var(--ct2)">行业报告</td><td><span class="badge p">T2</span></td></tr>
+            <tr><td class="ed" contenteditable>软件/云平台</td><td class="ed" contenteditable>60-70%</td><td class="ed" contenteditable>钉钉、飞书</td><td style="font-size:var(--t2x);color:var(--ct2)">财报分析</td><td><span class="badge p">T2</span></td></tr>
+          </tbody>
+        </table></div></div>
+      </div>
+      <div class="pnl">
+        <div class="pnl-h"><div><h2>表 3-6 · 替代方案</h2><p>客户如果不买我们，会怎么办（含"什么都不做"）</p></div><span class="badge p">3 个替代</span></div>
+        <div class="pnl-b flush"><div class="tw"><table>
+          <thead><tr><th>编号</th><th>替代方案</th><th>客户得到什么</th><th>成本结构</th><th>对我方意味着什么</th></tr></thead>
+          <tbody>
+            <tr><td>B0</td><td class="ed" contenteditable>维持现状</td><td class="ed" contenteditable>人工管理，空置浪费</td><td class="ed" contenteditable>隐性成本高</td><td class="ed" contenteditable>最大对手——需量化浪费</td></tr>
+            <tr><td>B1</td><td class="ed" contenteditable>原厂扩容</td><td class="ed" contenteditable>现有中控加模块</td><td class="ed" contenteditable>高（快思聪生态）</td><td class="ed" contenteditable>价格锚点 ¥15-25k</td></tr>
+            <tr><td>B2</td><td class="ed" contenteditable>SaaS 免费</td><td class="ed" contenteditable>钉钉/飞书基础预约</td><td class="ed" contenteditable>0 元（基础版）</td><td class="ed" contenteditable>必须做设备联动差异化</td></tr>
+          </tbody>
+        </table></div></div>
+      </div>
+      <div class="pnl">
+        <div class="pnl-h"><div><h2>表 3-8 · 未被满足的需求</h2><p>现有方案都没解决的痛点</p></div><span class="badge w">5 条</span></div>
+        <div class="pnl-b flush"><div class="tw"><table>
+          <thead><tr><th>#</th><th>缺口描述</th><th>谁在痛</th><th>痛到什么程度</th><th>缺口来源</th></tr></thead>
+          <tbody>
+            <tr><td>1</td><td class="ed" contenteditable>存量设备无法统一接入</td><td class="ed" contenteditable>IT 运维</td><td><span class="badge e">抱怨</span></td><td class="ed" contenteditable>用户旅程</td></tr>
+            <tr><td>2</td><td class="ed" contenteditable>跨品牌设备联动配置难</td><td class="ed" contenteditable>运维/行政</td><td><span class="badge e">放弃</span></td><td class="ed" contenteditable>反模式</td></tr>
+            <tr><td>3</td><td class="ed" contenteditable>能耗无法按会议室归集</td><td class="ed" contenteditable>行政</td><td><span class="badge w">凑合</span></td><td class="ed" contenteditable>行业案例</td></tr>
+          </tbody>
+        </table></div></div>
+      </div>
+      <div class="pnl">
+        <div class="pnl-h"><div><h2>质量关 2 · 理解商业</h2><p>8 项检查（示意）</p></div><span class="badge s">7/8 通过</span></div>
+        <div class="pnl-b"><ul class="cl">
+          <li class="cli"><svg class="ci pass" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg><div><div class="ct">能说清默认购买路径</div><div class="cd">行政提案 → IT 评审 → 采购执行</div></div></li>
+          <li class="cli"><svg class="ci pass" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg><div><div class="ct">能说出替代方案及其弱点</div><div class="cd">B0/B1/B2 均已分析</div></div></li>
+          <li class="cli"><svg class="ci fail" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg><div><div class="ct">能定位预算科目</div><div class="cd">二级科目归属待财务确认</div></div></li>
+        </ul></div>
+      </div>
+      <div class="rec">
+        <div class="rec-hd"><span class="rec-badge pass">建议通过</span><span class="rec-title">商业逻辑已理清，3 条未满足需求可切入</span></div>
+        <div class="rec-actions">
+          <button class="btn p" onclick="toast('进入阶段 4：匹配决策')">进入阶段 4</button>
+          <button class="btn" onclick="toast('补充替代方案定价数据')">补充数据</button>
+          <button class="btn" onclick="toast('已停止分析，进度已保存')">停止分析</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== 阶段 4：匹配决策（质量关 3 · 7 项） ===== -->
+    <div class="stage-pane" id="stage-4">
+      <div class="pnl">
+        <div class="pnl-h"><div><h2>表 4-3 · 缺口×能力匹配矩阵</h2><p>逐条对照：客户要的，我们能不能给</p></div></div>
+        <div class="pnl-b flush"><div class="tw"><table>
+          <thead><tr><th>缺口（来自阶段 3）</th><th>匹配判定</th><th>我方产品</th><th>边界说明</th><th>风险</th></tr></thead>
+          <tbody>
+            <tr><td class="ed" contenteditable>存量设备统一接入</td><td><span class="badge s">真能解</span></td><td class="ed" contenteditable>IPC-3000</td><td class="ed" contenteditable>覆盖 Modbus/MQTT；OPC UA 不支持</td><td class="ed" contenteditable>协议适配工作量</td></tr>
+            <tr><td class="ed" contenteditable>跨品牌联动配置</td><td><span class="badge w">条件能解</span></td><td class="ed" contenteditable>场景联动引擎</td><td class="ed" contenteditable>需现场配置服务</td><td class="ed" contenteditable>实施依赖</td></tr>
+            <tr><td class="ed" contenteditable>能耗精细归集</td><td><span class="badge e">不能承诺</span></td><td>—</td><td class="ed" contenteditable>能耗分析在研（SW-500）</td><td class="ed" contenteditable>承诺即违反 M4 边界</td></tr>
+          </tbody>
+        </table></div></div>
+      </div>
+      <div class="pnl">
+        <div class="pnl-h"><div><h2>表 4-5 · 竞争力判断</h2><p>给自己打分，判断赢面</p></div><span class="badge p">总分 17/25</span></div>
+        <div class="pnl-b flush"><div class="tw"><table>
+          <thead><tr><th>维度</th><th>评分（1-5）</th><th>打分依据</th></tr></thead>
+          <tbody>
+            <tr><td class="ed" contenteditable>行业方案成熟度</td><td><span class="badge p">3</span></td><td class="ed" contenteditable>案例 2 个，行业认知中等</td></tr>
+            <tr><td class="ed" contenteditable>相对默认路径</td><td><span class="badge s">4</span></td><td class="ed" contenteditable>比 B1 便宜 60%，比 B0 可量化</td></tr>
+            <tr><td class="ed" contenteditable>合规门槛</td><td><span class="badge s">4</span></td><td class="ed" contenteditable>无强制认证，等保路径清晰</td></tr>
+            <tr><td class="ed" contenteditable>差异化成立性</td><td><span class="badge p">3</span></td><td class="ed" contenteditable>跨品牌接入是差异点，可复制性中等</td></tr>
+            <tr><td class="ed" contenteditable>渠道</td><td><span class="badge w">3</span></td><td class="ed" contenteditable>依赖本地集成商，需借道</td></tr>
+          </tbody>
+        </table></div></div>
+      </div>
+      <div class="pnl">
+        <div class="pnl-h"><div><h2>质量关 3 · 匹配决策</h2><p>7 项检查（示意）</p></div><span class="badge s">6/7 通过</span></div>
+        <div class="pnl-b"><ul class="cl">
+          <li class="cli"><svg class="ci pass" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg><div><div class="ct">匹配矩阵至少一条"真能解"，不与安全责任冲突</div><div class="cd">存量接入为 A 级证据（验收数据）</div></div></li>
+          <li class="cli"><svg class="ci pass" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg><div><div class="ct">痛点排序有多源交叉验证</div><div class="cd">2 个独立 T2 来源</div></div></li>
+          <li class="cli"><svg class="ci fail" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg><div><div class="ct">来源抽查至少 3 条通过</div><div class="cd">待补 1 条</div></div></li>
+        </ul></div>
+      </div>
+      <div class="rec">
+        <div class="rec-hd"><span class="rec-badge pass">建议进入</span><span class="rec-title">先打存量中控改造细分</span></div>
+        <div class="rec-sec"><h4>建议前提条件</h4>
+          <ul class="rec-list">
+            <li>找到 1 个本地集成商合作伙伴（渠道 3 分短板）</li>
+          </ul>
+        </div>
+        <div class="rec-actions">
+          <button class="btn p" onclick="toast('进入阶段 5：方案实现')">进入阶段 5</button>
+          <button class="btn" onclick="toast('补充材料')">补充材料</button>
+          <button class="btn" onclick="toast('已停止分析，进度已保存')">停止分析</button>
+        </div>
+      </div>
+    </div>
+    <!-- ===== 阶段 5：方案实现（质量关 4 · 6 项） ===== -->
+    <div class="stage-pane" id="stage-5">
+      <div class="pnl">
+        <div class="pnl-h"><div><h2>表 5-5 · 成本估算汇总</h2><p>方案→约束→实施→运维后的总账（单间）</p></div><span class="badge p">首年 5.7 万/间</span></div>
+        <div class="pnl-b flush"><div class="tw"><table>
+          <thead><tr><th>项</th><th>金额（元）</th><th>计算依据</th></tr></thead>
+          <tbody>
+            <tr><td>硬件/设备</td><td class="ed" contenteditable>48,000</td><td class="ed" contenteditable>IPC-3000 ×1 + SEN-200 ×2 + 中控改造</td></tr>
+            <tr><td>实施人工</td><td class="ed" contenteditable>6,000</td><td class="ed" contenteditable>安装 0.5 人天 + 调试 0.5 人天 + 售前 0.2 人天</td></tr>
+            <tr><td>首年运营</td><td class="ed" contenteditable>3,000</td><td class="ed" contenteditable>维保 + 平台基础版</td></tr>
+            <tr><td><strong>首年总投入</strong></td><td><strong>57,000</strong></td><td style="color:var(--ct2)">单价来自 M6 内部费率</td></tr>
+          </tbody>
+        </table></div></div>
+      </div>
+      <div class="pnl">
+        <div class="pnl-h"><div><h2>表 5-6 · 竞品价格对照</h2><p>跟替代方案比价格，定出自己的位置</p></div></div>
+        <div class="pnl-b flush"><div class="tw"><table>
+          <thead><tr><th>方案</th><th>单位成本</th><th>客户得到什么</th><th>我方优势</th></tr></thead>
+          <tbody>
+            <tr><td class="ed" contenteditable>B1 原厂扩容</td><td class="ed" contenteditable>¥15-25 万/间</td><td class="ed" contenteditable>全生态但封闭</td><td class="ed" contenteditable>价格 1/3</td></tr>
+            <tr><td class="ed" contenteditable>B2 SaaS 免费</td><td class="ed" contenteditable>0 元起</td><td class="ed" contenteditable>仅预约，无设备联动</td><td class="ed" contenteditable>跨品牌联动</td></tr>
+            <tr><td><strong>我方方案</strong></td><td><strong>¥5.7 万/间</strong></td><td class="ed" contenteditable>接入+联动+报表</td><td>—</td></tr>
+          </tbody>
+        </table></div></div>
+      </div>
+      <div class="pnl">
+        <div class="pnl-h"><div><h2>质量关 4 · 方案实现</h2><p>6 项检查（示意）</p></div><span class="badge s">5/6 通过</span></div>
+        <div class="pnl-b"><ul class="cl">
+          <li class="cli"><svg class="ci pass" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg><div><div class="ct">成本已估算（实施+运营）且与竞品对照</div><div class="cd">单间 5.7 万 vs B1 的 15-25 万</div></div></li>
+          <li class="cli"><svg class="ci fail" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg><div><div class="ct">接口适配方案需实际对接验证</div><div class="cd">快思聪借道方案仅纸面分析</div></div></li>
+        </ul></div>
+      </div>
+      <div class="rec">
+        <div class="rec-hd"><span class="rec-badge pass">建议通过</span><span class="rec-title">方案可行，单间成本可控，合规路径明确</span></div>
+        <div class="rec-actions">
+          <button class="btn p" onclick="toast('进入阶段 6：价值验证')">进入阶段 6</button>
+          <button class="btn" onclick="toast('补充材料')">补充材料</button>
+          <button class="btn" onclick="toast('已停止分析，进度已保存')">停止分析</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== 阶段 6：价值验证（质量关 5 · 7 项） ===== -->
+    <div class="stage-pane" id="stage-6">
+      <div class="pnl">
+        <div class="pnl-h"><div><h2>表 6-3 · 投资回报估算</h2><p>投入引用阶段 5，全部标注证据级</p></div><span class="badge w">C 级假设为主</span></div>
+        <div class="pnl-b flush"><div class="tw"><table>
+          <thead><tr><th>项</th><th>数值</th><th>证据级</th></tr></thead>
+          <tbody>
+            <tr><td>单间改造投入</td><td class="ed" contenteditable>57,000 元</td><td><span class="badge s">B · 来自表 5-5</span></td></tr>
+            <tr><td>单间年节省</td><td class="ed" contenteditable>28,000 元</td><td><span class="badge w">C · 假设</span></td></tr>
+            <tr><td>静态回收期</td><td class="ed" contenteditable>24 个月</td><td><span class="badge w">C · 假设</span></td></tr>
+          </tbody>
+        </table></div></div>
+      </div>
+      <div class="pnl">
+        <div class="pnl-h"><div><h2>表 6-4 · 试点设计</h2><p>范围、验证项、成功判据事先写死</p></div></div>
+        <div class="pnl-b flush"><div class="tw"><table>
+          <tbody>
+            <tr><td style="width:120px;color:var(--ct2)">试点范围</td><td class="ed" contenteditable>3 间会议室（1 楼）</td></tr>
+            <tr><td style="color:var(--ct2)">试点周期</td><td class="ed" contenteditable>8 周</td></tr>
+            <tr><td style="color:var(--ct2)">验证项</td><td class="ed" contenteditable>存量设备接入成功率、联动配置时长、空置率改善</td></tr>
+            <tr><td style="color:var(--ct2)">明确不验证</td><td class="ed" contenteditable>能耗归集（在研能力不进试点）</td></tr>
+            <tr><td style="color:var(--ct2)">成功判据</td><td class="ed" contenteditable>接入成功率 ≥95%、配置 ≤2h/间、空置率降 ≥20%</td></tr>
+            <tr><td style="color:var(--ct2)">失败判据</td><td class="ed" contenteditable>任一判据未达即回退，恢复原中控</td></tr>
+          </tbody>
+        </table></div></div>
+      </div>
+      <div class="pnl">
+        <div class="pnl-h"><div><h2>质量关 5 · 价值验证</h2><p>7 项检查（示意）</p></div><span class="badge s">6/7 通过</span></div>
+        <div class="pnl-b"><ul class="cl">
+          <li class="cli"><svg class="ci pass" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg><div><div class="ct">每条价值对应可测指标+基线</div><div class="cd">3 项指标均有基线与测量方式</div></div></li>
+          <li class="cli"><svg class="ci pass" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg><div><div class="ct">内部稿与对客稿分离</div><div class="cd">双口径已维护</div></div></li>
+          <li class="cli"><svg class="ci fail" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg><div><div class="ct">试点成功判据已被买方确认</div><div class="cd">客户还未书面确认</div></div></li>
+        </ul></div>
+      </div>
+      <div class="rec">
+        <div class="rec-hd"><span class="rec-badge pass">建议通过</span><span class="rec-title">价值体系完整，建议启动首站试点</span></div>
+        <div class="rec-actions">
+          <button class="btn p" onclick="toast('进入阶段 7：总结沉淀')">进入阶段 7</button>
+          <button class="btn" onclick="toast('补充材料')">补充材料</button>
+          <button class="btn" onclick="toast('已停止分析，进度已保存')">停止分析</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== 阶段 7：总结沉淀（回写已自动完成） ===== -->
+    <div class="stage-pane" id="stage-7">
+      <div class="bnr w"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><span>数据库回写已自动完成：阶段 3 → knowledge 5 条 · 阶段 4 → capability 2 条 · 阶段 5 → cost_rate 1 条（本阶段只做提炼）</span></div>
+      <div class="pnl">
+        <div class="pnl-h"><div><h2>表 7-1 · 产品路线图更新</h2><p>场景中发现的需求反馈给产品</p></div><span class="badge p">2 条待讨论</span></div>
+        <div class="pnl-b flush"><div class="tw"><table>
+          <thead><tr><th>#</th><th>需求描述</th><th>优先级</th><th>状态</th></tr></thead>
+          <tbody>
+            <tr><td>1</td><td class="ed" contenteditable>OPC UA 协议支持（跨过场景级覆盖）</td><td><span class="badge e">P1</span></td><td class="ed" contenteditable>待讨论</td></tr>
+            <tr><td>2</td><td class="ed" contenteditable>能耗按房间归集（来自未满足需求）</td><td><span class="badge w">P2</span></td><td class="ed" contenteditable>已纳入在研</td></tr>
+          </tbody>
+        </table></div></div>
+      </div>
+      <div class="pnl">
+        <div class="pnl-h"><div><h2>表 7-3 · 销售打法更新</h2><p>可复用的打法</p></div></div>
+        <div class="pnl-b flush"><div class="tw"><table>
+          <tbody>
+            <tr><td style="width:120px;color:var(--ct2)">目标客户画像</td><td class="ed" contenteditable>有存量中控的楼宇型客户，行政/IT 双决策</td></tr>
+            <tr><td style="color:var(--ct2)">切入点</td><td class="ed" contenteditable>空置浪费量化 → 存量改造不换设备</td></tr>
+            <tr><td style="color:var(--ct2)">入场话术</td><td class="ed" contenteditable>"不换现有设备，两周降 20% 空置"</td></tr>
+            <tr><td style="color:var(--ct2)">禁语清单</td><td class="ed" contenteditable>不提能耗分析（在研）、不承诺 OPC UA</td></tr>
+          </tbody>
+        </table></div></div>
+      </div>
+      <div class="rec">
+        <div class="rec-hd"><span class="rec-badge none">阶段 7 · 无质量关</span><span class="rec-title">提炼完成</span></div>
+        <div class="rec-actions">
+          <button class="btn p" onclick="toast('进入阶段 8：最终交付')">进入阶段 8</button>
+          <button class="btn" onclick="setView('knowledge', document.querySelectorAll('.side-foot .foot-btn')[1])">查看知识库沉淀</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== 阶段 8：最终交付物 ===== -->
+    <div class="stage-pane" id="stage-8">
+      <div class="pnl">
+        <div class="pnl-h"><div><h2>内部调研报告</h2><p>3-5 页 · 诚实评估 · 含证据级与竞品点名</p></div><span class="badge s">已生成</span></div>
+        <div class="pnl-b"><div style="background:var(--cm);border-radius:var(--r8);padding:var(--s4);font-size:var(--txs);line-height:1.8">
+          <div style="font-weight:var(--fb);font-size:var(--tl);margin-bottom:var(--s2)">智慧会议室场景评估 — 内部调研报告</div>
+          <div style="color:var(--ct2);margin-bottom:var(--s2)">产品线：感知与控制 · 结论：<strong style="color:var(--ct)">建议进入，先打存量中控改造细分</strong> · 2026-09-22</div>
+          <div style="margin-bottom:var(--s2)"><strong>一、结论</strong>——建议进入。理由：① 设备接入能力已交付（A 级证据）；② 存量改造细分竞争空白（B 级）；③ 预算科目明确（T2）。风险：M4 边界为空、快思聪适配待实测。</div>
+          <div style="margin-bottom:var(--s2)"><strong>二、市场概况</strong>——规模 120 亿（T2 行业报告），一线渗透 35%。竞争格局：MAXHUB 28% / 华为 15%（T3）。</div>
+          <div style="color:var(--ct2)">[五至七章与附录：证据链索引，此处省略]</div>
+        </div></div>
+      </div>
+      <div class="pnl">
+        <div class="pnl-h"><div><h2>对外汇报材料</h2><p>2-3 页 · 价值导向 · 不含竞品名与未验证数字</p></div><span class="badge s">已生成</span></div>
+        <div class="pnl-b"><div style="background:var(--cm);border-radius:var(--r8);padding:var(--s4);font-size:var(--txs);line-height:1.8">
+          <div style="font-weight:var(--fb);font-size:var(--tl);margin-bottom:var(--s2)">智慧会议室解决方案 — 对外汇报</div>
+          <div style="color:var(--ct2);margin-bottom:var(--s2)">汇报对象：客户行政/IT · 核心信息：不换设备，两周见效</div>
+          <div style="margin-bottom:var(--s2)"><strong>解决什么问题</strong>——预约了不来（智能签到+自动释放）/ 设备分散管（统一联动）/ 效果说不清（数据报表）。</div>
+          <div style="margin-bottom:var(--s2)"><strong>投入与回报</strong>——投入与回收期：试点后补充实测数据。</div>
+          <div style="color:var(--ct2)">[方案亮点与下一步，此处省略]</div>
+        </div></div>
+      </div>
+      <div class="rec">
+        <div class="rec-hd"><span class="rec-badge pass">交付物就绪</span><span class="rec-title">内部报告 + 对外材料双口径已分离</span></div>
+        <div class="rec-actions">
+          <button class="btn p" onclick="toast('导出 Markdown（交付物-内部调研报告.md / 交付物-对外汇报材料.md）')">导出 Markdown</button>
+          <button class="btn" onclick="toast('重新生成')">重新生成</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  </div>
+
+  <!-- ===== 视图：产品资料库 ===== -->
+  <div class="app-view" id="view-library">
+    <div class="pgh">
+      <div style="display:flex;align-items:center;gap:var(--s3)"><div class="pgt">产品资料库</div><span class="badge s">感知与控制产品线</span><button class="btn" onclick="toast('切换产品线')">切换产品线</button></div>
+      <div class="pga"><button class="btn" onclick="toast('上传材料：PDF/PPT/Word/Excel/网址')">上传材料</button><button class="btn p" onclick="toast('开始解析入库')">开始解析</button></div>
+    </div>
+    <div class="stabs" id="libTabs">
+      <button class="stab active" onclick="libTab(this,'lib-quality')">质量总评</button>
+      <button class="stab" onclick="libTab(this,'lib-m1')">M1 产品清单</button>
+      <button class="stab" onclick="libTab(this,'lib-m2')">M2 规格书</button>
+      <button class="stab" onclick="libTab(this,'lib-m3')">M3 能力清单</button>
+      <button class="stab" onclick="libTab(this,'lib-m4')">M4 边界声明</button>
+      <button class="stab" onclick="libTab(this,'lib-m5')">M5 已知限制</button>
+      <button class="stab" onclick="libTab(this,'lib-m6')">M6 内部费率</button>
+      <button class="stab" onclick="libTab(this,'lib-o')">O 可选材料</button>
+    </div>
+    <div class="ws">
+      <div class="pnl" id="lib-quality">
+        <div class="pnl-h"><div><h2>质量总评</h2><p>材料整体质量六维评估</p></div><span class="badge w">4/6 达标</span></div>
+        <div class="pnl-b flush"><div class="tw"><table>
+          <thead><tr><th>维度</th><th>评级</th><th>说明</th></tr></thead>
+          <tbody>
+            <tr><td>状态可分辨</td><td><span class="badge s">✅</span></td><td class="ed" contenteditable>所有产品均标注在售/停售/在研状态</td></tr>
+            <tr><td>可追溯</td><td><span class="badge s">✅</span></td><td class="ed" contenteditable>87% 参数可定位到具体文件和页码</td></tr>
+            <tr><td>可验证</td><td><span class="badge w">⚠️</span></td><td class="ed" contenteditable>仅 23% 参数有实测数据，其余为宣称值</td></tr>
+            <tr><td>有时效</td><td><span class="badge s">✅</span></td><td class="ed" contenteditable>最新资料 2026-08，未超过 6 个月</td></tr>
+            <tr><td>含边界</td><td><span class="badge e">❌</span></td><td class="ed" contenteditable>M4 边界声明完全空白</td></tr>
+            <tr><td>含反面</td><td><span class="badge w">⚠️</span></td><td class="ed" contenteditable>M5 仅 2 条限制，建议补充</td></tr>
+          </tbody>
+        </table></div></div>
+      </div>
+      <div class="pnl" id="lib-m1" hidden>
+        <div class="pnl-h"><div><h2>M1 产品清单</h2><p>把所有产品列出来，建立候选池</p></div><div style="display:flex;gap:8px;align-items:center"><span class="badge p">3 型号</span><button class="btn" onclick="toast('添加产品')">添加</button></div></div>
+        <div class="pnl-b flush"><div class="tw"><table>
+          <thead><tr><th>型号</th><th>产品名</th><th>状态</th><th>上市</th><th>一句话定位</th><th>来源</th><th>出处</th></tr></thead>
+          <tbody>
+            <tr><td class="ed" contenteditable>IPC-3000</td><td class="ed" contenteditable>智能会议终端</td><td><span class="badge s">在售</span></td><td class="ed" contenteditable>2025-06</td><td class="ed" contenteditable>一体化会议室控制终端</td><td><span class="stag ai">AI</span></td><td style="font-size:var(--t2x);color:var(--ct2)">白皮书 p12</td></tr>
+            <tr><td class="ed" contenteditable>SEN-200</td><td class="ed" contenteditable>环境感知传感器</td><td><span class="badge s">在售</span></td><td class="ed" contenteditable>2025-03</td><td class="ed" contenteditable>温湿度+光照+人流一体</td><td><span class="stag ai">AI</span></td><td style="font-size:var(--t2x);color:var(--ct2)">可售清单 p3</td></tr>
+            <tr><td class="ed" contenteditable>SW-500</td><td class="ed" contenteditable>智慧空间平台</td><td><span class="badge p">在研</span></td><td class="ed" contenteditable>2026-Q4</td><td class="ed" contenteditable>云端空间管理与数据分析</td><td><span class="stag inf">推断</span></td><td style="font-size:var(--t2x);color:var(--ct2)">宣讲材料 p8</td></tr>
+          </tbody>
+        </table></div></div>
+      </div>
+      <div class="pnl" id="lib-m2" hidden>
+        <div class="pnl-h"><div><h2>M2 规格书 · IPC-3000</h2><p>每型号一张，参数类按产品类型生成</p></div><span class="badge p">4 参数类</span></div>
+        <div class="pnl-b flush"><div class="tw"><table>
+          <thead><tr><th>参数类</th><th>参数项</th><th>值</th><th>出处</th><th>实测/宣称</th></tr></thead>
+          <tbody>
+            <tr><td>计算</td><td class="ed" contenteditable>处理器</td><td class="ed" contenteditable>4 核 A76 @2.0GHz</td><td style="font-size:var(--t2x);color:var(--ct2)">白皮书 p15</td><td><span class="badge w">宣称</span></td></tr>
+            <tr><td>接口</td><td class="ed" contenteditable>网口</td><td class="ed" contenteditable>2×千兆 RJ45</td><td style="font-size:var(--t2x);color:var(--ct2)">白皮书 p15</td><td><span class="badge s">实测</span></td></tr>
+            <tr><td>协议</td><td class="ed" contenteditable>支持协议</td><td class="ed" contenteditable>Modbus TCP / MQTT / OPC UA</td><td style="font-size:var(--t2x);color:var(--ct2)">白皮书 p16</td><td><span class="badge w">宣称</span></td></tr>
+            <tr><td>电气</td><td class="ed" contenteditable>功耗</td><td class="ed" contenteditable>≤30W（PoE+ 供电）</td><td style="font-size:var(--t2x);color:var(--ct2)">白皮书 p17</td><td><span class="badge w">宣称</span></td></tr>
+          </tbody>
+        </table></div></div>
+      </div>
+      <div class="pnl" id="lib-m3" hidden>
+        <div class="pnl-h"><div><h2>M3 能力清单</h2><p>产品线能做什么、做到什么程度</p></div><span class="badge p">18 项 · 已交付 9</span></div>
+        <div class="pnl-b flush"><div class="tw"><table>
+          <thead><tr><th>能力项</th><th>一句话描述</th><th>成熟度</th><th>依赖条件</th><th>来源</th></tr></thead>
+          <tbody>
+            <tr><td class="ed" contenteditable>设备接入</td><td class="ed" contenteditable>Modbus/MQTT/OPC UA 设备接入</td><td><span class="badge s">已交付</span></td><td class="ed" contenteditable>需网关硬件</td><td><span class="stag u">用户</span></td></tr>
+            <tr><td class="ed" contenteditable>数据采集</td><td class="ed" contenteditable>实时采集温湿度/光照/人流</td><td><span class="badge s">已交付</span></td><td class="ed" contenteditable>SEN-200</td><td><span class="stag ai">AI</span></td></tr>
+            <tr><td class="ed" contenteditable>场景联动</td><td class="ed" contenteditable>基于规则的设备联动控制</td><td><span class="badge p">组件具备</span></td><td class="ed" contenteditable>需配置引擎</td><td><span class="stag ai">AI</span></td></tr>
+            <tr><td class="ed" contenteditable>能耗分析</td><td class="ed" contenteditable>会议室能耗统计与优化建议</td><td><span class="badge w">在研</span></td><td class="ed" contenteditable>SW-500 平台</td><td><span class="stag inf">推断</span></td></tr>
+          </tbody>
+        </table></div></div>
+      </div>
+      <div class="pnl" id="lib-m4" hidden>
+        <div class="pnl-h"><div><h2>M4 能力边界声明</h2><p>说清楚不做什么，避免承诺超出能力</p></div><button class="btn" onclick="toast('添加边界')">添加边界</button></div>
+        <div class="pnl-b">
+          <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:var(--s10) var(--s4);text-align:center">
+            <svg style="width:36px;height:36px;color:var(--ct3);margin-bottom:var(--s3)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            <div style="font-size:var(--ts);font-weight:var(--fb);margin-bottom:4px">边界声明为空</div>
+            <div style="font-size:var(--txs);color:var(--ct2);margin-bottom:var(--s3)">材料中未找到"不做什么"的声明，可由 AI 基于材料推断（标注"待确认"）</div>
+            <button class="btn p" onclick="toast('AI 推断边界：生成后全部标注待确认')">AI 推断边界</button>
+          </div>
+        </div>
+      </div>
+      <div class="pnl" id="lib-m5" hidden>
+        <div class="pnl-h"><div><h2>M5 已知限制清单</h2><p>列出已知缺陷，避免验收时踩坑</p></div><span class="badge p">2 条</span></div>
+        <div class="pnl-b flush"><div class="tw"><table>
+          <thead><tr><th>产品/能力</th><th>已知限制</th><th>影响程度</th><th>修复状态</th><th>对外可否提及</th><th>来源</th></tr></thead>
+          <tbody>
+            <tr><td class="ed" contenteditable>IPC-3000</td><td class="ed" contenteditable>多设备并发轮询场景偶发丢包</td><td><span class="badge w">中</span></td><td class="ed" contenteditable>修复中</td><td><span class="badge p">内部可提</span></td><td><span class="stag u">用户</span></td></tr>
+            <tr><td class="ed" contenteditable>SEN-200</td><td class="ed" contenteditable>高湿环境（&gt;85%RH）精度漂移</td><td><span class="badge s">低</span></td><td class="ed" contenteditable>硬件限制</td><td><span class="badge e">不可提</span></td><td><span class="stag u">用户</span></td></tr>
+          </tbody>
+        </table></div></div>
+      </div>
+      <div class="pnl" id="lib-m6" hidden>
+        <div class="pnl-h"><div><h2>M6 内部费率基准</h2><p>公司侧投入单价，场景成本在阶段 5 算</p></div><span class="badge p">3 项</span></div>
+        <div class="pnl-b flush"><div class="tw"><table>
+          <thead><tr><th>类别</th><th>项目</th><th>单价</th><th>标准工时参考</th><th>数据来源</th></tr></thead>
+          <tbody>
+            <tr><td>实施</td><td class="ed" contenteditable>安装部署</td><td class="ed" contenteditable>800 元/人天</td><td class="ed" contenteditable>0.5 人天/站</td><td><span class="stag u">历史项目</span></td></tr>
+            <tr><td>实施</td><td class="ed" contenteditable>现场调试</td><td class="ed" contenteditable>800 元/人天</td><td class="ed" contenteditable>0.5 人天/站</td><td><span class="stag u">历史项目</span></td></tr>
+            <tr><td>商务</td><td class="ed" contenteditable>售前方案设计</td><td class="ed" contenteditable>1,200 元/人天</td><td class="ed" contenteditable>0.2 人天/项目</td><td><span class="stag inf">待确认</span></td></tr>
+          </tbody>
+        </table></div></div>
+      </div>
+      <div class="pnl" id="lib-o" hidden>
+        <div class="pnl-h"><div><h2>O2 已交付案例</h2><p>整理过往案例，验证真实交付能力</p></div><span class="badge p">2 案例</span></div>
+        <div class="pnl-b flush"><div class="tw"><table>
+          <thead><tr><th>案例名</th><th>客户（脱敏）</th><th>场景</th><th>交付时间</th><th>验收指标与结果</th><th>证据级</th></tr></thead>
+          <tbody>
+            <tr><td class="ed" contenteditable>某银行培训中心</td><td class="ed" contenteditable>金融·培训</td><td class="ed" contenteditable>智慧会议室</td><td class="ed" contenteditable>2025-11</td><td class="ed" contenteditable>12 间，空置率降 35%</td><td><span class="badge s">B</span></td></tr>
+            <tr><td class="ed" contenteditable>某园区展厅</td><td class="ed" contenteditable>园区·展厅</td><td class="ed" contenteditable>环境监控</td><td class="ed" contenteditable>2025-06</td><td class="ed" contenteditable>86 点位，验收通过</td><td><span class="badge s">B</span></td></tr>
+          </tbody>
+        </table></div></div>
+        <div class="bnr w" style="margin:var(--s3) var(--s4)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><span>O1 认证 / O3 价格 / O4 SDK / O5 路线图 / O6 生态 共 5 项待补充</span></div>
+      </div>
+      <div class="pnl" id="lib-reminder" hidden>
+        <div class="pnl-h"><div><h2>材料补充提醒</h2><p>不阻断流程，仅提示缺失影响</p></div></div>
+        <div class="pnl-b flush"><div class="tw"><table>
+          <thead><tr><th>对应表</th><th>缺失项</th><th>缺失影响</th><th>建议操作</th></tr></thead>
+          <tbody>
+            <tr><td>M4 边界声明</td><td>完全空白</td><td>门槛筛查缺判据，方案边界不清</td><td><button class="btn" onclick="toast('去补充 M4')">立即补充</button></td></tr>
+            <tr><td>M5 已知限制</td><td>仅 2 条</td><td>验收约束不完整</td><td><button class="btn" onclick="toast('去补充 M5')">立即补充</button></td></tr>
+            <tr><td>M6 内部费率</td><td>商务类待确认</td><td>成本估算只能用行业均值</td><td><button class="btn" onclick="toast('去补充 M6')">立即补充</button></td></tr>
+          </tbody>
+        </table></div></div>
+      </div>
+    </div>
+  </div>
+  <!-- ===== 视图：知识库 ===== -->
+  <div class="app-view" id="view-knowledge">
+    <div class="pgh">
+      <div style="display:flex;align-items:center;gap:var(--s3)"><div class="pgt">知识库</div><span class="badge p">23 条沉淀</span></div>
+      <div class="pga"><button class="btn" onclick="toast('筛选：按产品线/场景/时间')">筛选</button><button class="btn" onclick="toast('导出')">导出</button></div>
+    </div>
+    <div class="stabs" id="kbTabs">
+      <button class="stab active" onclick="kbTab(this,'kb-compete')">竞品情报</button>
+      <button class="stab" onclick="kbTab(this,'kb-gap')">未满足需求</button>
+      <button class="stab" onclick="kbTab(this,'kb-trend')">行业趋势</button>
+      <button class="stab" onclick="kbTab(this,'kb-cap')">能力底账</button>
+    </div>
+    <div class="ws">
+      <div class="pnl" id="kb-compete">
+        <div class="pnl-h"><div><h2>竞品情报</h2><p>阶段 3 自动回写 · 跨项目沉淀</p></div><span class="badge p">12 条</span></div>
+        <div class="pnl-b flush">
+          <div class="srow" onclick="toast('查看情报详情')"><div class="smain"><strong>MAXHUB V6 系列功能对照</strong><span>智慧会议室 · 2026-09-20 · 功能对照表</span></div><span class="badge p">T3</span></div>
+          <div class="srow" onclick="toast('查看情报详情')"><div class="smain"><strong>华为 IdeaHub S2 集成方案</strong><span>智慧会议室 · 2026-09-20 · 替代方案分析</span></div><span class="badge s">T2</span></div>
+          <div class="srow" onclick="toast('查看情报详情')"><div class="smain"><strong>快思聪 CP4 中控协议分析</strong><span>智慧会议室 · 2026-09-19 · 协议分析</span></div><span class="badge s">T1</span></div>
+          <div class="srow" onclick="toast('查看情报详情')"><div class="smain"><strong>国产中控品牌价格区间</strong><span>预测性维护 · 2026-09-18 · 价格调研</span></div><span class="badge p">T3</span></div>
+        </div>
+      </div>
+      <div class="pnl" id="kb-gap" hidden>
+        <div class="pnl-h"><div><h2>未满足需求</h2><p>现有方案都没解决的痛点</p></div><span class="badge w">5 条</span></div>
+        <div class="pnl-b flush">
+          <div class="srow" onclick="toast('查看需求详情')"><div class="smain"><strong>存量设备无法统一接入</strong><span>智慧会议室 · 痛到"抱怨" · 现有方案需全部换新</span></div><span class="badge e">高痛</span></div>
+          <div class="srow" onclick="toast('查看需求详情')"><div class="smain"><strong>跨品牌设备联动配置难</strong><span>智慧会议室 · 痛到"放弃" · 无统一规则引擎</span></div><span class="badge e">高痛</span></div>
+          <div class="srow" onclick="toast('查看需求详情')"><div class="smain"><strong>能耗无法按会议室归集</strong><span>智慧会议室 · 痛到"凑合" · 缺精细计量</span></div><span class="badge w">中痛</span></div>
+        </div>
+      </div>
+      <div class="pnl" id="kb-trend" hidden>
+        <div class="pnl-h"><div><h2>行业趋势</h2><p>变化方向与时间窗口</p></div><span class="badge p">3 条</span></div>
+        <div class="pnl-b flush">
+          <div class="srow" onclick="toast('查看趋势详情')"><div class="smain"><strong>信创国产化替代加速</strong><span>政策要求 · 窗口 2026-2028 · 标准参编 T2</span></div><span class="badge s">利好</span></div>
+          <div class="srow" onclick="toast('查看趋势详情')"><div class="smain"><strong>会议终端向 ALL-in-One 整合</strong><span>技术演进 · 头部厂商已落地 T2</span></div><span class="badge s">利好</span></div>
+          <div class="srow" onclick="toast('查看趋势详情')"><div class="smain"><strong>预约 SaaS 免费化挤压独立方案</strong><span>商业模式 · 钉钉/飞书基础版免费 T1</span></div><span class="badge e">利空</span></div>
+        </div>
+      </div>
+      <div class="pnl" id="kb-cap" hidden>
+        <div class="pnl-h"><div><h2>能力底账更新</h2><p>实战后回写的成熟度变化</p></div><span class="badge p">3 条</span></div>
+        <div class="pnl-b flush">
+          <div class="srow" onclick="toast('查看变更详情')"><div class="smain"><strong>设备接入：组件具备 → 已交付</strong><span>智慧会议室 · 2026-09-20 · 银行项目验收数据支撑</span></div><span class="badge s">已验证</span></div>
+          <div class="srow" onclick="toast('查看变更详情')"><div class="smain"><strong>能耗分析：新增（在研）</strong><span>智慧会议室 · 2026-09-21 · 未满足需求反馈产品</span></div><span class="badge w">待验证</span></div>
+          <div class="srow" onclick="toast('查看变更详情')"><div class="smain"><strong>新限制：高湿精度漂移</strong><span>智慧会议室 · 2026-09-21 · 写回 M5</span></div><span class="badge p">待验证</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== 视图：设置 ===== -->
+  <div class="app-view" id="view-settings">
+    <div class="pgh"><div class="pgt">设置</div></div>
+    <div class="ws">
+      <div class="pnl">
+        <div class="pnl-h"><div><h2>DSH 连接</h2><p>AI 底座（DeepSeek Harness 本地实例）</p></div><span class="badge s">运行中</span></div>
+        <div class="pnl-b">
+          <div class="krow"><span class="kk">服务地址</span><span class="kv2" style="font-family:var(--fm);font-size:var(--t2x)">http://127.0.0.1:3081</span></div>
+          <div class="krow"><span class="kk">实例隔离</span><span class="kv2">项目独立（与本地 3080 不冲突）</span></div>
+          <div class="krow"><span class="kk">数据目录</span><span class="kv2" style="font-family:var(--fm);font-size:var(--t2x)">.dsh/</span></div>
+          <div style="display:flex;gap:var(--s2);margin-top:var(--s3)"><button class="btn" onclick="toast('重启 DSH 服务')">重启服务</button><button class="btn" onclick="toast('查看运行日志')">查看日志</button></div>
+        </div>
+      </div>
+      <div class="pnl">
+        <div class="pnl-h"><div><h2>模型选择</h2><p>来自 .dsh/settings.yaml 已配置供应商</p></div></div>
+        <div class="pnl-b">
+          <div class="fld"><label>供应商</label><select><option>talkweb</option><option>zai-coding-cn</option><option>xiaomi-token-plan-cn</option></select></div>
+          <div class="fld"><label>默认模型</label><select><option>deepseek-v4-pro</option><option>deepseek-v4-flash</option><option>glm-5.3</option><option>kimi-k3</option><option>mimo-v2.5-pro</option></select></div>
+          <div class="fld"><label>分析用模型（表格生成）</label><select><option>deepseek-v4-pro</option><option>glm-5.3</option><option>kimi-k3</option></select></div>
+          <button class="btn p" onclick="toast('已保存模型配置')">保存</button>
+        </div>
+      </div>
+      <div class="pnl">
+        <div class="pnl-h"><div><h2>数据管理</h2><p>产品资料库、场景项目、知识库</p></div></div>
+        <div class="pnl-b">
+          <div class="krow"><span class="kk">业务数据库</span><span class="kv2" style="font-family:var(--fm);font-size:var(--t2x)">data/solution-assistant.db</span></div>
+          <div style="display:flex;gap:var(--s2);margin-top:var(--s3)"><button class="btn" onclick="toast('导出全部数据')">导出数据</button><button class="btn" onclick="toast('导入数据')">导入数据</button><button class="btn" onclick="toast('打开数据目录')">打开目录</button></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <!-- 对话抽屉 -->
+  <div class="conv-layer" id="convLayer">
+    <div class="conv-resize" id="convResize"></div>
+    <div class="conv-stream-wrap" id="convWrap">
+      <div class="conv-stream" id="convStream">
+        <div class="msg u"><div class="bub">帮我看一下会议平板的竞争格局</div><div class="msg-meta">14:20</div></div>
+        <div class="msg ai"><div class="bub"><strong>会议平板竞争（2026-09）：</strong><br>· MAXHUB V6：市占约 28%（T3）<br>· 华为 IdeaHub S2：市占约 15%（T3）<br><br>建议存量改造切入。</div><div class="msg-meta">14:21</div></div>
+        <div class="msg u"><div class="bub">中控主机快思聪价格多少？</div><div class="msg-meta">14:25</div></div>
+        <div class="msg ai"><div class="bub"><strong>中控主机价格：</strong><br>· 快思聪 CP4：¥15,000-25,000（T2）<br>· 国产替代：¥3,000-8,000（T3）<br><br>建议以国产均价 ¥5,000 为基准。</div><div class="msg-meta">14:26</div></div>
+        <div class="msg u"><div class="bub">帮我补充预约系统的竞品对比</div><div class="msg-meta">14:30</div></div>
+        <div class="msg ai"><div class="bub"><strong>预约系统对比：</strong><br>· 钉钉：蓝牙签到，15 分钟释放<br>· 飞书：人脸+Wi-Fi，10 分钟释放，IoT 联动<br><br>我方可同时支持两种。</div><div class="msg-meta">14:31</div></div>
+      </div>
+    </div>
+    <div class="conv-input">
+      <textarea class="conv-ta" id="convInput" placeholder="输入问题或指令..." rows="1" onfocus="openConv()" oninput="autoGrow(this)"></textarea>
+      <button class="conv-send" onclick="toast('已发送')">发送</button>
+    </div>
+  </div>
+
+  <!-- 列收起/展开柄（参照质序 edge-toggle） -->
+  <button class="edge-toggle edge-toggle--side" id="sideToggle" onclick="toggleSideCol()" aria-expanded="true" aria-label="收起导航列">
+    <svg class="chev-collapse" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+    <svg class="chev-expand" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+  </button>
+  <button class="edge-toggle edge-toggle--detail" id="detToggle" onclick="toggleDetCol()" aria-expanded="true" aria-label="收起详情列">
+    <svg class="chev-collapse" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+    <svg class="chev-expand" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+  </button>
+</main>
+
+<!-- 右栏：决策支撑 -->
+<aside class="det">
+  <div class="det-h"><h3 id="detTitle">会议平板</h3></div>
+  <div class="det-body">
+
+    <!-- 来源与证据 -->
+    <div class="det-section">
+      <div class="det-label">来源与证据</div>
+      <div class="kv-grid">
+        <span class="kv-k">来源标记</span><span class="kv-v"><span class="stag ai">AI 提取</span></span>
+        <span class="kv-k">证据等级</span><span class="kv-v"><span class="badge p">B 级 · 间接有据</span></span>
+        <span class="kv-k">权威性</span><span class="kv-v"><span class="badge s">T2 较权威</span></span>
+        <span class="kv-k">出处</span><span class="kv-v" style="font-family:var(--fm);font-size:var(--t2x)">产品白皮书.pdf → p12</span>
+        <span class="kv-k">用户确认</span><span class="kv-v"><span class="badge w">未确认</span></span>
+      </div>
+    </div>
+
+    <!-- 上下游依赖 -->
+    <div class="det-section">
+      <div class="det-label">数据流向</div>
+      <div class="dep-item"><span class="dep-arrow">←</span><div><div class="dep-text">上游：M1 产品清单</div><div class="dep-sub">产品资料库 · IPC-3000</div></div></div>
+      <div class="dep-item"><span class="dep-arrow">→</span><div><div class="dep-text">下游：阶段 4 匹配矩阵</div><div class="dep-sub">候选池</div></div></div>
+      <div class="dep-item"><span class="dep-arrow">→</span><div><div class="dep-text">下游：阶段 5 成本估算</div><div class="dep-sub">设备单价依据</div></div></div>
+    </div>
+
+    <!-- 风险与缺口 -->
+    <div class="det-section">
+      <div class="det-label">风险与缺口</div>
+      <div class="risk-item">
+        <span class="risk-tag inherit">继承</span>
+        <span class="risk-title">M4 边界声明为空</span>
+        <div class="risk-detail">影响：门槛筛查缺少判据，阶段 5 方案边界不清</div>
+      </div>
+      <div class="risk-item">
+        <span class="risk-tag gap">缺口</span>
+        <span class="risk-title">协议/接口缺 T1 来源</span>
+        <div class="risk-detail">RS232/485、Modbus 协议权威性不足，建议补充官方文档</div>
+      </div>
+      <div class="risk-item">
+        <span class="risk-tag gap">缺口</span>
+        <span class="risk-title">等保二级标准号未填</span>
+        <div class="risk-detail">GB/T 22239-2019，需确认适用版本</div>
+      </div>
+      <div class="risk-item">
+        <span class="risk-tag ok">通过</span>
+        <span class="risk-title">要素完整性</span>
+        <div class="risk-detail">12 项要素已覆盖硬件/软件/服务</div>
+      </div>
+    </div>
+
+    <!-- 质量关快照 -->
+    <div class="det-section">
+      <div class="det-label">质量关 1 快照</div>
+      <div class="gate-snap">
+        <div class="gate-bar"><div class="gate-fill" style="width:78%"></div></div>
+        <span class="gate-num">7/9</span>
+      </div>
+      <div style="margin-top:var(--s2)">
+        <div class="risk-item"><span class="risk-tag gap">不通过</span><span class="risk-title">来源权威性</span></div>
+        <div class="risk-item"><span class="risk-tag gap">不通过</span><span class="risk-title">标准号与合规路径</span></div>
+      </div>
+    </div>
+
+  </div>
+  <div class="col-resizer col-resizer--detail" title="拖拽调整宽度"></div>
+</aside>
+</div>
+
+<!-- 新建项目对话框 -->
+<div class="dlg-bk" id="newDlgBk" onclick="if(event.target===this)closeDlg()">
+  <div class="dlg" role="dialog" aria-label="新建场景分析项目">
+    <h3>新建场景分析项目</h3>
+    <p>关联产品线后，M1-M6 / O1-O6 材料自动带入，无需重新上传</p>
+    <div class="fld"><label>关联产品线</label>
+      <select id="newDlgLine"><option>感知与控制产品线</option><option>IoT 产品线</option><option>综合解决方案</option></select></div>
+    <div class="fld"><label>场景名称</label>
+      <input id="newDlgName" placeholder="如：智慧会议室" /></div>
+    <div class="dlg-actions">
+      <button class="btn" onclick="closeDlg()">取消</button>
+      <button class="btn p" onclick="createProject()">创建</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const convLayer = document.getElementById('convLayer');
+const convWrap = document.getElementById('convWrap');
+const convStream = document.getElementById('convStream');
+const convInput = document.getElementById('convInput');
+const convResize = document.getElementById('convResize');
+const ws = document.getElementById('ws');
+
+let convOpen = false;
+let convHeight = 300;
+const MIN_H = 100;
+const MAX_H_RATIO = 0.75;
+
+function openConv() {
+  convOpen = true;
+  convLayer.classList.add('open');
+  convWrap.classList.add('open');
+  convWrap.style.height = convHeight + 'px';
+  setTimeout(() => { convStream.scrollTop = convStream.scrollHeight; }, 100);
+}
+
+function closeConv() {
+  convOpen = false;
+  convLayer.classList.remove('open');
+  convWrap.classList.remove('open');
+  convWrap.style.height = '0';
+  convInput.blur();
+}
+
+ws.addEventListener('click', function(e) {
+  if (convOpen && !e.target.closest('.ed') && !e.target.closest('button')) {
+    closeConv();
+  }
+});
+
+// 拖拽调整高度 — 拖动期间禁用过渡保证跟手，松手恢复动画
+let dragging = false;
+let startY = 0;
+let startH = 0;
+
+function beginDrawerDrag(y) {
+  dragging = true;
+  startY = y;
+  startH = convHeight;
+  convWrap.classList.add('is-dragging');
+  document.body.style.cursor = 'ns-resize';
+  document.body.style.userSelect = 'none';
+}
+
+function endDrawerDrag() {
+  if (!dragging) return;
+  dragging = false;
+  convWrap.classList.remove('is-dragging');
+  document.body.style.cursor = '';
+  document.body.style.userSelect = '';
+}
+
+convResize.addEventListener('mousedown', function(e) {
+  beginDrawerDrag(e.clientY);
+  e.preventDefault();
+});
+
+document.addEventListener('mousemove', function(e) {
+  if (!dragging) return;
+  const delta = startY - e.clientY;
+  const maxH = window.innerHeight * MAX_H_RATIO;
+  convHeight = Math.max(MIN_H, Math.min(maxH, startH + delta));
+  convWrap.style.height = convHeight + 'px';
+});
+
+document.addEventListener('mouseup', endDrawerDrag);
+
+// 触摸拖拽支持
+convResize.addEventListener('touchstart', function(e) {
+  beginDrawerDrag(e.touches[0].clientY);
+  e.preventDefault();
+}, {passive: false});
+
+document.addEventListener('touchmove', function(e) {
+  if (!dragging) return;
+  const delta = startY - e.touches[0].clientY;
+  const maxH = window.innerHeight * MAX_H_RATIO;
+  convHeight = Math.max(MIN_H, Math.min(maxH, startH + delta));
+  convWrap.style.height = convHeight + 'px';
+}, {passive: true});
+
+document.addEventListener('touchend', endDrawerDrag);
+
+function autoGrow(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 100) + 'px';
+}
+
+// ===== 主视图切换 =====
+function setView(name, btn) {
+  document.querySelectorAll('.app-view').forEach(function(v) { v.classList.remove('active') });
+  document.getElementById('view-' + name).classList.add('active');
+  document.querySelectorAll('.side-foot .foot-btn').forEach(function(b) { b.classList.remove('on') });
+  if (btn) btn.classList.add('on');
+}
+
+function libTab(el, id) {
+  document.querySelectorAll('#libTabs .stab').forEach(function(t) { t.classList.remove('active') });
+  el.classList.add('active');
+  document.querySelectorAll('#view-library .ws > .pnl').forEach(function(p) { p.hidden = true });
+  document.getElementById(id).hidden = false;
+  if (id === 'lib-quality') document.getElementById('lib-reminder').hidden = false;
+}
+
+function kbTab(el, id) {
+  document.querySelectorAll('#kbTabs .stab').forEach(function(t) { t.classList.remove('active') });
+  el.classList.add('active');
+  document.querySelectorAll('#view-knowledge .ws > .pnl').forEach(function(p) { p.hidden = true });
+  document.getElementById(id).hidden = false;
+}
+
+// ===== 新建项目对话框 =====
+function openDlg() {
+  document.getElementById('newDlgBk').classList.add('open');
+  setTimeout(function() { document.getElementById('newDlgName').focus() }, 50);
+}
+function closeDlg() {
+  document.getElementById('newDlgBk').classList.remove('open');
+}
+function createProject() {
+  var name = document.getElementById('newDlgName').value.trim();
+  var line = document.getElementById('newDlgLine').value;
+  toast(name ? '已创建：' + name + '（材料已从「' + line + '」带入）' : '请填写场景名称');
+  if (name) closeDlg();
+}
+
+function toggleProj(btn) {
+  setView('project');
+  const p = btn.closest('.proj');
+  p.classList.toggle('exp');
+  document.querySelectorAll('.proj').forEach(x => { if (x !== p) x.classList.remove('exp') });
+  document.querySelectorAll('.proj-hd').forEach(h => h.classList.remove('active'));
+  btn.classList.add('active');
+}
+
+// ⋯ 菜单：重命名 / 归档 / 删除
+function toggleMenu(btn, e, target) {
+  e.stopPropagation();
+  closeMenu();
+  const menu = document.createElement('div');
+  menu.className = 'ctx-menu';
+  menu.innerHTML = '<button class="ctx-item" data-act="重命名">重命名</button>' +
+                   '<button class="ctx-item" data-act="归档">归档</button>' +
+                   '<button class="ctx-item danger" data-act="删除">删除</button>';
+  document.body.appendChild(menu);
+  const r = btn.getBoundingClientRect();
+  const mw = menu.offsetWidth, mh = menu.offsetHeight;
+  let left = r.right - mw;
+  let top = r.bottom + 4;
+  if (top + mh > window.innerHeight - 8) top = r.top - mh - 4;
+  if (left < 8) left = 8;
+  menu.style.left = left + 'px';
+  menu.style.top = top + 'px';
+  menu.addEventListener('click', function(ev) {
+    const item = ev.target.closest('.ctx-item');
+    if (item) toast(item.dataset.act + '：' + target);
+    closeMenu();
+  });
+}
+
+function closeMenu() {
+  document.querySelectorAll('.ctx-menu').forEach(m => m.remove());
+}
+
+document.addEventListener('click', function(e) {
+  if (!e.target.closest('.ctx-menu') && !e.target.closest('.more-btn')) closeMenu();
+});
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') {
+    closeMenu();
+    closeDlg();
+    if (convOpen) closeConv();
+  }
+});
+
+function stab(el, id) {
+  document.querySelectorAll('.stab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  document.querySelectorAll('#ws .stage-pane').forEach(function(p) { p.classList.remove('active') });
+  var target = document.getElementById(id);
+  if (target) target.classList.add('active');
+}
+
+function pick(tr) {
+  tr.closest('tbody').querySelectorAll('tr').forEach(r => r.classList.remove('sel'));
+  tr.classList.add('sel');
+  const c = tr.querySelectorAll('td');
+  if (c.length > 1) document.getElementById('detTitle').textContent = c[1].textContent;
+}
+
+// ===== 列宽拖拽与收起/展开（参照质序 col-resizer + edge-toggle） =====
+const shellEl = document.querySelector('.shell');
+const sideToggle = document.getElementById('sideToggle');
+const detToggle = document.getElementById('detToggle');
+let sideW = 256, detW = 280;
+const SIDE_MIN = 200, SIDE_MAX = 320, DET_MIN = 240, DET_MAX = 480;
+
+function applyWidths() {
+  shellEl.style.setProperty('--app-sw', sideW + 'px');
+  shellEl.style.setProperty('--app-dw', detW + 'px');
+}
+
+function syncCollapseAria(el, isCollapsed, expandLabel, collapseLabel) {
+  el.classList.toggle('is-collapsed', isCollapsed);
+  el.setAttribute('aria-expanded', String(!isCollapsed));
+  el.setAttribute('aria-label', isCollapsed ? expandLabel : collapseLabel);
+}
+
+function toggleSideCol() {
+  const c = shellEl.classList.toggle('side-collapsed');
+  syncCollapseAria(sideToggle, c, '展开导航列', '收起导航列');
+}
+
+function toggleDetCol() {
+  const c = shellEl.classList.toggle('det-collapsed');
+  syncCollapseAria(detToggle, c, '展开详情列', '收起详情列');
+}
+
+let colDrag = null;
+document.querySelectorAll('.col-resizer').forEach(function(rz) {
+  rz.addEventListener('pointerdown', function(e) {
+    colDrag = rz.classList.contains('col-resizer--side') ? 'side' : 'det';
+    rz.classList.add('is-dragging');
+    shellEl.classList.add('drag-' + colDrag);
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    rz.setPointerCapture(e.pointerId);
+    e.preventDefault();
+  });
+});
+
+document.addEventListener('pointermove', function(e) {
+  if (!colDrag) return;
+  if (colDrag === 'side') {
+    sideW = Math.max(SIDE_MIN, Math.min(SIDE_MAX, e.clientX));
+  } else {
+    detW = Math.max(DET_MIN, Math.min(DET_MAX, window.innerWidth - e.clientX));
+  }
+  applyWidths();
+});
+
+document.addEventListener('pointerup', function() {
+  if (!colDrag) return;
+  document.querySelectorAll('.col-resizer').forEach(function(r) { r.classList.remove('is-dragging') });
+  shellEl.classList.remove('drag-side', 'drag-detail');
+  document.body.style.cursor = '';
+  document.body.style.userSelect = '';
+  colDrag = null;
+});
+
+function toast(m) {
+  const t = document.createElement('div');
+  t.style.cssText = 'position:fixed;bottom:50px;right:24px;background:#18181b;color:#e4e4e7;padding:8px 14px;border-radius:8px;font-size:12px;z-index:400';
+  t.textContent = m;document.body.appendChild(t);setTimeout(()=>t.remove(),2200);
+}
+</script>
+</body>
+</html>

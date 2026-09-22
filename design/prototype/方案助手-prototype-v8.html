@@ -1,0 +1,386 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>方案助手原型 v8</title>
+<style>
+:root{--cp:#2563eb;--cp-h:#1d4ed8;--cp-s:#eff6ff;--cs:#059669;--cs-s:#ecfdf5;--cs-h:#047857;--cw:#d97706;--cw-s:#fffbeb;--ce:#dc2626;--ce-s:#fef2f2;--cf:#fff;--cpg:#fafaf9;--csr:#fff;--cm:#f4f4f5;--ci:#18181b;--ct:#18181b;--ct2:#63636b;--ct3:#a1a1aa;--cb:#e4e4e7;--cis:#eff6ff;--f:"SF Pro Text","PingFang SC",system-ui,sans-serif;--fh:"SF Pro Display","PingFang SC",system-ui,sans-serif;--fm:"SF Mono","Menlo","PingFang SC",monospace;--fm2:500;--fb:700;--t2x:11px;--tx:12px;--ts:14px;--tb:16px;--tl:18px;--s2:8px;--s3:12px;--s4:16px;--s5:20px;--s05:2px;--s15:6px;--r4:4px;--r8:8px;--r12:12px;--rp:999px;--sh:0 1px 2px rgba(0,0,0,.05);--d:150ms;--e:cubic-bezier(.4,0,.2,1);--sw:256px;--dw:280px}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--f);font-size:var(--ts);line-height:1.5;color:var(--ct);background:var(--cpg);-webkit-font-smoothing:antialiased;height:100vh;overflow:hidden}
+.shell{display:grid;grid-template-columns:var(--sw) 1fr var(--dw);height:100vh;overflow:hidden}
+
+.side{background:var(--csr);border-right:1px solid var(--cb);display:flex;flex-direction:column;overflow:hidden}
+.side-hd{padding:var(--s3) var(--s4);border-bottom:1px solid var(--cb);display:flex;align-items:center;justify-content:space-between}
+.side-hd h1{font-family:var(--fh);font-size:var(--tb);font-weight:var(--fb)}
+.nbtn{display:inline-flex;align-items:center;gap:var(--s05);height:28px;padding:0 var(--s3);background:var(--cp);color:var(--cf);border:none;border-radius:var(--r4);font-size:var(--tx);font-weight:var(--fm2);cursor:pointer}.nbtn:hover{background:var(--cp-h)}
+.proj-list{flex:1;overflow-y:auto;padding:var(--s2) 0}
+.proj{border-bottom:1px solid var(--cb)}
+.proj-hd{display:flex;align-items:center;gap:var(--s2);padding:var(--s3) var(--s4);cursor:pointer;border:none;background:none;width:100%;text-align:left;font-family:inherit;transition:background var(--d) var(--e)}
+.proj-hd:hover{background:var(--cm)}.proj-hd.active{background:var(--cp-s)}
+.proj-chv{width:12px;height:12px;color:var(--ct3);transition:transform var(--d) var(--e);flex-shrink:0}
+.proj.exp .proj-chv{transform:rotate(90deg)}
+.proj-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+.proj-dot.on{background:var(--cp)}.proj-dot.done{background:var(--cs)}
+.proj-inf{flex:1;min-width:0}
+.proj-nm{font-size:var(--ts);font-weight:var(--fm2);color:var(--ct);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.proj-mt{font-size:var(--t2x);color:var(--ct2);margin-top:1px}
+.proj-convs{display:none;padding:0 0 var(--s2) 0}
+.proj.exp .proj-convs{display:block}
+.cvi{display:flex;align-items:flex-start;gap:var(--s2);padding:var(--s15) var(--s4) var(--s15) var(--s8);cursor:pointer;border:none;background:none;width:100%;text-align:left;font-family:inherit;font-size:var(--txs);color:var(--ct2);transition:background var(--d) var(--e)}
+.cvi:hover{background:var(--cm);color:var(--ct)}.cvi.on{color:var(--cp);font-weight:var(--fm2)}
+.cvt{flex-shrink:0;width:38px;font-family:var(--fm);font-size:var(--t2x);color:var(--ct3)}
+.cvx{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.side-foot{border-top:1px solid var(--cb);padding:var(--s2) var(--s4);display:flex;flex-direction:column;gap:var(--s1)}
+.foot-btn{display:flex;align-items:center;gap:var(--s2);padding:var(--s2) var(--s3);border-radius:var(--r4);cursor:pointer;border:none;background:none;width:100%;text-align:left;font-family:inherit;font-size:var(--txs);color:var(--ct2);transition:all var(--d) var(--e)}
+.foot-btn:hover{background:var(--cm);color:var(--ct)}.foot-btn svg{width:14px;height:14px;flex-shrink:0}
+.foot-btn .count{margin-left:auto;font-size:var(--t2x);color:var(--ct3)}
+
+.main{display:flex;flex-direction:column;overflow:hidden;background:var(--cpg);position:relative}
+.pgh{display:flex;align-items:center;justify-content:space-between;padding:var(--s3) var(--s5);background:var(--csr);border-bottom:1px solid var(--cb);min-height:40px}
+.pgt{font-family:var(--fh);font-size:var(--tl);font-weight:var(--fb)}
+.pgs{font-size:var(--txs);color:var(--ct2)}
+.pga{display:flex;gap:var(--s2)}
+.stabs{display:flex;background:var(--csr);border-bottom:1px solid var(--cb);overflow-x:auto;padding:0 var(--s5)}
+.stab{padding:var(--s3) var(--s4);font-size:var(--txs);font-weight:var(--fm2);color:var(--ct2);border:none;background:none;cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap;transition:all var(--d) var(--e)}
+.stab:hover{color:var(--ct)}.stab.active{color:var(--cp);border-bottom-color:var(--cp)}.stab.done{color:var(--cs)}
+.stab .sd{display:inline-block;width:5px;height:5px;border-radius:50%;margin-right:var(--s05);vertical-align:middle}
+.stab.done .sd{background:var(--cs)}.stab.active .sd{background:var(--cp)}
+
+.ws{flex:1;overflow-y:auto;padding:var(--s4) var(--s5)}
+.pnl{background:var(--csr);border-radius:var(--r8);border:1px solid var(--cb);box-shadow:var(--sh)}
+.pnl+.pnl{margin-top:var(--s3)}
+.pnl-h{display:flex;align-items:center;justify-content:space-between;padding:var(--s3) var(--s4);border-bottom:1px solid var(--cb)}
+.pnl-h h2{font-size:var(--ts);font-weight:var(--fb)}.pnl-h p{font-size:var(--t2x);color:var(--ct2);margin-top:1px}
+.pnl-b{padding:var(--s3) var(--s4)}.pnl-b.flush{padding:0}
+.tw{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:var(--txs)}
+thead{background:var(--cm);position:sticky;top:0;z-index:1}
+th{padding:var(--s2) var(--s3);text-align:left;font-weight:var(--fm2);color:var(--ct2);border-bottom:1px solid var(--cb);white-space:nowrap;font-size:var(--t2x)}
+td{padding:var(--s2) var(--s3);border-bottom:1px solid var(--cb);vertical-align:top}
+tr:hover{background:var(--csu)}.tr.sel{background:var(--cp-s)}
+td.ed{cursor:text}.ed:hover{background:var(--cp-s);outline:2px solid var(--cp);outline-offset:-2px}
+.ed:focus{outline:2px solid var(--cp);outline-offset:-2px;background:var(--csr)}
+.stag{display:inline-flex;padding:1px 5px;font-size:var(--t2x);border-radius:2px;font-weight:var(--fm2)}
+.stag.ai{background:var(--cis);color:var(--cp)}.stag.u{background:var(--cs-s);color:var(--cs-h)}.stag.inf{background:var(--cw-s);color:var(--cw-h)}
+.badge{display:inline-flex;padding:1px 6px;font-size:var(--t2x);font-weight:var(--fm2);border-radius:var(--rp)}
+.badge.p{background:var(--cp-s);color:var(--cp)}.badge.s{background:var(--cs-s);color:var(--cs-h)}.badge.w{background:var(--cw-s);color:var(--cw-h)}.badge.e{background:var(--ce-s);color:var(--ce-h)}
+.bnr{display:flex;align-items:center;gap:var(--s2);padding:var(--s2) var(--s3);border-radius:var(--r4);font-size:var(--txs);margin-bottom:var(--s3)}
+.bnr.w{background:var(--cw-s);border:1px solid var(--cw-b);color:var(--cw-h)}.bnr svg{width:14px;height:14px;flex-shrink:0}
+.cl{list-style:none}.cli{display:flex;align-items:flex-start;gap:var(--s2);padding:var(--s2) 0;border-bottom:1px solid var(--cb);font-size:var(--txs)}.cli:last-child{border-bottom:none}
+.ci{width:14px;height:14px;flex-shrink:0;margin-top:2px}.ci.pass{color:var(--cs)}.ci.fail{color:var(--ce)}
+.ct{font-weight:var(--fm2)}.cd{font-size:var(--t2x);color:var(--ct2);margin-top:1px}
+
+/* ===== 对话抽屉 ===== */
+.conv-layer{position:absolute;left:0;right:0;bottom:0;z-index:10;display:flex;flex-direction:column;pointer-events:none}
+
+/* 拖拽条 */
+.conv-resize{
+  height:6px;cursor:ns-resize;flex-shrink:0;
+  pointer-events:auto;
+  display:flex;align-items:center;justify-content:center;
+  opacity:0;transition:opacity .2s var(--e);
+}
+.conv-layer.open .conv-resize{opacity:1}
+.conv-resize:hover{opacity:1!important}
+.conv-resize-bar{
+  width:40px;height:3px;
+  background:rgba(0,0,0,0.15);
+  border-radius:2px;
+  transition:background var(--d) var(--e);
+}
+.conv-resize:hover .conv-resize-bar{background:rgba(0,0,0,0.3)}
+
+/* 对话流 */
+.conv-stream-wrap{
+  flex:1;overflow:hidden;
+  max-height:0;
+  transition:max-height .35s var(--e);
+  pointer-events:none;
+}
+.conv-stream-wrap.open{
+  pointer-events:auto;
+  /* 由 JS 控制具体高度 */
+}
+
+.conv-stream{
+  height:100%;
+  overflow-y:auto;
+  padding:var(--s3) var(--s5);
+  display:flex;flex-direction:column;gap:var(--s3);
+  /* 高透明度 */
+  background:rgba(255,255,255,0.55);
+  backdrop-filter:blur(12px);
+  -webkit-backdrop-filter:blur(12px);
+}
+
+.msg{display:flex;gap:var(--s2);max-width:80%}.msg.u{align-self:flex-end;flex-direction:row-reverse}.msg.ai{align-self:flex-start}
+.bub{padding:var(--s2) var(--s3);border-radius:var(--r12);font-size:var(--txs);line-height:1.7}
+.msg.u .bub{background:var(--cp);color:var(--cf);border-bottom-right-radius:2px}
+.msg.ai .bub{background:rgba(255,255,255,0.85);color:var(--ct);border-bottom-left-radius:2px;border:1px solid rgba(228,228,231,0.4)}
+.msg-meta{font-size:var(--t2x);color:var(--ct3);margin-top:var(--s05);padding:0 var(--s1)}
+.msg.u .msg-meta{text-align:right}
+
+/* 输入栏 */
+.conv-input{
+  display:flex;gap:var(--s2);
+  padding:var(--s3) var(--s5) var(--s4);
+  flex-shrink:0;pointer-events:auto;
+  background:rgba(255,255,255,0.7);
+  backdrop-filter:blur(16px);
+  -webkit-backdrop-filter:blur(16px);
+  border-top:1px solid rgba(228,228,231,0.4);
+}
+.conv-ta{
+  flex:1;min-height:36px;max-height:80px;
+  padding:var(--s2) var(--s3);
+  font-family:inherit;font-size:var(--txs);line-height:1.5;
+  color:var(--ct);background:rgba(255,255,255,0.8);
+  border:1px solid rgba(228,228,231,0.6);border-radius:var(--r8);
+  resize:none;outline:none;
+}
+.conv-ta:focus{border-color:var(--cp);box-shadow:0 0 0 2px var(--cp-s)}
+.conv-ta::placeholder{color:var(--ct3)}
+.conv-send{
+  height:32px;padding:0 var(--s4);
+  font-size:var(--txs);font-weight:var(--fm2);
+  background:var(--cp);color:var(--cf);
+  border:none;border-radius:var(--r4);cursor:pointer;
+}
+.conv-send:hover{background:var(--cp-h)}
+
+.btn{display:inline-flex;align-items:center;gap:4px;height:26px;padding:0 var(--s3);font-size:var(--txs);font-weight:var(--fm2);border-radius:var(--r4);border:1px solid var(--cb);background:var(--csr);color:var(--ct);cursor:pointer}.btn:hover{background:var(--cm)}.btn.p{background:var(--cp);color:var(--cf);border-color:var(--cp)}.btn.p:hover{background:var(--cp-h)}
+
+.det{background:var(--csr);border-left:1px solid var(--cb);display:flex;flex-direction:column;overflow:hidden}
+.det-h{padding:var(--s3) var(--s4);border-bottom:1px solid var(--cb)}.det-h h3{font-size:var(--ts);font-weight:var(--fb)}
+.sp{padding:var(--s3) var(--s4);border-bottom:1px solid var(--cb)}
+.sl{padding:0 0 6px 0;font-size:var(--t2x);font-weight:var(--fm2);color:var(--ct3);text-transform:uppercase;letter-spacing:.05em}
+.sr{display:flex;align-items:center;gap:var(--s2);padding:3px 0;font-size:var(--t2x);color:var(--ct2);cursor:pointer}.sr:hover{color:var(--ct)}.sr.done{color:var(--cs)}.sr.cur{color:var(--cp);font-weight:var(--fm2)}
+.sd2{width:5px;height:5px;border-radius:50%;background:var(--ct3);flex-shrink:0}
+.sr.done .sd2{background:var(--cs)}.sr.cur .sd2{background:var(--cp);box-shadow:0 0 0 3px var(--cp-s)}
+.sc{margin-left:auto;font-size:var(--t2x);color:var(--ct3)}.sr.done .sc{color:var(--cs)}
+.db{flex:1;overflow-y:auto;padding:var(--s3) var(--s4)}
+.mg{display:grid;gap:var(--s3)}.mr{display:flex;flex-direction:column;gap:1px}
+.ml{font-size:var(--t2x);font-weight:var(--fm2);color:var(--ct2)}.mv{font-size:var(--txs);color:var(--ct);font-weight:var(--fm2)}
+.es{margin-top:var(--s4)}.es h4{font-size:var(--t2x);font-weight:var(--fm2);color:var(--ct2);margin-bottom:var(--s2);text-transform:uppercase;letter-spacing:.05em}
+.ev{padding:var(--s2) 0;border-bottom:1px solid var(--cb);font-size:var(--t2x)}.ev:last-child{border-bottom:none}
+.evs{color:var(--ct3);font-family:var(--fm);margin-bottom:1px}.evc{color:var(--ct)}
+
+@media(max-width:1320px){.shell{grid-template-columns:var(--sw) 1fr}.det{display:none}}
+@media(max-width:940px){.shell{grid-template-columns:1fr}.side{display:none}}
+:focus-visible{outline:2px solid var(--cp);outline-offset:-2px}
+@media(prefers-reduced-motion:reduce){*{animation-duration:.01ms!important;transition-duration:.01ms!important}}
+</style>
+</head>
+<body>
+<div class="shell">
+
+<nav class="side">
+  <div class="side-hd"><h1>方案助手</h1><button class="nbtn" onclick="toast('新建场景分析项目')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>新建</button></div>
+  <div class="proj-list">
+    <div class="proj exp"><button class="proj-hd active" onclick="toggleProj(this)"><svg class="proj-chv" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg><span class="proj-dot on"></span><div class="proj-inf"><div class="proj-nm">智慧会议室</div><div class="proj-mt">感知与控制 · 阶段 2</div></div></button><div class="proj-convs"><button class="cvi on"><span class="cvt">14:30</span><span class="cvx">补充 M4 边界声明</span></button><button class="cvi"><span class="cvt">10:15</span><span class="cvx">阶段 2 质量关检查</span></button><button class="cvi"><span class="cvt">昨天</span><span class="cvx">上传产品白皮书</span></button></div></div>
+    <div class="proj"><button class="proj-hd" onclick="toggleProj(this)"><svg class="proj-chv" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg><span class="proj-dot on"></span><div class="proj-inf"><div class="proj-nm">工业设备预测性维护</div><div class="proj-mt">IoT 产品线 · 阶段 4</div></div></button><div class="proj-convs"><button class="cvi"><span class="cvt">1天前</span><span class="cvx">匹配矩阵分析</span></button></div></div>
+    <div class="proj"><button class="proj-hd" onclick="toggleProj(this)"><svg class="proj-chv" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg><span class="proj-dot done"></span><div class="proj-inf"><div class="proj-nm">智慧园区</div><div class="proj-mt">综合解决方案 · 已完成</div></div></button><div class="proj-convs"></div></div>
+  </div>
+  <div class="side-foot">
+    <button class="foot-btn" onclick="toast('产品资料库')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg><span>产品资料库</span><span class="count">2 线</span></button>
+    <button class="foot-btn" onclick="toast('知识库')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg><span>知识库</span><span class="count">23 条</span></button>
+    <button class="foot-btn" onclick="toast('设置')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg><span>设置</span></button>
+  </div>
+</nav>
+
+<main class="main">
+  <div class="pgh"><div><div class="pgt">智慧会议室</div><div class="pgs">感知与控制产品线 · 阶段 2 认识场景</div></div><div class="pga"><button class="btn" onclick="toast('上传材料')">上传材料</button><button class="btn p" onclick="toast('完成阶段')">完成阶段</button></div></div>
+  <div class="stabs">
+    <button class="stab done" onclick="stab(this)"><span class="sd"></span>材料入库</button>
+    <button class="stab done" onclick="stab(this)"><span class="sd"></span>门槛筛查</button>
+    <button class="stab active" onclick="stab(this)"><span class="sd"></span>认识场景</button>
+    <button class="stab" onclick="stab(this)"><span class="sd"></span>理解商业</button>
+    <button class="stab" onclick="stab(this)"><span class="sd"></span>匹配决策</button>
+    <button class="stab" onclick="stab(this)"><span class="sd"></span>方案实现</button>
+    <button class="stab" onclick="stab(this)"><span class="sd"></span>价值验证</button>
+    <button class="stab" onclick="stab(this)"><span class="sd"></span>总结沉淀</button>
+    <button class="stab" onclick="stab(this)"><span class="sd"></span>交付物</button>
+  </div>
+
+  <div class="ws" id="ws">
+    <div class="bnr w"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><span>引用产品资料库：感知与控制产品线 · M1-M6 已同步</span></div>
+    <div class="pnl">
+      <div class="pnl-h"><div><h2>场景要素清单</h2><p>关键要素：硬件、软件、服务</p></div><div style="display:flex;gap:8px;align-items:center"><span class="badge p">12 项</span><button class="btn" onclick="toast('添加要素')">添加</button></div></div>
+      <div class="pnl-b flush"><div class="tw"><table><thead><tr><th>#</th><th>要素名称</th><th>类型</th><th>功能</th><th>关键参数</th><th>供应商</th><th>竞争</th><th>来源</th></tr></thead><tbody>
+        <tr class="sel" onclick="pick(this)"><td>1</td><td class="ed" contenteditable>会议平板</td><td><span class="badge p">硬件</span></td><td class="ed" contenteditable>触控展示、白板、投屏</td><td class="ed" contenteditable>65"/86" 4K</td><td class="ed" contenteditable>MAXHUB、华为</td><td><span class="badge e">高</span></td><td><span class="stag ai">AI</span></td></tr>
+        <tr onclick="pick(this)"><td>2</td><td class="ed" contenteditable>中控主机</td><td><span class="badge p">硬件</span></td><td class="ed" contenteditable>集中控制、场景切换</td><td class="ed" contenteditable>RS232/485</td><td class="ed" contenteditable>快思聪、AMX</td><td><span class="badge w">中</span></td><td><span class="stag ai">AI</span></td></tr>
+        <tr onclick="pick(this)"><td>3</td><td class="ed" contenteditable>预约系统</td><td><span class="badge p">软件</span></td><td class="ed" contenteditable>预约、签到、释放</td><td class="ed" contenteditable>并发500</td><td class="ed" contenteditable>钉钉、飞书</td><td><span class="badge e">高</span></td><td><span class="stag u">用户</span></td></tr>
+        <tr onclick="pick(this)"><td>4</td><td class="ed" contenteditable>环境传感器</td><td><span class="badge p">硬件</span></td><td class="ed" contenteditable>温湿度、光照、人流</td><td class="ed" contenteditable>±0.5°C</td><td class="ed" contenteditable>自研 SEN-200</td><td><span class="badge s">低</span></td><td><span class="stag ai">AI</span></td></tr>
+        <tr onclick="pick(this)"><td>5</td><td class="ed" contenteditable>智慧空间平台</td><td><span class="badge p">软件</span></td><td class="ed" contenteditable>云端管理、数据分析</td><td class="ed" contenteditable>SaaS</td><td class="ed" contenteditable>自研 SW-500</td><td><span class="badge w">中</span></td><td><span class="stag inf">推断</span></td></tr>
+      </tbody></table></div></div>
+    </div>
+    <div class="pnl">
+      <div class="pnl-h"><div><h2>质量关 1 · 认识场景</h2><p>9 项检查</p></div><span class="badge s">7/9 通过</span></div>
+      <div class="pnl-b"><ul class="cl">
+        <li class="cli"><svg class="ci pass" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg><div><div class="ct">完整架构图+要素间关系</div><div class="cd">4 层架构 + 8 种交互</div></div></li>
+        <li class="cli"><svg class="ci fail" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg><div><div class="ct">重要结论来源权威性达标</div><div class="cd">协议/接口缺 T1 来源</div></div></li>
+        <li class="cli"><svg class="ci pass" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg><div><div class="ct">关键设备有价格量级与竞争强度</div><div class="cd">12 项要素均已标注</div></div></li>
+      </ul></div>
+    </div>
+  </div>
+
+  <!-- 对话抽屉 -->
+  <div class="conv-layer" id="convLayer">
+    <!-- 拖拽条 -->
+    <div class="conv-resize" id="convResize">
+      <div class="conv-resize-bar"></div>
+    </div>
+    <!-- 对话流 -->
+    <div class="conv-stream-wrap" id="convWrap">
+      <div class="conv-stream" id="convStream">
+        <div class="msg u"><div class="bub">帮我看一下会议平板的竞争格局</div><div class="msg-meta">14:20</div></div>
+        <div class="msg ai"><div class="bub"><strong>会议平板竞争（2026-09）：</strong><br>· MAXHUB V6：市占约 28%（T3）<br>· 华为 IdeaHub S2：市占约 15%（T3）<br><br>建议存量改造切入。</div><div class="msg-meta">14:21</div></div>
+        <div class="msg u"><div class="bub">中控主机快思聪价格多少？</div><div class="msg-meta">14:25</div></div>
+        <div class="msg ai"><div class="bub"><strong>中控主机价格：</strong><br>· 快思聪 CP4：¥15,000-25,000（T2）<br>· 国产替代：¥3,000-8,000（T3）<br><br>建议以国产均价 ¥5,000 为基准。</div><div class="msg-meta">14:26</div></div>
+        <div class="msg u"><div class="bub">帮我补充预约系统的竞品对比</div><div class="msg-meta">14:30</div></div>
+        <div class="msg ai"><div class="bub"><strong>预约系统对比：</strong><br>· 钉钉：蓝牙签到，15 分钟释放<br>· 飞书：人脸+Wi-Fi，10 分钟释放，IoT 联动<br><br>我方可同时支持两种。</div><div class="msg-meta">14:31</div></div>
+      </div>
+    </div>
+    <!-- 输入栏 -->
+    <div class="conv-input">
+      <textarea class="conv-ta" id="convInput" placeholder="输入问题或指令，点击展开对话历史..." rows="1" onfocus="openConv()" oninput="autoGrow(this)"></textarea>
+      <button class="conv-send" onclick="toast('已发送')">发送</button>
+    </div>
+  </div>
+</main>
+
+<aside class="det">
+  <div class="det-h"><h3>项目详情</h3></div>
+  <div class="sp"><div class="sl">阶段进度</div>
+    <div class="sr done"><span class="sd2"></span><span>材料入库</span><span class="sc">12 表</span></div>
+    <div class="sr done"><span class="sd2"></span><span>门槛筛查</span><span class="sc">✓</span></div>
+    <div class="sr cur"><span class="sd2"></span><span>认识场景</span><span class="sc">7/9</span></div>
+    <div class="sr"><span class="sd2"></span><span>理解商业</span><span class="sc">—</span></div>
+    <div class="sr"><span class="sd2"></span><span>匹配决策</span><span class="sc">—</span></div>
+    <div class="sr"><span class="sd2"></span><span>方案实现</span><span class="sc">—</span></div>
+    <div class="sr"><span class="sd2"></span><span>价值验证</span><span class="sc">—</span></div>
+    <div class="sr"><span class="sd2"></span><span>总结沉淀</span><span class="sc">—</span></div>
+    <div class="sr"><span class="sd2"></span><span>交付物</span><span class="sc">—</span></div>
+  </div>
+  <div class="db">
+    <div class="sl">选中项：会议平板</div>
+    <div class="mg">
+      <div class="mr"><span class="ml">来源标记</span><span class="mv"><span class="stag ai">AI 提取</span></span></div>
+      <div class="mr"><span class="ml">证据等级</span><span class="mv"><span class="badge p">B 级</span></span></div>
+      <div class="mr"><span class="ml">来源权威性</span><span class="mv"><span class="badge s">T2</span></span></div>
+      <div class="mr"><span class="ml">出处</span><span class="mv" style="font-family:var(--fm);font-size:var(--t2x)">产品白皮书.pdf → p12</span></div>
+    </div>
+    <div class="es"><h4>表间依赖</h4>
+      <div class="ev"><div class="evs">阶段 4 匹配矩阵</div><div class="evc">→ 候选池</div></div>
+      <div class="ev"><div class="evs">阶段 5 成本估算</div><div class="evc">→ 设备单价依据</div></div>
+    </div>
+    <div class="es"><h4>证据链</h4>
+      <div class="ev"><div class="evs">产品白皮书.pdf → p12</div><div class="evc">IPC-3000 支持 RS232/485、Modbus、MQTT</div></div>
+      <div class="ev"><div class="evs">可售清单.xlsx → Sheet2</div><div class="evc">在售，建议零售价 ¥12,800</div></div>
+    </div>
+  </div>
+</aside>
+</div>
+
+<script>
+const convLayer = document.getElementById('convLayer');
+const convWrap = document.getElementById('convWrap');
+const convStream = document.getElementById('convStream');
+const convInput = document.getElementById('convInput');
+const convResize = document.getElementById('convResize');
+const ws = document.getElementById('ws');
+
+let convOpen = false;
+let convHeight = 300; // 默认高度
+const MIN_H = 120;
+const MAX_H_RATIO = 0.7;
+
+function openConv() {
+  convOpen = true;
+  convLayer.classList.add('open');
+  convWrap.classList.add('open');
+  convWrap.style.maxHeight = convHeight + 'px';
+  setTimeout(() => { convStream.scrollTop = convStream.scrollHeight; }, 350);
+}
+
+function closeConv() {
+  convOpen = false;
+  convLayer.classList.remove('open');
+  convWrap.classList.remove('open');
+  convWrap.style.maxHeight = '0';
+  convInput.blur();
+}
+
+ws.addEventListener('click', function(e) {
+  if (convOpen && !e.target.closest('.ed') && !e.target.closest('button')) {
+    closeConv();
+  }
+});
+
+// 拖拽调整高度
+let dragging = false;
+let startY = 0;
+let startH = 0;
+
+convResize.addEventListener('mousedown', function(e) {
+  dragging = true;
+  startY = e.clientY;
+  startH = convHeight;
+  document.body.style.cursor = 'ns-resize';
+  document.body.style.userSelect = 'none';
+  e.preventDefault();
+});
+
+document.addEventListener('mousemove', function(e) {
+  if (!dragging) return;
+  const delta = startY - e.clientY; // 向上拖 = 增大
+  const maxH = window.innerHeight * MAX_H_RATIO;
+  convHeight = Math.max(MIN_H, Math.min(maxH, startH + delta));
+  convWrap.style.maxHeight = convHeight + 'px';
+});
+
+document.addEventListener('mouseup', function() {
+  if (dragging) {
+    dragging = false;
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+  }
+});
+
+function autoGrow(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 80) + 'px';
+}
+
+function toggleProj(btn) {
+  const p = btn.closest('.proj');
+  p.classList.toggle('exp');
+  document.querySelectorAll('.proj').forEach(x => { if (x !== p) x.classList.remove('exp') });
+  document.querySelectorAll('.proj-hd').forEach(h => h.classList.remove('active'));
+  btn.classList.add('active');
+}
+
+function stab(el) {
+  document.querySelectorAll('.stab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  toast('切换到：' + el.textContent.trim());
+}
+
+function pick(tr) {
+  tr.closest('tbody').querySelectorAll('tr').forEach(r => r.classList.remove('sel'));
+  tr.classList.add('sel');
+  const c = tr.querySelectorAll('td');
+  if (c.length > 1) document.querySelector('.db .sl').textContent = '选中项：' + c[1].textContent;
+}
+
+function toast(m) {
+  const t = document.createElement('div');
+  t.style.cssText = 'position:fixed;bottom:50px;right:24px;background:#18181b;color:#e4e4e7;padding:8px 14px;border-radius:8px;font-size:12px;z-index:400';
+  t.textContent = m;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 2200);
+}
+</script>
+</body>
+</html>

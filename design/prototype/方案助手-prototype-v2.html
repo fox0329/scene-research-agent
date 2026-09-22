@@ -1,0 +1,1021 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>方案助手原型 v2</title>
+<style>
+:root {
+  --color-primary: #2563eb;
+  --color-primary-hover: #1d4ed8;
+  --color-primary-soft: #eff6ff;
+  --color-primary-active: #1e40af;
+  --color-primary-tint: #dbeafe;
+  --color-success: #059669;
+  --color-success-soft: #ecfdf5;
+  --color-warning: #d97706;
+  --color-warning-soft: #fffbeb;
+  --color-error: #dc2626;
+  --color-error-soft: #fef2f2;
+  --color-error-border: #fecaca;
+  --color-text-on-fill: #ffffff;
+  --color-bg-page: #fafaf9;
+  --color-bg-page-rgb: 250, 250, 249;
+  --color-bg-surface: #ffffff;
+  --color-bg-muted: #f4f4f5;
+  --color-bg-subtle: #fbfbfa;
+  --color-bg-inverse: #18181b;
+  --color-text-primary: #18181b;
+  --color-text-secondary: #63636b;
+  --color-text-faint: #a1a1aa;
+  --color-text-inverse: #e4e4e7;
+  --color-border: #e4e4e7;
+  --color-border-strong: #c7cbd4;
+  --color-neutral: #a1a1aa;
+  --color-neutral-soft: #f4f4f5;
+  --color-info-soft: #eff6ff;
+  --color-success-hover: #047857;
+  --color-success-border: #a7f3d0;
+  --color-warning-hover: #b45309;
+  --color-warning-border: #fde68a;
+  --color-error-hover: #b91c1c;
+  --color-selection-bg: var(--color-primary-soft);
+  --color-selection-text: var(--color-primary);
+  --color-disabled-bg: #f4f4f5;
+  --color-disabled-text: #a1a1aa;
+  --color-disabled-border: #e4e4e7;
+  --font-sans: "SF Pro Text", "PingFang SC", system-ui, -apple-system, sans-serif;
+  --font-heading: "SF Pro Display", "PingFang SC", system-ui, sans-serif;
+  --font-mono: "SF Mono", "Menlo", "PingFang SC", monospace;
+  --font-weight-regular: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+  --text-xs: 12px;
+  --text-2xs: 11px;
+  --text-sm: 14px;
+  --text-base: 16px;
+  --text-lg: 18px;
+  --text-xl: 20px;
+  --text-2xl: 24px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-0_5: 2px;
+  --space-1_5: 6px;
+  --space-2_5: 10px;
+  --radius-xs: 2px;
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 14px;
+  --radius-pill: 999px;
+  --shadow-sm: 0 1px 2px rgba(0,0,0,.05);
+  --shadow-md: 0 4px 6px -1px rgba(0,0,0,.1);
+  --z-bar: 100;
+  --z-scrim: 190;
+  --z-drawer: 200;
+  --z-overlay: 300;
+  --z-toast: 400;
+  --duration-fast: 150ms;
+  --duration-normal: 200ms;
+  --duration-slow: 300ms;
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+  --focus-ring-width: 2px;
+  --focus-ring-offset: -2px;
+  --focus-ring-color: var(--color-primary);
+  --icon-sm: 16px;
+  --icon-md: 18px;
+  --size-7: 7px;
+  --size-8: 8px;
+  --size-20: 20px;
+  --size-28: 28px;
+  --size-32: 32px;
+  --size-36: 36px;
+  --size-38: 38px;
+  --size-44: 44px;
+  --size-48: 48px;
+  --size-52: 52px;
+  --layout-sidebar-width: 260px;
+  --layout-detail-width: 300px;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  color: var(--color-text-primary);
+  background: var(--color-bg-page);
+  -webkit-font-smoothing: antialiased;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.shell {
+  display: grid;
+  grid-template-columns: var(--layout-sidebar-width) 1fr var(--layout-detail-width);
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* ========== 左栏：项目列表 + 会话历史 ========== */
+.sidebar {
+  background: var(--color-bg-surface);
+  border-right: 1px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.sidebar-header {
+  padding: var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.sidebar-header h1 {
+  font-family: var(--font-heading);
+  font-size: var(--text-base);
+  font-weight: var(--font-weight-bold);
+}
+
+.primary-action {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1_5);
+  height: var(--size-32);
+  padding: 0 var(--space-3);
+  background: var(--color-primary);
+  color: var(--color-text-on-fill);
+  border: none;
+  border-radius: var(--radius-md);
+  font-size: var(--text-xs);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-standard);
+}
+.primary-action:hover { background: var(--color-primary-hover); }
+
+/* 项目列表 */
+.project-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-2) 0;
+}
+
+.section-label {
+  padding: var(--space-2) var(--space-4);
+  font-size: var(--text-2xs);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.project-item {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  cursor: pointer;
+  border: none;
+  background: none;
+  width: 100%;
+  text-align: left;
+  font-family: inherit;
+  transition: background var(--duration-fast) var(--ease-standard);
+}
+.project-item:hover { background: var(--color-bg-muted); }
+.project-item.active { background: var(--color-primary-soft); }
+
+.project-dot {
+  width: var(--size-8);
+  height: var(--size-8);
+  border-radius: 50%;
+  margin-top: 6px;
+  flex-shrink: 0;
+}
+.project-dot.active { background: var(--color-primary); }
+.project-dot.done { background: var(--color-success); }
+
+.project-info { flex: 1; min-width: 0; }
+.project-name {
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.project-meta {
+  font-size: var(--text-2xs);
+  color: var(--color-text-secondary);
+  margin-top: var(--space-0_5);
+}
+
+/* 会话历史 */
+.history-section {
+  border-top: 1px solid var(--color-border);
+  padding: var(--space-2) 0;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.history-item {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  cursor: pointer;
+  border: none;
+  background: none;
+  width: 100%;
+  text-align: left;
+  font-family: inherit;
+  font-size: var(--text-xs);
+  color: var(--color-text-secondary);
+  transition: background var(--duration-fast) var(--ease-standard);
+}
+.history-item:hover { background: var(--color-bg-muted); color: var(--color-text-primary); }
+
+.history-time {
+  flex-shrink: 0;
+  width: 44px;
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  color: var(--color-text-faint);
+}
+
+.history-text {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 状态块 */
+.status-block {
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--color-border);
+  font-size: var(--text-2xs);
+  color: var(--color-text-secondary);
+}
+.status-item { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-1) 0; }
+.status-dot { width: var(--size-7); height: var(--size-7); border-radius: 50%; flex-shrink: 0; }
+.status-dot.green { background: var(--color-success); }
+.status-dot.amber { background: var(--color-warning); }
+
+/* ========== 中栏：项目工作台 ========== */
+.main {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--color-bg-page);
+}
+
+/* 页头 */
+.page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-3) var(--space-5);
+  background: var(--color-bg-surface);
+  border-bottom: 1px solid var(--color-border);
+  min-height: var(--size-44);
+}
+.page-title { font-family: var(--font-heading); font-size: var(--text-lg); font-weight: var(--font-weight-bold); }
+.page-subtitle { font-size: var(--text-xs); color: var(--color-text-secondary); }
+.page-actions { display: flex; gap: var(--space-2); }
+
+/* 阶段 Tab 栏 */
+.stage-tabs {
+  display: flex;
+  gap: 0;
+  background: var(--color-bg-surface);
+  border-bottom: 1px solid var(--color-border);
+  overflow-x: auto;
+  padding: 0 var(--space-5);
+}
+.stage-tab {
+  padding: var(--space-3) var(--space-4);
+  font-size: var(--text-xs);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-secondary);
+  border: none;
+  background: none;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  white-space: nowrap;
+  transition: all var(--duration-fast) var(--ease-standard);
+  position: relative;
+}
+.stage-tab:hover { color: var(--color-text-primary); }
+.stage-tab.active { color: var(--color-primary); border-bottom-color: var(--color-primary); }
+.stage-tab.done { color: var(--color-success); }
+.stage-tab .tab-dot {
+  display: inline-block;
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  margin-right: var(--space-1_5);
+  vertical-align: middle;
+}
+.stage-tab.done .tab-dot { background: var(--color-success); }
+.stage-tab.active .tab-dot { background: var(--color-primary); }
+
+/* 内容区：表格 + 对话 上下分屏 */
+.content-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* 表格工作区 */
+.table-workspace {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-4) var(--space-5);
+}
+
+/* 面板 */
+.panel {
+  background: var(--color-bg-surface);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-sm);
+}
+.panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+}
+.panel-head h2 { font-size: var(--text-sm); font-weight: var(--font-weight-bold); }
+.panel-head p { font-size: var(--text-2xs); color: var(--color-text-secondary); margin-top: var(--space-0_5); }
+.panel-body { padding: var(--space-3) var(--space-4); }
+
+/* 横幅 */
+.banner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-xs);
+  margin-bottom: var(--space-3);
+}
+.banner.warning { background: var(--color-warning-soft); border: 1px solid var(--color-warning-border); color: var(--color-warning-hover); }
+.banner-icon { width: 14px; height: 14px; flex-shrink: 0; }
+
+/* 表格 */
+.table-wrapper { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: var(--text-xs); }
+thead { background: var(--color-bg-muted); position: sticky; top: 0; z-index: 1; }
+th { padding: var(--space-2) var(--space-3); text-align: left; font-weight: var(--font-weight-medium); color: var(--color-text-secondary); border-bottom: 1px solid var(--color-border); white-space: nowrap; font-size: var(--text-2xs); }
+td { padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--color-border); vertical-align: top; }
+tr:hover { background: var(--color-bg-subtle); }
+tr.selected { background: var(--color-primary-soft); }
+
+td.editable { cursor: text; }
+td.editable:hover { background: var(--color-primary-soft); outline: 2px solid var(--color-primary); outline-offset: -2px; }
+td.editable:focus { outline: 2px solid var(--color-primary); outline-offset: -2px; background: var(--color-bg-surface); }
+
+/* 来源标记 */
+.source-tag { display: inline-flex; padding: 1px var(--space-1_5); font-size: var(--text-2xs); border-radius: var(--radius-xs); font-weight: var(--font-weight-medium); }
+.source-tag.ai { background: var(--color-info-soft); color: var(--color-primary); }
+.source-tag.user { background: var(--color-success-soft); color: var(--color-success-hover); }
+.source-tag.infer { background: var(--color-warning-soft); color: var(--color-warning-hover); }
+
+/* 徽标 */
+.badge { display: inline-flex; padding: 1px var(--space-2); font-size: var(--text-2xs); font-weight: var(--font-weight-medium); border-radius: var(--radius-pill); }
+.badge.primary { background: var(--color-primary-soft); color: var(--color-primary); }
+.badge.success { background: var(--color-success-soft); color: var(--color-success-hover); }
+.badge.warning { background: var(--color-warning-soft); color: var(--color-warning-hover); }
+.badge.error { background: var(--color-error-soft); color: var(--color-error-hover); }
+
+/* 质量关检查 */
+.checklist { list-style: none; }
+.checklist-item { display: flex; align-items: flex-start; gap: var(--space-2); padding: var(--space-2) 0; border-bottom: 1px solid var(--color-border); font-size: var(--text-xs); }
+.checklist-item:last-child { border-bottom: none; }
+.check-icon { width: 14px; height: 14px; flex-shrink: 0; margin-top: 2px; }
+.check-icon.pass { color: var(--color-success); }
+.check-icon.fail { color: var(--color-error); }
+.check-title { font-weight: var(--font-weight-medium); }
+.check-desc { font-size: var(--text-2xs); color: var(--color-text-secondary); margin-top: 1px; }
+
+/* 阶段建议卡片 */
+.rec-card { padding: var(--space-4); }
+.rec-header { display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-3); }
+.rec-badge { padding: var(--space-1) var(--space-3); border-radius: var(--radius-pill); font-weight: var(--font-weight-bold); font-size: var(--text-sm); }
+.rec-badge.enter { background: var(--color-success-soft); color: var(--color-success); }
+.rec-title { font-size: var(--text-sm); font-weight: var(--font-weight-bold); }
+.rec-section { margin-top: var(--space-3); }
+.rec-section h4 { font-size: var(--text-2xs); font-weight: var(--font-weight-medium); color: var(--color-text-secondary); margin-bottom: var(--space-1); text-transform: uppercase; letter-spacing: 0.05em; }
+.rec-list { list-style: none; }
+.rec-list li { padding: var(--space-1) 0; padding-left: var(--space-3); position: relative; font-size: var(--text-xs); }
+.rec-list li::before { content: "·"; position: absolute; left: 0; color: var(--color-text-secondary); }
+
+/* 对话区 */
+.conversation-area {
+  border-top: 1px solid var(--color-border);
+  background: var(--color-bg-surface);
+  display: flex;
+  flex-direction: column;
+  height: 240px;
+  min-height: 160px;
+}
+
+.conv-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+  font-size: var(--text-2xs);
+  color: var(--color-text-secondary);
+  flex-shrink: 0;
+}
+
+.conv-stream {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-3) var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.message { display: flex; gap: var(--space-2); max-width: 85%; }
+.message.user { align-self: flex-end; flex-direction: row-reverse; }
+.message.ai { align-self: flex-start; }
+
+.bubble {
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-lg);
+  font-size: var(--text-xs);
+  line-height: 1.6;
+}
+.message.user .bubble {
+  background: var(--color-primary);
+  color: var(--color-text-on-fill);
+  border-bottom-right-radius: var(--radius-xs);
+}
+.message.ai .bubble {
+  background: var(--color-bg-muted);
+  color: var(--color-text-primary);
+  border-bottom-left-radius: var(--radius-xs);
+}
+
+.message-meta {
+  font-size: var(--text-2xs);
+  color: var(--color-text-faint);
+  margin-top: var(--space-0_5);
+}
+
+.conv-input {
+  display: flex;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4) var(--space-3);
+  border-top: 1px solid var(--color-border);
+  flex-shrink: 0;
+}
+
+.conv-textarea {
+  flex: 1;
+  min-height: var(--size-36);
+  max-height: var(--size-48);
+  padding: var(--space-2) var(--space-3);
+  font-family: inherit;
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  color: var(--color-text-primary);
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  resize: none;
+  outline: none;
+}
+.conv-textarea:focus { border-color: var(--color-primary); box-shadow: 0 0 0 2px var(--color-primary-soft); }
+.conv-textarea::placeholder { color: var(--color-text-faint); }
+
+.send-btn {
+  height: var(--size-32);
+  padding: 0 var(--space-3);
+  font-size: var(--text-xs);
+  font-weight: var(--font-weight-medium);
+  background: var(--color-primary);
+  color: var(--color-text-on-fill);
+  border: none;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+}
+.send-btn:hover { background: var(--color-primary-hover); }
+
+/* 按钮 */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1_5);
+  height: var(--size-28);
+  padding: 0 var(--space-3);
+  font-size: var(--text-xs);
+  font-weight: var(--font-weight-medium);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-surface);
+  color: var(--color-text-primary);
+  cursor: pointer;
+}
+.btn:hover { background: var(--color-bg-muted); }
+.btn.primary { background: var(--color-primary); color: var(--color-text-on-fill); border-color: var(--color-primary); }
+.btn.primary:hover { background: var(--color-primary-hover); }
+
+/* ========== 右栏：阶段进度 + 选中详情 + 证据链 ========== */
+.detail {
+  background: var(--color-bg-surface);
+  border-left: 1px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.detail-header {
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+}
+.detail-header h3 { font-size: var(--text-sm); font-weight: var(--font-weight-bold); }
+
+/* 阶段进度 */
+.stage-progress {
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.stage-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) 0;
+  font-size: var(--text-2xs);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+.stage-item:hover { color: var(--color-text-primary); }
+.stage-item.done { color: var(--color-success); }
+.stage-item.current { color: var(--color-primary); font-weight: var(--font-weight-medium); }
+
+.stage-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--color-neutral);
+  flex-shrink: 0;
+}
+.stage-item.done .stage-dot { background: var(--color-success); }
+.stage-item.current .stage-dot { background: var(--color-primary); box-shadow: 0 0 0 3px var(--color-primary-soft); }
+
+.stage-check {
+  margin-left: auto;
+  font-size: var(--text-2xs);
+  color: var(--color-text-faint);
+}
+.stage-item.done .stage-check { color: var(--color-success); }
+
+/* 选中详情 */
+.detail-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-3) var(--space-4);
+}
+
+.meta-grid { display: grid; grid-template-columns: 1fr; gap: var(--space-3); }
+.meta-row { display: flex; flex-direction: column; gap: 2px; }
+.meta-label { font-size: var(--text-2xs); font-weight: var(--font-weight-medium); color: var(--color-text-secondary); }
+.meta-value { font-size: var(--text-xs); color: var(--color-text-primary); font-weight: var(--font-weight-medium); }
+
+.evidence-section { margin-top: var(--space-4); }
+.evidence-section h4 { font-size: var(--text-2xs); font-weight: var(--font-weight-medium); color: var(--color-text-secondary); margin-bottom: var(--space-2); text-transform: uppercase; letter-spacing: 0.05em; }
+
+.evidence-item {
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--color-border);
+  font-size: var(--text-2xs);
+}
+.evidence-item:last-child { border-bottom: none; }
+.evidence-source { color: var(--color-text-faint); font-family: var(--font-mono); margin-bottom: 2px; }
+.evidence-content { color: var(--color-text-primary); }
+
+/* 空态 */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-10) var(--space-4);
+  text-align: center;
+}
+.empty-state-icon { width: 36px; height: 36px; color: var(--color-neutral); margin-bottom: var(--space-3); }
+.empty-state h3 { font-size: var(--text-sm); font-weight: var(--font-weight-bold); margin-bottom: var(--space-1); }
+.empty-state p { font-size: var(--text-xs); color: var(--color-text-secondary); margin-bottom: var(--space-3); }
+
+/* 项目列表视图 */
+.split-list { list-style: none; }
+.split-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+  cursor: pointer;
+}
+.split-row:hover { background: var(--color-bg-subtle); }
+.split-row:last-child { border-bottom: none; }
+.split-main { flex: 1; min-width: 0; }
+.split-main strong { display: block; font-weight: var(--font-weight-medium); font-size: var(--text-sm); }
+.split-main > span { font-size: var(--text-2xs); color: var(--color-text-secondary); margin-top: 2px; display: block; }
+
+/* 响应式 */
+@media (max-width: 1320px) {
+  .shell { grid-template-columns: var(--layout-sidebar-width) 1fr; }
+  .detail { display: none; }
+}
+@media (max-width: 940px) {
+  .shell { grid-template-columns: 1fr; }
+  .sidebar { display: none; }
+}
+
+/* 动画 */
+@keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+.view { animation: fadeIn var(--duration-normal) var(--ease-standard); }
+
+:focus-visible { outline: var(--focus-ring-width) solid var(--focus-ring-color); outline-offset: var(--focus-ring-offset); }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; } }
+</style>
+</head>
+<body>
+<div class="shell">
+  <!-- ========== 左栏 ========== -->
+  <nav class="sidebar">
+    <div class="sidebar-header">
+      <h1>方案助手</h1>
+      <button class="primary-action" onclick="toast('新建分析项目')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        新建
+      </button>
+    </div>
+
+    <div class="project-list">
+      <div class="section-label">分析项目</div>
+
+      <button class="project-item active" onclick="selectProject(this)">
+        <span class="project-dot active"></span>
+        <div class="project-info">
+          <div class="project-name">智慧会议室</div>
+          <div class="project-meta">感知与控制产品线 · 阶段 2 进行中 · 2 小时前</div>
+        </div>
+      </button>
+
+      <button class="project-item" onclick="selectProject(this)">
+        <span class="project-dot active"></span>
+        <div class="project-info">
+          <div class="project-name">工业设备预测性维护</div>
+          <div class="project-meta">IoT 产品线 · 阶段 4 进行中 · 1 天前</div>
+        </div>
+      </button>
+
+      <button class="project-item" onclick="selectProject(this)">
+        <span class="project-dot done"></span>
+        <div class="project-info">
+          <div class="project-name">智慧园区</div>
+          <div class="project-meta">综合解决方案 · 已完成 · 3 天前</div>
+        </div>
+      </button>
+    </div>
+
+    <div class="history-section">
+      <div class="section-label">会话历史</div>
+      <button class="history-item" onclick="toast('恢复会话')">
+        <span class="history-time">14:30</span>
+        <span class="history-text">补充 M4 边界声明：不承担安防监控责任</span>
+      </button>
+      <button class="history-item" onclick="toast('恢复会话')">
+        <span class="history-time">10:15</span>
+        <span class="history-text">阶段 2 质量关检查：7/9 通过</span>
+      </button>
+      <button class="history-item" onclick="toast('恢复会话')">
+        <span class="history-time">昨天</span>
+        <span class="history-text">上传产品白皮书并解析入库</span>
+      </button>
+      <button class="history-item" onclick="toast('恢复会话')">
+        <span class="history-time">昨天</span>
+        <span class="history-text">阶段 1 门槛筛查完成：建议有条件进入</span>
+      </button>
+      <button class="history-item" onclick="toast('恢复会话')">
+        <span class="history-time">9/20</span>
+        <span class="history-text">新建分析：智慧会议室场景</span>
+      </button>
+    </div>
+
+    <div class="status-block">
+      <div class="status-item"><span class="status-dot green"></span><span>DSH · 端口 3081</span></div>
+      <div class="status-item"><span class="status-dot green"></span><span>数据库已连接</span></div>
+    </div>
+  </nav>
+
+  <!-- ========== 中栏 ========== -->
+  <main class="main">
+    <!-- 页头 -->
+    <div class="page-header">
+      <div>
+        <div class="page-title">智慧会议室</div>
+        <div class="page-subtitle">感知与控制产品线 · 当前阶段：认识场景</div>
+      </div>
+      <div class="page-actions">
+        <button class="btn" onclick="toast('上传材料')">上传材料</button>
+        <button class="btn primary" onclick="toast('完成阶段')">完成阶段</button>
+      </div>
+    </div>
+
+    <!-- 阶段 Tab 栏 -->
+    <div class="stage-tabs">
+      <button class="stage-tab done" onclick="switchStage(this, 'stage-material')"><span class="tab-dot"></span>材料入库</button>
+      <button class="stage-tab done" onclick="switchStage(this, 'stage-gate0')"><span class="tab-dot"></span>门槛筛查</button>
+      <button class="stage-tab active" onclick="switchStage(this, 'stage-scene')"><span class="tab-dot"></span>认识场景</button>
+      <button class="stage-tab" onclick="switchStage(this, 'stage-business')"><span class="tab-dot"></span>理解商业</button>
+      <button class="stage-tab" onclick="switchStage(this, 'stage-match')"><span class="tab-dot"></span>匹配决策</button>
+      <button class="stage-tab" onclick="switchStage(this, 'stage-plan')"><span class="tab-dot"></span>方案实现</button>
+      <button class="stage-tab" onclick="switchStage(this, 'stage-value')"><span class="tab-dot"></span>价值验证</button>
+      <button class="stage-tab" onclick="switchStage(this, 'stage-summary')"><span class="tab-dot"></span>总结沉淀</button>
+      <button class="stage-tab" onclick="switchStage(this, 'stage-deliver')"><span class="tab-dot"></span>交付物</button>
+    </div>
+
+    <!-- 内容区：表格 + 对话 -->
+    <div class="content-area">
+      <!-- 表格工作区 -->
+      <div class="table-workspace" id="table-workspace">
+        <!-- 阶段 2：认识场景 - 场景要素清单 -->
+        <div class="panel" id="stage-scene">
+          <div class="panel-head">
+            <div>
+              <h2>场景要素清单</h2>
+              <p>列出场景中的关键要素：硬件、软件、服务</p>
+            </div>
+            <div style="display:flex;gap:var(--space-2);align-items:center;">
+              <span class="badge primary">12 项要素</span>
+              <button class="btn" onclick="toast('添加要素')">添加</button>
+            </div>
+          </div>
+          <div class="panel-body" style="padding:0;">
+            <div class="table-wrapper">
+              <table>
+                <thead>
+                  <tr>
+                    <th>#</th><th>要素名称</th><th>类型</th><th>功能</th><th>关键技术参数</th><th>主要供应商</th><th>竞争</th><th>来源</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr onclick="selectRow(this)" class="selected">
+                    <td>1</td>
+                    <td class="editable" contenteditable="true">会议平板</td>
+                    <td><span class="badge primary">硬件</span></td>
+                    <td class="editable" contenteditable="true">触控展示、白板书写、无线投屏</td>
+                    <td class="editable" contenteditable="true">65"/86" 4K、20 点触控</td>
+                    <td class="editable" contenteditable="true">MAXHUB、华为</td>
+                    <td><span class="badge error">高</span></td>
+                    <td><span class="source-tag ai">AI</span></td>
+                  </tr>
+                  <tr onclick="selectRow(this)">
+                    <td>2</td>
+                    <td class="editable" contenteditable="true">中控主机</td>
+                    <td><span class="badge primary">硬件</span></td>
+                    <td class="editable" contenteditable="true">设备集中控制、场景切换</td>
+                    <td class="editable" contenteditable="true">RS232/485、IR、IO</td>
+                    <td class="editable" contenteditable="true">快思聪、AMX</td>
+                    <td><span class="badge warning">中</span></td>
+                    <td><span class="source-tag ai">AI</span></td>
+                  </tr>
+                  <tr onclick="selectRow(this)">
+                    <td>3</td>
+                    <td class="editable" contenteditable="true">预约系统</td>
+                    <td><span class="badge primary">软件</span></td>
+                    <td class="editable" contenteditable="true">会议室预约、签到、释放</td>
+                    <td class="editable" contenteditable="true">并发 500、响应 &lt;200ms</td>
+                    <td class="editable" contenteditable="true">钉钉、飞书</td>
+                    <td><span class="badge error">高</span></td>
+                    <td><span class="source-tag user">用户</span></td>
+                  </tr>
+                  <tr onclick="selectRow(this)">
+                    <td>4</td>
+                    <td class="editable" contenteditable="true">环境传感器</td>
+                    <td><span class="badge primary">硬件</span></td>
+                    <td class="editable" contenteditable="true">温湿度、光照、人流检测</td>
+                    <td class="editable" contenteditable="true">精度 ±0.5°C、采样 1Hz</td>
+                    <td class="editable" contenteditable="true">自研 SEN-200</td>
+                    <td><span class="badge success">低</span></td>
+                    <td><span class="source-tag ai">AI</span></td>
+                  </tr>
+                  <tr onclick="selectRow(this)">
+                    <td>5</td>
+                    <td class="editable" contenteditable="true">智慧空间平台</td>
+                    <td><span class="badge primary">软件</span></td>
+                    <td class="editable" contenteditable="true">云端管理、数据分析、报表</td>
+                    <td class="editable" contenteditable="true">SaaS、REST API</td>
+                    <td class="editable" contenteditable="true">自研 SW-500</td>
+                    <td><span class="badge warning">中</span></td>
+                    <td><span class="source-tag infer">推断</span></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- 质量关 1 -->
+        <div class="panel" style="margin-top:var(--space-3);">
+          <div class="panel-head">
+            <div>
+              <h2>质量关 1 · 认识场景</h2>
+              <p>9 项检查，7 通过 / 2 不通过</p>
+            </div>
+            <span class="badge success">建议通过</span>
+          </div>
+          <div class="panel-body" style="padding:0;">
+            <ul class="checklist" style="padding:var(--space-2) var(--space-4);">
+              <li class="checklist-item">
+                <svg class="check-icon pass" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                <div><div class="check-title">能画出完整的架构图+要素间关系</div><div class="check-desc">4 层架构 + 8 种交互已定义</div></div>
+              </li>
+              <li class="checklist-item">
+                <svg class="check-icon fail" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+                <div><div class="check-title">重要结论来源权威性达标</div><div class="check-desc">协议/接口缺少 T1 来源，建议补充官方协议文档</div></div>
+              </li>
+              <li class="checklist-item">
+                <svg class="check-icon fail" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+                <div><div class="check-title">能列出适用标准号与合规路径</div><div class="check-desc">缺少等保二级具体标准号</div></div>
+              </li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <!-- 对话区 -->
+      <div class="conversation-area">
+        <div class="conv-header">
+          <span>AI 对话 · 上下文：智慧会议室 · 阶段 2 认识场景</span>
+          <span style="font-size:var(--text-2xs);color:var(--color-text-faint);">按 Enter 发送 · Shift+Enter 换行</span>
+        </div>
+        <div class="conv-stream">
+          <div class="message user">
+            <div class="bubble">帮我看一下"会议平板"这个要素的竞争格局，MAXHUB 和华为的最新产品线是什么？</div>
+          </div>
+          <div class="message ai">
+            <div class="bubble">
+              <strong>会议平板竞争格局（2026-09）：</strong><br><br>
+              <strong>MAXHUB</strong>：V6 系列（65"/75"/86"），主打"传屏+白板+视频会议三合一"，2025 年市占率约 28%（T3 来源：行业报告）。<br><br>
+              <strong>华为 IdeaHub S2</strong>：65"/86"，主打"鸿蒙生态+端云协同"，2025 年市占率约 15%（T3 来源：媒体分析）。<br><br>
+              <strong>我方切入点</strong>：我方 IPC-3000 定位"控制终端"而非"会议平板"，差异化在于中控集成能力。建议在"存量中控改造"细分切入，不正面竞争会议平板市场。<br><br>
+              <span style="font-size:var(--text-2xs);color:var(--color-text-faint);">来源：MAXHUB 官网 2026-08 + 华为官网 2026-07 + 行业报告 T3</span>
+            </div>
+          </div>
+          <div class="message user">
+            <div class="bubble">好，那"中控主机"这块快思聪和 AMX 的价格量级大概多少？</div>
+          </div>
+          <div class="message ai">
+            <div class="bubble">
+              <strong>中控主机价格量级：</strong><br><br>
+              · <strong>快思聪 CP4</strong>：约 ¥15,000-25,000/台（含编程），T2 来源：经销商报价<br>
+              · <strong>AMX NX-4200</strong>：约 ¥12,000-20,000/台，T3 来源：电商平台<br>
+              · <strong>国产替代</strong>（如快捷、思美特）：约 ¥3,000-8,000/台，T3 来源：行业报告<br><br>
+              我方如果做"中控改造"方案，国产替代是价格锚点。建议在成本估算时以国产均价 ¥5,000 为基准。
+            </div>
+          </div>
+        </div>
+        <div class="conv-input">
+          <textarea class="conv-textarea" placeholder="输入问题或指令，例如：帮我补充这个要素的竞品信息..." rows="1"></textarea>
+          <button class="send-btn" onclick="toast('已发送')">发送</button>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- ========== 右栏 ========== -->
+  <aside class="detail">
+    <div class="detail-header">
+      <h3>项目详情</h3>
+    </div>
+
+    <!-- 阶段进度 -->
+    <div class="stage-progress">
+      <div class="section-label" style="padding:0 0 var(--space-2) 0;">阶段进度</div>
+      <div class="stage-item done"><span class="stage-dot"></span><span>材料入库</span><span class="stage-check">12 表</span></div>
+      <div class="stage-item done"><span class="stage-dot"></span><span>门槛筛查</span><span class="stage-check">✓</span></div>
+      <div class="stage-item current"><span class="stage-dot"></span><span>认识场景</span><span class="stage-check">7/9</span></div>
+      <div class="stage-item"><span class="stage-dot"></span><span>理解商业</span><span class="stage-check">—</span></div>
+      <div class="stage-item"><span class="stage-dot"></span><span>匹配决策</span><span class="stage-check">—</span></div>
+      <div class="stage-item"><span class="stage-dot"></span><span>方案实现</span><span class="stage-check">—</span></div>
+      <div class="stage-item"><span class="stage-dot"></span><span>价值验证</span><span class="stage-check">—</span></div>
+      <div class="stage-item"><span class="stage-dot"></span><span>总结沉淀</span><span class="stage-check">—</span></div>
+      <div class="stage-item"><span class="stage-dot"></span><span>交付物</span><span class="stage-check">—</span></div>
+    </div>
+
+    <!-- 选中项详情 -->
+    <div class="detail-content">
+      <div class="section-label" style="padding:0 0 var(--space-2) 0;">选中项：会议平板</div>
+
+      <div class="meta-grid">
+        <div class="meta-row">
+          <span class="meta-label">来源标记</span>
+          <span class="meta-value"><span class="source-tag ai">AI 提取</span></span>
+        </div>
+        <div class="meta-row">
+          <span class="meta-label">证据等级</span>
+          <span class="meta-value"><span class="badge primary">B 级 · 间接有据</span></span>
+        </div>
+        <div class="meta-row">
+          <span class="meta-label">来源权威性</span>
+          <span class="meta-value"><span class="badge success">T2 较权威</span></span>
+        </div>
+        <div class="meta-row">
+          <span class="meta-label">出处</span>
+          <span class="meta-value" style="font-family:var(--font-mono);font-size:var(--text-2xs);">产品白皮书.pdf → p12</span>
+        </div>
+      </div>
+
+      <div class="evidence-section">
+        <h4>表间依赖</h4>
+        <div class="evidence-item">
+          <div class="evidence-source">被阶段 4 引用</div>
+          <div class="evidence-content">→ 匹配矩阵候选池</div>
+        </div>
+        <div class="evidence-item">
+          <div class="evidence-source">被阶段 5 引用</div>
+          <div class="evidence-content">→ 成本估算依据</div>
+        </div>
+      </div>
+
+      <div class="evidence-section">
+        <h4>证据链</h4>
+        <div class="evidence-item">
+          <div class="evidence-source">产品白皮书.pdf → 第 12 章</div>
+          <div class="evidence-content">IPC-3000 支持 RS232/485、Modbus、MQTT 协议，最大接入 256 台</div>
+        </div>
+        <div class="evidence-item">
+          <div class="evidence-source">可售清单.xlsx → Sheet2 行 15</div>
+          <div class="evidence-content">IPC-3000 在售，建议零售价 ¥12,800</div>
+        </div>
+        <div class="evidence-item">
+          <div class="evidence-source">宣讲材料.pptx → p8</div>
+          <div class="evidence-content">2025 年已交付 3 个项目，含验收数据</div>
+        </div>
+      </div>
+    </div>
+  </aside>
+</div>
+
+<script>
+// 项目选择
+function selectProject(el) {
+  document.querySelectorAll('.project-item').forEach(p => p.classList.remove('active'));
+  el.classList.add('active');
+  toast('切换到：' + el.querySelector('.project-name').textContent);
+}
+
+// 阶段 Tab 切换
+function switchStage(el, stageId) {
+  document.querySelectorAll('.stage-tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  toast('切换到：' + el.textContent.trim());
+}
+
+// 行选择
+function selectRow(tr) {
+  tr.closest('tbody').querySelectorAll('tr').forEach(r => r.classList.remove('selected'));
+  tr.classList.add('selected');
+  // 更新右栏详情
+  const cells = tr.querySelectorAll('td');
+  if (cells.length > 1) {
+    document.querySelector('.detail-content .section-label').textContent = '选中项：' + cells[1].textContent;
+  }
+}
+
+// Toast
+function toast(msg) {
+  const t = document.createElement('div');
+  t.style.cssText = 'position:fixed;bottom:60px;right:24px;background:var(--color-bg-inverse);color:var(--color-text-inverse);padding:10px 16px;border-radius:var(--radius-md);font-size:var(--text-xs);z-index:400;animation:fadeIn .2s;';
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 2400);
+}
+</script>
+</body>
+</html>
