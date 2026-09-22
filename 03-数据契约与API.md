@@ -71,7 +71,7 @@
 | POST | `/library/product-lines` | 建产品线 |
 | POST | `/library/ingest` | 上传材料（multipart）→ 解析入表；返回 ingest_job_id，进度走 SSE `/library/ingest/{id}/events` |
 | GET | `/library/tables/{code}` | 读表（M1-M6/O*，code 如 `M1`、`O2`）；支持 `?product_line_id=` |
-| PATCH | `/library/rows/{code}/{rowId}` | 单元格编辑（body: `{ cell, value }`）；source_type 自动转 `用户确认` |
+| PATCH | `/library/rows/{code}/{rowId}` | 单元格编辑（body: `{ cell, value }`）；source_type 自动转 `用户确认`；**服务端内联触发失效计算**（markStale 依赖反查，技术方案 F3），无需单独调用 |
 | POST | `/library/rows/{code}` / DELETE `/{rowId}` | 增行 / 删行（标 `用户补充`） |
 | GET | `/library/quality-summary?product_line_id=` | 六维总评 + 完成度检查 |
 
