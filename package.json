@@ -1,12 +1,26 @@
 {
-  "name": "solution-assistant",
+  "name": "scene-master",
   "version": "0.1.0",
   "private": true,
   "description": "场景通 — 场景落地分析智能体",
+  "packageManager": "pnpm@9.15.4",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8",
+    "@types/node": "^22.10.0"
+  },
   "scripts": {
     "dsh:start": "bash scripts/start.sh",
     "dsh:stop": "bash scripts/stop.sh",
-    "dsh:status": "curl -s -o /dev/null -w 'HTTP %{http_code}\n' --max-time 3 http://127.0.0.1:3081/ || echo '未运行'",
-    "dsh:logs": "tail -f .dsh/dsh-web.log"
+    "dsh:status": "curl -s -o /dev/null -w 'HTTP %{http_code}\\n' --max-time 3 http://127.0.0.1:3081/ || echo '未运行'",
+    "dsh:logs": "tail -f .dsh/dsh-web.log",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "echo 'lint placeholder — TODO: 集成 eslint'",
+    "test": "vitest run",
+    "verify:m0": "bash scripts/verify-m0.sh",
+    "verify:m1": "bash scripts/verify-m1.sh"
   }
 }
