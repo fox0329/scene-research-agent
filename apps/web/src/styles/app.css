@@ -1,0 +1,475 @@
+/*
+ * 场景通 — 全局样式
+ * 所有视觉值走 design-token CSS 变量
+ */
+@import "./tokens.css";
+
+/* ── Reset ── */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--f);
+  font-size: var(--ts);
+  line-height: 1.5;
+  color: var(--ct);
+  background: var(--cpg);
+  -webkit-font-smoothing: antialiased;
+  height: 100vh;
+  overflow: hidden;
+}
+
+#root {
+  height: 100vh;
+  overflow: hidden;
+}
+
+:focus-visible {
+  outline: 2px solid var(--cp);
+  outline-offset: -2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ── 三栏 Shell 布局 ── */
+.shell {
+  display: grid;
+  grid-template-columns: var(--sw) 1fr var(--dw);
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* ── 左栏 Side ── */
+.side {
+  background: var(--csr);
+  border-right: 1px solid var(--cb);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.side-hd {
+  padding: var(--s3) var(--s4);
+  border-bottom: 1px solid var(--cb);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.side-hd h1 {
+  font-family: var(--fh);
+  font-size: var(--tb);
+  font-weight: var(--fb);
+}
+
+.side-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--s2) 0;
+}
+
+.side-foot {
+  border-top: 1px solid var(--cb);
+  padding: var(--s2) var(--s4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+}
+
+/* ── 中栏 Main ── */
+.main {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--cpg);
+  position: relative;
+}
+
+/* ── 右栏 Detail ── */
+.det {
+  background: var(--csr);
+  border-left: 1px solid var(--cb);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.det-h {
+  padding: var(--s3) var(--s4);
+  border-bottom: 1px solid var(--cb);
+}
+
+.det-h h3 {
+  font-size: var(--ts);
+  font-weight: var(--fb);
+}
+
+.det-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--s3) var(--s4);
+}
+
+/* ── 页面头部 ── */
+.pgh {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--s3) var(--s5);
+  background: var(--csr);
+  border-bottom: 1px solid var(--cb);
+  min-height: 40px;
+}
+
+.pgt {
+  font-family: var(--fh);
+  font-size: var(--tl);
+  font-weight: var(--fb);
+}
+
+.pgs {
+  font-size: var(--txs);
+  color: var(--ct2);
+}
+
+.pga {
+  display: flex;
+  gap: var(--s2);
+}
+
+/* ── Tab 栏 ── */
+.stabs {
+  display: flex;
+  background: var(--csr);
+  border-bottom: 1px solid var(--cb);
+  overflow-x: auto;
+  padding: 0 var(--s5);
+}
+
+.stab {
+  padding: var(--s3) var(--s4);
+  font-size: var(--txs);
+  font-weight: var(--fm2);
+  color: var(--ct2);
+  border: none;
+  background: none;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  white-space: nowrap;
+  transition: all var(--d) var(--e);
+  font-family: inherit;
+}
+
+.stab:hover {
+  color: var(--ct);
+}
+
+.stab.active {
+  color: var(--cp);
+  border-bottom-color: var(--cp);
+}
+
+/* ── 工作区 ── */
+.ws {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--s4) var(--s5);
+}
+
+/* ── 面板 ── */
+.pnl {
+  background: var(--csr);
+  border-radius: var(--r8);
+  border: 1px solid var(--cb);
+  box-shadow: var(--sh);
+}
+
+.pnl + .pnl {
+  margin-top: var(--s3);
+}
+
+.pnl-h {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--s3) var(--s4);
+  border-bottom: 1px solid var(--cb);
+}
+
+.pnl-h h2 {
+  font-size: var(--ts);
+  font-weight: var(--fb);
+}
+
+.pnl-h p {
+  font-size: var(--t2x);
+  color: var(--ct2);
+  margin-top: 1px;
+}
+
+.pnl-b {
+  padding: var(--s3) var(--s4);
+}
+
+.pnl-b.flush {
+  padding: 0;
+}
+
+/* ── 表格 ── */
+.tw {
+  overflow-x: auto;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--txs);
+}
+
+thead {
+  background: var(--cm);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+th {
+  padding: var(--s2) var(--s3);
+  text-align: left;
+  font-weight: var(--fm2);
+  color: var(--ct2);
+  border-bottom: 1px solid var(--cb);
+  white-space: nowrap;
+  font-size: var(--t2x);
+}
+
+td {
+  padding: var(--s2) var(--s3);
+  border-bottom: 1px solid var(--cb);
+  vertical-align: top;
+}
+
+tr:hover {
+  background: var(--cp-s);
+}
+
+/* ── 可编辑单元格 ── */
+td.ed {
+  cursor: text;
+}
+
+.ed:hover {
+  background: var(--cp-s);
+  outline: 2px solid var(--cp);
+  outline-offset: -2px;
+}
+
+.ed:focus {
+  outline: 2px solid var(--cp);
+  outline-offset: -2px;
+  background: var(--csr);
+}
+
+/* ── 来源标记标签 ── */
+.stag {
+  display: inline-flex;
+  padding: 1px 5px;
+  font-size: var(--t2x);
+  border-radius: 2px;
+  font-weight: var(--fm2);
+}
+
+.stag.ai {
+  background: var(--cis);
+  color: var(--cp);
+}
+
+.stag.user {
+  background: var(--cs-s);
+  color: var(--cs-h);
+}
+
+.stag.infer {
+  background: var(--cw-s);
+  color: var(--cw-h);
+}
+
+/* ── Badge ── */
+.badge {
+  display: inline-flex;
+  padding: 1px 6px;
+  font-size: var(--t2x);
+  font-weight: var(--fm2);
+  border-radius: var(--rp);
+}
+
+.badge.primary {
+  background: var(--cp-s);
+  color: var(--cp);
+}
+
+.badge.success {
+  background: var(--cs-s);
+  color: var(--cs-h);
+}
+
+.badge.warning {
+  background: var(--cw-s);
+  color: var(--cw-h);
+}
+
+.badge.error {
+  background: var(--ce-s);
+  color: var(--ce-h);
+}
+
+/* ── 按钮 ── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 26px;
+  padding: 0 var(--s3);
+  font-size: var(--txs);
+  font-weight: var(--fm2);
+  border-radius: var(--r4);
+  border: 1px solid var(--cb);
+  background: var(--csr);
+  color: var(--ct);
+  cursor: pointer;
+  font-family: inherit;
+  transition: all var(--d) var(--e);
+}
+
+.btn:hover {
+  background: var(--cm);
+}
+
+.btn.primary {
+  background: var(--cp);
+  color: var(--cf);
+  border-color: var(--cp);
+}
+
+.btn.primary:hover {
+  background: var(--cp-h);
+}
+
+/* ── 导航项 ── */
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  padding: var(--s2) var(--s3);
+  border-radius: var(--r4);
+  cursor: pointer;
+  border: none;
+  background: none;
+  width: 100%;
+  text-align: left;
+  font-family: inherit;
+  font-size: var(--txs);
+  color: var(--ct2);
+  transition: all var(--d) var(--e);
+}
+
+.nav-item:hover {
+  background: var(--cm);
+  color: var(--ct);
+}
+
+.nav-item.active {
+  background: var(--cp-s);
+  color: var(--cp);
+}
+
+.nav-item svg {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+.nav-item .count {
+  margin-left: auto;
+  font-size: var(--t2x);
+  color: var(--ct3);
+}
+
+/* ── 空态 ── */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--s10) var(--s4);
+  text-align: center;
+}
+
+.empty-state svg {
+  width: 36px;
+  height: 36px;
+  color: var(--ct3);
+  margin-bottom: var(--s3);
+}
+
+.empty-state-title {
+  font-size: var(--ts);
+  font-weight: var(--fb);
+  margin-bottom: 4px;
+}
+
+.empty-state-desc {
+  font-size: var(--txs);
+  color: var(--ct2);
+  margin-bottom: var(--s3);
+}
+
+/* ── 横幅提示 ── */
+.bnr {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  padding: var(--s2) var(--s3);
+  border-radius: var(--r4);
+  font-size: var(--txs);
+  margin-bottom: var(--s3);
+}
+
+.bnr.warning {
+  background: var(--cw-s);
+  border: 1px solid var(--cw);
+  color: var(--cw-h);
+}
+
+.bnr svg {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+/* ── 响应式 ── */
+@media (max-width: 1320px) {
+  .shell {
+    grid-template-columns: var(--sw) 1fr;
+  }
+  .det {
+    display: none;
+  }
+}
+
+@media (max-width: 940px) {
+  .shell {
+    grid-template-columns: 1fr;
+  }
+  .side {
+    display: none;
+  }
+}

@@ -1,0 +1,99 @@
+import React, { useState } from "react";
+import { QualityPanel } from "./QualityPanel";
+import { ProductListPanel } from "./ProductListPanel";
+import {
+  SpecPanel,
+  CapabilityPanel,
+  BoundaryPanel,
+  LimitPanel,
+  RatePanel,
+  OptionalPanel,
+} from "./MaterialPanels";
+
+/** Tab 定义 */
+interface TabDef {
+  key: string;
+  label: string;
+}
+
+const tabs: TabDef[] = [
+  { key: "quality",  label: "质量总评" },
+  { key: "m1",       label: "M1 产品清单" },
+  { key: "m2",       label: "M2 规格书" },
+  { key: "m3",       label: "M3 能力清单" },
+  { key: "m4",       label: "M4 边界声明" },
+  { key: "m5",       label: "M5 已知限制" },
+  { key: "m6",       label: "M6 内部费率" },
+  { key: "optional", label: "O 可选材料" },
+  { key: "reminder", label: "补充提醒" },
+];
+
+/**
+ * 产品资料库视图
+ * - 页头：产品资料库 + 产品线名称 + 上传材料/开始解析按钮
+ * - Tab 栏：质量总评 | M1-M6 | O 可选材料 | 补充提醒
+ * - 默认显示质量总评
+ */
+export const LibraryView: React.FC = () => {
+  const [activeTab, setActiveTab] = useState("quality");
+
+  const renderPanel = () => {
+    switch (activeTab) {
+      case "quality":
+        return <QualityPanel />;
+      case "m1":
+        return <ProductListPanel />;
+      case "m2":
+        return <SpecPanel />;
+      case "m3":
+        return <CapabilityPanel />;
+      case "m4":
+        return <BoundaryPanel />;
+      case "m5":
+        return <LimitPanel />;
+      case "m6":
+        return <RatePanel />;
+      case "optional":
+        return <OptionalPanel />;
+      case "reminder":
+        return <QualityPanel />;
+      default:
+        return <QualityPanel />;
+    }
+  };
+
+  return (
+    <>
+      {/* 页头 */}
+      <div className="pgh">
+        <div style={{ display: "flex", alignItems: "center", gap: "var(--s3)" }}>
+          <div className="pgt">产品资料库</div>
+          <span className="badge success">感知与控制产品线</span>
+          <button className="btn">切换产品线</button>
+        </div>
+        <div className="pga">
+          <button className="btn">上传材料</button>
+          <button className="btn primary">开始解析</button>
+        </div>
+      </div>
+
+      {/* Tab 栏 */}
+      <div className="stabs">
+        {tabs.map((tab) => (
+          <button
+            key={tab.key}
+            className={`stab${activeTab === tab.key ? " active" : ""}`}
+            onClick={() => setActiveTab(tab.key)}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {/* 工作区 */}
+      <div className="ws">
+        {renderPanel()}
+      </div>
+    </>
+  );
+};

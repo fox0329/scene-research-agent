@@ -1,0 +1,93 @@
+/*
+ * 场景通 Design Tokens（CSS 变量）
+ * 来源：design-spec v1.9 + prototype-v10 实际使用值
+ * 遵循 4px 基准网格
+ */
+:root {
+  /* ── 品牌色 / Primary ── */
+  --cp:   #2563eb;
+  --cp-h: #1d4ed8;
+  --cp-s: #eff6ff;
+
+  /* ── 成功色 / Success ── */
+  --cs:   #059669;
+  --cs-s: #ecfdf5;
+  --cs-h: #047857;
+
+  /* ── 警告色 / Warning ── */
+  --cw:   #d97706;
+  --cw-s: #fffbeb;
+  --cw-h: #b45309;
+
+  /* ── 错误色 / Error ── */
+  --ce:   #dc2626;
+  --ce-s: #fef2f2;
+  --ce-h: #b91c1c;
+
+  /* ── 中性色 / Neutral ── */
+  --cf:   #ffffff;
+  --cpg:  #fafaf9;
+  --csr:  #ffffff;
+  --cm:   #f4f4f5;
+  --ci:   #18181b;
+  --ct:   #18181b;
+  --ct2:  #63636b;
+  --ct3:  #a1a1aa;
+  --cb:   #e4e4e7;
+  --cis:  #eff6ff;
+
+  /* ── 字体 ── */
+  --f:  "SF Pro Text", "PingFang SC", system-ui, sans-serif;
+  --fh: "SF Pro Display", "PingFang SC", system-ui, sans-serif;
+  --fm: "SF Mono", "Menlo", "PingFang SC", monospace;
+
+  /* ── 字重 ── */
+  --fm2: 500;
+  --fb:  700;
+
+  /* ── 字号 ── */
+  --t2x: 11px;
+  --tx:  12px;
+  --txs: 12px;
+  --ts:  14px;
+  --tb:  16px;
+  --tl:  18px;
+
+  /* ── 间距（4px 基准网格）── */
+  --s05:  2px;
+  --s1:   4px;
+  --s15:  6px;
+  --s2:   8px;
+  --s25:  10px;
+  --s3:   12px;
+  --s35:  14px;
+  --s4:   16px;
+  --s5:   20px;
+  --s6:   24px;
+  --s8:   32px;
+  --s10:  40px;
+  --s12:  48px;
+
+  /* ── 圆角 ── */
+  --r4:  4px;
+  --r8:  8px;
+  --r12: 12px;
+  --rp:  999px;
+
+  /* ── 阴影 ── */
+  --sh: 0 1px 2px rgba(0, 0, 0, 0.05);
+
+  /* ── 动效 ── */
+  --d: 150ms;
+  --e: cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* ── 布局宽度 ── */
+  --sw: 256px;
+  --dw: 280px;
+
+  /* ── z-index 层级 ── */
+  --z-dropdown: 100;
+  --z-overlay:  200;
+  --z-modal:    300;
+  --z-toast:    400;
+}
