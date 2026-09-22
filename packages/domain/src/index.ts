@@ -7,37 +7,53 @@
  */
 
 // 阶段 0 — 证据采集与溯源
-export { } from "./evidence.ts";
+export { } from "./evidence.js";
 
 // 阶段 0 — 材料解析与入表
-export { } from "./material.ts";
+export {
+  assessQuality,
+  checkCompleteness,
+  upsertFromAnalysis,
+} from "./material.js";
+export type {
+  DimensionStatus,
+  QualityDimension,
+  QualityAssessment,
+  CompletenessCheckItem,
+  MaterialReminder,
+  CompletenessReport,
+  CapabilityMaturityChange,
+  UpdateOperation,
+  AnalysisWriteback,
+  MaterialUpdate,
+} from "./material.js";
 
 // 阶段 1 — 解析计划
-export { } from "./parse-plan.ts";
+export { } from "./parse-plan.js";
 
 // 阶段 2 — 门槛筛查
-export { } from "./barrier-scan.ts";
+export { } from "./barrier-scan.js";
 
 // 阶段 3 — 市场分析
-export { } from "./market.ts";
+export { } from "./market.js";
 
 // 阶段 4 — 能力匹配
-export { } from "./capability-match.ts";
+export { } from "./capability-match.js";
 
 // 阶段 5 — 成本估算
-export { } from "./cost-estimate.ts";
+export { } from "./cost-estimate.js";
 
 // 阶段 6 — 价值验证
-export { } from "./value-verify.ts";
+export { } from "./value-verify.js";
 
 // 全局 — 质量关检查
-export { } from "./gate.ts";
+export { } from "./gate.js";
 
 // 全局 — 工作流编排
-export { } from "./workflow.ts";
+export { } from "./workflow.js";
 
 // 全局 — 会话管理
-export { } from "./session.ts";
+export { } from "./session.js";
 
 // 全局 — 知识库
-export { } from "./knowledge.ts";
+export { } from "./knowledge.js";
