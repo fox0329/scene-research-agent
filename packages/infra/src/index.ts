@@ -8,8 +8,25 @@
 export { createDb, sourceSearch } from "./sqlite-repo.js";
 export type { DbInstance, Repo, ListFilters, SourceSearchResult } from "./sqlite-repo.js";
 
-/** DSH 客户端适配器 — TODO M1 实现 */
-export {};
+export { parseDocument } from "./doc-parser.js";
+export type { ParseResult, ParsedTable } from "./doc-parser.js";
+
+/** DSH 客户端适配器 */
+export { createDshClient } from "./dsh-client.js";
+export type { DshClientOptions } from "./dsh-client.js";
+
+/** DSH 配置读取 */
+export {
+  getProviderConfig,
+  getDefaultModelConfig,
+  getApiKey,
+  getBaseURL,
+  getDshPort,
+  getDshToken,
+  parseSettings,
+  clearConfigCache,
+} from "./dsh-config.js";
+export type { ProviderConfig, ModelSpec, DefaultModelConfig } from "./dsh-config.js";
 
 /** 文件存储适配器 — TODO M1 实现 */
 export {};
