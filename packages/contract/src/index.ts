@@ -1,10 +1,12 @@
 /**
- * @scene/contract — 数据契约 v0.1
+ * @scene/contract — 数据契约 v1.0
  *
- * 本文件是场景通 15 张数据表的唯一 TypeScript 类型来源。
+ * 场景通 15 张数据表的唯一 TypeScript 类型来源。
  * 对应设计文档：`03-数据契约与API.md`
+ * 变更纪律：修改须登记 docs/项目变更表.md 并升版本（规则 7）。
  *
- * 变更纪律：冻结后修改须登记 docs/项目变更表.md 并升版本。
+ * v1.0 冻结范围：资料库 8 表 + 场景层 6 表 + 知识表 + 通用枚举 + API 类型
+ * 阶段 3-8 的 stage_data row schema 于 M3 前补齐为 v1.1
  */
 
 // ─── 通用枚举 ─────────────────────────────────────────────
@@ -21,8 +23,34 @@ export type EvidenceLevel = "A" | "B" | "C" | "D";
 /** 阶段编号 0-8 */
 export type StageId = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
 
-/** 建议三档 */
-export type AdviceLevel = "强烈建议" | "建议" | "可选";
+/**
+ * 建议三档（00b §3.3 / §4.3 / §5.3 统一口径）
+ * - 建议通过：质量关全部达标或仅有不影响结论的轻微不满足项
+ * - 建议有条件通过：存在需补齐的前提条件，补齐后可继续
+ * - 建议不通过：存在阻止性风险，不建议继续
+ */
+export type AdviceLevel = "建议通过" | "建议有条件通过" | "建议不通过";
+
+/** 产品状态 */
+export type ProductStatus = "在售" | "停售" | "在研" | "规划" | "待确认";
+
+/** 成熟度 */
+export type Maturity = "已交付" | "组件具备" | "在研" | "规划";
+
+/** 影响程度 */
+export type ImpactLevel = "高" | "中" | "低";
+
+/** 修复状态 */
+export type FixStatus = "已修复" | "修复中" | "无计划" | "硬件限制";
+
+/** 对外可见性 */
+export type Visibility = "可提" | "内部可提" | "不可提";
+
+/** 质量关结果 */
+export type GateResult = "通过" | "不通过" | "未检";
+
+/** 用户决定动作 */
+export type DecisionAction = "继续" | "补充" | "停止" | "重算";
 
 // ─── 通用溯源字段 ──────────────────────────────────────────
 
@@ -33,6 +61,21 @@ export interface TraceableFields {
   source_authority?: Authority;
   evidence_level?: EvidenceLevel;
 }
+
+// ─── stage_data 表编号常量（00b 表号） ─────────────────────
+
+/** 阶段 0 表号 */
+export const STAGE0_TABLES = ["M1", "M2", "M3", "M4", "M5", "M6", "O1", "O2", "O3", "O4", "O5", "O6"] as const;
+/** 阶段 1 表号 */
+export const STAGE1_TABLES = ["表1-1", "表1-2", "表1-3", "表1-4", "表1-5"] as const;
+/** 阶段 2 表号 */
+export const STAGE2_TABLES = ["表2-1", "表2-2", "表2-3", "表2-4", "表2-5", "表2-6", "表2-7", "表2-8"] as const;
+
+export type TableCode =
+  | typeof STAGE0_TABLES[number]
+  | typeof STAGE1_TABLES[number]
+  | typeof STAGE2_TABLES[number]
+  | string; // 阶段 3-8 于 v1.1 补齐
 
 // ─── 第一层 · 产品资料库（8 表） ───────────────────────────
 
@@ -50,10 +93,12 @@ export interface Product extends TraceableFields {
   product_line_id: string;
   model: string;
   name: string;
-  status: "在售" | "停售" | "在研" | "规划" | "待确认";
+  status: ProductStatus;
   launch_date: string;
   former_name?: string;
   position_desc: string;
+  created_at: string;
+  updated_at: string;
 }
 
 /** 规格参数（M2，含溯源） */
@@ -64,6 +109,8 @@ export interface SpecParam extends TraceableFields {
   param_name: string;
   value: string;
   measured: "实测" | "宣称" | "未提及";
+  created_at: string;
+  updated_at: string;
 }
 
 /** 能力清单（M3，含溯源） */
@@ -73,9 +120,11 @@ export interface Capability extends TraceableFields {
   domain: string;
   name: string;
   description: string;
-  maturity: "已交付" | "组件具备" | "在研" | "规划";
+  maturity: Maturity;
   dependency: string;
   inapplicable_scene?: string;
+  created_at: string;
+  updated_at: string;
 }
 
 /** 边界/不做什么（M4，含溯源） */
@@ -90,6 +139,8 @@ export interface Boundary extends TraceableFields {
   response: string;
   owner: string;
   plan_date?: string;
+  created_at: string;
+  updated_at: string;
 }
 
 /** 已知局限（M5，含溯源） */
@@ -98,10 +149,12 @@ export interface Limitation extends TraceableFields {
   product_line_id: string;
   product_name: string;
   description: string;
-  impact: "高" | "中" | "低";
-  fix_status: "已修复" | "修复中" | "无计划" | "硬件限制";
-  external_visible: "可提" | "内部可提" | "不可提";
+  impact: ImpactLevel;
+  fix_status: FixStatus;
+  external_visible: Visibility;
   owner: string;
+  created_at: string;
+  updated_at: string;
 }
 
 /** 成本单价（M6） */
@@ -110,11 +163,13 @@ export interface CostRate {
   product_line_id: string;
   category: "实施" | "商务";
   item: string;
-  /** 单价 */
+  /** 单价（元/人天 或 元/趟 等） */
   rate: number;
   unit: string;
   standard_hours: number;
   data_source: "历史项目" | "内部报价" | "行业均值" | "待确认";
+  created_at: string;
+  updated_at: string;
 }
 
 /** 可选材料（O1-O6，含溯源） */
@@ -124,6 +179,8 @@ export interface OptionalMaterial extends TraceableFields {
   category: "O1认证" | "O2案例" | "O3价格" | "O4SDK" | "O5路线图" | "O6生态";
   /** JSON，结构按 category 异构 */
   payload: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
 }
 
 // ─── 第二层 · 场景分析项目（6 表） ─────────────────────────
@@ -148,6 +205,8 @@ export interface ScenarioMaterial extends TraceableFields {
   /** JSON，覆盖值 */
   override_value: Record<string, unknown>;
   reason: string;
+  created_at: string;
+  updated_at: string;
 }
 
 /** 阶段数据（行式存储，55 张表共用） */
@@ -155,12 +214,14 @@ export interface StageData extends TraceableFields {
   id: string;
   scenario_id: string;
   stage: StageId;
-  /** 如 "表1-3"、"表2-2" */
-  table_code: string;
-  /** JSON，结构由该表 schema 定义 */
+  /** 表编号，如 "M1"、"表1-3"、"表2-2" */
+  table_code: TableCode;
+  /** JSON，结构由该表 schema 定义（v1.1 补齐阶段 3-8） */
   row: Record<string, unknown>;
-  /** 资料失效标记 */
+  /** 资料失效标记（产品定义 §4.1 失效语义） */
   is_stale: boolean;
+  created_at: string;
+  updated_at: string;
 }
 
 /** 会话（与 DSH session 一一映射） */
@@ -181,7 +242,7 @@ export interface Message {
   role: "用户" | "系统";
   content: string;
   stage?: StageId;
-  /** 引用表格行 */
+  /** 引用表格行，格式 "table_code:row_id" */
   table_ref?: string;
   created_at: string;
 }
@@ -193,7 +254,7 @@ export interface QualityGate {
   stage: StageId;
   item_no: string;
   title: string;
-  result: "通过" | "不通过" | "未检";
+  result: GateResult;
   detail: string;
   /** JSON，抽查采样记录 */
   evidence_refs: Record<string, unknown>;
@@ -215,13 +276,43 @@ export interface Knowledge {
   created_at: string;
 }
 
-// ─── API 相关类型 ──────────────────────────────────────────
+// ─── API 请求/响应类型（03-数据契约与API.md §三） ─────────
 
 /** 统一错误响应 */
 export interface ApiError {
   code: string;
   message: string;
   detail?: string;
+}
+
+/** 产品线创建请求 */
+export interface CreateProductLineRequest {
+  name: string;
+}
+
+/** 场景创建请求 */
+export interface CreateScenarioRequest {
+  name: string;
+  product_line_id: string;
+}
+
+/** 场景级覆盖创建请求 */
+export interface CreateScenarioMaterialRequest {
+  ref_table: string;
+  ref_id: string;
+  override_value: Record<string, unknown>;
+  reason: string;
+}
+
+/** 单元格编辑请求 */
+export interface EditCellRequest {
+  cell: string;
+  value: unknown;
+}
+
+/** 用户决定请求 */
+export interface DecideRequest {
+  action: DecisionAction;
 }
 
 /** SSE 事件类型 */
@@ -263,15 +354,22 @@ export interface DshClient {
   cancel(h: SessionHandle): Promise<void>;
 }
 
-/** 用户决定动作 */
-export type DecisionAction = "继续" | "补充" | "停止" | "重算";
+/** 系统状态响应 */
+export interface SystemStatus {
+  dsh: "ok" | "error";
+  dsh_port: number;
+  db: "ok" | "error";
+}
 
-/** 成本估算输入 */
-export interface CostEstimateInput {
-  scenario_id: string;
-  product_line_id: string;
-  /** 工时明细 */
-  labor_items: Array<{ item: string; hours: number; rate: number }>;
-  /** 其他费用 */
-  other_costs: Array<{ item: string; amount: number }>;
+/** 模型配置 */
+export interface ModelConfig {
+  provider: string;
+  default_model: string;
+  analysis_model: string;
+}
+
+/** 导出响应 */
+export interface ExportResult {
+  internal_report: string;
+  external_report: string;
 }
