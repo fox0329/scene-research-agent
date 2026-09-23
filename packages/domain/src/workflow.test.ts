@@ -6,6 +6,11 @@ import {
   markStale,
   getRiskChain,
   STAGES,
+  getAffectedStages,
+  createStaleMark,
+  hasStaleMarks,
+  getStaleBanners,
+  clearStaleMarks,
 } from "./workflow.js";
 import type { StaleMark } from "./workflow.js";
 import type { StageId } from "@scene/contract";
@@ -181,5 +186,109 @@ describe("getRiskChain", () => {
 describe("STAGES 常量", () => {
   it("包含 0-8 共 9 个阶段", () => {
     expect(STAGES).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8]);
+  });
+});
+
+// ─── 表间依赖反查 ────────────────────────────────────────────
+
+describe("getAffectedStages", () => {
+  it("M1 产品清单 → 阶段 4,5", () => {
+    expect(getAffectedStages("M1")).toEqual([4, 5]);
+  });
+
+  it("M4 边界声明 → 阶段 1,5", () => {
+    expect(getAffectedStages("M4")).toEqual([1, 5]);
+  });
+
+  it("表3-6 替代方案 → 阶段 5", () => {
+    expect(getAffectedStages("表3-6")).toEqual([5]);
+  });
+
+  it("表5-5 成本估算 → 阶段 6,8", () => {
+    expect(getAffectedStages("表5-5")).toEqual([6, 8]);
+  });
+
+  it("未知表名 → 空数组", () => {
+    expect(getAffectedStages("未知表")).toEqual([]);
+  });
+});
+
+describe("createStaleMark", () => {
+  it("M1 更新 → 自动反查到阶段 4,5", () => {
+    const mark = createStaleMark("S1", "M1", "P1");
+    expect(mark.affectedStages).toEqual([4, 5]);
+    expect(mark.banner).toContain("阶段 4-5");
+  });
+
+  it("表3-6 更新 → 自动反查到阶段 5", () => {
+    const mark = createStaleMark("S1", "表3-6", "A1");
+    expect(mark.affectedStages).toEqual([5]);
+    expect(mark.banner).toContain("阶段 5");
+  });
+
+  it("未知表名 → 无受影响阶段", () => {
+    const mark = createStaleMark("S1", "未知表", "X1");
+    expect(mark.affectedStages).toEqual([]);
+    expect(mark.banner).toBe("资料已更新");
+  });
+});
+
+describe("hasStaleMarks", () => {
+  const marks: StaleMark[] = [
+    { scenarioId: "S1", refTable: "M1", refId: "P1", affectedStages: [4, 5], banner: "test" },
+    { scenarioId: "S2", refTable: "M2", refId: "P2", affectedStages: [5], banner: "test" },
+  ];
+
+  it("有失效标记 → true", () => {
+    expect(hasStaleMarks(marks, "S1")).toBe(true);
+  });
+
+  it("无失效标记 → false", () => {
+    expect(hasStaleMarks(marks, "S3")).toBe(false);
+  });
+});
+
+describe("getStaleBanners", () => {
+  const marks: StaleMark[] = [
+    { scenarioId: "S1", refTable: "M1", refId: "P1", affectedStages: [4, 5], banner: "资料已更新，建议重算阶段 4-5" },
+    { scenarioId: "S1", refTable: "M2", refId: "P2", affectedStages: [5], banner: "资料已更新，建议重算阶段 5" },
+    { scenarioId: "S2", refTable: "M3", refId: "P3", affectedStages: [4], banner: "资料已更新，建议重算阶段 4" },
+  ];
+
+  it("返回指定场景的所有横幅（去重）", () => {
+    const banners = getStaleBanners(marks, "S1");
+    expect(banners).toHaveLength(2);
+    expect(banners).toContain("资料已更新，建议重算阶段 4-5");
+    expect(banners).toContain("资料已更新，建议重算阶段 5");
+  });
+
+  it("无失效标记 → 空数组", () => {
+    expect(getStaleBanners(marks, "S3")).toEqual([]);
+  });
+});
+
+describe("clearStaleMarks", () => {
+  const marks: StaleMark[] = [
+    { scenarioId: "S1", refTable: "M1", refId: "P1", affectedStages: [4, 5], banner: "test1" },
+    { scenarioId: "S1", refTable: "M2", refId: "P2", affectedStages: [5], banner: "test2" },
+    { scenarioId: "S2", refTable: "M3", refId: "P3", affectedStages: [4], banner: "test3" },
+  ];
+
+  it("清除指定场景的所有标记", () => {
+    const result = clearStaleMarks(marks, "S1");
+    expect(result).toHaveLength(1);
+    expect(result[0]!.scenarioId).toBe("S2");
+  });
+
+  it("清除指定场景的指定表标记", () => {
+    const result = clearStaleMarks(marks, "S1", "M1");
+    expect(result).toHaveLength(2);
+    expect(result.some((m) => m.refTable === "M1")).toBe(false);
+    expect(result.some((m) => m.refTable === "M2")).toBe(true);
+  });
+
+  it("不影响其他场景的标记", () => {
+    const result = clearStaleMarks(marks, "S1");
+    expect(result.some((m) => m.scenarioId === "S2")).toBe(true);
   });
 });

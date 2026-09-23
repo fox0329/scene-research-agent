@@ -177,3 +177,111 @@ export function getRiskChain(stageRisks: Map<StageId, string[]>): string[] {
   }
   return chain;
 }
+
+// ─── 表间依赖反查 ─────────────────────────────────────────────
+
+/** 表间依赖映射（来源表 → 被引用的阶段列表） */
+export const TABLE_DEPENDENCIES: Record<string, StageId[]> = {
+  // 阶段 0
+  "M1": [4, 5], // 产品清单 → 匹配矩阵候选池、成本估算
+  "M2": [5], // 规格书 → 方案选型
+  "M3": [4], // 能力清单 → 能力底账
+  "M4": [1, 5], // 边界声明 → 门槛判据、方案边界
+  "M5": [5, 6], // 已知限制 → 实施风险、验收约束
+  "M6": [5], // 内部费率 → 成本估算单价
+  "O2": [4, 8], // 已交付案例 → 能力证明、对外案例
+  "O3": [5], // 价格与授权 → 价格定位
+
+  // 阶段 1
+  "表1-2": [2], // 场景地图 → 要素清单范围
+  "表1-3": [5], // 门槛扫描 → 约束与合规
+
+  // 阶段 2
+  "表2-2": [3, 5], // 场景要素清单 → 竞品对照维度、方案架构选型
+  "表2-5": [5], // 物理与合规约束 → 约束与合规
+  "表2-6": [5], // 数据规模与治理 → 平台选型与成本
+
+  // 阶段 3
+  "表3-6": [5], // 替代方案 → 竞品价格对照
+  "表3-8": [4], // 未被满足的需求 → 痛点排序、匹配矩阵缺口
+
+  // 阶段 4
+  "表4-3": [5], // 匹配矩阵 → 方案范围
+  "表4-4": [5], // 优先级矩阵 → 先做哪个细分
+
+  // 阶段 5
+  "表5-5": [6, 8], // 成本估算 → 投入、报告
+  "表5-6": [6, 8], // 竞品价格对照 → 价值测算、对外材料
+
+  // 阶段 6
+  "表6-3": [8], // 投资回报估算 → 内部报告结论
+};
+
+/**
+ * 根据表名反查受影响的阶段列表
+ * @param refTable 被更新的资料表名（如 "M1"、"表3-6"）
+ * @returns 受影响的阶段列表（去重升序）
+ */
+export function getAffectedStages(refTable: string): StageId[] {
+  const stages = TABLE_DEPENDENCIES[refTable];
+  if (!stages) return [];
+  return [...new Set(stages)].sort((a, b) => a - b);
+}
+
+/**
+ * 创建失效标记（自动反查依赖）
+ * @param scenarioId 场景分析项目 ID
+ * @param refTable 被更新的资料表名
+ * @param refId 被更新的资料行 ID
+ * @returns 失效标记（含横幅文案）
+ */
+export function createStaleMark(
+  scenarioId: string,
+  refTable: string,
+  refId: string,
+): StaleMark {
+  const affectedStages = getAffectedStages(refTable);
+  return markStale(scenarioId, refTable, refId, affectedStages);
+}
+
+/**
+ * 检查项目是否有失效标记
+ * @param staleMarks 失效标记列表
+ * @param scenarioId 场景分析项目 ID
+ * @returns 是否有失效标记
+ */
+export function hasStaleMarks(staleMarks: StaleMark[], scenarioId: string): boolean {
+  return staleMarks.some((mark) => mark.scenarioId === scenarioId);
+}
+
+/**
+ * 获取项目的失效横幅列表
+ * @param staleMarks 失效标记列表
+ * @param scenarioId 场景分析项目 ID
+ * @returns 横幅文案列表（去重）
+ */
+export function getStaleBanners(staleMarks: StaleMark[], scenarioId: string): string[] {
+  const banners = staleMarks
+    .filter((mark) => mark.scenarioId === scenarioId)
+    .map((mark) => mark.banner);
+  return [...new Set(banners)];
+}
+
+/**
+ * 清除项目的失效标记
+ * @param staleMarks 失效标记列表
+ * @param scenarioId 场景分析项目 ID
+ * @param refTable 可选：只清除特定表的标记
+ * @returns 清除后的列表
+ */
+export function clearStaleMarks(
+  staleMarks: StaleMark[],
+  scenarioId: string,
+  refTable?: string,
+): StaleMark[] {
+  return staleMarks.filter((mark) => {
+    if (mark.scenarioId !== scenarioId) return true;
+    if (refTable && mark.refTable !== refTable) return true;
+    return false;
+  });
+}
