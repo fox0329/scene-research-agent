@@ -327,3 +327,224 @@ export const conversationMessages: ChatMessage[] = [
     text: "预约系统对比：\n· 钉钉：蓝牙签到，15 分钟释放\n· 飞书：人脸+Wi-Fi，10 分钟释放，IoT 联动\n\n我方可同时支持两种。",
   },
 ];
+
+/* ═══ 阶段 3：理解商业 ═══ */
+
+/** 利润池（表 3-1） */
+export type ProfitPoolEntry = {
+  segment: string;
+  revenue: number;
+  margin: number;
+  growth: number;
+  source: SourceTag;
+}
+
+export const profitPool: ProfitPoolEntry[] = [
+  { segment: "会议平板", revenue: 50000, margin: 35, growth: 12, source: "AI" },
+  { segment: "中控系统", revenue: 20000, margin: 45, growth: 8, source: "AI" },
+  { segment: "预约管理", revenue: 10000, margin: 60, growth: 25, source: "AI" },
+  { segment: "音视频设备", revenue: 30000, margin: 28, growth: 15, source: "推断" },
+];
+
+/** 替代方案（表 3-6） */
+export type Alternative = {
+  id: string;
+  name: string;
+  cost: number;
+  featureCoverage: number;
+  costComparison?: string;
+  featureAdvantage?: number;
+}
+
+export const alternatives: Alternative[] = [
+  { id: "A1", name: "钉钉会议室", cost: 3000, featureCoverage: 60 },
+  { id: "A2", name: "飞书会议室", cost: 5000, featureCoverage: 80 },
+  { id: "A3", name: "华为 IdeaHub", cost: 15000, featureCoverage: 95 },
+];
+
+/** 未被满足的需求（表 3-8） */
+export type UnmetNeed = {
+  id: string;
+  description: string;
+  evidenceLevel: "A" | "B" | "C" | "D";
+  sourceAuthority: "T1" | "T2" | "T3" | "T4";
+  isConfirmed?: boolean;
+  sourceCount?: number;
+  source: SourceTag;
+}
+
+export const unmetNeeds: UnmetNeed[] = [
+  { id: "N1", description: "跨平台统一预约", evidenceLevel: "A", sourceAuthority: "T1", isConfirmed: true, sourceCount: 3, source: "AI" },
+  { id: "N2", description: "无感签到", evidenceLevel: "B", sourceAuthority: "T2", isConfirmed: true, sourceCount: 2, source: "AI" },
+  { id: "N3", description: "设备联动控制", evidenceLevel: "C", sourceAuthority: "T3", isConfirmed: false, sourceCount: 1, source: "推断" },
+];
+
+/* ═══ 阶段 4：能力匹配 ═══ */
+
+/** 能力匹配矩阵（表 4-3） */
+export type CapabilityMatch = {
+  scene: string;
+  capability: string;
+  matchLevel: "完全匹配" | "部分匹配" | "不匹配";
+  gap: string;
+  effort: string;
+  source: SourceTag;
+}
+
+export const capabilityMatch: CapabilityMatch[] = [
+  { scene: "预约管理", capability: "日历集成", matchLevel: "完全匹配", gap: "无", effort: "低", source: "AI" },
+  { scene: "设备控制", capability: "IoT 平台", matchLevel: "部分匹配", gap: "协议适配", effort: "中", source: "AI" },
+  { scene: "数据分析", capability: "BI 报表", matchLevel: "不匹配", gap: "需要开发", effort: "高", source: "推断" },
+];
+
+/** 优先级矩阵（表 4-4） */
+export type PriorityMatrix = {
+  scene: string;
+  painScore: number;
+  matchScore: number;
+  priorityScore: number;
+  rank: number;
+  recommendation: "优先推进" | "条件推进" | "暂缓";
+}
+
+export const priorityMatrix: PriorityMatrix[] = [
+  { scene: "预约管理", painScore: 90, matchScore: 85, priorityScore: 88, rank: 1, recommendation: "优先推进" },
+  { scene: "设备控制", painScore: 70, matchScore: 60, priorityScore: 65, rank: 2, recommendation: "条件推进" },
+  { scene: "数据分析", painScore: 50, matchScore: 30, priorityScore: 40, rank: 3, recommendation: "暂缓" },
+];
+
+/* ═══ 阶段 5：方案设计 ═══ */
+
+/** 成本估算（表 5-5） */
+export type CostEstimate = {
+  category: "硬件" | "软件" | "服务";
+  item: string;
+  unitCost: number;
+  quantity: number;
+  total: number;
+  source: SourceTag;
+}
+
+export const costEstimate: CostEstimate[] = [
+  { category: "硬件", item: "会议平板", unitCost: 8000, quantity: 10, total: 80000, source: "AI" },
+  { category: "硬件", item: "中控主机", unitCost: 5000, quantity: 10, total: 50000, source: "AI" },
+  { category: "软件", item: "预约系统", unitCost: 2000, quantity: 1, total: 2000, source: "AI" },
+  { category: "软件", item: "设备管理平台", unitCost: 5000, quantity: 1, total: 5000, source: "AI" },
+  { category: "服务", item: "实施部署", unitCost: 10000, quantity: 1, total: 10000, source: "推断" },
+  { category: "服务", item: "培训", unitCost: 3000, quantity: 1, total: 3000, source: "推断" },
+];
+
+/** 竞品价格对照（表 5-6） */
+export type CompetitorPricing = {
+  competitor: string;
+  price: number;
+  coverage: number;
+  priceComparison: "高于我方" | "低于我方" | "持平";
+  advantage: string;
+}
+
+export const competitorPricing: CompetitorPricing[] = [
+  { competitor: "钉钉", price: 3000, coverage: 60, priceComparison: "低于我方", advantage: "生态完整" },
+  { competitor: "飞书", price: 5000, coverage: 80, priceComparison: "持平", advantage: "用户体验好" },
+  { competitor: "华为", price: 15000, coverage: 95, priceComparison: "高于我方", advantage: "品牌溢价" },
+];
+
+/* ═══ 阶段 6：价值验证 ═══ */
+
+/** 投资回报估算（表 6-3） */
+export type RoiEstimate = {
+  metric: string;
+  baseline: string;
+  improvement: string;
+  monetaryValue: number;
+  confidence: "高" | "中" | "低";
+  source: SourceTag;
+}
+
+export const roiEstimate: RoiEstimate[] = [
+  { metric: "会议效率提升", baseline: "30分钟/会", improvement: "节省10分钟", monetaryValue: 50000, confidence: "高", source: "AI" },
+  { metric: "设备能耗降低", baseline: "500度/月", improvement: "降低20%", monetaryValue: 12000, confidence: "中", source: "推断" },
+  { metric: "人力成本节省", baseline: "2人/天", improvement: "节省0.5人", monetaryValue: 30000, confidence: "中", source: "AI" },
+];
+
+/** 试点设计（表 6-4） */
+export type PilotDesign = {
+  phase: string;
+  scope: string;
+  duration: string;
+  successCriteria: string;
+  risk: string;
+  source: SourceTag;
+}
+
+export const pilotDesign: PilotDesign[] = [
+  { phase: "第一阶段", scope: "1间会议室", duration: "2周", successCriteria: "设备联动成功", risk: "低", source: "AI" },
+  { phase: "第二阶段", scope: "5间会议室", duration: "1个月", successCriteria: "用户满意度>80%", risk: "中", source: "AI" },
+  { phase: "第三阶段", scope: "全楼层", duration: "3个月", successCriteria: "ROI>15%", risk: "中", source: "推断" },
+];
+
+/* ═══ 阶段 7：内部报告 ═══ */
+
+/** 内部调研报告（表 7-1） */
+export type InternalReport = {
+  section: string;
+  content: string;
+  conclusion: string;
+  confidence: "高" | "中" | "低";
+  source: SourceTag;
+}
+
+export const internalReport: InternalReport[] = [
+  { section: "市场分析", content: "智慧会议室市场规模约50亿", conclusion: "市场增长稳定", confidence: "高", source: "AI" },
+  { section: "竞争格局", content: "钉钉、飞书、华为三足鼎立", conclusion: "差异化空间存在", confidence: "中", source: "AI" },
+  { section: "技术可行性", content: "我方IoT平台可复用", conclusion: "技术风险可控", confidence: "高", source: "AI" },
+];
+
+/** 决策支撑（表 7-2） */
+export type DecisionSupport = {
+  factor: string;
+  weight: number;
+  score: number;
+  weightedScore: number;
+  recommendation: "强烈推荐" | "推荐" | "中性" | "不推荐";
+}
+
+export const decisionSupport: DecisionSupport[] = [
+  { factor: "市场潜力", weight: 30, score: 85, weightedScore: 25.5, recommendation: "推荐" },
+  { factor: "技术匹配", weight: 25, score: 70, weightedScore: 17.5, recommendation: "推荐" },
+  { factor: "竞争壁垒", weight: 20, score: 60, weightedScore: 12, recommendation: "中性" },
+  { factor: "投资回报", weight: 25, score: 75, weightedScore: 18.75, recommendation: "推荐" },
+];
+
+/* ═══ 阶段 8：外部报告 ═══ */
+
+/** 外部调研报告（表 8-1） */
+export type ExternalReport = {
+  section: string;
+  content: string;
+  audience: string;
+  tone: "自信" | "客观" | "谨慎";
+  source: SourceTag;
+}
+
+export const externalReport: ExternalReport[] = [
+  { section: "解决方案概述", content: "一站式智慧会议室解决方案", audience: "客户决策者", tone: "自信", source: "AI" },
+  { section: "技术架构", content: "云边端协同架构", audience: "客户技术团队", tone: "客观", source: "AI" },
+  { section: "投资回报", content: "预计18个月回收投资", audience: "客户财务", tone: "自信", source: "AI" },
+];
+
+/** 交付物清单（表 8-2） */
+export type Deliverable = {
+  name: string;
+  format: string;
+  description: string;
+  status: "已完成" | "进行中" | "待处理";
+  source: SourceTag;
+}
+
+export const deliverables: Deliverable[] = [
+  { name: "解决方案白皮书", format: "PDF", description: "完整技术方案", status: "已完成", source: "AI" },
+  { name: "报价单", format: "Excel", description: "硬件+软件+服务", status: "已完成", source: "AI" },
+  { name: "实施计划", format: "Word", description: "3阶段实施路线", status: "进行中", source: "AI" },
+  { name: "培训手册", format: "PDF", description: "用户操作指南", status: "待处理", source: "推断" },
+];

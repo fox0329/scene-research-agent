@@ -2,6 +2,12 @@ import React, { useState } from "react";
 import { Stage0Panel } from "./stages/Stage0Panel";
 import { Stage1Panel } from "./stages/Stage1Panel";
 import { Stage2Panel } from "./stages/Stage2Panel";
+import { Stage3Panel } from "./stages/Stage3Panel";
+import { Stage4Panel } from "./stages/Stage4Panel";
+import { Stage5Panel } from "./stages/Stage5Panel";
+import { Stage6Panel } from "./stages/Stage6Panel";
+import { Stage7Panel } from "./stages/Stage7Panel";
+import { Stage8Panel } from "./stages/Stage8Panel";
 import {
   STAGES,
   type Project,
@@ -75,6 +81,54 @@ export const ProjectView: React.FC<ProjectViewProps> = ({ project }) => {
         return (
           <Stage2Panel
             project={project}
+            onNext={handleNext}
+            onSupplement={() => {}}
+            onStop={() => {}}
+          />
+        );
+      case 3:
+        return (
+          <Stage3Panel
+            onNext={handleNext}
+            onSupplement={() => {}}
+            onStop={() => {}}
+          />
+        );
+      case 4:
+        return (
+          <Stage4Panel
+            onNext={handleNext}
+            onSupplement={() => {}}
+            onStop={() => {}}
+          />
+        );
+      case 5:
+        return (
+          <Stage5Panel
+            onNext={handleNext}
+            onSupplement={() => {}}
+            onStop={() => {}}
+          />
+        );
+      case 6:
+        return (
+          <Stage6Panel
+            onNext={handleNext}
+            onSupplement={() => {}}
+            onStop={() => {}}
+          />
+        );
+      case 7:
+        return (
+          <Stage7Panel
+            onNext={handleNext}
+            onSupplement={() => {}}
+            onStop={() => {}}
+          />
+        );
+      case 8:
+        return (
+          <Stage8Panel
             onNext={handleNext}
             onSupplement={() => {}}
             onStop={() => {}}
