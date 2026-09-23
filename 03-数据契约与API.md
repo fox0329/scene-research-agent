@@ -85,6 +85,8 @@
 | DELETE | `/projects/{id}` | 删除（连带场景层数据；知识库保留） |
 | GET | `/projects/{id}/stale` | 失效横幅数据：受影响阶段 + 涉及表 |
 | POST | `/projects/{id}/stages/{n}/advance` | 推进阶段 n 分析；**SSE**（事件见 §四） |
+| GET | `/projects/{id}/resume` | 断点续做对账（T4.1）：`{ action: fresh|resume|rerun|complete, stage, needsRecompute, danglingConversationIds, banner }` |
+| GET | `/projects/{id}/stages/{n}/events` | SSE 断线续传：凭 `Last-Event-ID` 增量重放该阶段最近一次分析流（进程存续期内可续；进程重启后走 resume 对账重跑） |
 | POST | `/projects/{id}/stages/{n}/decide` | 用户决定：`{ action: 继续|补充|停止|重算 }` |
 | GET | `/projects/{id}/stages/{n}` | 读阶段面板（表格行 + 质量关 + 建议卡） |
 | PATCH | `/projects/{id}/stage-data/{rowId}` | 分析表单元格编辑 |
@@ -135,3 +137,4 @@ interface DshClient {
 | 版本 | 日期 | 变更 |
 |---|---|---|
 | v0.1 | 2026-09-22 | 草案：15 表 schema、API 按 6 command 分组、SSE 事件格式、dsh-client 接口；阶段 3-8 的 stage_data row schema 留待 v1.1（M3 前） |
+| v1.2 | 2026-09-23 | T4.1 断点续做：新增 `GET /projects/{id}/resume`、`GET /projects/{id}/stages/{n}/events`（Last-Event-ID 重放）两个端点；SSE 报文按 §四 输出 `event: follow` 行；已登记 `docs/项目变更表.md` |

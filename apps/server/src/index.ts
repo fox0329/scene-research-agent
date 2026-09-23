@@ -1,35 +1,21 @@
 /**
- * @scene/server — Fastify 服务器骨架
+ * @scene/server — Fastify 服务器入口
  *
  * 端口：4081（通过 APP_PORT 环境变量可覆盖）
- * 职责：REST API + SSE + 静态文件服务
+ * 职责：组装真实依赖（sqlite db / DSH client）+ 注册路由（见 app.ts）
  */
 
-import Fastify from "fastify";
+import { createDb, createDshClient } from "@scene/infra";
+import { createApp } from "./app.js";
 
 const PORT = Number(process.env["APP_PORT"] ?? 4081);
 const HOST = process.env["APP_HOST"] ?? "0.0.0.0";
 
 async function main() {
-  const app = Fastify({
-    logger: {
-      level: process.env["LOG_LEVEL"] ?? "info",
-    },
-  });
+  const db = createDb();
+  const dshClient = createDshClient();
+  const app = createApp({ db, dshClient });
 
-  // ── 健康检查 ───────────────────────────────────────────
-  app.get("/api/v1/health", async () => {
-    return { status: "ok", version: "0.1.0", timestamp: new Date().toISOString() };
-  });
-
-  // ── TODO: 注册路由 ─────────────────────────────────────
-  // library routes  (资料库 CRUD + ingest)
-  // project routes (项目 + 阶段推进)
-  // conversation routes (会话 + 消息 + SSE)
-  // knowledge routes (知识查询)
-  // system routes  (DSH 探活 + 设置)
-
-  // ── 启动 ───────────────────────────────────────────────
   try {
     await app.listen({ port: PORT, host: HOST });
     app.log.info(`server listening on http://${HOST}:${PORT}`);

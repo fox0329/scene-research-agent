@@ -132,6 +132,23 @@ export {
   LAST_STAGE,
 } from "./workflow.js";
 export type { StaleMark } from "./workflow.js";
+export {
+  TABLE_DEPENDENCIES,
+  getAffectedStages,
+  createStaleMark,
+  hasStaleMarks,
+  getStaleBanners,
+  clearStaleMarks,
+} from "./workflow.js";
+
+// 全局 — 断点续做
+export {
+  planResume,
+  collectRecomputeStages,
+  isStageCompleted,
+  findDanglingConversations,
+} from "./resume.js";
+export type { ResumeAction, ResumeInput, ResumePlan } from "./resume.js";
 
 // 全局 — 会话管理
 export {
@@ -146,4 +163,22 @@ export {
 } from "./session.js";
 
 // 全局 — 知识库
-export { } from "./knowledge.js";
+export {
+  calculateSimilarity,
+  findDuplicates,
+  createKnowledgeItem,
+  extractKnowledgeFromStage3,
+  extractKnowledgeFromStage4,
+  extractKnowledgeFromStage5,
+  batchCreateKnowledge,
+  queryKnowledge,
+  getKnowledgeStats,
+} from "./knowledge.js";
+export type {
+  KnowledgeCategory,
+  KnowledgeSource,
+  CreateKnowledgeInput,
+  KnowledgeItem,
+  WritebackTrigger,
+  KnowledgeQuery,
+} from "./knowledge.js";
