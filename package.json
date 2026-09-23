@@ -19,11 +19,14 @@
     "dsh:status": "curl -s -o /dev/null -w 'HTTP %{http_code}\\n' --max-time 3 http://127.0.0.1:3081/ || echo '未运行'",
     "dsh:logs": "tail -f .dsh/dsh-web.log",
     "typecheck": "tsc --noEmit -p tsconfig.json",
+    "build": "pnpm -r --if-present run build",
     "lint": "echo 'lint placeholder — TODO: 集成 eslint'",
     "test": "vitest run",
     "verify:m0": "bash scripts/verify-m0.sh",
     "verify:m1": "bash scripts/verify-m1.sh",
     "verify:m2": "bash scripts/verify-m2.sh",
-    "verify:m3": "bash scripts/verify-m3.sh"
+    "verify:m3": "bash scripts/verify-m3.sh",
+    "verify:m4": "bash scripts/verify-m4.sh",
+    "release": "bash scripts/build-release.sh"
   }
 }
