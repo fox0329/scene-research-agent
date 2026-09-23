@@ -7,6 +7,7 @@ import { LibraryView } from "./views/LibraryView";
 import { ProjectView } from "./views/ProjectView";
 import { SettingsView } from "./views/SettingsView";
 import { KnowledgeView } from "./views/KnowledgeView";
+import { useColumnLayout } from "./hooks/useColumnLayout";
 import { conversationMessages, projects } from "./mock/project-data";
 
 /** 主视图：project 项目工作台（默认）/ library 资料库 / knowledge 知识库 / settings 设置 */
@@ -20,6 +21,7 @@ type ViewName = "project" | "library" | "knowledge" | "settings";
 const App: React.FC = () => {
   const [view, setView] = useState<ViewName>("project");
   const [activeProjectId, setActiveProjectId] = useState(projects[0].id);
+  const layout = useColumnLayout();
 
   const activeProject = projects.find((p) => p.id === activeProjectId) ?? projects[0];
 
@@ -38,7 +40,7 @@ const App: React.FC = () => {
 
   return (
     <ToastProvider>
-    <div className="shell">
+    <div className={layout.shellClass} style={layout.shellStyle}>
       {/* 左栏：导航 + 项目列表 */}
       <Sidebar
         activeView={view}
@@ -82,10 +84,51 @@ const App: React.FC = () => {
           </>
         )}
       </aside>
+
+      {/* 列宽热区（骑在分割线上，不画第二根线）+ 缘收起胶囊柄 */}
+      <span
+        className="col-resizer col-resizer--side"
+        aria-label="拖拽调整左栏宽度"
+        onPointerDown={(e) => layout.beginResize("side", e)}
+      />
+      <span
+        className="col-resizer col-resizer--det"
+        aria-label="拖拽调整右栏宽度"
+        onPointerDown={(e) => layout.beginResize("det", e)}
+      />
+      <button
+        type="button"
+        className="edge-toggle edge-toggle--side"
+        aria-label={layout.sideCollapsed ? "展开左栏" : "收起左栏"}
+        onClick={layout.toggleSide}
+      >
+        <ChevronIcon flip={layout.sideCollapsed} />
+      </button>
+      <button
+        type="button"
+        className="edge-toggle edge-toggle--det"
+        aria-label={layout.detCollapsed ? "展开右栏" : "收起右栏"}
+        onClick={layout.toggleDet}
+      >
+        <ChevronIcon flip={!layout.detCollapsed} />
+      </button>
     </div>
     </ToastProvider>
   );
 };
+
+/** 缘收起柄箭头：flip=false 指左（收起左栏），true 指右 */
+const ChevronIcon: React.FC<{ flip: boolean }> = ({ flip }) => (
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    style={{ width: "var(--size-14)", height: "var(--size-14)", transform: flip ? "rotate(180deg)" : undefined }}
+  >
+    <polyline points="15 18 9 12 15 6" />
+  </svg>
+);
 
 /** 占位视图（知识库/设置未实现时显示） */
 const PlaceholderView: React.FC<{ title: string; desc: string }> = ({ title, desc }) => (

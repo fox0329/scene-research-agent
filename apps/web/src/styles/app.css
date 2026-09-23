@@ -42,10 +42,71 @@ body {
 /* ── 三栏 Shell 布局 ── */
 .shell {
   display: grid;
-  grid-template-columns: var(--sw) 1fr var(--dw);
+  grid-template-columns: var(--app-side-w, var(--sw)) minmax(0, 1fr) var(--app-det-w, var(--dw));
   height: 100vh;
   overflow: hidden;
+  position: relative;
 }
+
+/* 列宽拖拽 + 缘收起（偏离 #1/#2 已批准，app-shell-layout 配方） */
+.shell.side-collapsed {
+  grid-template-columns: 0 minmax(0, 1fr) var(--app-det-w, var(--dw));
+}
+.shell.det-collapsed {
+  grid-template-columns: var(--app-side-w, var(--sw)) minmax(0, 1fr) 0;
+}
+.shell.side-collapsed.det-collapsed {
+  grid-template-columns: 0 minmax(0, 1fr) 0;
+}
+.shell.side-collapsed > .side,
+.shell.det-collapsed > .det {
+  visibility: hidden;
+  border: none; /* 0 轨道下边框会撑出 1px，收起时一并去除 */
+}
+
+.col-resizer {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: var(--size-10);
+  cursor: col-resize;
+  background: transparent;
+  touch-action: none;
+  z-index: var(--z-rail);
+}
+.col-resizer--side { left: calc(var(--app-side-w, var(--sw)) - var(--size-10) / 2); }
+.col-resizer--det  { right: calc(var(--app-det-w, var(--dw)) - var(--size-10) / 2); }
+.shell.side-collapsed .col-resizer--side,
+.shell.det-collapsed .col-resizer--det {
+  display: none;
+}
+/* 拖动中只染既有边框，不画第二根线 */
+.shell.drag-side > .side { border-right-color: var(--cp); }
+.shell.drag-det > .det   { border-left-color: var(--cp); }
+
+.edge-toggle {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: var(--size-20);
+  height: var(--size-44);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  border-radius: var(--rp);
+  background: transparent;
+  color: var(--ct3);
+  cursor: pointer;
+  z-index: var(--z-rail-handle);
+  transition: color var(--d) var(--e);
+}
+.edge-toggle:hover { color: var(--cp); }
+.edge-toggle--side { left: calc(var(--app-side-w, var(--sw)) - var(--size-20)); }
+.edge-toggle--det  { right: calc(var(--app-det-w, var(--dw)) - var(--size-20)); }
+.shell.side-collapsed .edge-toggle--side { left: 0; }
+.shell.det-collapsed .edge-toggle--det  { right: 0; }
 
 /* ── 左栏 Side ── */
 .side {
@@ -57,11 +118,13 @@ body {
 }
 
 .side-hd {
-  padding: var(--s3) var(--s4);
+  height: var(--size-48);
+  padding: 0 var(--s4);
   border-bottom: 1px solid var(--cb);
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-shrink: 0;
 }
 
 .side-hd h1 {
@@ -103,8 +166,12 @@ body {
 }
 
 .det-h {
-  padding: var(--s3) var(--s4);
+  height: var(--size-48);
+  padding: 0 var(--s4);
   border-bottom: 1px solid var(--cb);
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
 }
 
 .det-h h3 {
@@ -118,15 +185,16 @@ body {
   padding: var(--s3) var(--s4);
 }
 
-/* ── 页面头部 ── */
+/* ── 页面头部（三栏统一 48px，底边线水平对齐）── */
 .pgh {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: var(--s3) var(--s5);
+  height: var(--size-48);
+  padding: 0 var(--s5);
   background: var(--csr);
   border-bottom: 1px solid var(--cb);
-  min-height: var(--size-40);
+  flex-shrink: 0;
 }
 
 .pgt {
@@ -458,9 +526,11 @@ td.ed {
 /* ── 响应式 ── */
 @media (max-width: 1320px) {
   .shell {
-    grid-template-columns: var(--sw) 1fr;
+    grid-template-columns: var(--app-side-w, var(--sw)) 1fr;
   }
-  .det {
+  .det,
+  .col-resizer--det,
+  .edge-toggle--det {
     display: none;
   }
 }
@@ -469,7 +539,9 @@ td.ed {
   .shell {
     grid-template-columns: 1fr;
   }
-  .side {
+  .side,
+  .col-resizer--side,
+  .edge-toggle--side {
     display: none;
   }
 }

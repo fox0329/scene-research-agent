@@ -8,6 +8,7 @@
     "node": ">=22.0.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "@types/node": "^22.10.0",
     "@vitest/coverage-v8": "2.1.9",
     "typescript": "^5.7.2",
@@ -27,6 +28,7 @@
     "verify:m2": "bash scripts/verify-m2.sh",
     "verify:m3": "bash scripts/verify-m3.sh",
     "verify:m4": "bash scripts/verify-m4.sh",
-    "release": "bash scripts/build-release.sh"
+    "release": "bash scripts/build-release.sh",
+    "test:e2e": "pnpm --filter @scene/web exec vite build && playwright test"
   }
 }
