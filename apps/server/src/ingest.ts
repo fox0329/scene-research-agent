@@ -50,6 +50,8 @@ export interface IngestOpts {
 /** ingest 返回结果 */
 export interface IngestResult {
   rowsInserted: number;
+  /** 每张表插入行数（M1-M6 / O1-O6），入库反馈用 */
+  tableCounts: Record<string, number>;
   qualityAssessment: QualityAssessment;
   completenessReport: CompletenessReport;
 }
@@ -186,13 +188,13 @@ async function executeIngest(
   const validRows = validateRows(dshOutput, fileName);
 
   // 5. 写入数据库
-  const rowsInserted = writeRows(db, validRows, productLineId);
+  const { inserted, tableCounts } = writeRows(db, validRows, productLineId);
 
   // 6. 质量评估 + 完成度检查
   const qualityAssessment = buildQualityAssessment(db, productLineId);
   const completenessReport = buildCompletenessReport(db, productLineId);
 
-  return { rowsInserted, qualityAssessment, completenessReport };
+  return { rowsInserted: inserted, tableCounts, qualityAssessment, completenessReport };
 }
 
 // ─── 子函数：组 user prompt ────────────────────────────────
@@ -371,8 +373,13 @@ function writeRows(
   db: DbInstance,
   rows: ClassifiedRow[],
   productLineId: string,
-): number {
+): { inserted: number; tableCounts: Record<string, number> } {
   let inserted = 0;
+  const tableCounts: Record<string, number> = {};
+  const count = (table: string) => {
+    tableCounts[table] = (tableCounts[table] ?? 0) + 1;
+    inserted++;
+  };
   // model → product_id 缓存（同一次 ingest 内共享）
   const modelToProductId = new Map<string, string>();
 
@@ -382,7 +389,7 @@ function writeRows(
     const product = insertProduct(db, row, productLineId);
     if (product) {
       modelToProductId.set(row.fields["model"] as string, product.id);
-      inserted++;
+      count("M1");
     }
   }
 
@@ -393,41 +400,41 @@ function writeRows(
     switch (row.table_code) {
       case "M2": {
         const ok = insertSpecParam(db, row, productLineId, modelToProductId);
-        if (ok) inserted++;
+        if (ok) count("M2");
         break;
       }
       case "M3": {
         const ok = insertCapability(db, row, productLineId);
-        if (ok) inserted++;
+        if (ok) count("M3");
         break;
       }
       case "M4": {
         const ok = insertBoundary(db, row, productLineId);
-        if (ok) inserted++;
+        if (ok) count("M4");
         break;
       }
       case "M5": {
         const ok = insertLimitation(db, row, productLineId);
-        if (ok) inserted++;
+        if (ok) count("M5");
         break;
       }
       case "M6": {
         const ok = insertCostRate(db, row, productLineId);
-        if (ok) inserted++;
+        if (ok) count("M6");
         break;
       }
       default: {
         // O1-O6
         if (row.table_code.startsWith("O")) {
           const ok = insertOptionalMaterial(db, row, productLineId);
-          if (ok) inserted++;
+          if (ok) count(row.table_code);
         }
         break;
       }
     }
   }
 
-  return inserted;
+  return { inserted, tableCounts };
 }
 
 function insertProduct(

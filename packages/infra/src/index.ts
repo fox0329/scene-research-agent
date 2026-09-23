@@ -49,8 +49,14 @@ export type {
 } from "./provider-store.js";
 
 /** 供应商链接质量检查（探活+鉴权+延迟，可选模型最小生成） */
-export { checkProviderConnection, checkSavedProvider, normalizeBaseUrl } from "./provider-check.js";
-export type { ConnectionCheckResult } from "./provider-check.js";
+export {
+  checkProviderConnection,
+  checkSavedProvider,
+  fetchProviderModels,
+  modelsUrlCandidates,
+  normalizeBaseUrl,
+} from "./provider-check.js";
+export type { ConnectionCheckResult, ModelsFetchResult } from "./provider-check.js";
 
 /** 交付物导出（Markdown） */
 export { exportDeliverables, exportFileName } from "./md-export.js";

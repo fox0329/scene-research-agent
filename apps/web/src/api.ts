@@ -142,6 +142,16 @@ export interface ApiConnectionCheck {
   error?: string;
 }
 
+/** 模型列表发现结果（候选端点自动探测，仿 CC Switch） */
+export interface ApiModelsFetch {
+  ok: boolean;
+  models: string[];
+  /** 实际命中的 baseURL（与输入不同时表单应回填修正） */
+  resolved_base_url?: string;
+  latency_ms?: number;
+  error?: string;
+}
+
 /** SSE follow 事件（与 contract FollowEvent 对齐） */
 export interface FollowEvent {
   type: string;
@@ -320,6 +330,12 @@ export const api = {
     api_key?: string;
     model?: string;
   }) => req<ApiConnectionCheck>("/system/providers/test", { method: "POST", body: input }),
+  /** 拉取模型列表：填好链接+Key 一键发现服务端模型；name=用已存供应商密钥 */
+  fetchProviderModels: (input: {
+    name?: string;
+    base_url?: string;
+    api_key?: string;
+  }) => req<ApiModelsFetch>("/system/providers/models", { method: "POST", body: input }),
 };
 
 // ─── SSE 面（advance / 会话消息：POST 建流 + GET 续传） ─────
@@ -424,15 +440,22 @@ export const reconnectConversationStream = (conversationId: string, lastEventId:
  * 上传材料并接收入库进度流：
  * 1) POST multipart（file + product_line_id）→ { ingest_job_id }
  * 2) GET /library/ingest/:jobId/events（SSE，支持 Last-Event-ID 续传）
+ *
+ * 注意：product_line_id 必须 append 在 file 之前（@fastify/multipart 的
+ * request.file() 在第一个 file 部件处返回，之后的字段收不到），同时通过
+ * URL query 兜底，任何客户端字段顺序都能过。
  */
 export async function* ingestStream(
   file: File,
   productLineId: string,
 ): AsyncGenerator<FollowEvent> {
   const form = new FormData();
-  form.append("file", file);
   form.append("product_line_id", productLineId);
-  const res = await fetch(`${BASE}/library/ingest`, { method: "POST", body: form });
+  form.append("file", file);
+  const res = await fetch(
+    `${BASE}/library/ingest?product_line_id=${encodeURIComponent(productLineId)}`,
+    { method: "POST", body: form },
+  );
   const data = (await res.json().catch(() => null)) as
     | { ingest_job_id?: string; error?: string }
     | null;

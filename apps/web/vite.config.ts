@@ -13,6 +13,11 @@ export default defineConfig({
       },
     },
   },
+  // preview.proxy 默认继承 server.proxy：显式清空，E2E/预览恒走演示模式，
+  // 不受本机 4081 真实后端是否在跑的影响（否则 mock 断言会被联真数据干扰）
+  preview: {
+    proxy: {},
+  },
   resolve: {
     alias: {
       "@scene/contract": "/src/__stub__/contract.ts",

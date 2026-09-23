@@ -58,7 +58,8 @@ test("聚焦输入框展开对话流：250ms 过渡 + 半透明浮层无毛玻�
   expect(style.duration).toContain("0.25s");
   expect(style.blur === "none" || style.blur === "").toBeTruthy();
   const bg = await page.locator(".conv-stream").evaluate((el) => getComputedStyle(el).backgroundColor);
-  expect(bg).toBe("rgba(250, 250, 249, 0.6)");
+  /* 品牌浅蓝半透明（用户定稿：加一点蓝色、保持透明度） */
+  expect(bg).toBe("rgba(219, 234, 254, 0.6)");
 });
 
 test("气泡配色：AI 深底白字、用户主色", async ({ page }) => {

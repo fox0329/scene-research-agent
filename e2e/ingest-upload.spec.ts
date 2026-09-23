@@ -1,0 +1,139 @@
+import { test, expect } from "@playwright/test";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+/**
+ * 上传入库联真 e2e（第二个 webServer：127.0.0.1:4181，真应用服务 + 真模型链路）
+ *
+ * 覆盖：
+ * 1. 回归——浏览器 FormData 字段顺序（file 部件在前）也能入库
+ *    （@fastify/multipart file() 收不到 file 之后的字段，曾致「缺少 product_line_id」400）
+ * 2. 资料库「上传文件」：进度条到【完成】汇总
+ * 3. 对话窗「导入材料」：进度气泡 + 导入结果回发模型（模型感知新资料）
+ */
+
+const LIVE = "http://127.0.0.1:4181";
+
+/** 最小可解析 PDF（正文一段文字，供 doc-parser 提取） */
+const PDF_FIXTURE = join(tmpdir(), "scene-e2e-upload.pdf");
+
+test.beforeAll(() => {
+  mkdirSync(tmpdir(), { recursive: true });
+  writeFileSync(
+    PDF_FIXTURE,
+    "%PDF-1.4\n" +
+      "1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n" +
+      "2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj\n" +
+      "3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 612 792]/Contents 4 0 R>>endobj\n" +
+      "4 0 obj<</Length 52>>stream\n" +
+      "BT /F1 12 Tf 72 720 Td (E2E upload test content) Tj ET\n" +
+      "endstream\nendobj\n" +
+      "xref\n0 5\ntrailer<</Size 5/Root 1 0 R>>\n%%EOF\n",
+  );
+});
+
+test.beforeEach(async ({ page }) => {
+  await page.goto(`${LIVE}/`);
+  await expect(page.locator(".shell")).toBeVisible();
+});
+
+test.describe("上传入库（联真）", () => {
+  test.beforeAll(async ({ playwright }) => {
+    /* 共用前置：建产品线 + 建项目（AI 通知需要项目上下文） */
+    const req = await playwright.request.newContext({ baseURL: LIVE });
+    await req.post("/api/v1/library/product-lines", { data: { name: "E2E产品线" } });
+    await req.post("/api/v1/projects", { data: { name: "E2E项目" } });
+    await req.dispose();
+  });
+
+  test("资料库上传文件：file 在前的浏览器字段顺序也能入库（product_line_id 回归）", async ({ page }) => {
+    await page.getByRole("button", { name: "产品资料库" }).click();
+    /* setInputFiles 直接注入隐藏 input，浏览器原生 change 事件（React onChange 生效） */
+    await page.locator('.pga input[type=file][accept]').setInputFiles(PDF_FIXTURE);
+    /* 进度条走到【完成】汇总；关键是不再出现「缺少 product_line_id」 */
+    const banner = page.locator(".stale-banner");
+    await expect(banner).toContainText(/【完成】1 个文件/, { timeout: 60_000 });
+    await expect(banner).not.toContainText("缺少 product_line_id");
+  });
+
+  test("表格列降维 + 分割线 + 拖拽调宽 + 右栏行详情（变更表 #19）", async ({ page, playwright }) => {
+    /* 造一行 M1 数据（含曾用名与溯源） */
+    const req = await playwright.request.newContext({ baseURL: LIVE });
+    const lines = (await (await req.get("/api/v1/library/product-lines")).json()) as {
+      id: string;
+    }[];
+    const seeded = await req.post("/api/v1/library/rows/M1", {
+      data: {
+        product_line_id: lines[0]!.id,
+        values: {
+          model: "E2E-1",
+          name: "E2E产品",
+          status: "在售",
+          launch_date: "2026-01",
+          position_desc: "端到端验证",
+          former_name: "旧名",
+        },
+      },
+    });
+    expect(seeded.ok()).toBeTruthy();
+    await req.dispose();
+
+    await page.getByRole("button", { name: "产品资料库" }).click();
+    await page.locator(".stab", { hasText: "M1" }).click();
+    /* 降维：7 列含「溯源」徽标列，来源四列与曾用名不再占列（等表格异步加载完） */
+    await expect(page.locator("table th")).toHaveCount(7);
+    const ths = await page.locator("table th").allTextContents();
+    expect(ths).toContain("溯源");
+    expect(ths).not.toContain("来源标注");
+    expect(ths).not.toContain("曾用名");
+    await expect(page.locator(".trace-badge").first()).toBeVisible();
+    /* 列分割线 */
+    const border = await page
+      .locator("table th")
+      .first()
+      .evaluate((el) => getComputedStyle(el).borderRightWidth);
+    expect(border).toBe("1px");
+    /* 真实鼠标拖拽表头右缘热区 → 该列变宽 */
+    const th = page.locator("table th").first();
+    const w0 = (await th.boundingBox())!.width;
+    const rz = (await th.locator(".th-resize").first().boundingBox())!;
+    await page.mouse.move(rz.x + rz.width / 2, rz.y + 8);
+    await page.mouse.down();
+    await page.mouse.move(rz.x + 50, rz.y + 8, { steps: 4 });
+    await page.mouse.up();
+    const w1 = (await th.boundingBox())!.width;
+    expect(w1).toBeGreaterThan(w0 + 30);
+    /* 行点击 → 右栏行详情（补充信息 + 溯源全量） */
+    await page.locator("tbody tr").first().click();
+    await expect(page.locator(".row-detail")).toBeVisible();
+    await expect(page.locator(".det-h h3")).toContainText("行详情 · M1 产品清单");
+    const labels = await page.locator(".row-detail .rd-label").allTextContents();
+    expect(labels).toContain("曾用名");
+    expect(labels).toContain("来源标注");
+  });
+
+  test("对话直接导入：消息里写文件路径即入库，结果回显且模型感知", async ({ page }) => {
+    await page.locator(".conv-ta").click(); // 展开抽屉
+    await page
+      .locator(".conv-ta")
+      .fill(`请导入 ${PDF_FIXTURE} 这份材料，导入后告诉我入了哪些表`);
+    await page.keyboard.press("Enter");
+    /* 导入报告随流回显：识别进度 → 每文件入库行数（含每表分布） */
+    await expect(page.locator(".conv-stream")).toContainText("识别到 1 个文件", {
+      timeout: 30_000,
+    });
+    await expect(page.locator(".conv-stream")).toContainText(`✅ ${PDF_FIXTURE}`, {
+      timeout: 60_000,
+    });
+    await expect(page.locator(".conv-stream")).toContainText("入库", { timeout: 10_000 });
+    /* 模型收到导入结果（系统消息含报告），回复落定且非错误 */
+    await expect(page.locator(".conv-stream")).toContainText("【材料导入结果】", {
+      timeout: 30_000,
+    });
+    const bubbles = page.locator(".conv-stream .bub");
+    await expect
+      .poll(async () => bubbles.last().textContent(), { timeout: 90_000 })
+      .not.toContain("【错误】未收到回复内容");
+  });
+});

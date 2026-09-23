@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { QualityPanel } from "./QualityPanel";
 import { ProductListPanel } from "./ProductListPanel";
 import { RealLibraryView } from "./RealLibraryView";
+import type { RowDetail } from "../components/RowDetailPanel";
 import type { ApiProductLine } from "../api";
 import {
   SpecPanel,
@@ -41,17 +42,22 @@ interface LibraryViewProps {
   lines?: ApiProductLine[];
   /** 资料变化（新建产品线/入库/编辑）后通知父级刷新计数与行统计 */
   onChanged?: () => void;
+  /** 行点击上报右栏行详情（联真，变更表 #19） */
+  onRowSelect?: (detail: RowDetail | null) => void;
 }
 
 export const LibraryView: React.FC<LibraryViewProps> = ({
   live,
   lines = [],
   onChanged,
+  onRowSelect,
 }) => {
   const [activeTab, setActiveTab] = useState("quality");
 
   if (live) {
-    return <RealLibraryView lines={lines} onChanged={onChanged} />;
+    return (
+      <RealLibraryView lines={lines} onChanged={onChanged} onRowSelect={onRowSelect} />
+    );
   }
 
   const renderPanel = () => {

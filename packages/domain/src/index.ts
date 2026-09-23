@@ -184,3 +184,7 @@ export type {
   WritebackTrigger,
   KnowledgeQuery,
 } from "./knowledge.js";
+
+// ─── 对话即导入：消息内文件路径提取 ─────────────────────────
+
+export { extractImportablePaths, expandHomePath, IMPORTABLE_EXTS } from "./chat-import.js";

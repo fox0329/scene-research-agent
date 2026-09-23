@@ -18,6 +18,7 @@ import {
   validateSessionTitle,
   canArchive,
   normalizeConversationTitle,
+  extractImportablePaths,
   SESSION_STATUS_ACTIVE,
   SESSION_STATUS_ARCHIVED,
 } from "@scene/domain";
@@ -30,10 +31,29 @@ export interface ConverseDb {
   messageRepo: MessageRepo;
 }
 
+/** 对话即导入：单个文件的导入结果 */
+export interface ChatImportOutcome {
+  /** 用户消息中的原始路径 */
+  path: string;
+  ok: boolean;
+  /** 成功：入库行数与每表分布 */
+  rowsInserted?: number;
+  tableCounts?: Record<string, number>;
+  /** 成功时的归属产品线名（多产品线时在报告中注明） */
+  lineName?: string;
+  /** 失败：原因（中文，可直接展示） */
+  error?: string;
+}
+
 /** converse command 依赖 */
 export interface ConverseDeps {
   db: ConverseDb;
   dshClient: DshClient;
+  /**
+   * 对话即导入钩子：消息里写了本地文件路径时由 routes 注入的编排
+   * （解析文件 → DSH 归类 → 写库）。缺省 = 不支持导入，普通对话不受影响。
+   */
+  importFiles?: (paths: string[]) => Promise<ChatImportOutcome[]>;
 }
 
 // ─── 创建请求 ──────────────────────────────────────────────
@@ -53,7 +73,7 @@ export interface CreateConversationRequest {
  * @returns 包含 CRUD + sendMessage 方法的 command 对象
  */
 export function createConverseCommand(deps: ConverseDeps) {
-  const { db, dshClient } = deps;
+  const { db, dshClient, importFiles } = deps;
 
   return {
     /**
@@ -104,13 +124,14 @@ export function createConverseCommand(deps: ConverseDeps) {
      * 发送消息并流式获取 DSH 回复。
      * 返回 AsyncIterable<FollowEvent>，yield text/done/error 事件。
      *
-     * 流程：写入用户消息 → 创建 DSH session → 流式获取回复 → 写入系统消息。
+     * 流程：写入用户消息 → 消息内路径识别与导入（对话即导入）→
+     * 创建 DSH session → 流式获取回复 → 写入系统消息。
      */
     sendMessage: (
       conversationId: string,
       content: string,
     ): AsyncIterable<FollowEvent> =>
-      sendMessage(db, dshClient, conversationId, content),
+      sendMessage(db, dshClient, conversationId, content, importFiles),
   };
 }
 
@@ -250,6 +271,7 @@ async function* sendMessage(
   dshClient: DshClient,
   conversationId: string,
   content: string,
+  importFiles?: ConverseDeps["importFiles"],
 ): AsyncIterable<FollowEvent> {
   // 1. 校验会话存在且活跃
   const conversation = db.conversationRepo.getById(conversationId);
@@ -264,6 +286,27 @@ async function* sendMessage(
     role: "用户",
     content,
   });
+
+  // 2.5 对话即导入：消息里的本地文件路径 → 解析入库，
+  //     结果随流回显（可见）并附给模型（感知新资料）
+  let importReport = "";
+  const paths = importFiles ? extractImportablePaths(content) : [];
+  if (importFiles && paths.length > 0) {
+    yield { type: "text", text: `📎 识别到 ${paths.length} 个文件，开始解析入库…\n` };
+    let outcomes: ChatImportOutcome[];
+    try {
+      outcomes = await importFiles(paths);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      yield { type: "error", message: `导入失败：${msg}` };
+      return;
+    }
+    const lines = outcomes.map((o) => formatOutcome(o));
+    importReport =
+      `【材料导入结果】（已解析入库，后续回答请基于这些资料）\n` +
+      `${lines.join("\n")}\n\n`;
+    yield { type: "text", text: importReport };
+  }
 
   // 3. 创建 DSH session 并流式获取回复
   let session: SessionHandle;
@@ -283,7 +326,7 @@ async function* sendMessage(
   try {
     const stream = dshClient.prompt(session, {
       system: CONVERSE_SYSTEM_PROMPT,
-      user: content,
+      user: importReport ? `${importReport}${content}` : content,
       outputContract: {},
     });
 
@@ -304,12 +347,23 @@ async function* sendMessage(
     hasError = true;
   }
 
-  // 4. 将 AI 回复写入系统消息（只在有实际内容时写入）
-  if (fullReply.length > 0 && !hasError) {
+  // 4. 将 AI 回复（含导入报告）写入系统消息（只在有实际内容时写入）
+  const persisted = importReport + fullReply;
+  if (persisted.length > 0 && !hasError) {
     db.messageRepo.insert({
       conversation_id: conversationId,
       role: "系统",
-      content: fullReply,
+      content: persisted,
     });
   }
+}
+
+/** 单个文件导入结果 → 一行人类可读文案 */
+function formatOutcome(o: ChatImportOutcome): string {
+  if (!o.ok) return `❌ ${o.path}：${o.error ?? "导入失败"}`;
+  const counts = Object.entries(o.tableCounts ?? {})
+    .map(([t, n]) => `${t}×${n}`)
+    .join("、");
+  const line = o.lineName ? ` → 产品线「${o.lineName}」` : "";
+  return `✅ ${o.path}${line}：入库 ${o.rowsInserted ?? 0} 行${counts ? `（${counts}）` : ""}`;
 }

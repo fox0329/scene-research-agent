@@ -53,6 +53,9 @@ const SettingsViewLive: React.FC = () => {
   const [rowCheck, setRowCheck] = useState<Record<string, ApiConnectionCheck | null>>({});
   const [busy, setBusy] = useState(false);
   const [newModelId, setNewModelId] = useState("");
+  /** 一键发现：进行中标记与拉到的候选模型 ID 列表（null=未拉取） */
+  const [discovering, setDiscovering] = useState(false);
+  const [discovered, setDiscovered] = useState<string[] | null>(null);
 
   const providers = useMemo(() => state.data?.providers ?? [], [state.data]);
   const defaultModel = state.data?.default_model ?? null;
@@ -64,6 +67,7 @@ const SettingsViewLive: React.FC = () => {
     setForm(EMPTY_FORM);
     setDraftCheck(null);
     setNewModelId("");
+    setDiscovered(null);
   };
 
   const openEdit = (p: ApiProviderPublic) => {
@@ -77,6 +81,7 @@ const SettingsViewLive: React.FC = () => {
     });
     setDraftCheck(null);
     setNewModelId("");
+    setDiscovered(null);
   };
 
   const closeForm = () => {
@@ -85,6 +90,7 @@ const SettingsViewLive: React.FC = () => {
     setForm(EMPTY_FORM);
     setDraftCheck(null);
     setNewModelId("");
+    setDiscovered(null);
   };
 
   const handleAddModel = () => {
@@ -97,6 +103,48 @@ const SettingsViewLive: React.FC = () => {
 
   const handleRemoveModel = (id: string) => {
     setForm((f) => ({ ...f, models: f.models.filter((m) => m !== id) }));
+  };
+
+  const toggleModel = (id: string) => {
+    setForm((f) =>
+      f.models.includes(id)
+        ? { ...f, models: f.models.filter((m) => m !== id) }
+        : { ...f, models: [...f.models, id] },
+    );
+  };
+
+  /**
+   * 一键发现服务端模型列表（仿 CC Switch）：候选端点自动探测，免手敲 ID。
+   * 命中的实际链接与输入不同（如自动补了 /v1）时回填表单。
+   * 编辑态未重输 Key 用已存密钥（密钥不回传前端）。
+   */
+  const handleFetchModels = async () => {
+    const draftUrl = form.base_url.trim();
+    setDiscovering(true);
+    try {
+      const r =
+        editingName && !form.api_key.trim()
+          ? await api.fetchProviderModels({ name: editingName, base_url: draftUrl })
+          : await api.fetchProviderModels({ base_url: draftUrl, api_key: form.api_key.trim() });
+      if (!r.ok) {
+        setDiscovered(null);
+        showToast(r.error ?? "获取模型列表失败");
+        return;
+      }
+      setDiscovered(r.models);
+      const resolved = r.resolved_base_url?.replace(/\/+$/, "") ?? "";
+      if (resolved && resolved !== draftUrl.replace(/\/+$/, "")) {
+        setForm((f) => ({ ...f, base_url: resolved }));
+        showToast(`链接已自动修正为 ${resolved}（发现 ${r.models.length} 个模型）`);
+      } else {
+        showToast(`发现 ${r.models.length} 个模型，点击选用`);
+      }
+    } catch (err: unknown) {
+      setDiscovered(null);
+      showToast(`获取失败：${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setDiscovering(false);
+    }
   };
 
   /** 草稿态连接测试：未保存也可先测链接质量；编辑且未重输 Key 时用已存密钥 */
@@ -343,11 +391,11 @@ const SettingsViewLive: React.FC = () => {
                   </label>
 
                   <label className="settings-field">
-                    <span className="settings-label">链接（OpenAI 兼容 baseURL，通常以 /v1 结尾）</span>
+                    <span className="settings-label">链接（OpenAI 兼容 baseURL）</span>
                     <input
                       className="settings-input"
                       value={form.base_url}
-                      placeholder="https://api.example.com/v1"
+                      placeholder="https://api.example.com/v1（不带 /v1 也能自动识别）"
                       onChange={(e) => setForm((f) => ({ ...f, base_url: e.target.value }))}
                     />
                   </label>
@@ -367,6 +415,41 @@ const SettingsViewLive: React.FC = () => {
 
                   <label className="settings-field">
                     <span className="settings-label">模型列表</span>
+                    <div className="model-discover-row">
+                      <button
+                        className="btn btn-sm"
+                        type="button"
+                        disabled={
+                          discovering ||
+                          !form.base_url.trim() ||
+                          (!editingName && !form.api_key.trim())
+                        }
+                        onClick={() => void handleFetchModels()}
+                      >
+                        {discovering ? "获取中…" : "从服务端获取模型列表"}
+                      </button>
+                      <span className="provider-item-meta">
+                        填好链接与 Key 后一键发现，点选即用；获取不到可手填
+                      </span>
+                    </div>
+                    {discovered && discovered.length > 0 && (
+                      <div className="model-pick-list" role="group" aria-label="服务端发现的模型">
+                        {discovered.map((id) => {
+                          const on = form.models.includes(id);
+                          return (
+                            <button
+                              key={id}
+                              type="button"
+                              className={`model-pick-tag${on ? " on" : ""}`}
+                              aria-pressed={on}
+                              onClick={() => toggleModel(id)}
+                            >
+                              {id}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
                     <div className="model-list">
                       {form.models.length === 0 && (
                         <span className="provider-item-meta">尚未添加模型</span>
@@ -388,7 +471,7 @@ const SettingsViewLive: React.FC = () => {
                         <input
                           className="settings-input"
                           value={newModelId}
-                          placeholder="输入模型 ID，如 deepseek-chat"
+                          placeholder="手动补充模型 ID（网关未开放列表接口时用）"
                           onChange={(e) => setNewModelId(e.target.value)}
                           onKeyDown={(e) => {
                             if (e.key === "Enter") {

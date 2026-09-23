@@ -636,6 +636,29 @@ describe("上传入库路由", () => {
     expect(res.statusCode).toBe(404);
   });
 
+  it("file 部件在前、字段在后（浏览器 FormData 顺序）→ query 兜底放行", async () => {
+    const line = h.db.productLineRepo.insert({ name: "L-file-first" });
+    const boundary = "----sceneTestBoundary";
+    // 只有 file 部件，product_line_id 不在 body 里（file() 收不到 file 之后的字段）
+    const body = [
+      `--${boundary}`,
+      'Content-Disposition: form-data; name="file"; filename="t.pdf"',
+      "Content-Type: application/pdf",
+      "",
+      "hello",
+      `--${boundary}--`,
+      "",
+    ].join("\r\n");
+    const res = await h.app.inject({
+      method: "POST",
+      url: `/api/v1/library/ingest?product_line_id=${line.id}`,
+      headers: { "content-type": `multipart/form-data; boundary=${boundary}` },
+      body,
+    });
+    expect(res.statusCode).toBe(200);
+    expect(typeof res.json().ingest_job_id).toBe("string");
+  });
+
   it("未知入库任务的 events → 404", async () => {
     const res = await h.app.inject({
       method: "GET",
@@ -797,8 +820,10 @@ describe("系统路由", () => {
       url: "/api/v1/system/providers",
       payload: { name: "p-saved", base_url: "https://s.example.com/v1", api_key: "sk-saved", models: ["m-x"] },
     });
-    const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) =>
-      new Response(JSON.stringify({ data: [{ id: "m-x" }] }), { status: 200 }),
+    const fetchMock = vi.fn(async (url: string, _init?: RequestInit) =>
+      String(url).endsWith("/models")
+        ? new Response(JSON.stringify({ data: [{ id: "m-x" }] }), { status: 200 })
+        : new Response(JSON.stringify({ choices: [{ message: { content: "p" } }] }), { status: 200 }),
     );
     vi.stubGlobal("fetch", fetchMock);
     try {
@@ -827,6 +852,61 @@ describe("系统路由", () => {
       payload: {},
     });
     expect(missing.statusCode).toBe(400);
+  });
+
+  it("POST providers/models：草稿裸域名候选探测发现模型并回传修正后链接", async () => {
+    const fetchMock = vi.fn(async (url: string) =>
+      String(url) === "https://t.example.com/v1/models"
+        ? new Response(JSON.stringify({ data: [{ id: "m-1" }, { id: "m-0" }] }), { status: 200 })
+        : new Response(JSON.stringify({ data: [] }), { status: 404 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      const r = await h.app.inject({
+        method: "POST",
+        url: "/api/v1/system/providers/models",
+        payload: { base_url: "https://t.example.com", api_key: "sk-t" },
+      });
+      expect(r.statusCode).toBe(200);
+      const body = r.json() as { ok: boolean; models: string[]; resolved_base_url?: string };
+      expect(body.ok).toBe(true);
+      expect(body.models).toEqual(["m-0", "m-1"]);
+      expect(body.resolved_base_url).toBe("https://t.example.com/v1");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("POST providers/models：按名测已存供应商（密钥服务端侧取），未知 404", async () => {
+    await h.app.inject({
+      method: "POST",
+      url: "/api/v1/system/providers",
+      payload: { name: "p-list", base_url: "https://s.example.com/v1", api_key: "sk-saved", models: ["m-x"] },
+    });
+    const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) =>
+      new Response(JSON.stringify({ data: [{ id: "m-x" }] }), { status: 200 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      const r = await h.app.inject({
+        method: "POST",
+        url: "/api/v1/system/providers/models",
+        payload: { name: "p-list" },
+      });
+      expect(r.statusCode).toBe(200);
+      expect(r.json().models).toEqual(["m-x"]);
+      const headers = fetchMock.mock.calls[0]![1]!.headers as Record<string, string>;
+      expect(headers.authorization).toBe("Bearer sk-saved");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+
+    const nf = await h.app.inject({
+      method: "POST",
+      url: "/api/v1/system/providers/models",
+      payload: { name: "ghost" },
+    });
+    expect(nf.statusCode).toBe(404);
   });
 
   it("GET knowledge：返回数组且支持类别过滤", async () => {

@@ -114,7 +114,8 @@
 | POST | `/system/providers` | 登记/更新（v1.6）：`{ name, base_url, api_key?, models }`；`api_key` 省略时保留旧密钥；链接非 http(s) 或无模型 400 |
 | DELETE | `/system/providers/{name}` | 删除档案（v1.6）：默认模型被引用时一并清除；未知名 404 |
 | PUT | `/system/providers/default` | 设默认模型（v1.6）：`{ provider, model }`，model 空取该供应商首模型；成员校验失败 400 |
-| POST | `/system/providers/test` | 连接质量检查（v1.6）：草稿 `{ base_url, api_key, model? }` 或已存 `{ name, model? }`（密钥服务端自取）；两段式 `/models` 探活鉴权 → 指定模型时 `chat/completions` 最小生成；返回 `{ ok, stage, models_latency_ms, chat_latency_ms, models_seen, error }` |
+| POST | `/system/providers/test` | 连接质量检查（v1.6）：草稿 `{ base_url, api_key, model? }` 或已存 `{ name, model? }`（密钥服务端自取）；两段式 `/models` 探活鉴权 → 指定模型时 `chat/completions` 最小生成；返回 `{ ok, stage, models_latency_ms, chat_latency_ms, models_seen, error }`；v1.7 起候选端点探测（裸域名自动试 `/v1/models`/`/models`），chat 段用命中后 base |
+| POST | `/system/providers/models` | 模型列表发现（v1.7，仿 CC Switch）：`{ name?, base_url?, api_key? }`（同 test 取密钥规则）；候选端点探测 + 多格式解析（OpenAI/智谱目录），返回 `{ ok, models, resolved_base_url, latency_ms, error }`，`resolved_base_url` 供表单回填修正 |
 
 ### 联真实现口径（v1.4 登记，M5-T5.1）
 
@@ -165,3 +166,5 @@ interface DshClient {
 | v1.4 | 2026-09-23 | M5-T5.1 联真实现口径：`/api/v1` 前缀、错误信封 `{ error }`、行形态（布尔/对象反序列化）、阶段面板响应 `{ rows, gates, advice }`、会话 SSE 复用事件中枢、静态托管与上传（multipart 50MB）、设置读写走项目 `.dsh/settings.yaml`、DSH 缺失降级为流内 error；变更表 #14 |
 | v1.5 | 2026-09-23 | M5-T5.5 对话抽屉接 converse：新增 `GET /conversations/{id}/messages/events` 回复流重连端点（`Last-Event-ID`/`?lastEventId=` 增量重放，进程内事件中枢缓冲，与 `stages/{n}/events` 同构）；中枢事件补发单调 id 保证重放语义；变更表 #15 |
 | v1.6 | 2026-09-23 | 模型配置应用自持（试用反馈 #47）：新增 `/system/providers` 五端点（列表/登记更新/删除/默认模型/测试连接，两段式链接质量检查），`/system/status` 改为 `{ db, model_configured, provider_count, default_model }` 配置快照，移除 `GET/PUT /system/settings*`；配置落 `data/providers.local.json`（0600，`SCENE_PROVIDERS_FILE` 可覆盖），密钥不回显、环境变量与 `.dsh/settings.yaml` 通道退役；变更表 #16 |
+| v1.7 | 2026-09-23 | 模型列表发现（仿 CC Switch）：新增 `POST /system/providers/models`（候选端点探测 + 多格式解析，返回 `resolved_base_url` 供表单回填）；`providers/test` 与发现同走候选探测，chat 段用命中后 base；`providers` 登记自动补 `/v1`（含裸域名）；变更表 #17 |
+| v1.8 | 2026-09-23 | 上传入库增强与"对话即导入"：ingest 上传 `product_line_id` 支持 URL query 兜底（multipart 字段顺序无关，修复 `file()` 只收 file 部件之前字段的 400）；ingest done 事件新增 `table_counts`（每表入库行数）；`POST /conversations/{id}/messages` 消息流新增对话即导入——消息内本地文件路径自动解析入库，导入报告以 text 事件随流回显并附给模型；变更表 #18 |

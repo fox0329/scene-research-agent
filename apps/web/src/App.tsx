@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import { Sidebar } from "./components/Sidebar";
 import { ConversationDrawer } from "./components/ConversationDrawer";
 import { DecisionPanel } from "./components/DecisionPanel";
+import { RowDetailPanel, type RowDetail } from "./components/RowDetailPanel";
 import type { DecisionSnapshot } from "./components/decision-snapshot";
 import { ToastProvider, useToast } from "./components/Toast";
 import { LibraryView } from "./views/LibraryView";
@@ -75,6 +76,8 @@ const AppShell: React.FC = () => {
   const [activeProjectId, setActiveProjectId] = useState(projects[0].id);
   /** 右栏决策支撑快照（联真模式，来自当前阶段真实数据；T5.6） */
   const [decisionSnapshot, setDecisionSnapshot] = useState<DecisionSnapshot | null>(null);
+  /** 资料库行详情（右栏备注区，变更表 #19） */
+  const [rowDetail, setRowDetail] = useState<RowDetail | null>(null);
   /** 当前选中会话（对话抽屉随之切换；null=未选/项目未建会话） */
   const [activeConvId, setActiveConvId] = useState<string | null>(null);
   const layout = useColumnLayout();
@@ -284,6 +287,7 @@ const AppShell: React.FC = () => {
             live={live}
             lines={lines}
             onChanged={() => void refreshProjects().catch(() => {})}
+            onRowSelect={live ? setRowDetail : undefined}
           />
         )}
         {view === "knowledge" && (live ? <RealKnowledgeView /> : <KnowledgeView />)}
@@ -298,14 +302,16 @@ const AppShell: React.FC = () => {
         />
       </main>
 
-      {/* 右栏：决策支撑（项目工作台实装，其余视图预留） */}
+      {/* 右栏：决策支撑（项目工作台）/ 行详情备注（资料库选中行，变更表 #19）/ 预留 */}
       <aside className="det">
         {view === "project" ? (
           <DecisionPanel snapshot={live ? decisionSnapshot : null} live={live} />
+        ) : view === "library" && live && rowDetail ? (
+          <RowDetailPanel detail={rowDetail} onClose={() => setRowDetail(null)} />
         ) : (
           <>
             <div className="det-h">
-              <h3>决策支撑</h3>
+              <h3>{view === "library" ? "行详情" : "决策支撑"}</h3>
             </div>
             <div className="det-body">
               <div className="empty-state">
@@ -314,9 +320,13 @@ const AppShell: React.FC = () => {
                   <line x1="12" y1="16" x2="12" y2="12" />
                   <line x1="12" y1="8" x2="12.01" y2="8" />
                 </svg>
-                <div className="empty-state-title">项目工作台专属</div>
+                <div className="empty-state-title">
+                  {view === "library" ? "未选中行" : "项目工作台专属"}
+                </div>
                 <div className="empty-state-desc">
-                  决策支撑面板在项目工作台视图中显示
+                  {view === "library"
+                    ? "点击表格行，这里显示该行的补充信息与来源溯源详情"
+                    : "决策支撑面板在项目工作台视图中显示"}
                 </div>
               </div>
             </div>

@@ -306,7 +306,7 @@ export const ConversationDrawer: React.FC<ConversationDrawerProps> = ({
         <textarea
           ref={inputRef}
           className="conv-ta"
-          placeholder="输入问题或指令..."
+          placeholder="输入问题或指令；直接写文件路径（如 /Users/you/规格书.pdf）即可导入材料…"
           rows={2}
           value={draft}
           onFocus={open}

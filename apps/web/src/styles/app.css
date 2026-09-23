@@ -250,6 +250,8 @@ body {
   flex: 1;
   overflow-y: auto;
   padding: var(--s4) var(--s5);
+  /* 对话输入栏浮在内容区之上：底部留白让最末内容可滚出输入栏上沿 */
+  padding-bottom: 120px;
 }
 
 /* ── 面板 ── */
@@ -302,6 +304,17 @@ table {
   font-size: var(--txs);
 }
 
+/* 测量阶段：整表单行自然宽渲染（量完即切百分比布局，绘制前完成无闪烁） */
+table.measure {
+  table-layout: auto;
+  width: max-content;
+}
+
+table.measure th,
+table.measure td {
+  white-space: nowrap;
+}
+
 thead {
   background: var(--cm);
   position: sticky;
@@ -317,12 +330,105 @@ th {
   border-bottom: 1px solid var(--cb);
   white-space: nowrap;
   font-size: var(--t2x);
+  position: relative;
+  border-right: 1px solid var(--cb);
 }
 
 td {
   padding: var(--s2) var(--s3);
   border-bottom: 1px solid var(--cb);
+  border-right: 1px solid var(--cb);
   vertical-align: top;
+}
+
+/* 列分割线：末列不画 */
+th:last-child,
+td:last-child {
+  border-right: none;
+}
+
+/* 列宽拖拽柄：热区骑在分割线上，不画第二根线 */
+.th-resize {
+  position: absolute;
+  top: 0;
+  right: -3px;
+  width: 7px;
+  height: 100%;
+  cursor: col-resize;
+  user-select: none;
+  touch-action: none;
+}
+
+.th-resize:hover {
+  background: rgba(var(--cp-rgb), 0.25);
+}
+
+.tw.is-resizing {
+  cursor: col-resize;
+  user-select: none;
+}
+
+/* 选中行（右栏详情联动） */
+tr.sel td {
+  background: rgba(var(--cp-rgb), 0.1);
+}
+
+/* 溯源徽标列（原来源四列合一，详情在右栏） */
+.trace-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s1);
+  max-width: 100%;
+  font-size: var(--t2x);
+}
+
+.trace-tag {
+  flex-shrink: 0;
+  padding: 0 var(--s1);
+  border-radius: var(--r2);
+  background: var(--cm);
+  color: var(--ct2);
+  font-family: var(--ff-mono, monospace);
+}
+
+/* 行详情面板（右栏备注区） */
+.row-detail .rd-group {
+  margin-bottom: var(--s4);
+}
+
+.row-detail h4 {
+  font-size: var(--t2x);
+  font-weight: var(--fm2);
+  color: var(--ct2);
+  margin-bottom: var(--s2);
+}
+
+.rd-field {
+  display: flex;
+  gap: var(--s2);
+  padding: var(--s1) 0;
+  border-bottom: 1px solid rgba(var(--cb-rgb), 0.5);
+  font-size: var(--txs);
+}
+
+.rd-label {
+  flex-shrink: 0;
+  width: 96px;
+  color: var(--ct3);
+}
+
+.rd-value {
+  flex: 1;
+  color: var(--ct);
+  word-break: break-all;
+  white-space: pre-line;
+  border-radius: var(--r2);
+}
+
+.rd-value.ed:hover {
+  background: var(--cp-s);
+  outline: var(--focus-ring-width) solid var(--cp);
+  outline-offset: var(--focus-ring-offset);
 }
 
 tr:hover {
@@ -889,7 +995,7 @@ td.ed {
   display: flex;
   flex-direction: column;
   gap: var(--s3);
-  background: rgba(var(--cpg-rgb), 0.6);
+  background: rgba(var(--cp-s-rgb), 0.6);
   border: 1px solid rgba(var(--cb-rgb), 0.5);
   border-bottom: none;
   border-radius: var(--r12) var(--r12) 0 0;
@@ -980,6 +1086,30 @@ td.ed {
 
 .conv-ta::placeholder {
   color: var(--ct3);
+}
+
+.conv-attach {
+  height: var(--size-32);
+  padding: 0 var(--s3);
+  font-size: var(--txs);
+  font-weight: var(--fm2);
+  font-family: inherit;
+  color: var(--ct);
+  background: var(--csr);
+  border: 1px solid var(--cb);
+  border-radius: var(--r4);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all var(--d) var(--e);
+}
+
+.conv-attach:hover:not(:disabled) {
+  background: var(--cm);
+}
+
+.conv-attach:disabled {
+  opacity: 0.6;
+  cursor: default;
 }
 
 .conv-send {
@@ -1512,6 +1642,47 @@ td.ed {
 
 .model-list-add .settings-input {
   flex: 1;
+}
+
+/* 一键发现模型列表：按钮行 + 点选网格 */
+.model-discover-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  flex-wrap: wrap;
+}
+
+.model-pick-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s1);
+  max-height: 180px;
+  overflow-y: auto;
+  padding: var(--s2);
+  background: var(--c-bg-2, rgba(0, 0, 0, 0.04));
+  border-radius: var(--r4);
+}
+
+.model-pick-tag {
+  padding: var(--s1) var(--s2);
+  font-size: var(--txs);
+  font-family: var(--ff-mono, monospace);
+  color: var(--ct);
+  background: var(--csr);
+  border: 1px solid var(--cb);
+  border-radius: var(--r4);
+  cursor: pointer;
+  transition: all var(--d) var(--e);
+}
+
+.model-pick-tag:hover {
+  background: var(--cm);
+}
+
+.model-pick-tag.on {
+  background: var(--cp);
+  color: var(--cf);
+  border-color: var(--cp);
 }
 
 /* 小按钮 */

@@ -132,10 +132,15 @@ export interface UpsertInput {
 /** 新增/更新供应商（按 name 匹配）；返回公共摘要 */
 export function upsertProvider(input: UpsertInput): ProviderPublic {
   const name = input.name.trim();
-  const baseUrl = input.base_url.trim();
+  let baseUrl = input.base_url.trim();
   if (!name) throw new Error("供应商名称不能为空");
   if (!/^https?:\/\//i.test(baseUrl)) {
     throw new Error(`链接需以 http(s):// 开头：${baseUrl || "（空）"}`);
+  }
+  // 自动补全 /v1 后缀（OpenAI 兼容 API 标准路径）：裸域名与无版本段路径都补，
+  // 已带版本段（/v1、/v4…）保持原样；特殊网关可用「获取模型列表」探测后回填修正
+  if (!/\/v\d+\/?$/.test(baseUrl)) {
+    baseUrl = baseUrl.replace(/\/+$/, "") + "/v1";
   }
   const models = input.models
     .map((m) => ({ id: m.id.trim(), name: m.name?.trim() || undefined }))

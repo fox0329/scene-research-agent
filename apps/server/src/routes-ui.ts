@@ -8,9 +8,9 @@
  */
 
 import type { FastifyInstance } from "fastify";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
-import { tmpdir } from "node:os";
+import { tmpdir, homedir } from "node:os";
 import type {
   Conversation,
   DshClient,
@@ -34,10 +34,11 @@ import {
   removeProvider,
   setDefaultModel,
   checkProviderConnection,
+  fetchProviderModels,
 } from "@scene/infra";
 import type { ProviderModelEntry } from "@scene/infra";
 import type { SseHub } from "./sse-hub.js";
-import { createConverseCommand } from "./converse.js";
+import { createConverseCommand, type ChatImportOutcome } from "./converse.js";
 import { createIngestCommand } from "./ingest.js";
 import { parseStage, streamEvents } from "./sse-stream.js";
 import {
@@ -45,6 +46,7 @@ import {
   assessQuality,
   checkCompleteness,
   getAffectedStages,
+  expandHomePath,
 } from "@scene/domain";
 
 // ─── 依赖 ──────────────────────────────────────────────────
@@ -117,8 +119,45 @@ function lineFilter(
 
 export function registerUiRoutes(app: FastifyInstance, deps: UiRoutesDeps): void {
   const { db, dshClient, hub } = deps;
-  const converseCmd = createConverseCommand({ db, dshClient });
   const ingestCmd = createIngestCommand({ db, dshClient, docParser: parseDocument });
+  const converseCmd = createConverseCommand({
+    db,
+    dshClient,
+    // 对话即导入：消息里的本地文件路径 → ingest 管线入库（默认第一条产品线）
+    importFiles: async (paths) => {
+      const lines = db.productLineRepo.list({ orderBy: "created_at ASC" });
+      const line = lines[0];
+      if (!line) {
+        return paths.map((p) => ({
+          path: p,
+          ok: false,
+          error: "尚未创建产品线：请先到「产品资料库」新建一条",
+        }));
+      }
+      const home = homedir();
+      const out: ChatImportOutcome[] = [];
+      for (const p of paths) {
+        const abs = expandHomePath(p, home);
+        if (!existsSync(abs)) {
+          out.push({ path: p, ok: false, error: "文件不存在，请检查路径" });
+          continue;
+        }
+        try {
+          const r = await ingestCmd.execute({ filePath: abs, productLineId: line.id });
+          out.push({
+            path: p,
+            ok: true,
+            rowsInserted: r.rowsInserted,
+            tableCounts: r.tableCounts,
+            lineName: line.name,
+          });
+        } catch (err: unknown) {
+          out.push({ path: p, ok: false, error: err instanceof Error ? err.message : String(err) });
+        }
+      }
+      return out;
+    },
+  });
   /** jobId → 最新 runId（进程存续期内 SSE 续传用） */
   const ingestRuns = new Map<string, string>();
   let seq = 0;
@@ -138,8 +177,15 @@ export function registerUiRoutes(app: FastifyInstance, deps: UiRoutesDeps): void
     }
     if (!file) return badRequest(reply, "缺少上传文件（multipart 字段 file）");
     const fields = file.fields as Record<string, { value?: unknown } | undefined>;
+    // 双读兜底：@fastify/multipart 的 file() 只带出排在 file 部件之前的字段，
+    // 排在 file 之后的字段会丢（浏览器 FormData 按 append 顺序上线）；
+    // URL query 恒可读，任何客户端字段顺序都能过。
+    const queryId = (request.query as { product_line_id?: string } | undefined)
+      ?.product_line_id;
     const productLineId = String(
-      (fields["product_line_id"] as { value?: string } | undefined)?.value ?? "",
+      (fields["product_line_id"] as { value?: string } | undefined)?.value
+        ?? queryId
+        ?? "",
     );
     if (!productLineId) return badRequest(reply, "缺少 product_line_id 字段");
     if (!db.productLineRepo.getById(productLineId)) {
@@ -235,6 +281,7 @@ async function* runIngestJob(
     yield {
       type: "done",
       rows_inserted: result.rowsInserted,
+      table_counts: result.tableCounts,
       quality: result.qualityAssessment,
       completeness: result.completenessReport,
     };
@@ -716,6 +763,29 @@ function registerSystemRoutes(app: FastifyInstance, deps: UiRoutesDeps) {
         provider: String(body.provider ?? ""),
         model: String(body.model ?? ""),
       });
+    } catch (err: unknown) {
+      return badRequest(reply, err instanceof Error ? err.message : String(err));
+    }
+  });
+
+  /**
+   * 拉取供应商模型列表（仿 CC Switch）：填好链接 + Key 即可发现服务端模型，
+   * 免手敲 ID。候选端点自动探测（裸域名→/v1/models、已带版本段→/models），
+   * resolved_base_url 供表单回填修正。
+   * 传 name = 用已存供应商（密钥留在服务端）；或传草稿 base_url(+api_key)。
+   */
+  app.post("/api/v1/system/providers/models", async (request, reply) => {
+    const body = (request.body ?? {}) as Record<string, unknown>;
+    const name = String(body.name ?? "").trim();
+    const saved = name ? loadRegistry().providers.find((p) => p.name === name) : undefined;
+    if (name && !saved) {
+      return reply.code(404).send({ error: `未找到供应商 "${name}"` });
+    }
+    const baseUrl = String(body.base_url ?? saved?.base_url ?? "").trim();
+    const apiKey = String(body.api_key ?? "").trim() || saved?.api_key || "";
+    if (!baseUrl) return badRequest(reply, "需要 name 或 base_url");
+    try {
+      return await fetchProviderModels({ base_url: baseUrl, api_key: apiKey });
     } catch (err: unknown) {
       return badRequest(reply, err instanceof Error ? err.message : String(err));
     }

@@ -583,3 +583,83 @@ describe("createConverseCommand", () => {
     });
   });
 });
+// ─── 对话即导入（消息内文件路径 → 解析入库 → 结果回显） ────
+
+describe("对话即导入", () => {
+  it("消息含文件路径：逐个导入并把结果回显 + 附给模型 + 持久化", async () => {
+    const setup = createDeps();
+    const importFiles = vi.fn(async (paths: string[]) =>
+      paths.map((p) => ({
+        path: p,
+        ok: true,
+        rowsInserted: 5,
+        tableCounts: { M1: 2, M2: 3 },
+        lineName: "产品线A",
+      })),
+    );
+    const cmd = createConverseCommand({ ...setup.deps, importFiles });
+    const conv = setup.db.conversationRepo.insert({
+      scenario_id: "s1",
+      title: "导入会话",
+      status: "活跃",
+      dsh_session_id: "dsh-1",
+    });
+
+    const events: FollowEvent[] = [];
+    for await (const e of cmd.sendMessage(conv.id, "请导入 /tmp/a.pdf 和 ~/b.xlsx")) {
+      events.push(e);
+    }
+
+    // 识别到 2 个路径并逐一导入
+    expect(importFiles).toHaveBeenCalledTimes(1);
+    expect(importFiles.mock.calls[0]![0]).toEqual(["/tmp/a.pdf", "~/b.xlsx"]);
+    // 流式回显：进度 + 导入报告（含每表分布）
+    const text = events
+      .filter((e) => e.type === "text")
+      .map((e) => (e as { type: "text"; text: string }).text)
+      .join("");
+    expect(text).toContain("识别到 2 个文件");
+    expect(text).toContain("【材料导入结果】");
+    expect(text).toContain("✅ /tmp/a.pdf → 产品线「产品线A」：入库 5 行（M1×2、M2×3）");
+    // 模型 prompt 前缀含导入报告（模型感知新资料）
+    const client = setup.deps.dshClient as unknown as { prompt: ReturnType<typeof vi.fn> };
+    const promptArg = client.prompt.mock.calls[0]![1] as { user: string };
+    expect(promptArg.user).toContain("【材料导入结果】");
+    // 持久化系统消息含报告
+    const persisted = setup.db.messageRepo
+      .listByConversation(conv.id)
+      .map((m) => m.content)
+      .join("\n");
+    expect(persisted).toContain("【材料导入结果】");
+  });
+
+  it("无路径不触发导入；导入失败在报告中带原因", async () => {
+    const setup = createDeps();
+    const importFiles = vi.fn(async (paths: string[]) =>
+      paths.map((p) => ({ path: p, ok: false, error: "文件不存在，请检查路径" })),
+    );
+    const cmd = createConverseCommand({ ...setup.deps, importFiles });
+    const conv = setup.db.conversationRepo.insert({
+      scenario_id: "s1",
+      title: "导入会话2",
+      status: "活跃",
+      dsh_session_id: "dsh-2",
+    });
+
+    const plain: FollowEvent[] = [];
+    for await (const e of cmd.sendMessage(conv.id, "今天天气不错")) {
+      plain.push(e);
+    }
+    expect(importFiles).not.toHaveBeenCalled();
+
+    const withBadPath: FollowEvent[] = [];
+    for await (const e of cmd.sendMessage(conv.id, "导入 /nope/ghost.pdf")) {
+      withBadPath.push(e);
+    }
+    const text = withBadPath
+      .filter((e) => e.type === "text")
+      .map((e) => (e as { type: "text"; text: string }).text)
+      .join("");
+    expect(text).toContain("❌ /nope/ghost.pdf：文件不存在，请检查路径");
+  });
+});
