@@ -22,3 +22,7 @@ playwright-report/
 
 # 交付物导出目录
 exports/
+
+# tsc 误编译落盘（源码目录只留 .ts；根 vitest.config 以 .ts 为准）
+/packages/*/src/**/*.js
+/vitest.config.js

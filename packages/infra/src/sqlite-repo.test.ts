@@ -6,6 +6,9 @@
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { createDb, sourceSearch, type DbInstance } from "./sqlite-repo.js";
+import { mkdtempSync, rmSync, existsSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 describe("createDb", () => {
   let instance: DbInstance;
@@ -61,6 +64,20 @@ describe("createDb", () => {
 
     expect(vtables).toHaveLength(1);
     expect(vtables[0]!.name).toBe("source_fts");
+  });
+
+  it("冷启动自动建库文件父目录（故障 #9：全新检出无 data/ 目录）", () => {
+    const root = mkdtempSync(join(tmpdir(), "scene-db-"));
+    const target = join(root, "data", "deeper", "app.db");
+    const fileInstance = createDb(target);
+    try {
+      expect(existsSync(target)).toBe(true);
+      const row = fileInstance.db.prepare("SELECT count(*) AS c FROM product_line").get() as { c: number };
+      expect(row.c).toBe(0);
+    } finally {
+      fileInstance.db.close();
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });
 

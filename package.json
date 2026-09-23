@@ -23,6 +23,7 @@
     "build": "pnpm -r --if-present run build",
     "lint": "echo 'lint placeholder — TODO: 集成 eslint'",
     "test": "vitest run",
+    "start": "node apps/server/dist/index.js",
     "verify:m0": "bash scripts/verify-m0.sh",
     "verify:m1": "bash scripts/verify-m1.sh",
     "verify:m2": "bash scripts/verify-m2.sh",

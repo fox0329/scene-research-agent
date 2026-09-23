@@ -163,7 +163,8 @@ if [ "$E2E_OK" = "1" ]; then
   EN=$(printf '%s' "$E2E_OUT" | grep -Eo "[0-9]+ passed" | tail -1 || echo "?")
   echo "✅ 演示模式 E2E 通过（${EN}）"
 else
-  echo "❌ 演示模式 E2E 失败"
+  echo "❌ 演示模式 E2E 失败（末 15 行）："
+  printf '%s\n' "$E2E_OUT" | tail -15
   FAIL=1
 fi
 
@@ -177,6 +178,7 @@ check_contains() {
     FAIL=1
   fi
 }
+check_contains "package.json" '"start": "node apps/server/dist/index.js"' "冷启动一条命令 npm start 在册（故障 #9）"
 check_contains "03-数据契约与API.md" "v1.4" "契约版本记录 v1.4"
 check_contains "03-数据契约与API.md" "messages/events" "会话重连端点契约登记（v1.5）"
 check_contains "03-数据契约与API.md" "联真实现口径" "联真实现口径表"
@@ -188,6 +190,7 @@ check_contains "docs/项目变更表.md" "| 14 |" "变更表 #14 联真依赖登
 check_contains "docs/项目变更表.md" "| 15 |" "变更表 #15 重连端点登记"
 check_contains "docs/故障及解决清单.md" "request.raw" "故障 #6 Node22 SSE 断连记录"
 check_contains "docs/故障及解决清单.md" "selfManagedConvRef" "故障 #8 抽屉历史覆盖竞态记录"
+check_contains "docs/故障及解决清单.md" "| 9 |" "故障 #9 npm start 冷启动记录"
 
 echo ""
 if [ "$FAIL" -eq 0 ]; then

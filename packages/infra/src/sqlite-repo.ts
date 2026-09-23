@@ -6,7 +6,7 @@
  */
 
 import Database from "better-sqlite3";
-import { readFileSync } from "node:fs";
+import { readFileSync, mkdirSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
@@ -516,6 +516,8 @@ export interface DbInstance {
  */
 export function createDb(dbPath?: string): DbInstance {
   const resolved = dbPath ?? process.env.DB_PATH ?? "data/scene-master.db";
+  // 一条命令冷启动（npm start）时默认目录可能不存在：落库前自动建父目录；:memory: 跳过
+  if (resolved !== ":memory:") mkdirSync(dirname(resolve(resolved)), { recursive: true });
   const db = new Database(resolved);
 
   // 外键约束
