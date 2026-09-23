@@ -188,6 +188,8 @@ function createMockDb(): DbInstance {
     messageRepo: {} as DbInstance["messageRepo"],
     stageDataRepo: {} as DbInstance["stageDataRepo"],
     qualityGateRepo: {} as DbInstance["qualityGateRepo"],
+    scenarioMaterialRepo: createMockRepo(),
+    knowledgeRepo: { list: () => [] } as unknown as DbInstance["knowledgeRepo"],
   };
 }
 

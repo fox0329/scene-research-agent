@@ -79,6 +79,8 @@ function createMockDb() {
     }),
     markStale: vi.fn(() => 0),
     deleteByScenarioStage: vi.fn(() => 0),
+    getById: vi.fn(() => undefined),
+    update: vi.fn(() => undefined),
   };
 
   const qualityGateRepo: QualityGateRepo = {

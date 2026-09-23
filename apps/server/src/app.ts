@@ -1,16 +1,18 @@
 /**
  * @scene/server — Fastify 应用工厂（路由注册）
  *
- * T4.1 断点续做落地的路由面：
- * - GET  /api/v1/projects/:id/resume          恢复计划（对账）
- * - POST /api/v1/projects/:id/stages/:stage/advance  启动阶段分析（SSE）
- * - GET  /api/v1/projects/:id/stages/:stage/events   断线重连（Last-Event-ID 重放）
+ * 路由面：
+ * - T4.1/T4.2：resume 对账 / advance SSE / events 断线续传 / rollback 清理
+ * - M5-T5.2：UI 联真路由（registerUiRoutes，契约 v1.4 口径）+ web 静态托管（同源单端口）
  *
- * 依赖全部注入（db / dshClient / hub），测试可换 mock。
+ * 依赖全部注入（db / dshClient / hub / webDist），测试可换 mock。
  */
 
 import Fastify from "fastify";
 import type { FastifyInstance } from "fastify";
+import fastifyStatic from "@fastify/static";
+import fastifyMultipart from "@fastify/multipart";
+import { existsSync } from "node:fs";
 import type { DshClient, StageId } from "@scene/contract";
 import type { DbInstance } from "@scene/infra";
 import { planResume } from "@scene/domain";
@@ -18,6 +20,8 @@ import { createAdvanceStageCommand } from "./advance-stage.js";
 import { createRollbackStageCommand } from "./rollback-stage.js";
 import { createSseHub } from "./sse-hub.js";
 import type { SseHub } from "./sse-hub.js";
+import { parseStage, streamEvents, LAST_STAGE_ID } from "./sse-stream.js";
+import { registerUiRoutes } from "./routes-ui.js";
 
 // ─── 依赖与常量 ────────────────────────────────────────────
 
@@ -25,10 +29,9 @@ export interface AppDeps {
   db: DbInstance;
   dshClient: DshClient;
   hub?: SseHub;
+  /** web 构建产物目录；存在则同源托管并启用 SPA 回退（M5 单端口） */
+  webDist?: string;
 }
-
-/** runId 中每个"项目+阶段"只保留最新一次运行 */
-const LAST_STAGE_ID: StageId = 8;
 
 // ─── 应用工厂 ──────────────────────────────────────────────
 
@@ -148,61 +151,34 @@ export function createApp(deps: AppDeps): FastifyInstance {
     },
   );
 
+  // ── M5 联真路由：项目/会话/阶段/资料库/知识库/系统 ──────
+  app.register(fastifyMultipart, {
+    limits: { fileSize: 50 * 1024 * 1024 }, // 白皮书上限 50MB（契约 v1.4 口径）
+  });
+  registerUiRoutes(app, { db, dshClient, hub });
+
+  // ── web 构建产物同源托管（单端口起完整应用，SPA 回退） ──
+  if (deps.webDist && existsSync(deps.webDist)) {
+    app.register(fastifyStatic, {
+      root: deps.webDist,
+      index: ["index.html"],
+      wildcard: false,
+    });
+    app.setNotFoundHandler((request, reply) => {
+      if (request.url.startsWith("/api/")) {
+        return reply.code(404).send({ error: "端点不存在" });
+      }
+      return reply.sendFile("index.html");
+    });
+  } else {
+    app.setNotFoundHandler((request, reply) => {
+      if (request.method === "GET" && !request.url.startsWith("/api/")) {
+        return reply.code(404).send({ error: "未托管 web 产物（设置 WEB_DIST 启用）" });
+      }
+      return reply.code(404).send({ error: "端点不存在" });
+    });
+  }
+
   return app;
 }
 
-// ─── 子函数 ────────────────────────────────────────────────
-
-function parseStage(raw: string): StageId | undefined {
-  const n = Number(raw);
-  if (!Number.isInteger(n) || n < 0 || n > LAST_STAGE_ID) return undefined;
-  return n as StageId;
-}
-
-/**
- * 把 hub 订阅流写成 SSE。
- * 事件带递增 id（advance-stage 生成），客户端断开后
- * 可用 Last-Event-ID 通过 events 路由增量续传。
- */
-async function streamEvents(
-  hub: SseHub,
-  runId: string,
-  request: { raw: import("node:http").IncomingMessage },
-  reply: {
-    raw: import("node:http").ServerResponse;
-    hijack: () => void;
-  },
-  lastEventId?: string | null,
-): Promise<void> {
-  reply.hijack();
-
-  const iterable = hub.subscribe(runId, lastEventId ?? null);
-  if (!iterable) {
-    reply.raw.writeHead(404, { "Content-Type": "application/json" });
-    reply.raw.end(JSON.stringify({ error: `run ${runId} 不存在` }));
-    return;
-  }
-
-  reply.raw.writeHead(200, {
-    "Content-Type": "text/event-stream",
-    "Cache-Control": "no-cache",
-    Connection: "keep-alive",
-    "X-Accel-Buffering": "no",
-  });
-  reply.raw.flushHeaders();
-
-  let closed = false;
-  request.raw.on("close", () => {
-    closed = true;
-  });
-
-  try {
-    for await (const event of iterable) {
-      if (closed) break;
-      const idLine = event.id ? `id: ${event.id}\n` : "";
-      reply.raw.write(`event: follow\n${idLine}data: ${JSON.stringify(event)}\n\n`);
-    }
-  } finally {
-    if (!closed) reply.raw.end();
-  }
-}

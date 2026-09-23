@@ -111,6 +111,23 @@
 | GET | `/system/status` | DSH 探活（绿/黄 + 版本/端口） |
 | GET/PUT | `/system/settings` | 模型选择（读 .dsh/settings.yaml 或经 DSH settings） |
 
+### 联真实现口径（v1.4 登记，M5-T5.1）
+
+§三 端点自 M0 冻结，本节登记 M5 接真时的实现收口口径，不改变端点语义：
+
+| 项 | 口径 |
+|---|---|
+| 前缀 | 全部 REST 端点挂 `/api/v1` 之下（§三 表中路径为省略写法）；SSE 同 |
+| 错误形态 | 统一 `{ "error": "中文说明" }`；400 参数/状态非法、404 资源不存在、500 兜底 |
+| 项目语义 | "项目"即 scenario 表行；列表响应 `Scenario[]`（含 current_stage/status），新建入参 `{ name, product_line_id }` |
+| 行形态 | 各 GET 返回 §二 对应 contract 行类型原样 JSON（stage_data 的 `row` 为对象非字符串；`is_stale` 为布尔） |
+| 阶段面板 | `GET /projects/{id}/stages/{n}` 返回 `{ rows: StageData[], gates: QualityGate[], advice }`，advice 由领域层 gate 计算，LLM 不参与判定 |
+| 会话流式 | 发消息走 `POST /conversations/{id}/messages`，SSE 复用 §四 格式与事件中枢（同 advance）；断线补拉 `GET .../messages?after_id=` |
+| 静态托管 | server 同源托管 web 构建产物（`@fastify/static`，可用 `WEB_DIST` 覆盖路径）；单端口 4081 起完整应用 |
+| 上传 | `POST /library/ingest` 用 multipart（`@fastify/multipart`，单文件上限 50MB）；解析进度经 SSE `/library/ingest/{id}/events` |
+| 设置读写 | `GET/PUT /system/settings` 直读直写项目 `.dsh/settings.yaml`（经 infra dsh-config，不触碰用户本地 `~/.dsh/`） |
+| 降级 | DSH 未启动/无凭据时：分析与会话端点返回流内 `error` 事件（不 500）；纯 CRUD 端点不受影响，UI 可离线浏览真实已入库数据 |
+
 ## 四、SSE 事件格式（统一）
 
 ```
@@ -140,3 +157,4 @@ interface DshClient {
 | v0.1 | 2026-09-22 | 草案：15 表 schema、API 按 6 command 分组、SSE 事件格式、dsh-client 接口；阶段 3-8 的 stage_data row schema 留待 v1.1（M3 前） |
 | v1.2 | 2026-09-23 | T4.1 断点续做：新增 `GET /projects/{id}/resume`、`GET /projects/{id}/stages/{n}/events`（Last-Event-ID 重放）两个端点；SSE 报文按 §四 输出 `event: follow` 行；已登记 `docs/项目变更表.md` |
 | v1.3 | 2026-09-23 | T4.2 回退清理：新增 `POST /projects/{id}/rollback`（下游标记待重算、数据保留）；advance 重算覆盖语义——同阶段重跑先清本阶段 stage_data/quality_gate 再写入，早期阶段重算不回拉 current_stage；已登记 `docs/项目变更表.md` |
+| v1.4 | 2026-09-23 | M5-T5.1 联真实现口径：`/api/v1` 前缀、错误信封 `{ error }`、行形态（布尔/对象反序列化）、阶段面板响应 `{ rows, gates, advice }`、会话 SSE 复用事件中枢、静态托管与上传（multipart 50MB）、设置读写走项目 `.dsh/settings.yaml`、DSH 缺失降级为流内 error；变更表 #14 |

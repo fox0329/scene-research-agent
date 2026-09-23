@@ -36,8 +36,11 @@ export {
   getDshToken,
   parseSettings,
   clearConfigCache,
+  listProvidersSummary,
+  getSettingsPath,
+  writeDefaultModel,
 } from "./dsh-config.js";
-export type { ProviderConfig, ModelSpec, DefaultModelConfig } from "./dsh-config.js";
+export type { ProviderConfig, ModelSpec, DefaultModelConfig, ProviderSummary } from "./dsh-config.js";
 
 /** 交付物导出（Markdown） */
 export { exportDeliverables, exportFileName } from "./md-export.js";

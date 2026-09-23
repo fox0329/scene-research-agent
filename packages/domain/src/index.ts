@@ -112,6 +112,7 @@ export {
   runGate,
   sampleSources,
   decideAdvice,
+  adviceFromGateRecords,
   GATE_CHECK_TITLES,
   MIN_SAMPLE_SIZE,
 } from "./gate.js";

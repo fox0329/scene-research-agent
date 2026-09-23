@@ -23,8 +23,10 @@ import type {
   Conversation,
   Message,
   Scenario,
+  ScenarioMaterial,
   StageData,
   QualityGate,
+  Knowledge,
   StageId,
 } from "@scene/contract";
 
@@ -205,10 +207,11 @@ function createMessageRepo(db: Database.Database): MessageRepo {
   };
 
   const listByConversation = (conversationId: string): Message[] =>
+    // rowid 随插入递增：同毫秒消息保持因果序（uuid id 无排序意义）
     list({
       where: "conversation_id = ?",
       params: [conversationId],
-      orderBy: "created_at ASC, id ASC",
+      orderBy: "created_at ASC, rowid ASC",
     });
 
   const insert = (row: CreateMessageInput): Message => {
@@ -324,6 +327,9 @@ export interface StageDataRepo {
   markStale(scenarioId: string, stages: StageId[], isStale: boolean): number;
   /** 删除某场景某阶段全部数据行（重算覆盖，T4.2），返回删除条数 */
   deleteByScenarioStage(scenarioId: string, stage: StageId): number;
+  getById(id: string): StageData | undefined;
+  /** 单元格编辑落库（M5 联真）：row 整体覆盖写回 JSON，可同步 source_type；返回更新后的行 */
+  update(id: string, patch: { row?: Record<string, unknown>; source_type?: string }): StageData | undefined;
 }
 
 function createStageDataRepo(db: Database.Database): StageDataRepo {
@@ -385,7 +391,28 @@ function createStageDataRepo(db: Database.Database): StageDataRepo {
     return result.changes;
   };
 
-  return { list, insert, listByScenarioStage, markStale, deleteByScenarioStage };
+  const getById = (id: string): StageData | undefined => {
+    const raw = db.prepare(`SELECT * FROM stage_data WHERE id = ?`).get(id);
+    return raw ? deserializeStageData(raw as StageData) : undefined;
+  };
+
+  const update = (
+    id: string,
+    patch: { row?: Record<string, unknown>; source_type?: string },
+  ): StageData | undefined => {
+    const existing = getById(id);
+    if (!existing) return undefined;
+    const entries: [string, unknown][] = [];
+    if (patch.row !== undefined) entries.push(["row", JSON.stringify(patch.row)]);
+    if (patch.source_type !== undefined) entries.push(["source_type", patch.source_type]);
+    if (entries.length === 0) return existing;
+    const setClauses = entries.map(([k]) => `${k} = ?`).join(", ");
+    db.prepare(`UPDATE stage_data SET ${setClauses}, updated_at = ? WHERE id = ?`)
+      .run(...entries.map(([, v]) => v), now(), id);
+    return getById(id);
+  };
+
+  return { list, insert, listByScenarioStage, markStale, deleteByScenarioStage, getById, update };
 }
 
 function deserializeStageData(row: StageData): StageData {
@@ -400,6 +427,65 @@ function deserializeStageData(row: StageData): StageData {
     out = { ...out, is_stale: stale === 1 };
   }
   return out;
+}
+
+// ─── 知识库只读仓库（M5 联真） ──────────────────────────────
+
+/** 知识库为只读资产（属主：回写链路由领域/命令负责），HTTP 层仅查询 */
+export interface KnowledgeRepo {
+  list(filters?: ListFilters): Knowledge[];
+}
+
+function createKnowledgeRepo(db: Database.Database): KnowledgeRepo {
+  const list = (filters?: ListFilters): Knowledge[] => {
+    const { sql, params } = buildListSql("knowledge", filters);
+    return db.prepare(sql).all(...params) as Knowledge[];
+  };
+  return { list };
+}
+
+// ─── 可选材料仓库（payload JSON 往返） ─────────────────────
+
+/**
+ * optional_material 专用：契约类型 payload 为对象，列为 JSON 文本。
+ * 通用仓库直接绑定对象会让 better-sqlite3 抛绑定错误，这里统一序列化/反序列化。
+ */
+function createOptionalMaterialRepo(db: Database.Database): Repo<OptionalMaterial> {
+  const base = createRepo<OptionalMaterial>(db, "optional_material");
+
+  const parseRow = (row: OptionalMaterial): OptionalMaterial =>
+    typeof row.payload === "string"
+      ? { ...row, payload: JSON.parse(row.payload) as Record<string, unknown> }
+      : row;
+
+  const toJsonPayload = (row: CreateInput<OptionalMaterial>): CreateInput<OptionalMaterial> => ({
+    ...row,
+    // 列存 JSON 文本；绑定前序列化（类型上仍是契约的 Record）
+    payload: (typeof row.payload === "string"
+      ? row.payload
+      : JSON.stringify(row.payload ?? {})) as unknown as Record<string, unknown>,
+  });
+
+  return {
+    list: (filters) => base.list(filters).map(parseRow),
+    getById: (id) => {
+      const row = base.getById(id);
+      return row ? parseRow(row) : undefined;
+    },
+    insert: (row) => {
+      const created = base.insert(toJsonPayload(row));
+      return parseRow(base.getById(created.id) ?? created);
+    },
+    update: (id, patch) => {
+      const next = { ...patch } as Record<string, unknown>;
+      if (next["payload"] !== undefined && typeof next["payload"] !== "string") {
+        next["payload"] = JSON.stringify(next["payload"]);
+      }
+      const updated = base.update(id, next as never);
+      return updated ? parseRow(updated) : undefined;
+    },
+    deleteById: (id) => base.deleteById(id),
+  };
 }
 
 // ─── createDb ──────────────────────────────────────────────
@@ -419,6 +505,8 @@ export interface DbInstance {
   scenarioRepo: Repo<Scenario>;
   stageDataRepo: StageDataRepo;
   qualityGateRepo: QualityGateRepo;
+  scenarioMaterialRepo: Repo<ScenarioMaterial>;
+  knowledgeRepo: KnowledgeRepo;
 }
 
 /**
@@ -445,12 +533,14 @@ export function createDb(dbPath?: string): DbInstance {
     boundaryRepo: createRepo<Boundary>(db, "boundary"),
     limitationRepo: createRepo<Limitation>(db, "limitation"),
     costRateRepo: createRepo<CostRate>(db, "cost_rate"),
-    optionalMaterialRepo: createRepo<OptionalMaterial>(db, "optional_material"),
+    optionalMaterialRepo: createOptionalMaterialRepo(db),
     conversationRepo: createRepo<Conversation>(db, "conversation"),
     messageRepo: createMessageRepo(db),
     scenarioRepo: createRepo<Scenario>(db, "scenario"),
     stageDataRepo: createStageDataRepo(db),
     qualityGateRepo: createQualityGateRepo(db),
+    scenarioMaterialRepo: createRepo<ScenarioMaterial>(db, "scenario_material"),
+    knowledgeRepo: createKnowledgeRepo(db),
   };
 }
 

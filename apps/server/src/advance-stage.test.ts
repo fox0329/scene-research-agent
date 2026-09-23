@@ -115,6 +115,13 @@ function createMockStageDataRepo(): StageDataRepo {
       store.push(...kept);
       return before - store.length;
     }),
+    getById: vi.fn((id: string) => store.find((r) => r.id === id)),
+    update: vi.fn((id: string, patch: { row?: Record<string, unknown>; source_type?: string }) => {
+      const idx = store.findIndex((r) => r.id === id);
+      if (idx < 0) return undefined;
+      store[idx] = { ...store[idx]!, ...patch } as StageData;
+      return store[idx];
+    }),
   };
 }
 
@@ -215,6 +222,8 @@ function createMockDb(opts: {
     scenarioRepo,
     stageDataRepo: createMockStageDataRepo(),
     qualityGateRepo: createMockQualityGateRepo(),
+    scenarioMaterialRepo: createMockRepo(),
+    knowledgeRepo: { list: vi.fn(() => []) },
   };
 }
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { STAGE0_TABLES, STAGE1_TABLES, STAGE2_TABLES, } from "@scene/contract";
+import { STAGE0_TABLES, STAGE1_TABLES, STAGE2_TABLES, STAGE3_TABLES, STAGE4_TABLES, STAGE5_TABLES, STAGE6_TABLES, STAGE7_TABLES, STAGE8_TABLES, } from "@scene/contract";
 describe("@scene/contract 通用枚举", () => {
     it("SourceType 四种来源", () => {
         const v = ["AI提取", "AI推断", "用户确认", "用户补充"];
@@ -42,6 +42,32 @@ describe("@scene/contract 表编号常量", () => {
     });
     it("STAGE2 8 张表", () => {
         expect(STAGE2_TABLES).toHaveLength(8);
+    });
+    it("STAGE3 10 张表", () => {
+        expect(STAGE3_TABLES).toHaveLength(10);
+        expect(STAGE3_TABLES[0]).toBe("表3-1");
+        expect(STAGE3_TABLES[9]).toBe("表3-10");
+    });
+    it("STAGE4 6 张表", () => {
+        expect(STAGE4_TABLES).toHaveLength(6);
+        expect(STAGE4_TABLES[0]).toBe("表4-1");
+    });
+    it("STAGE5 7 张表", () => {
+        expect(STAGE5_TABLES).toHaveLength(7);
+        expect(STAGE5_TABLES[0]).toBe("表5-1");
+    });
+    it("STAGE6 7 张表", () => {
+        expect(STAGE6_TABLES).toHaveLength(7);
+        expect(STAGE6_TABLES[0]).toBe("表6-1");
+    });
+    it("STAGE7 3 张表", () => {
+        expect(STAGE7_TABLES).toHaveLength(3);
+        expect(STAGE7_TABLES[0]).toBe("表7-1");
+    });
+    it("STAGE8 2 张表", () => {
+        expect(STAGE8_TABLES).toHaveLength(2);
+        expect(STAGE8_TABLES[0]).toBe("表8-内部");
+        expect(STAGE8_TABLES[1]).toBe("表8-对外");
     });
 });
 describe("@scene/contract 产品资料库接口", () => {

@@ -228,3 +228,13 @@ export function decideAdvice(results: GateCheckResult[]): AdviceLevel {
   }
   return "建议通过";
 }
+
+/**
+ * 由已落库的质量关结果集直接三档判定（M5 阶段面板读取路径）。
+ * 落库的 QualityGate 不带 is_critical 位，按保守口径：任一「不通过」即建议不通过。
+ */
+export function adviceFromGateRecords(results: GateResult[]): AdviceLevel {
+  if (results.some((r) => r === "不通过")) return "建议不通过";
+  if (results.some((r) => r !== "通过")) return "建议有条件通过";
+  return "建议通过";
+}

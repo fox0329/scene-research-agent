@@ -50,7 +50,20 @@ export declare const STAGE0_TABLES: readonly ["M1", "M2", "M3", "M4", "M5", "M6"
 export declare const STAGE1_TABLES: readonly ["表1-1", "表1-2", "表1-3", "表1-4", "表1-5"];
 /** 阶段 2 表号 */
 export declare const STAGE2_TABLES: readonly ["表2-1", "表2-2", "表2-3", "表2-4", "表2-5", "表2-6", "表2-7", "表2-8"];
-export type TableCode = typeof STAGE0_TABLES[number] | typeof STAGE1_TABLES[number] | typeof STAGE2_TABLES[number] | string;
+/** 阶段 3 表号 */
+export declare const STAGE3_TABLES: readonly ["表3-1", "表3-2", "表3-3", "表3-4", "表3-5", "表3-6", "表3-7", "表3-8", "表3-9", "表3-10"];
+/** 阶段 4 表号 */
+export declare const STAGE4_TABLES: readonly ["表4-1", "表4-2", "表4-3", "表4-4", "表4-5", "表4-6"];
+/** 阶段 5 表号 */
+export declare const STAGE5_TABLES: readonly ["表5-1", "表5-2", "表5-3", "表5-4", "表5-5", "表5-6", "表5-9"];
+/** 阶段 6 表号 */
+export declare const STAGE6_TABLES: readonly ["表6-1", "表6-2", "表6-3", "表6-4", "表6-5", "表6-6", "表6-7"];
+/** 阶段 7 表号 */
+export declare const STAGE7_TABLES: readonly ["表7-1", "表7-2", "表7-3"];
+/** 阶段 8 表号 */
+export declare const STAGE8_TABLES: readonly ["表8-内部", "表8-对外"];
+/** 全部表号联合类型 */
+export type TableCode = typeof STAGE0_TABLES[number] | typeof STAGE1_TABLES[number] | typeof STAGE2_TABLES[number] | typeof STAGE3_TABLES[number] | typeof STAGE4_TABLES[number] | typeof STAGE5_TABLES[number] | typeof STAGE6_TABLES[number] | typeof STAGE7_TABLES[number] | typeof STAGE8_TABLES[number];
 /** 产品线 */
 export interface ProductLine {
     id: string;
@@ -295,6 +308,21 @@ export interface ModelConfig {
     provider: string;
     default_model: string;
     analysis_model: string;
+}
+/** 导出数据输入（md-export 使用） */
+export interface ExportData {
+    scenario: Scenario;
+    libraryData: {
+        products: Product[];
+        capabilities: Capability[];
+        boundaries: Boundary[];
+        limitations: Limitation[];
+        costRates: CostRate[];
+    };
+    /** 阶段 1-8 的分析数据 */
+    stageData: StageData[];
+    qualityGates: QualityGate[];
+    knowledge: Knowledge[];
 }
 /** 导出响应 */
 export interface ExportResult {

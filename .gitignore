@@ -19,3 +19,6 @@ vendor/
 # Playwright E2E 产物
 test-results/
 playwright-report/
+
+# 交付物导出目录
+exports/

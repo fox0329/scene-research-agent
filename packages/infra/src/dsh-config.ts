@@ -5,7 +5,7 @@
  * apiKeyEnv 是环境变量名，不是密钥本身（AGENTS.md 规则 4）。
  */
 
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { load as parseYaml } from "js-yaml";
 
@@ -179,6 +179,58 @@ export function getDshToken(): string | undefined {
 export function clearConfigCache(): void {
   cachedProviders = null;
   cachedDefaultModel = null;
+}
+
+/** 供应商摘要（M5 设置页）：不含密钥本体，只给环境变量名与是否已配置 */
+export interface ProviderSummary {
+  name: string;
+  display_name?: string;
+  api_key_env: string;
+  api_key_set: boolean;
+  base_url?: string;
+  models: ModelSpec[];
+}
+
+/** 列出全部供应商摘要（读缓存，文件缺失时抛错由调用方兜底） */
+export function listProvidersSummary(): ProviderSummary[] {
+  if (!cachedProviders) {
+    loadSettings();
+  }
+  return Object.entries(cachedProviders!).map(([name, cfg]) => ({
+    name,
+    display_name: cfg.displayName,
+    api_key_env: cfg.apiKeyEnv,
+    api_key_set: Boolean(process.env[cfg.apiKeyEnv]),
+    base_url: cfg.baseURL,
+    models: cfg.models,
+  }));
+}
+
+/** 设置文件路径（项目 .dsh/settings.yaml） */
+export function getSettingsPath(): string {
+  return resolveSettingsPath();
+}
+
+/**
+ * 写回默认模型（agent-default-model 段）——定点文本编辑，保留注释与其他配置。
+ * 段不存在时在文件末尾追加。写完清缓存。
+ */
+export function writeDefaultModel(cfg: DefaultModelConfig): void {
+  const path = resolveSettingsPath();
+  const content = existsSync(path) ? readFileSync(path, "utf-8") : "";
+
+  const sectionRe = /(agent-default-model:\s*\n)((?:[ \t]+\S.*\n?)*)/;
+  const newSection = `  provider: ${cfg.provider}\n  model: ${cfg.model}\n`;
+
+  let out: string;
+  if (sectionRe.test(content)) {
+    out = content.replace(sectionRe, `agent-default-model:\n${newSection}`);
+  } else {
+    out = `${content.trimEnd()}${content.trim() ? "\n" : ""}agent-default-model:\n${newSection}`;
+  }
+
+  writeFileSync(path, out, "utf-8");
+  clearConfigCache();
 }
 
 // ─── 内部实现 ─────────────────────────────────────────────
