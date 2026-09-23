@@ -211,7 +211,7 @@ export function extractKnowledgeFromStage4(
         productLineId: trigger.productLineId,
         scene: match.scene,
         category: "需求",
-        content: `${match.scene}场景需要${match.capacity}能力，当前${match.matchLevel}，差距：${match.gap}`,
+        content: `${match.scene}场景需要${match.capability}能力，当前${match.matchLevel}，差距：${match.gap}`,
         source: {
           description: `阶段4能力匹配分析`,
           authority: "T2",
