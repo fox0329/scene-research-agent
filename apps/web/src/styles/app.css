@@ -1204,3 +1204,121 @@ td.ed {
   gap: var(--s2);
   margin-top: var(--s4);
 }
+
+/* ══════════════════════════════════════════════════════
+ * T3.6 设置页
+ * ══════════════════════════════════════════════════════ */
+
+/* 状态指示圆点 */
+.status-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.status-dot--ok {
+  background: var(--cs);
+  box-shadow: 0 0 0 2px var(--cs-s);
+}
+
+.status-dot--err {
+  background: var(--ce);
+  box-shadow: 0 0 0 2px var(--ce-s);
+}
+
+/* KV 网格（设置页扩展：更大间距） */
+.settings-kv-grid {
+  display: grid;
+  grid-template-columns: 80px 1fr;
+  gap: var(--s2) var(--s3);
+  align-items: baseline;
+  margin-bottom: var(--s4);
+}
+
+/* 表单布局 */
+.settings-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+  margin-bottom: var(--s4);
+}
+
+.settings-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+}
+
+.settings-label {
+  font-size: var(--txs);
+  font-weight: var(--fm2);
+  color: var(--ct2);
+}
+
+.settings-select {
+  height: 32px;
+  padding: 0 var(--s3);
+  font-family: inherit;
+  font-size: var(--ts);
+  color: var(--ct);
+  background: var(--csr);
+  border: 1px solid var(--cb);
+  border-radius: var(--r4);
+  outline: none;
+  transition: border-color var(--d) var(--e);
+}
+
+.settings-select:focus {
+  border-color: var(--cp);
+  box-shadow: 0 0 0 2px var(--cp-s);
+}
+
+/* 操作按钮行 */
+.settings-actions {
+  display: flex;
+  gap: var(--s2);
+  padding-top: var(--s3);
+  border-top: 1px solid var(--cb);
+}
+
+/* ══════════════════════════════════════════════════════
+ * Toast 通知
+ * ══════════════════════════════════════════════════════ */
+
+.toast-container {
+  position: fixed;
+  bottom: var(--s8);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: var(--z-toast);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--s2);
+  pointer-events: none;
+}
+
+.toast-item {
+  padding: var(--s2) var(--s4);
+  background: var(--ci);
+  color: var(--cf);
+  font-size: var(--txs);
+  font-weight: var(--fm2);
+  border-radius: var(--r8);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  animation: toast-in var(--d) var(--e) forwards;
+  white-space: nowrap;
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

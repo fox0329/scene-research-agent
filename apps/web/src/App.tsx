@@ -2,8 +2,10 @@ import React, { useCallback, useState } from "react";
 import { Sidebar } from "./components/Sidebar";
 import { ConversationDrawer } from "./components/ConversationDrawer";
 import { DecisionPanel } from "./components/DecisionPanel";
+import { ToastProvider } from "./components/Toast";
 import { LibraryView } from "./views/LibraryView";
 import { ProjectView } from "./views/ProjectView";
+import { SettingsView } from "./views/SettingsView";
 import { conversationMessages, projects } from "./mock/project-data";
 
 /** 主视图：project 项目工作台（默认）/ library 资料库 / knowledge 知识库 / settings 设置 */
@@ -34,6 +36,7 @@ const App: React.FC = () => {
   }, []);
 
   return (
+    <ToastProvider>
     <div className="shell">
       {/* 左栏：导航 + 项目列表 */}
       <Sidebar
@@ -49,7 +52,7 @@ const App: React.FC = () => {
         {view === "project" && <ProjectView key={activeProject.id} project={activeProject} />}
         {view === "library" && <LibraryView />}
         {view === "knowledge" && <PlaceholderView title="知识库" desc="后续实现竞品情报 / 未满足需求 / 行业趋势 / 能力底账" />}
-        {view === "settings" && <PlaceholderView title="设置" desc="后续实现 DSH 连接 / 模型选择 / 数据管理" />}
+        {view === "settings" && <SettingsView />}
         <ConversationDrawer messages={conversationMessages} />
       </main>
 
@@ -79,6 +82,7 @@ const App: React.FC = () => {
         )}
       </aside>
     </div>
+    </ToastProvider>
   );
 };
 
