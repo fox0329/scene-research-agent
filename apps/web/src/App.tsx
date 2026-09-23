@@ -8,7 +8,7 @@ import { ProjectView } from "./views/ProjectView";
 import { SettingsView } from "./views/SettingsView";
 import { KnowledgeView } from "./views/KnowledgeView";
 import { useColumnLayout } from "./hooks/useColumnLayout";
-import { api, type ApiConversation, type ApiProject } from "./api";
+import { api, type ApiConversation, type ApiProductLine, type ApiProject } from "./api";
 import { conversationMessages, projects, type Project } from "./mock/project-data";
 
 /** 主视图：project 项目工作台（默认）/ library 资料库 / knowledge 知识库 / settings 设置 */
@@ -65,6 +65,11 @@ const AppShell: React.FC = () => {
   const [view, setView] = useState<ViewName>("project");
   /** null = 演示模式（mock）；非 null = 联真模式的项目快照 */
   const [liveProjects, setLiveProjects] = useState<Project[] | null>(null);
+  /** 侧栏真实计数（联真模式） */
+  const [lineCount, setLineCount] = useState<number | null>(null);
+  const [knowledgeCount, setKnowledgeCount] = useState<number | null>(null);
+  /** 产品线快照（含 row_counts），供资料库视图常驻渲染不重挂 */
+  const [lines, setLines] = useState<ApiProductLine[]>([]);
   const [activeProjectId, setActiveProjectId] = useState(projects[0].id);
   const layout = useColumnLayout();
 
@@ -89,6 +94,8 @@ const AppShell: React.FC = () => {
       mapApiProject(p, convLists[i], lineNames),
     );
     setLiveProjects(mapped);
+    setLines(lines);
+    setLineCount(lines.length);
     setActiveProjectId((cur) => {
       if (selectId && mapped.some((m) => m.id === selectId)) return selectId;
       if (mapped.some((m) => m.id === cur)) return cur;
@@ -103,7 +110,13 @@ const AppShell: React.FC = () => {
     (async () => {
       try {
         await withTimeout(api.health(), PROBE_TIMEOUT_MS);
-        if (!cancelled) await refreshProjects();
+        if (!cancelled) {
+          await refreshProjects();
+          api
+            .knowledge()
+            .then((k) => !cancelled && setKnowledgeCount(k.length))
+            .catch(() => {});
+        }
       } catch {
         /* 后端未启动：演示模式 */
       }
@@ -181,6 +194,8 @@ const AppShell: React.FC = () => {
         onSelectProject={handleSelectProject}
         onNewProject={live ? () => void handleNewProject() : undefined}
         onProjectAction={live ? (p, a) => void handleProjectAction(p, a) : undefined}
+        libraryCount={lineCount}
+        knowledgeCount={knowledgeCount}
       />
 
       {/* 中栏：内容区 + 常驻输入栏 */}
@@ -198,7 +213,13 @@ const AppShell: React.FC = () => {
         {view === "project" && !activeProject && (
           <NoProjectsPanel onNew={() => void handleNewProject()} />
         )}
-        {view === "library" && <LibraryView />}
+        {view === "library" && (
+          <LibraryView
+            live={live}
+            lines={lines}
+            onChanged={() => void refreshProjects().catch(() => {})}
+          />
+        )}
         {view === "knowledge" && <KnowledgeView />}
         {view === "settings" && <SettingsView />}
         <ConversationDrawer messages={conversationMessages} />
@@ -265,7 +286,10 @@ const AppShell: React.FC = () => {
 const NoProjectsPanel: React.FC<{ onNew: () => void }> = ({ onNew }) => (
   <>
     <div className="pgh pgh-fixed">
-      <div className="pgt">项目工作台</div>
+      <div style={{ display: "flex", alignItems: "center", gap: "var(--s3)" }}>
+        <div className="pgt">项目工作台</div>
+        <span className="badge success">实时数据</span>
+      </div>
     </div>
     <div className="ws">
       <div className="pnl">

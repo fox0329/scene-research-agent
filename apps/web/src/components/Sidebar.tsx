@@ -13,6 +13,9 @@ interface SidebarProps {
   onNewProject?: () => void;
   /** 项目 ⋯ 菜单动作（重命名/归档/删除） */
   onProjectAction?: (project: Project, action: "重命名" | "归档" | "删除") => void;
+  /** 真实计数（联真模式）；缺省显示演示占位 */
+  libraryCount?: number | null;
+  knowledgeCount?: number | null;
 }
 
 /**
@@ -29,6 +32,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onSelectProject,
   onNewProject,
   onProjectAction,
+  libraryCount,
+  knowledgeCount,
 }) => {
   return (
     <nav className="side">
@@ -62,7 +67,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <polyline points="14 2 14 8 20 8" />
           </svg>
           <span>产品资料库</span>
-          <span className="count">2 线</span>
+          <span className="count">{libraryCount != null ? `${libraryCount} 线` : "2 线"}</span>
         </button>
         <button
           className={`nav-item${activeView === "knowledge" ? " active" : ""}`}
@@ -73,7 +78,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
           </svg>
           <span>知识库</span>
-          <span className="count">23 条</span>
+          <span className="count">{knowledgeCount != null ? `${knowledgeCount} 条` : "23 条"}</span>
         </button>
         <button
           className={`nav-item${activeView === "settings" ? " active" : ""}`}

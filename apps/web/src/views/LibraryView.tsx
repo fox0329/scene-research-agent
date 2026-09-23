@@ -1,6 +1,8 @@
 import React, { useState } from "react";
 import { QualityPanel } from "./QualityPanel";
 import { ProductListPanel } from "./ProductListPanel";
+import { RealLibraryView } from "./RealLibraryView";
+import type { ApiProductLine } from "../api";
 import {
   SpecPanel,
   CapabilityPanel,
@@ -30,12 +32,27 @@ const tabs: TabDef[] = [
 
 /**
  * 产品资料库视图
- * - 页头：产品资料库 + 产品线名称 + 上传材料/开始解析按钮
- * - Tab 栏：质量总评 | M1-M6 | O 可选材料 | 补充提醒
- * - 默认显示质量总评
+ * - 联真模式（live）：RealLibraryView——产品线切换/六维质量/12 表编辑/上传入库 SSE 进度
+ * - 演示模式：mock 面板（E2E 依赖），页头徽标提示
  */
-export const LibraryView: React.FC = () => {
+interface LibraryViewProps {
+  live: boolean;
+  /** 联真模式的产品线快照（App 常驻，编辑/入库后随 refreshProjects 更新，不重建视图） */
+  lines?: ApiProductLine[];
+  /** 资料变化（新建产品线/入库/编辑）后通知父级刷新计数与行统计 */
+  onChanged?: () => void;
+}
+
+export const LibraryView: React.FC<LibraryViewProps> = ({
+  live,
+  lines = [],
+  onChanged,
+}) => {
   const [activeTab, setActiveTab] = useState("quality");
+
+  if (live) {
+    return <RealLibraryView lines={lines} onChanged={onChanged} />;
+  }
 
   const renderPanel = () => {
     switch (activeTab) {

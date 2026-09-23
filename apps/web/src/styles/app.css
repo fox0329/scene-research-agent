@@ -1435,3 +1435,10 @@ td.ed {
   border: 1px solid var(--cb);
   border-radius: var(--r8);
 }
+
+/* 小号按钮（表格行内操作，M5-T5.4） */
+.btn.sm {
+  padding: var(--s05) var(--s2);
+  font-size: var(--t2x);
+  white-space: nowrap;
+}

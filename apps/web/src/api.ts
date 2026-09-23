@@ -77,6 +77,20 @@ export interface ApiProductLine {
   row_counts?: Record<string, number>;
 }
 
+/** 质量六维 + 完成度（领域层计算，契约 v1.4） */
+export interface ApiQualitySummary {
+  quality: {
+    dimensions: { dimension: string; status: "pass" | "warn" | "fail"; description: string }[];
+    passCount: number;
+    warnCount: number;
+    failCount: number;
+  };
+  completeness: {
+    items: { id: number; name: string; status: string; risk: string }[];
+    reminders: { table: string; missing: string; impact: string; suggestion?: string }[];
+  };
+}
+
 /** SSE follow 事件（与 contract FollowEvent 对齐） */
 export interface FollowEvent {
   type: string;
@@ -186,6 +200,40 @@ export const api = {
     ),
 
   productLines: () => req<ApiProductLine[]>("/library/product-lines"),
+  createProductLine: (name: string) =>
+    req<ApiProductLine>("/library/product-lines", { method: "POST", body: { name } }),
+
+  /** 资料库表行（M1-M6/O1-O6），字段按表 schema 异构 */
+  libraryTable: (code: string, productLineId?: string) =>
+    req<Record<string, unknown>[]>(
+      `/library/tables/${encodeURIComponent(code)}${
+        productLineId ? `?product_line_id=${encodeURIComponent(productLineId)}` : ""
+      }`,
+    ),
+  patchLibraryRow: (code: string, rowId: string, cell: string, value: unknown) =>
+    req<Record<string, unknown>>(
+      `/library/rows/${encodeURIComponent(code)}/${encodeURIComponent(rowId)}`,
+      { method: "PATCH", body: { cell, value } },
+    ),
+  addLibraryRow: (code: string, productLineId: string, values: Record<string, unknown>) =>
+    req<Record<string, unknown>>(`/library/rows/${encodeURIComponent(code)}`, {
+      method: "POST",
+      body: { product_line_id: productLineId, values },
+    }),
+  deleteLibraryRow: (code: string, rowId: string) =>
+    req<{ deleted: boolean }>(
+      `/library/rows/${encodeURIComponent(code)}/${encodeURIComponent(rowId)}`,
+      { method: "DELETE" },
+    ),
+  qualitySummary: (productLineId: string) =>
+    req<ApiQualitySummary>(
+      `/library/quality-summary?product_line_id=${encodeURIComponent(productLineId)}`,
+    ),
+
+  knowledge: (category?: string) =>
+    req<{ id: string; category: string; title: string }[]>(
+      `/knowledge${category ? `?category=${encodeURIComponent(category)}` : ""}`,
+    ),
 };
 
 // ─── SSE 面（advance / 会话消息：POST 建流 + GET 续传） ─────
@@ -279,3 +327,25 @@ export const reconnectStageStream = (
 /** 会话消息流（T5.5 抽屉使用；发消息即建流） */
 export const conversationMessageStream = (conversationId: string, content: string) =>
   sseRequest(`/conversations/${encodeURIComponent(conversationId)}/messages`, { content });
+
+/**
+ * 上传材料并接收入库进度流：
+ * 1) POST multipart（file + product_line_id）→ { ingest_job_id }
+ * 2) GET /library/ingest/:jobId/events（SSE，支持 Last-Event-ID 续传）
+ */
+export async function* ingestStream(
+  file: File,
+  productLineId: string,
+): AsyncGenerator<FollowEvent> {
+  const form = new FormData();
+  form.append("file", file);
+  form.append("product_line_id", productLineId);
+  const res = await fetch(`${BASE}/library/ingest`, { method: "POST", body: form });
+  const data = (await res.json().catch(() => null)) as
+    | { ingest_job_id?: string; error?: string }
+    | null;
+  if (!res.ok || !data?.ingest_job_id) {
+    throw new ApiError(data?.error ?? `上传失败（HTTP ${res.status}）`, res.status);
+  }
+  yield* sseRequest(`/library/ingest/${encodeURIComponent(data.ingest_job_id)}/events`);
+}
