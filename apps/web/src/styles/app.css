@@ -1460,11 +1460,12 @@ td.ed {
   border-top: 1px solid var(--cb);
 }
 
-/* 设置页不滚动：内容适配视口 */
+/* 设置页：内容区可滚动，页头固定 */
 .ws-settings {
-  overflow: hidden;
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
+  padding-bottom: 120px; /* 给对话抽屉留空间 */
 }
 
 /* 供应商模型列表：一行一个 */
