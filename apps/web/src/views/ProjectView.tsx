@@ -106,7 +106,7 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
   }, [live, project.id, activeStage, showToast, onProjectsChanged]);
 
   const handleUpload = useCallback(() => {
-    showToast(live ? "资料上传将在资料库接真（T5.4）后开放" : "演示模式：上传入口仅为示意");
+    showToast(live ? "请前往左下「产品资料库」上传材料并解析入库" : "演示模式：上传入口仅为示意");
   }, [live, showToast]);
 
   const renderStagePanel = () => {

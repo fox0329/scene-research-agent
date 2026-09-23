@@ -328,6 +328,12 @@ export const reconnectStageStream = (
 export const conversationMessageStream = (conversationId: string, content: string) =>
   sseRequest(`/conversations/${encodeURIComponent(conversationId)}/messages`, { content });
 
+/** 会话回复流断线续传：GET messages/events + Last-Event-ID（契约 v1.5） */
+export const reconnectConversationStream = (conversationId: string, lastEventId: string) =>
+  sseRequest(
+    `/conversations/${encodeURIComponent(conversationId)}/messages/events?lastEventId=${encodeURIComponent(lastEventId)}`,
+  );
+
 /**
  * 上传材料并接收入库进度流：
  * 1) POST multipart（file + product_line_id）→ { ingest_job_id }

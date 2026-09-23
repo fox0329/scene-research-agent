@@ -64,12 +64,14 @@ export function createSseHub(): SseHub {
   const drain = async (state: RunState, source: AsyncIterable<FollowEvent>): Promise<void> => {
     try {
       for await (const event of source) {
-        state.events.push(event);
+        // 契约 §四：事件带递增 id。生产者未带 id 时（如 converse 透传）由中枢补齐，
+        // 否则 Last-Event-ID 重放会因 `Number(undefined ?? 0) <= lastId` 误跳过。
+        state.events.push(event.id == null ? { ...event, id: String(state.events.length + 1) } : event);
         notify(state);
       }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
-      state.events.push({ type: "error", message: `事件流异常: ${message}` });
+      state.events.push({ type: "error", message: `事件流异常: ${message}`, id: String(state.events.length + 1) });
     } finally {
       state.done = true;
       notify(state);

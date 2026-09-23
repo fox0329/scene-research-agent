@@ -71,6 +71,8 @@ const AppShell: React.FC = () => {
   /** 产品线快照（含 row_counts），供资料库视图常驻渲染不重挂 */
   const [lines, setLines] = useState<ApiProductLine[]>([]);
   const [activeProjectId, setActiveProjectId] = useState(projects[0].id);
+  /** 当前选中会话（对话抽屉随之切换；null=未选/项目未建会话） */
+  const [activeConvId, setActiveConvId] = useState<string | null>(null);
   const layout = useColumnLayout();
 
   const live = liveProjects !== null;
@@ -101,6 +103,10 @@ const AppShell: React.FC = () => {
       if (mapped.some((m) => m.id === cur)) return cur;
       return mapped[0]?.id ?? cur;
     });
+    /* 选中会话随刷新对账：所属项目/会话已删则清空 */
+    setActiveConvId((cur) =>
+      cur && mapped.some((m) => m.conversations.some((c) => c.id === cur)) ? cur : null,
+    );
     return mapped;
   }, []);
 
@@ -126,9 +132,17 @@ const AppShell: React.FC = () => {
     };
   }, [refreshProjects]);
 
-  /** 左栏选中项目：切换项目并回到项目工作台 */
+  /** 左栏选中项目：切换项目、清空会话选中并回到项目工作台 */
   const handleSelectProject = (id: string) => {
     setActiveProjectId(id);
+    setActiveConvId(null);
+    setView("project");
+  };
+
+  /** 左栏选中会话：对话抽屉切换到该会话 */
+  const handleSelectConversation = (projectId: string, convId: string) => {
+    setActiveProjectId(projectId);
+    setActiveConvId(convId);
     setView("project");
   };
 
@@ -183,6 +197,48 @@ const AppShell: React.FC = () => {
     [live, refreshProjects, showToast],
   );
 
+  /** 会话 ⋯ 菜单动作（仅联真模式落地；删除带消息会话需 force，二次确认后强制删） */
+  const handleConversationAction = useCallback(
+    async (
+      project: Project,
+      convId: string,
+      convName: string,
+      action: "重命名" | "归档" | "删除",
+    ) => {
+      if (!live) return;
+      try {
+        if (action === "重命名") {
+          const title = window.prompt("重命名会话", convName);
+          if (!title?.trim()) return;
+          await api.renameConversation(convId, title.trim());
+        } else if (action === "归档") {
+          await api.archiveConversation(convId);
+        } else {
+          if (
+            !window.confirm(`删除会话「${convName}」？其消息将一并删除，不可恢复。`)
+          )
+            return;
+          await api.deleteConversation(convId, true);
+        }
+        if (action !== "重命名" && convId === activeConvId) setActiveConvId(null);
+        await refreshProjects();
+        showToast(`已${action}：${convName}`);
+      } catch (err: unknown) {
+        showToast(`${action}失败：${err instanceof Error ? err.message : String(err)}`);
+      }
+    },
+    [live, refreshProjects, showToast, activeConvId],
+  );
+
+  /** 抽屉自动建会话成功：选中并刷新左栏列表 */
+  const handleConversationCreated = useCallback(
+    (conv: { id: string; title: string }) => {
+      setActiveConvId(conv.id);
+      void refreshProjects().catch(() => {});
+    },
+    [refreshProjects],
+  );
+
   return (
     <div className={layout.shellClass} style={layout.shellStyle}>
       {/* 左栏：导航 + 项目列表 */}
@@ -191,9 +247,14 @@ const AppShell: React.FC = () => {
         onViewChange={handleViewChange}
         projects={shownProjects}
         activeProjectId={activeProject?.id ?? ""}
+        activeConvId={activeConvId}
         onSelectProject={handleSelectProject}
+        onSelectConversation={handleSelectConversation}
         onNewProject={live ? () => void handleNewProject() : undefined}
         onProjectAction={live ? (p, a) => void handleProjectAction(p, a) : undefined}
+        onConversationAction={
+          live ? (p, cid, cname, a) => void handleConversationAction(p, cid, cname, a) : undefined
+        }
         libraryCount={lineCount}
         knowledgeCount={knowledgeCount}
       />
@@ -222,7 +283,14 @@ const AppShell: React.FC = () => {
         )}
         {view === "knowledge" && <KnowledgeView />}
         {view === "settings" && <SettingsView />}
-        <ConversationDrawer messages={conversationMessages} />
+        {/* 对话抽屉：联真模式走 converse SSE；演示模式保持本地 mock */}
+        <ConversationDrawer
+          messages={conversationMessages}
+          live={live}
+          projectId={live ? activeProject?.id ?? null : null}
+          conversationId={live ? activeConvId : null}
+          onConversationCreated={live ? handleConversationCreated : undefined}
+        />
       </main>
 
       {/* 右栏：决策支撑（项目工作台实装，其余视图预留） */}

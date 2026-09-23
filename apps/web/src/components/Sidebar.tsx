@@ -7,12 +7,23 @@ interface SidebarProps {
   onViewChange: (view: string) => void;
   projects: Project[];
   activeProjectId: string;
+  /** 当前选中会话（受控） */
+  activeConvId: string | null;
   /** 选中项目：父级切换 activeProjectId 并切到项目工作台视图 */
   onSelectProject: (id: string) => void;
+  /** 选中会话：对话抽屉随之切换 */
+  onSelectConversation: (projectId: string, convId: string) => void;
   /** 新建项目（联真模式接 api.createProject；演示模式不传，按钮保持占位） */
   onNewProject?: () => void;
   /** 项目 ⋯ 菜单动作（重命名/归档/删除） */
   onProjectAction?: (project: Project, action: "重命名" | "归档" | "删除") => void;
+  /** 会话 ⋯ 菜单动作（联真模式落地；演示模式不传，菜单为占位） */
+  onConversationAction?: (
+    project: Project,
+    convId: string,
+    convName: string,
+    action: "重命名" | "归档" | "删除",
+  ) => void;
   /** 真实计数（联真模式）；缺省显示演示占位 */
   libraryCount?: number | null;
   knowledgeCount?: number | null;
@@ -29,9 +40,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onViewChange,
   projects,
   activeProjectId,
+  activeConvId,
   onSelectProject,
+  onSelectConversation,
   onNewProject,
   onProjectAction,
+  onConversationAction,
   libraryCount,
   knowledgeCount,
 }) => {
@@ -53,8 +67,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <ProjectList
           projects={projects}
           activeProjectId={activeProjectId}
+          activeConvId={activeConvId}
           onSelectProject={onSelectProject}
+          onSelectConversation={onSelectConversation}
           onProjectAction={onProjectAction}
+          onConversationAction={onConversationAction}
         />
       </div>
       <div className="side-foot">

@@ -1000,6 +1000,19 @@ td.ed {
   background: var(--cp-h);
 }
 
+.conv-send:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* 联真模式空态提示（非气泡，避免与 .msg 断言混淆） */
+.conv-hint {
+  font-size: var(--t2x);
+  color: var(--ct3);
+  text-align: center;
+  padding: var(--s3) var(--s1);
+}
+
 /* ══ 右栏：决策支撑 ══ */
 
 /* 头部 48px 定高 + 内容区零内边距（分区自带 padding） */

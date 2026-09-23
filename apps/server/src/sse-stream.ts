@@ -26,7 +26,8 @@ export function parseStage(raw: string): StageId | undefined {
 export async function streamEvents(
   hub: SseHub,
   runId: string,
-  request: { raw: import("node:http").IncomingMessage },
+  /** 预留：请求上下文（断连检测挂在响应上，见下） */
+  _request: { raw: import("node:http").IncomingMessage },
   reply: {
     raw: import("node:http").ServerResponse;
     hijack: () => void;
@@ -50,9 +51,14 @@ export async function streamEvents(
   });
   reply.raw.flushHeaders();
 
+  /**
+   * 断连检测挂在响应对象上：Node 22 下 request.raw 在请求体读完后即触发
+   * 'close'（连接仍活着），若监听请求流会把带体 POST（converse 发消息）
+   * 的首帧误丢弃且永不收尾。ServerResponse 的 'close' 才对应真实连接销毁。
+   */
   let closed = false;
-  request.raw.on("close", () => {
-    closed = true;
+  reply.raw.on("close", () => {
+    closed = !reply.raw.writableEnded;
   });
 
   try {

@@ -411,6 +411,8 @@ function registerConversationRoutes(
 ) {
   const { db, hub } = deps;
   let convSeq = 0;
+  /** 会话 → 最新回复流 runId（进程存续期内 Last-Event-ID 续传用，契约 v1.5） */
+  const latestConvRuns = new Map<string, string>();
 
   app.get("/api/v1/projects/:id/conversations", async (request, reply) => {
     const { id } = request.params as { id: string };
@@ -481,8 +483,23 @@ function registerConversationRoutes(
     if (!conversation) return notFound(reply, `会话 ${id} 不存在`);
 
     const runId = `conv:${id}#${++convSeq}`;
+    latestConvRuns.set(id, runId);
     hub.start(runId, converseCmd.sendMessage(id, content));
     await streamEvents(hub, runId, request, reply);
+  });
+
+  // 会话回复流断线续传：Last-Event-ID 增量重放（同 stages/events 语义，契约 v1.5）
+  app.get("/api/v1/conversations/:id/messages/events", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const runId = latestConvRuns.get(id);
+    if (!runId || !hub.has(runId)) {
+      return notFound(reply, "该会话没有可续传的回复流");
+    }
+    const lastEventId =
+      (request.headers["last-event-id"] as string | undefined) ??
+      (request.query as { lastEventId?: string }).lastEventId ??
+      null;
+    await streamEvents(hub, runId, request, reply, lastEventId);
   });
 }
 

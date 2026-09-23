@@ -4,17 +4,29 @@ import type { Project } from "../mock/project-data";
 interface ProjectListProps {
   projects: Project[];
   activeProjectId: string;
+  /** 当前选中会话（受控，App 持有；null=未选） */
+  activeConvId: string | null;
   /** 选中项目（同时父级会切到项目工作台视图） */
   onSelectProject: (id: string) => void;
+  /** 选中会话（对话抽屉随之切换） */
+  onSelectConversation: (projectId: string, convId: string) => void;
   /** 项目 ⋯ 菜单动作（联真模式落地；演示模式不传，菜单为占位） */
   onProjectAction?: (project: Project, action: "重命名" | "归档" | "删除") => void;
+  /** 会话 ⋯ 菜单动作（联真模式落地；演示模式不传，菜单为占位） */
+  onConversationAction?: (
+    project: Project,
+    convId: string,
+    convName: string,
+    action: "重命名" | "归档" | "删除",
+  ) => void;
 }
 
 /** ⋯ 菜单目标：项目或会话 */
 interface MenuTarget {
   kind: "project" | "conversation";
-  /** 菜单所属项目（会话动作在 T5.5 接入会话 id） */
   project: Project;
+  /** 会话动作携带的会话 id（项目动作为 null） */
+  convId: string | null;
   name: string;
   x: number;
   y: number;
@@ -35,26 +47,23 @@ const MENU_VIEWPORT_MARGIN = 8;
 export const ProjectList: React.FC<ProjectListProps> = ({
   projects,
   activeProjectId,
+  activeConvId,
   onSelectProject,
+  onSelectConversation,
   onProjectAction,
+  onConversationAction,
 }) => {
   const [expandedId, setExpandedId] = useState<string | null>(activeProjectId);
-  const [activeConvId, setActiveConvId] = useState<string | null>(null);
   const [menu, setMenu] = useState<MenuTarget | null>(null);
 
-  /* 外部切换项目时同步展开并重置会话选中 */
+  /* 外部切换项目时同步展开（会话选中与展开态由 App/手风琴管理） */
   useEffect(() => {
     setExpandedId(activeProjectId);
-    setActiveConvId(null);
   }, [activeProjectId]);
 
   const handleProjectClick = (project: Project) => {
     onSelectProject(project.id);
     setExpandedId((cur) => (cur === project.id ? null : project.id));
-  };
-
-  const handleConvClick = (convId: string) => {
-    setActiveConvId(convId);
   };
 
   /* ⋯ 菜单：按按钮位置定位，底部溢出时向上翻转 */
@@ -64,6 +73,7 @@ export const ProjectList: React.FC<ProjectListProps> = ({
       kind: MenuTarget["kind"],
       project: Project,
       name: string,
+      convId: string | null = null,
     ) => {
       e.stopPropagation();
       const rect = (e.currentTarget as HTMLButtonElement).getBoundingClientRect();
@@ -73,14 +83,14 @@ export const ProjectList: React.FC<ProjectListProps> = ({
         y = rect.top - MENU_HEIGHT - MENU_OFFSET;
       }
       if (x < MENU_VIEWPORT_MARGIN) x = MENU_VIEWPORT_MARGIN;
-      setMenu({ kind, project, name, x, y });
+      setMenu({ kind, project, convId, name, x, y });
     },
     [],
   );
 
   const closeMenu = useCallback(() => setMenu(null), []);
 
-  /* 菜单外点击 / Esc 关闭；菜单项为 mock 占位，选中即关闭 */
+  /* 菜单外点击 / Esc 关闭；动作回调仅联真模式传入，演示模式选中即关闭 */
   useEffect(() => {
     if (!menu) return;
     const onDocClick = (e: MouseEvent) => {
@@ -100,9 +110,11 @@ export const ProjectList: React.FC<ProjectListProps> = ({
 
   const handleMenuAction = (action: "重命名" | "归档" | "删除") => {
     if (!menu) return;
-    /* 项目动作：联真模式落库；会话动作 T5.5 接入，当前仅收起菜单 */
+    /* 联真模式经回调落库；演示模式回调缺省，仅收起菜单 */
     if (menu.kind === "project" && onProjectAction) {
       onProjectAction(menu.project, action);
+    } else if (menu.kind === "conversation" && onConversationAction && menu.convId) {
+      onConversationAction(menu.project, menu.convId, menu.name, action);
     }
     closeMenu();
   };
@@ -143,11 +155,11 @@ export const ProjectList: React.FC<ProjectListProps> = ({
                     className={`cvi${isConvActive ? " on" : ""}`}
                     role="button"
                     tabIndex={0}
-                    onClick={() => handleConvClick(conv.id)}
+                    onClick={() => onSelectConversation(project.id, conv.id)}
                     onKeyDown={(e) => {
                       if (e.key === "Enter" || e.key === " ") {
                         e.preventDefault();
-                        handleConvClick(conv.id);
+                        onSelectConversation(project.id, conv.id);
                       }
                     }}
                   >
@@ -156,7 +168,7 @@ export const ProjectList: React.FC<ProjectListProps> = ({
                       type="button"
                       className="more-btn"
                       aria-label={`${conv.name} 更多操作`}
-                      onClick={(e) => openMenu(e, "conversation", project, conv.name)}
+                      onClick={(e) => openMenu(e, "conversation", project, conv.name, conv.id)}
                     >
                       ⋯
                     </button>
