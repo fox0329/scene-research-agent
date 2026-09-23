@@ -11,7 +11,6 @@ import { basename } from "node:path";
 import type {
   DshClient,
   SessionHandle,
-  FollowEvent,
   Product,
   SpecParam,
   Capability,
@@ -20,7 +19,7 @@ import type {
   CostRate,
   OptionalMaterial,
 } from "@scene/contract";
-import type { ParseResult, ParsedTable } from "@scene/infra";
+import type { ParseResult } from "@scene/infra";
 import type { DbInstance } from "@scene/infra";
 import type {
   QualityAssessment,
@@ -343,10 +342,10 @@ function validateRows(output: DshOutput, fileName: string): ClassifiedRow[] {
 /**
  * 来源校验：
  * 1. source 非空
- * 2. 包含文件名（与上传文件名匹配，或至少包含有效文件名模式）
+ * 2. 文件名部分非空（不强制等于上传文件名——AI 可能引用补充资料）
  * 3. 包含页码或"未知"标记
  */
-function isValidSource(source: string, fileName: string): boolean {
+function isValidSource(source: string, _fileName: string): boolean {
   if (!source || source.trim().length === 0) return false;
 
   // 必须有文件名部分（: 分隔）

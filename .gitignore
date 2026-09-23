@@ -1,6 +1,9 @@
 # 依赖
 node_modules/
 
+# 运行时数据库
+data/
+
 # DSH 源码（git clone，有自己的 .git，不入库；构建见 AGENTS.md）
 vendor/
 

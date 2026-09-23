@@ -135,7 +135,7 @@ function createMockDshClient(
 
   return {
     createSession: vi.fn(async () => ({ sessionId: "dsh-session-1" })),
-    prompt: vi.fn(function* (): AsyncIterable<FollowEvent> {
+    prompt: vi.fn(async function* (): AsyncGenerator<FollowEvent> {
       for (const e of events) {
         yield e;
       }

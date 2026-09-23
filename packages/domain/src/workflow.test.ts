@@ -3,6 +3,7 @@ import {
   advance,
   canAdvance,
   rollback,
+  stagesToMarkAfterRollback,
   markStale,
   getRiskChain,
   STAGES,
@@ -290,5 +291,27 @@ describe("clearStaleMarks", () => {
   it("不影响其他场景的标记", () => {
     const result = clearStaleMarks(marks, "S1");
     expect(result.some((m) => m.scenarioId === "S2")).toBe(true);
+  });
+});
+
+// ─── stagesToMarkAfterRollback（T4.2 回退清理） ────────────
+
+describe("stagesToMarkAfterRollback", () => {
+  it("回退 1→4：下游 2..4 全部待重算，目标阶段自身不含", () => {
+    expect(stagesToMarkAfterRollback(1 as StageId, 4 as StageId)).toEqual([2, 3, 4]);
+  });
+
+  it("相邻回退 3→4：只标记阶段 4", () => {
+    expect(stagesToMarkAfterRollback(3 as StageId, 4 as StageId)).toEqual([4]);
+  });
+
+  it("target>=current 返回空（非法回退由 rollback() 抛错兜底）", () => {
+    expect(stagesToMarkAfterRollback(4 as StageId, 4 as StageId)).toEqual([]);
+    expect(stagesToMarkAfterRollback(5 as StageId, 4 as StageId)).toEqual([]);
+  });
+
+  it("回退到 0：全下游 1..8", () => {
+    const result = stagesToMarkAfterRollback(0 as StageId, 8 as StageId);
+    expect(result).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
   });
 });

@@ -17,13 +17,14 @@ import type {
   Limitation,
   CostRate,
   OptionalMaterial,
+  Conversation,
+  Scenario,
 } from "@scene/contract";
 import type { ParseResult } from "@scene/infra";
 import type { DbInstance, Repo } from "@scene/infra";
-import type { QualityAssessment, CompletenessReport } from "@scene/domain";
 
 import { createIngestCommand, consumeDshPrompt } from "./ingest.js";
-import type { DocParser, IngestDeps, IngestResult } from "./ingest.js";
+import type { DocParser, IngestDeps } from "./ingest.js";
 
 // ─── Mock 工厂 ─────────────────────────────────────────────
 
@@ -136,7 +137,7 @@ function createMockDshClient(outputText: string): DshClient {
 
   return {
     createSession: vi.fn(async () => ({ sessionId: "mock-session" })),
-    prompt: vi.fn(function* (): AsyncIterable<FollowEvent> {
+    prompt: vi.fn(async function* (): AsyncGenerator<FollowEvent> {
       for (const e of events) {
         yield e;
       }
@@ -145,8 +146,11 @@ function createMockDshClient(outputText: string): DshClient {
   };
 }
 
+/** mock 行的公共字段（对齐 @scene/infra BaseRow，该类型未导出故本地声明） */
+type MockBaseRow = { id: string; created_at: string; updated_at: string };
+
 /** 创建 mock Repo（记录 insert 调用） */
-function createMockRepo<T>(): Repo<T> {
+function createMockRepo<T extends MockBaseRow>(): Repo<T> {
   const store: T[] = [];
   return {
     list: vi.fn(() => [...store]),
@@ -178,6 +182,12 @@ function createMockDb(): DbInstance {
     limitationRepo: createMockRepo<Limitation>(),
     costRateRepo: createMockRepo<CostRate>(),
     optionalMaterialRepo: createMockRepo<OptionalMaterial>(),
+    // ingest 流程不使用的仓库：占位 mock（Conversation 走 Repo，其余用空对象占位）
+    conversationRepo: createMockRepo<Conversation>(),
+    scenarioRepo: createMockRepo<Scenario>(),
+    messageRepo: {} as DbInstance["messageRepo"],
+    stageDataRepo: {} as DbInstance["stageDataRepo"],
+    qualityGateRepo: {} as DbInstance["qualityGateRepo"],
   };
 }
 
@@ -391,7 +401,7 @@ describe("createIngestCommand", () => {
       // 构造一个发出 error 事件的 dshClient
       dshClient = {
         createSession: vi.fn(async () => ({ sessionId: "err-session" })),
-        prompt: vi.fn(function* (): AsyncIterable<FollowEvent> {
+        prompt: vi.fn(async function* (): AsyncGenerator<FollowEvent> {
           yield { type: "error", message: "模型超时" };
         }),
         cancel: vi.fn(async () => {}),
@@ -480,7 +490,7 @@ describe("consumeDshPrompt", () => {
 
     const client: DshClient = {
       createSession: vi.fn(async () => ({ sessionId: "s1" })),
-      prompt: vi.fn(function* (): AsyncIterable<FollowEvent> {
+      prompt: vi.fn(async function* (): AsyncGenerator<FollowEvent> {
         yield { type: "text", text: chunk1 };
         yield { type: "text", text: chunk2 };
         yield { type: "done" };
@@ -501,7 +511,7 @@ describe("consumeDshPrompt", () => {
 
     const client: DshClient = {
       createSession: vi.fn(async () => ({ sessionId: "s2" })),
-      prompt: vi.fn(function* (): AsyncIterable<FollowEvent> {
+      prompt: vi.fn(async function* (): AsyncGenerator<FollowEvent> {
         yield { type: "text", text: wrapped };
         yield { type: "done" };
       }),
@@ -518,7 +528,7 @@ describe("consumeDshPrompt", () => {
 
     const client: DshClient = {
       createSession: vi.fn(async () => ({ sessionId: "s3" })),
-      prompt: vi.fn(function* (): AsyncIterable<FollowEvent> {
+      prompt: vi.fn(async function* (): AsyncGenerator<FollowEvent> {
         yield { type: "text", text: withPrefix };
         yield { type: "done" };
       }),
@@ -533,7 +543,7 @@ describe("consumeDshPrompt", () => {
   it("流中出现 error 事件应返回空 rows", async () => {
     const client: DshClient = {
       createSession: vi.fn(async () => ({ sessionId: "s4" })),
-      prompt: vi.fn(function* (): AsyncIterable<FollowEvent> {
+      prompt: vi.fn(async function* (): AsyncGenerator<FollowEvent> {
         yield { type: "text", text: '{"rows":[' };
         yield { type: "error", message: "timeout" };
       }),

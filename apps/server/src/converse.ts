@@ -9,7 +9,6 @@
 
 import type {
   Conversation,
-  Message,
   DshClient,
   FollowEvent,
   SessionHandle,
@@ -18,7 +17,6 @@ import type { Repo, MessageRepo } from "@scene/infra";
 import {
   validateSessionTitle,
   canArchive,
-  canDelete,
   normalizeConversationTitle,
   SESSION_STATUS_ACTIVE,
   SESSION_STATUS_ARCHIVED,

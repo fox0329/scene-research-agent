@@ -105,6 +105,29 @@ export function rollback(currentStage: StageId, targetStage: StageId): StageId {
 }
 
 /**
+ * 回退后需标记"待重算"的阶段集合（M4-T4.2 回退清理）
+ *
+ * 回退到目标阶段意味着目标阶段的输入将被修改，其下游（严格晚于
+ * 目标、不晚于当前阶段）已生成的分析全部失效待重算；目标阶段自身
+ * 的数据保留供编辑对比，重算时才被新结果覆盖（§4.1 失效语义）。
+ *
+ * @param targetStage - 回退目标阶段
+ * @param currentStage - 回退前的当前阶段
+ * @returns 升序阶段列表；target>=current 时为空（非法回退由 rollback() 抛错兜底）
+ */
+export function stagesToMarkAfterRollback(
+  targetStage: StageId,
+  currentStage: StageId,
+): StageId[] {
+  if (targetStage >= currentStage) return [];
+  const result: StageId[] = [];
+  for (let s = (targetStage + 1) as number; s <= currentStage; s++) {
+    result.push(s as StageId);
+  }
+  return result;
+}
+
+/**
  * 标记资料失效（产品定义 §4.1 失效语义）
  *
  * 资料库更新后反查受影响阶段：已生成的分析一律保留、不自动覆盖、

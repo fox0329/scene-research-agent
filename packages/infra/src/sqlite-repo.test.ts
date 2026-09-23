@@ -290,3 +290,101 @@ describe("DB_PATH 环境变量", () => {
     }
   });
 });
+// ─── 回退清理仓库方法（M4-T4.2） ───────────────────────────
+
+describe("stageDataRepo markStale / deleteByScenarioStage（多场景隔离）", () => {
+  let instance: DbInstance;
+  let scenarioA: string;
+  let scenarioB: string;
+
+  beforeEach(() => {
+    instance = createDb(":memory:");
+    const pl = instance.productLineRepo.insert({ name: "产品线" } as never);
+    scenarioA = instance.scenarioRepo.insert({
+      name: "场景A",
+      product_line_id: pl.id,
+      status: "进行中",
+      current_stage: 3,
+    } as never).id;
+    scenarioB = instance.scenarioRepo.insert({
+      name: "场景B",
+      product_line_id: pl.id,
+      status: "进行中",
+      current_stage: 3,
+    } as never).id;
+  });
+
+  afterEach(() => {
+    instance.db.close();
+  });
+
+  const seed = (scenarioId: string, stage: number, tableCode: string) =>
+    instance.stageDataRepo.insert({
+      scenario_id: scenarioId,
+      stage,
+      table_code: tableCode,
+      row: { x: 1 },
+      is_stale: false,
+    } as never);
+
+  it("markStale 只影响指定场景指定阶段，is_stale 布尔往返正确", () => {
+    seed(scenarioA, 2, "表2-1");
+    const a3 = seed(scenarioA, 3, "表3-1");
+    const b3 = seed(scenarioB, 3, "表3-1");
+
+    const changes = instance.stageDataRepo.markStale(scenarioA, [2, 3], true);
+    expect(changes).toBe(2);
+
+    const listA = instance.stageDataRepo.listByScenarioStage(scenarioA, 3);
+    expect(listA[0]!.id).toBe(a3.id);
+    expect(listA[0]!.is_stale).toBe(true);
+    // 隔离抽查：场景 B 同阶段数据不受影响
+    const listB = instance.stageDataRepo.listByScenarioStage(scenarioB, 3);
+    expect(listB[0]!.id).toBe(b3.id);
+    expect(listB[0]!.is_stale).toBe(false);
+  });
+
+  it("markStale 空阶段列表返回 0；置回 false 亦可", () => {
+    seed(scenarioA, 1, "表1-1");
+    expect(instance.stageDataRepo.markStale(scenarioA, [], true)).toBe(0);
+    instance.stageDataRepo.markStale(scenarioA, [1], true);
+    expect(instance.stageDataRepo.markStale(scenarioA, [1], false)).toBe(1);
+    expect(instance.stageDataRepo.listByScenarioStage(scenarioA, 1)[0]!.is_stale).toBe(false);
+  });
+
+  it("deleteByScenarioStage 精确删除（阶段+场景双条件）", () => {
+    seed(scenarioA, 1, "表1-1");
+    const keep = seed(scenarioA, 2, "表2-1");
+    seed(scenarioB, 1, "表1-1");
+
+    expect(instance.stageDataRepo.deleteByScenarioStage(scenarioA, 1)).toBe(1);
+    expect(instance.stageDataRepo.listByScenarioStage(scenarioA, 1)).toHaveLength(0);
+    expect(instance.stageDataRepo.listByScenarioStage(scenarioA, 2)[0]!.id).toBe(keep.id);
+    expect(instance.stageDataRepo.listByScenarioStage(scenarioB, 1)).toHaveLength(1);
+  });
+
+  it("qualityGateRepo.deleteByScenarioStage 只删本场景本阶段", () => {
+    instance.qualityGateRepo.insert({
+      scenario_id: scenarioA,
+      stage: 1,
+      item_no: 1,
+      title: "检查项",
+      result: "通过",
+      detail: "",
+      evidence_refs: {},
+    } as never);
+    instance.qualityGateRepo.insert({
+      scenario_id: scenarioB,
+      stage: 1,
+      item_no: 1,
+      title: "检查项B",
+      result: "通过",
+      detail: "",
+      evidence_refs: {},
+    } as never);
+
+    expect(instance.qualityGateRepo.deleteByScenarioStage(scenarioA, 1)).toBe(1);
+    expect(instance.qualityGateRepo.listByScenarioStage(scenarioA, 1)).toHaveLength(0);
+    expect(instance.qualityGateRepo.listByScenarioStage(scenarioB, 1)).toHaveLength(1);
+  });
+});

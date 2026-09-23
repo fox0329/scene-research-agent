@@ -125,6 +125,7 @@ export {
   advance,
   canAdvance,
   rollback,
+  stagesToMarkAfterRollback,
   markStale,
   getRiskChain,
   STAGES,

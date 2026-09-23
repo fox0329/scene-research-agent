@@ -9,7 +9,6 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import type {
   DshClient,
   FollowEvent,
-  SessionHandle,
   Scenario,
   Product,
   SpecParam,
@@ -40,7 +39,7 @@ import type { AdvanceStageDeps } from "./advance-stage.js";
 function createMockDshClient(outputText: string): DshClient {
   return {
     createSession: vi.fn(async () => ({ sessionId: "mock-session-stage" })),
-    prompt: vi.fn(function* (): AsyncIterable<FollowEvent> {
+    prompt: vi.fn(async function* (): AsyncGenerator<FollowEvent> {
       yield { type: "text", text: outputText };
       yield { type: "done" };
     }),
@@ -48,8 +47,11 @@ function createMockDshClient(outputText: string): DshClient {
   };
 }
 
+/** mock 行的公共字段（对齐 @scene/infra BaseRow，该类型未导出故本地声明） */
+type MockBaseRow = { id: string; created_at: string; updated_at: string };
+
 /** 创建 mock 通用 Repo（内存存储） */
-function createMockRepo<T extends { id?: string }>(): Repo<T> {
+function createMockRepo<T extends MockBaseRow>(): Repo<T> {
   const store: T[] = [];
   return {
     list: vi.fn(() => [...store]),
@@ -94,6 +96,25 @@ function createMockStageDataRepo(): StageDataRepo {
       store.push(fullRow);
       return fullRow;
     }),
+    markStale: vi.fn((scenarioId: string, stages: number[], isStale: boolean) => {
+      let changes = 0;
+      store.forEach((r, i) => {
+        if (r.scenario_id === scenarioId && stages.includes(r.stage)) {
+          store[i] = { ...r, is_stale: isStale };
+          changes++;
+        }
+      });
+      return changes;
+    }),
+    deleteByScenarioStage: vi.fn((scenarioId: string, stage: number) => {
+      const before = store.length;
+      const kept = store.filter(
+        (r) => !(r.scenario_id === scenarioId && r.stage === stage),
+      );
+      store.length = 0;
+      store.push(...kept);
+      return before - store.length;
+    }),
   };
 }
 
@@ -115,6 +136,15 @@ function createMockQualityGateRepo(): QualityGateRepo {
       };
       store.push(fullRow);
       return fullRow;
+    }),
+    deleteByScenarioStage: vi.fn((scenarioId: string, stage: number) => {
+      const before = store.length;
+      const kept = store.filter(
+        (r) => !(r.scenario_id === scenarioId && r.stage === stage),
+      );
+      store.length = 0;
+      store.push(...kept);
+      return before - store.length;
     }),
   };
 }
@@ -363,6 +393,39 @@ describe("createAdvanceStageCommand", () => {
         }),
       );
     });
+
+    it("重算覆盖：第二次运行同一阶段不叠加旧行（T4.2）", async () => {
+      const cmd = createAdvanceStageCommand(deps);
+      await collectEvents(cmd.execute({ scenarioId: "sc-1", stage: 0 }));
+      const firstCount = db.stageDataRepo.list().length;
+      expect(firstCount).toBe(1);
+
+      await collectEvents(cmd.execute({ scenarioId: "sc-1", stage: 0 }));
+      expect(db.stageDataRepo.list()).toHaveLength(1);
+    });
+
+    it("重算早期阶段不应把 current_stage 拉回（只前进不回退）", async () => {
+      db = createMockDb({ scenario: { current_stage: 5 } });
+      const cmd = createAdvanceStageCommand({ db, dshClient });
+      await collectEvents(cmd.execute({ scenarioId: "sc-1", stage: 0 }));
+
+      expect(db.scenarioRepo.update).not.toHaveBeenCalledWith(
+        "sc-1",
+        expect.anything(),
+      );
+      expect(db.stageDataRepo.list()).toHaveLength(1);
+    });
+
+    it("阶段 8 终态运行不抛错、current_stage 保持 8", async () => {
+      db = createMockDb({ scenario: { current_stage: 8 } });
+      const cmd = createAdvanceStageCommand({ db, dshClient });
+      const events = await collectEvents(
+        cmd.execute({ scenarioId: "sc-1", stage: 8 }),
+      );
+
+      expect(events.at(-1)!.type).toBe("done");
+      expect(db.scenarioRepo.update).not.toHaveBeenCalled();
+    });
   });
 
   describe("阶段 1：门槛筛查", () => {
@@ -546,7 +609,7 @@ describe("createAdvanceStageCommand", () => {
       db = createMockDb({ scenario: { current_stage: 0 } });
       dshClient = {
         createSession: vi.fn(async () => ({ sessionId: "err-session" })),
-        prompt: vi.fn(function* (): AsyncIterable<FollowEvent> {
+        prompt: vi.fn(async function* (): AsyncGenerator<FollowEvent> {
           yield { type: "error", message: "模型超时" };
         }),
         cancel: vi.fn(async () => {}),

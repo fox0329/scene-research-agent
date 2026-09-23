@@ -12,14 +12,11 @@
 
 import type {
   DshClient,
-  SessionHandle,
   FollowEvent,
-  SseEventType,
   StageId,
+  TableCode,
   Scenario,
   StageData,
-  Conversation,
-  QualityGate,
   Product,
   SpecParam,
   Capability,
@@ -28,15 +25,10 @@ import type {
   CostRate,
   OptionalMaterial,
 } from "@scene/contract";
-import type {
-  DbInstance,
-  Repo,
-  StageDataRepo,
-  QualityGateRepo,
-  MessageRepo,
-} from "@scene/infra";
+import type { DbInstance } from "@scene/infra";
 import {
   advance,
+  LAST_STAGE,
   runGate,
   decideAdvice,
   GATE_CHECK_TITLES,
@@ -57,7 +49,8 @@ export interface AdvanceStageDeps {
 
 interface DshStageOutput {
   rows: Array<{
-    table_code: string;
+    /** 由输出契约 JSON Schema 在 DSH 侧约束枚举；阶段 0 总结允许自由表号 */
+    table_code: TableCode;
     fields: Record<string, unknown>;
     source: string;
   }>;
@@ -160,7 +153,12 @@ async function* executeAdvanceStage(
   const dshOutput = parseDshOutput(fullText);
 
   // 8. 写入 stage_data → yield row 事件
+  //    重算覆盖（T4.2）：先清除该阶段旧数据行与旧质量关记录再写新结果；
+  //    旧数据在被重算前始终保留（§4.1 失效语义），重算即用户决定。
   yield emit({ type: "progress", stage, message: "正在写入分析结果..." });
+
+  db.stageDataRepo.deleteByScenarioStage(scenarioId, stage);
+  db.qualityGateRepo.deleteByScenarioStage(scenarioId, stage);
 
   const writtenRows: StageData[] = [];
   for (const row of dshOutput.rows) {
@@ -235,10 +233,12 @@ async function* executeAdvanceStage(
     });
   }
 
-  // 11. 更新 scenario.current_stage（推进状态）
-  db.scenarioRepo.update(scenarioId, {
-    current_stage: advance(stage),
-  });
+  // 11. 更新 scenario.current_stage（只前进不回退：重算早期阶段时保持进度，
+  //     阶段 8 为终态；是否继续推进由用户决定——核心原则）
+  const nextStage: StageId = stage < LAST_STAGE ? advance(stage) : stage;
+  if (nextStage > scenario.current_stage) {
+    db.scenarioRepo.update(scenarioId, { current_stage: nextStage });
+  }
 
   // 12. done 事件
   yield emit({
@@ -324,7 +324,9 @@ function runStageGate(
 
   // 基于写入数据量和来源多样性做基础判定
   const hasData = writtenRows.length > 0;
-  const sourceSet = new Set(writtenRows.map((r) => r.source).filter(Boolean));
+  const sourceSet = new Set(
+    writtenRows.map((r) => r.source).filter((s): s is string => Boolean(s)),
+  );
   const sourceSample = sampleSources([...sourceSet], 3);
   const hasEnoughSources = sourceSample.length >= 3;
 

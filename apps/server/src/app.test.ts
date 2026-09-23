@@ -25,7 +25,10 @@ import { createApp } from "./app.js";
 
 // ─── mock 工厂（最小集） ───────────────────────────────────
 
-function createMockRepo<T extends { id?: string }>(): Repo<T> & {
+/** mock 行的公共字段（对齐 @scene/infra BaseRow，该类型未导出故本地声明） */
+type MockBaseRow = { id: string; created_at: string; updated_at: string };
+
+function createMockRepo<T extends MockBaseRow>(): Repo<T> & {
   store: T[];
 } {
   const store: T[] = [];
@@ -74,12 +77,15 @@ function createMockDb() {
       stageDataStore.push(fullRow);
       return fullRow;
     }),
+    markStale: vi.fn(() => 0),
+    deleteByScenarioStage: vi.fn(() => 0),
   };
 
   const qualityGateRepo: QualityGateRepo = {
     list: vi.fn(() => []),
     insert: vi.fn((row) => ({ ...row, id: "qg-0", checked_at: "" }) as never),
     listByScenarioStage: vi.fn(() => []),
+    deleteByScenarioStage: vi.fn(() => 0),
   };
 
   const messageRepo: MessageRepo = {
@@ -131,7 +137,7 @@ function createMockDshClient(rowsText?: string): DshClient {
     });
   return {
     createSession: vi.fn(async () => ({ sessionId: "dsh-mock" })),
-    prompt: vi.fn(function* (): AsyncIterable<FollowEvent> {
+    prompt: vi.fn(async function* (): AsyncGenerator<FollowEvent> {
       yield { type: "text", text: output };
       yield { type: "done" };
     }),
@@ -215,12 +221,16 @@ describe("GET /api/v1/projects/:id/resume", () => {
       id: "sd-0",
       scenario_id: "sc-1",
       stage: 0,
-      table_code: "表0-1",
+      table_code: "M1",
       row: { x: 1 },
       is_stale: false,
+      source_type: "AI提取",
+      source: "手册.pdf:1",
+      source_authority: "T3",
+      evidence_level: "B",
       created_at: "",
       updated_at: "",
-    } as StageData;
+    };
     stageDataStore.push(row);
     conversationRepo.store.push({
       id: "c-crash",
@@ -246,6 +256,64 @@ describe("GET /api/v1/projects/:id/resume", () => {
     expect(plan.stage).toBe(0);
     expect(plan.danglingConversationIds).toEqual(["c-crash"]);
     expect(messageStore).toHaveLength(0);
+  });
+});
+
+// ─── rollback 回退路由（T4.2） ─────────────────────────────
+
+describe("POST /api/v1/projects/:id/rollback", () => {
+  it("回退成功：返回标记结果并回写 current_stage", async () => {
+    const { db, scenarioRepo } = createMockDb();
+    seedScenario(scenarioRepo, { current_stage: 3 });
+    const app = createApp({ db, dshClient: createMockDshClient() });
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/projects/sc-1/rollback",
+      payload: { targetStage: 1 },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as {
+      toStage: number;
+      markedStages: number[];
+      banner: string;
+    };
+    expect(body.toStage).toBe(1);
+    expect(body.markedStages).toEqual([2, 3]);
+    expect(body.banner).toContain("待重算");
+  });
+
+  it("目标不早于当前阶段 → 400", async () => {
+    const { db, scenarioRepo } = createMockDb();
+    seedScenario(scenarioRepo, { current_stage: 1 });
+    const app = createApp({ db, dshClient: createMockDshClient() });
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/projects/sc-1/rollback",
+      payload: { targetStage: 2 },
+    });
+    expect(res.statusCode).toBe(400);
+    expect((res.json() as { error: string }).error).toContain("必须早于");
+  });
+
+  it("targetStage 非法/缺失 → 400；场景不存在 → 404", async () => {
+    const { db, scenarioRepo } = createMockDb();
+    seedScenario(scenarioRepo);
+    const app = createApp({ db, dshClient: createMockDshClient() });
+
+    const bad = await app.inject({
+      method: "POST",
+      url: "/api/v1/projects/sc-1/rollback",
+      payload: {},
+    });
+    expect(bad.statusCode).toBe(400);
+
+    const missing = await app.inject({
+      method: "POST",
+      url: "/api/v1/projects/nope/rollback",
+      payload: { targetStage: 0 },
+    });
+    expect(missing.statusCode).toBe(404);
   });
 });
 

@@ -15,6 +15,7 @@ import type { DshClient, StageId } from "@scene/contract";
 import type { DbInstance } from "@scene/infra";
 import { planResume } from "@scene/domain";
 import { createAdvanceStageCommand } from "./advance-stage.js";
+import { createRollbackStageCommand } from "./rollback-stage.js";
 import { createSseHub } from "./sse-hub.js";
 import type { SseHub } from "./sse-hub.js";
 
@@ -35,6 +36,7 @@ export function createApp(deps: AppDeps): FastifyInstance {
   const { db, dshClient } = deps;
   const hub = deps.hub ?? createSseHub();
   const advanceCmd = createAdvanceStageCommand({ db, dshClient });
+  const rollbackCmd = createRollbackStageCommand({ db });
   /** scenario+stage → 最新 runId */
   const latestRuns = new Map<string, string>();
   let runSeq = 0;
@@ -99,6 +101,25 @@ export function createApp(deps: AppDeps): FastifyInstance {
       await streamEvents(hub, runId, request, reply);
     },
   );
+
+  // ── 回退清理：标记下游"待重算"（T4.2） ─────────────────
+  app.post("/api/v1/projects/:id/rollback", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const body = (request.body ?? {}) as { targetStage?: unknown };
+    const targetStage = Number(body.targetStage);
+    if (!Number.isInteger(targetStage) || targetStage < 0 || targetStage > LAST_STAGE_ID) {
+      return reply.code(400).send({ error: `回退目标阶段非法: ${String(body.targetStage)}` });
+    }
+    if (!db.scenarioRepo.getById(id)) {
+      return reply.code(404).send({ error: `场景 ${id} 不存在` });
+    }
+    try {
+      return rollbackCmd.execute({ scenarioId: id, targetStage: targetStage as StageId });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      return reply.code(400).send({ error: message });
+    }
+  });
 
   // ── 断线重连：按 Last-Event-ID 重放 + 续流 ────────────
   app.get(

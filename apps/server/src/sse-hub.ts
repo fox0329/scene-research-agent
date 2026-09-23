@@ -103,23 +103,26 @@ export function createSseHub(): SseHub {
     const state = runs.get(runId);
     if (!state) return undefined;
 
-    async function* iterate(): AsyncIterable<FollowEvent> {
+    // state 作为参数传入，避免函数声明提升导致的闭包 narrowing 失效
+    async function* iterate(
+      run: RunState,
+    ): AsyncIterable<FollowEvent> {
       const owned = new Set<() => void>();
       try {
-        let cursor = replayFrom(state.events, lastEventId);
+        let cursor = replayFrom(run.events, lastEventId);
         for (;;) {
-          while (cursor < state.events.length) {
-            yield state.events[cursor++]!;
+          while (cursor < run.events.length) {
+            yield run.events[cursor++]!;
           }
-          if (state.done) return;
-          await waitForUpdate(state, owned);
+          if (run.done) return;
+          await waitForUpdate(run, owned);
         }
       } finally {
-        for (const w of owned) state.waiters.delete(w); // 订阅方提前退出时清账
+        for (const w of owned) run.waiters.delete(w); // 订阅方提前退出时清账
       }
     }
 
-    return iterate();
+    return iterate(state);
   };
 
   return {

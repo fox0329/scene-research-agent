@@ -149,7 +149,7 @@ describe("sse-hub 生命周期", () => {
   it("同 runId 重复 start 被忽略，不重复消费", async () => {
     const hub = createSseHub();
     let consumed = 0;
-    const counting = (async function* () {
+    const counting = (async function* (): AsyncGenerator<FollowEvent> {
       yield { type: "progress", id: "1" };
       consumed++;
     })();

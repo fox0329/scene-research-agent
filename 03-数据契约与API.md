@@ -87,6 +87,7 @@
 | POST | `/projects/{id}/stages/{n}/advance` | 推进阶段 n 分析；**SSE**（事件见 §四） |
 | GET | `/projects/{id}/resume` | 断点续做对账（T4.1）：`{ action: fresh|resume|rerun|complete, stage, needsRecompute, danglingConversationIds, banner }` |
 | GET | `/projects/{id}/stages/{n}/events` | SSE 断线续传：凭 `Last-Event-ID` 增量重放该阶段最近一次分析流（进程存续期内可续；进程重启后走 resume 对账重跑） |
+| POST | `/projects/{id}/rollback` | 回退清理（T4.2）：`{ targetStage }` → `{ scenarioId, fromStage, toStage, markedStages, markedRows, banner }`；下游阶段既有分析标记待重算（数据保留不自动覆盖），非法阶段 400、场景不存在 404 |
 | POST | `/projects/{id}/stages/{n}/decide` | 用户决定：`{ action: 继续|补充|停止|重算 }` |
 | GET | `/projects/{id}/stages/{n}` | 读阶段面板（表格行 + 质量关 + 建议卡） |
 | PATCH | `/projects/{id}/stage-data/{rowId}` | 分析表单元格编辑 |
@@ -138,3 +139,4 @@ interface DshClient {
 |---|---|---|
 | v0.1 | 2026-09-22 | 草案：15 表 schema、API 按 6 command 分组、SSE 事件格式、dsh-client 接口；阶段 3-8 的 stage_data row schema 留待 v1.1（M3 前） |
 | v1.2 | 2026-09-23 | T4.1 断点续做：新增 `GET /projects/{id}/resume`、`GET /projects/{id}/stages/{n}/events`（Last-Event-ID 重放）两个端点；SSE 报文按 §四 输出 `event: follow` 行；已登记 `docs/项目变更表.md` |
+| v1.3 | 2026-09-23 | T4.2 回退清理：新增 `POST /projects/{id}/rollback`（下游标记待重算、数据保留）；advance 重算覆盖语义——同阶段重跑先清本阶段 stage_data/quality_gate 再写入，早期阶段重算不回拉 current_stage；已登记 `docs/项目变更表.md` |

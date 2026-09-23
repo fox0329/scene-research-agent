@@ -251,6 +251,8 @@ export interface QualityGateRepo {
   insert(row: CreateQualityGateInput): QualityGate;
   /** 按场景+阶段列出质量关记录 */
   listByScenarioStage(scenarioId: string, stage: StageId): QualityGate[];
+  /** 删除某场景某阶段全部质量关记录（重算覆盖，T4.2），返回删除条数 */
+  deleteByScenarioStage(scenarioId: string, stage: StageId): number;
 }
 
 function createQualityGateRepo(db: Database.Database): QualityGateRepo {
@@ -289,7 +291,14 @@ function createQualityGateRepo(db: Database.Database): QualityGateRepo {
     return fullRow;
   };
 
-  return { list, insert, listByScenarioStage };
+  const deleteByScenarioStage = (scenarioId: string, stage: StageId): number => {
+    const result = db
+      .prepare(`DELETE FROM quality_gate WHERE scenario_id = ? AND stage = ?`)
+      .run(scenarioId, stage);
+    return result.changes;
+  };
+
+  return { list, insert, listByScenarioStage, deleteByScenarioStage };
 }
 
 function deserializeQualityGate(row: QualityGate): QualityGate {
@@ -311,6 +320,10 @@ export interface StageDataRepo {
   insert(row: CreateStageDataInput): StageData;
   /** 按场景+阶段列出阶段数据 */
   listByScenarioStage(scenarioId: string, stage: StageId): StageData[];
+  /** 批量设置某场景若干阶段的失效标记（回退清理 T4.2 / 资料失效 F3），返回更新条数 */
+  markStale(scenarioId: string, stages: StageId[], isStale: boolean): number;
+  /** 删除某场景某阶段全部数据行（重算覆盖，T4.2），返回删除条数 */
+  deleteByScenarioStage(scenarioId: string, stage: StageId): number;
 }
 
 function createStageDataRepo(db: Database.Database): StageDataRepo {
@@ -353,20 +366,40 @@ function createStageDataRepo(db: Database.Database): StageDataRepo {
     return fullRow;
   };
 
-  return { list, insert, listByScenarioStage };
+  const markStale = (scenarioId: string, stages: StageId[], isStale: boolean): number => {
+    if (stages.length === 0) return 0;
+    const placeholders = stages.map(() => "?").join(", ");
+    const result = db
+      .prepare(
+        `UPDATE stage_data SET is_stale = ?, updated_at = ?
+         WHERE scenario_id = ? AND stage IN (${placeholders})`,
+      )
+      .run(isStale ? 1 : 0, now(), scenarioId, ...stages);
+    return result.changes;
+  };
+
+  const deleteByScenarioStage = (scenarioId: string, stage: StageId): number => {
+    const result = db
+      .prepare(`DELETE FROM stage_data WHERE scenario_id = ? AND stage = ?`)
+      .run(scenarioId, stage);
+    return result.changes;
+  };
+
+  return { list, insert, listByScenarioStage, markStale, deleteByScenarioStage };
 }
 
 function deserializeStageData(row: StageData): StageData {
   const raw = row as unknown as Record<string, unknown>;
+  let out: StageData = row;
   const rowField = raw["row"];
   if (typeof rowField === "string") {
-    return { ...row, row: JSON.parse(rowField) as Record<string, unknown> };
+    out = { ...out, row: JSON.parse(rowField) as Record<string, unknown> };
   }
-  const isStale = raw["is_stale"];
-  if (typeof isStale === "number") {
-    return { ...row, is_stale: isStale === 1 };
+  const stale = raw["is_stale"];
+  if (typeof stale === "number") {
+    out = { ...out, is_stale: stale === 1 };
   }
-  return row;
+  return out;
 }
 
 // ─── createDb ──────────────────────────────────────────────
