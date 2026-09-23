@@ -171,6 +171,12 @@ export const api = {
       `/projects/${encodeURIComponent(id)}/stages/${stage}/decide`,
       { method: "POST", body: { action } },
     ),
+  /** 交付物双口径导出（契约 §三：返回服务端 md 文件路径） */
+  exportDeliverables: (id: string) =>
+    req<{ internal_path: string; external_path: string }>(
+      `/projects/${encodeURIComponent(id)}/deliverables/export`,
+      { method: "POST" },
+    ),
 
   listConversations: (projectId: string) =>
     req<ApiConversation[]>(`/projects/${encodeURIComponent(projectId)}/conversations`),

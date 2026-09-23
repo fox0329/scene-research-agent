@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   api,
   advanceStageStream,
@@ -10,6 +10,7 @@ import { useAsync } from "../hooks/useAsync";
 import { SceneTable, type ColumnDef } from "../components/SceneTable";
 import { AdviceCard } from "../components/AdviceCard";
 import { useToast } from "../components/Toast";
+import type { DecisionSnapshot } from "../components/decision-snapshot";
 
 /**
  * 联真阶段面板（M5-T5.3）
@@ -17,6 +18,7 @@ import { useToast } from "../components/Toast";
  * - 覆盖 §4.3 三态：加载 / 空态（可发起阶段分析）/ 降级（错误+重试）
  * - 单元格编辑落库：PATCH stage-data（行 JSON 合并，source_type → 用户确认）
  * - 阶段分析：POST advance SSE，进度事件实时上屏，完成后自动刷新
+ * - 决策快照（T5.6）：rows/gates/advice 聚合后冒泡给右栏 DecisionPanel
  */
 
 interface RealStagePanelProps {
@@ -25,6 +27,8 @@ interface RealStagePanelProps {
   stageLabel: string;
   /** 数据变化后通知父级（刷新项目列表/失效横幅） */
   onChanged?: () => void;
+  /** 右栏决策支撑快照变化（null=加载中/不可用） */
+  onDecisionSnapshot?: (snap: DecisionSnapshot | null) => void;
 }
 
 /** 表编号 → 中文说明（面板小标题） */
@@ -63,6 +67,7 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
   stage,
   stageLabel,
   onChanged,
+  onDecisionSnapshot,
 }) => {
   const { status, data, error, reload } = useAsync<ApiStagePanel>(
     () => api.stagePanel(projectId, stage),
@@ -92,6 +97,39 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
     return [...map.entries()];
   }, [rows]);
 
+  /* 决策支撑快照：聚合真实 rows/gates/advice（hooks 须在条件 return 之前） */
+  const snapshot = useMemo<DecisionSnapshot | null>(() => {
+    if (!data) return null;
+    const gates = data.gates;
+    const tally = (pick: (r: ApiStageRow) => string | null | undefined) => {
+      const dist: Record<string, number> = {};
+      for (const r of rows) {
+        const k = pick(r);
+        if (k) dist[k] = (dist[k] ?? 0) + 1;
+      }
+      return dist;
+    };
+    return {
+      stage,
+      stageLabel,
+      advice: data.advice,
+      gateTotal: gates.length,
+      gatePassed: gates.filter((g) => g.result === "通过").length,
+      failedGates: gates
+        .filter((g) => g.result !== "通过")
+        .map((g) => ({ itemNo: g.item_no, title: g.title, detail: g.detail, result: g.result })),
+      rowCount: rows.length,
+      userConfirmed: rows.filter((r) => r.source_type === "用户确认").length,
+      staleCount: rows.filter((r) => r.is_stale).length,
+      evidenceDist: tally((r) => r.evidence_level),
+      authorityDist: tally((r) => r.source_authority),
+    };
+  }, [data, rows, stage, stageLabel]);
+
+  useEffect(() => {
+    onDecisionSnapshot?.(snapshot);
+    return () => onDecisionSnapshot?.(null);
+  }, [snapshot, onDecisionSnapshot]);
   const handleCellChange = useCallback(
     async (row: ApiStageRow, key: string, value: string) => {
       if (String(row.row[key] ?? "") === value) return;

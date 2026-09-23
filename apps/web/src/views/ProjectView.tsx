@@ -12,6 +12,7 @@ import { RealStagePanel } from "./RealStagePanel";
 import { api } from "../api";
 import { useAsync } from "../hooks/useAsync";
 import { useToast } from "../components/Toast";
+import type { DecisionSnapshot } from "../components/decision-snapshot";
 import {
   STAGES,
   type Project,
@@ -27,6 +28,8 @@ interface ProjectViewProps {
   onProjectsChanged?: () => void;
   /** 空项目引导新建（联真模式） */
   onNewProject?: () => void;
+  /** 右栏决策支撑快照（联真模式，T5.6） */
+  onDecisionSnapshot?: (snap: DecisionSnapshot | null) => void;
 }
 
 /* ═══ 阶段 3-8：占位（仅演示模式） ═══ */
@@ -69,6 +72,7 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
   project,
   live,
   onProjectsChanged,
+  onDecisionSnapshot,
 }) => {
   const [activeStage, setActiveStage] = useState(project.stage);
   const { showToast } = useToast();
@@ -109,6 +113,25 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
     showToast(live ? "请前往左下「产品资料库」上传材料并解析入库" : "演示模式：上传入口仅为示意");
   }, [live, showToast]);
 
+  /** 交付物双口径导出（T5.6）：真实链路落服务端 exports/，toast 回显路径 */
+  const [exporting, setExporting] = useState(false);
+  const handleExport = useCallback(async () => {
+    if (!live) {
+      showToast("演示模式：导出仅在实时数据模式可用");
+      return;
+    }
+    if (exporting) return;
+    setExporting(true);
+    try {
+      const r = await api.exportDeliverables(project.id);
+      showToast(`双口径导出完成：内部版 ${r.internal_path}；客户版 ${r.external_path}`);
+    } catch (err: unknown) {
+      showToast(`导出失败：${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setExporting(false);
+    }
+  }, [live, exporting, project.id, showToast]);
+
   const renderStagePanel = () => {
     if (live) {
       return (
@@ -117,6 +140,7 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
           stage={activeStage}
           stageLabel={STAGES[activeStage]!.label}
           onChanged={onProjectsChanged}
+          onDecisionSnapshot={onDecisionSnapshot}
         />
       );
     }
@@ -208,6 +232,9 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
         </div>
         <div className="pga">
           <button className="btn" type="button" onClick={handleUpload}>上传材料</button>
+          <button className="btn" type="button" onClick={() => void handleExport()} disabled={exporting}>
+            {exporting ? "导出中…" : "导出交付物"}
+          </button>
           <button className="btn primary" type="button" onClick={() => void handleCompleteStage()}>
             完成阶段
           </button>

@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import { Sidebar } from "./components/Sidebar";
 import { ConversationDrawer } from "./components/ConversationDrawer";
 import { DecisionPanel } from "./components/DecisionPanel";
+import type { DecisionSnapshot } from "./components/decision-snapshot";
 import { ToastProvider, useToast } from "./components/Toast";
 import { LibraryView } from "./views/LibraryView";
 import { ProjectView } from "./views/ProjectView";
@@ -71,6 +72,8 @@ const AppShell: React.FC = () => {
   /** 产品线快照（含 row_counts），供资料库视图常驻渲染不重挂 */
   const [lines, setLines] = useState<ApiProductLine[]>([]);
   const [activeProjectId, setActiveProjectId] = useState(projects[0].id);
+  /** 右栏决策支撑快照（联真模式，来自当前阶段真实数据；T5.6） */
+  const [decisionSnapshot, setDecisionSnapshot] = useState<DecisionSnapshot | null>(null);
   /** 当前选中会话（对话抽屉随之切换；null=未选/项目未建会话） */
   const [activeConvId, setActiveConvId] = useState<string | null>(null);
   const layout = useColumnLayout();
@@ -269,6 +272,7 @@ const AppShell: React.FC = () => {
             hasProjects={shownProjects.length > 0}
             onProjectsChanged={() => void refreshProjects().catch(() => {})}
             onNewProject={() => void handleNewProject()}
+            onDecisionSnapshot={live ? setDecisionSnapshot : undefined}
           />
         )}
         {view === "project" && !activeProject && (
@@ -296,7 +300,7 @@ const AppShell: React.FC = () => {
       {/* 右栏：决策支撑（项目工作台实装，其余视图预留） */}
       <aside className="det">
         {view === "project" ? (
-          <DecisionPanel />
+          <DecisionPanel snapshot={live ? decisionSnapshot : null} />
         ) : (
           <>
             <div className="det-h">
