@@ -78,7 +78,7 @@ export const ProductListPanel: React.FC = () => {
           <h2>M1 产品清单</h2>
           <p>把所有产品列出来，建立候选池</p>
         </div>
-        <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+        <div style={{ display: "flex", gap: "var(--s2)", alignItems: "center" }}>
           <span className="badge primary">{data.length} 型号</span>
           <button className="btn" onClick={handleAdd}>添加</button>
         </div>
