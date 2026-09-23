@@ -47,16 +47,65 @@ export type {
 } from "./barrier-scan.js";
 
 // 阶段 3 — 市场分析
-export { } from "./market.js";
+export {
+  crossCheckNeeds,
+  compareAlternatives,
+  analyzeProfitPool,
+} from "./market.js";
+export type {
+  UnmetNeed,
+  CrossCheckResult,
+  Alternative,
+  AlternativeAnalysis,
+  ProfitPoolEntry,
+  ProfitAnalysis,
+  SegmentAnalysis,
+} from "./market.js";
 
 // 阶段 4 — 能力匹配
-export { } from "./capability-match.js";
+export {
+  judgeMatch,
+  scoreCompetitiveness,
+  prioritizeSubScenes,
+} from "./capability-match.js";
+export type {
+  MatchJudgment,
+  CompetitivenessDimension,
+  CompetitivenessResult,
+  SubScene,
+  SubScenePriority,
+} from "./capability-match.js";
 
 // 阶段 5 — 成本估算
-export { } from "./cost-estimate.js";
+export {
+  estimateTotalCost,
+  positionPrice,
+  estimateLaborFromRates,
+} from "./cost-estimate.js";
+export type {
+  CostItem,
+  CostEstimate,
+  CostLineItem,
+  PricePosition,
+  PricePositionResult,
+  TaskEstimate,
+} from "./cost-estimate.js";
 
 // 阶段 6 — 价值验证
-export { } from "./value-verify.js";
+export {
+  calcRoi,
+  verifyPilotCriteria,
+  validateMetric,
+} from "./value-verify.js";
+export type {
+  RoiResult,
+  PilotCriterion,
+  PilotResult,
+  PilotVerification,
+  CriterionCheck,
+  ValueMetric,
+  MetricValidation,
+} from "./value-verify.js";
 
 // 全局 — 质量关检查
 export {
