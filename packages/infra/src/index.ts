@@ -6,7 +6,18 @@
  */
 
 export { createDb, sourceSearch } from "./sqlite-repo.js";
-export type { DbInstance, Repo, ListFilters, SourceSearchResult } from "./sqlite-repo.js";
+export type {
+  DbInstance,
+  Repo,
+  ListFilters,
+  SourceSearchResult,
+  MessageRepo,
+  CreateMessageInput,
+  QualityGateRepo,
+  CreateQualityGateInput,
+  StageDataRepo,
+  CreateStageDataInput,
+} from "./sqlite-repo.js";
 
 export { parseDocument } from "./doc-parser.js";
 export type { ParseResult, ParsedTable } from "./doc-parser.js";

@@ -20,6 +20,14 @@ import type {
   Limitation,
   CostRate,
   OptionalMaterial,
+  Conversation,
+  Message,
+  Scenario,
+  StageData,
+  QualityGate,
+  StageId,
+  GateResult,
+  TableCode,
 } from "@scene/contract";
 
 // ─── 通用类型 ──────────────────────────────────────────────
@@ -68,6 +76,24 @@ export interface SourceSearchResult {
   rank: number;
 }
 
+// ─── 消息仓库（append-only） ────────────────────────────────
+
+/** 消息创建输入：id / created_at 由仓储生成 */
+export type CreateMessageInput = Omit<Message, "id" | "created_at">;
+
+/**
+ * 消息仓库：消息只插入与删除，不提供 update（append-only 语义）。
+ */
+export interface MessageRepo {
+  list(filters?: ListFilters): Message[];
+  /** 按会话列出消息（created_at 升序，id 作并列兜底） */
+  listByConversation(conversationId: string): Message[];
+  insert(row: CreateMessageInput): Message;
+  deleteById(id: string): boolean;
+  /** 删除某会话全部消息，返回删除条数 */
+  deleteByConversation(conversationId: string): number;
+}
+
 // ─── 工具函数 ──────────────────────────────────────────────
 
 function now(): string {
@@ -89,30 +115,39 @@ function runMigrations(db: Database.Database): void {
 
 // ─── 通用仓库工厂 ──────────────────────────────────────────
 
+/** 组装 SELECT 语句与绑定参数（list 共用） */
+function buildListSql(
+  tableName: string,
+  filters?: ListFilters,
+): { sql: string; params: unknown[] } {
+  let sql = `SELECT * FROM ${tableName}`;
+  const params: unknown[] = [];
+
+  if (filters?.where) {
+    sql += ` WHERE ${filters.where}`;
+    params.push(...(filters.params ?? []));
+  }
+  if (filters?.orderBy) {
+    sql += ` ORDER BY ${filters.orderBy}`;
+  }
+  if (filters?.limit !== undefined) {
+    sql += ` LIMIT ?`;
+    params.push(filters.limit);
+  }
+  if (filters?.offset !== undefined) {
+    sql += ` OFFSET ?`;
+    params.push(filters.offset);
+  }
+
+  return { sql, params };
+}
+
 function createRepo<T extends BaseRow>(
   db: Database.Database,
   tableName: string,
 ): Repo<T> {
   const list = (filters?: ListFilters): T[] => {
-    let sql = `SELECT * FROM ${tableName}`;
-    const params: unknown[] = [];
-
-    if (filters?.where) {
-      sql += ` WHERE ${filters.where}`;
-      params.push(...(filters.params ?? []));
-    }
-    if (filters?.orderBy) {
-      sql += ` ORDER BY ${filters.orderBy}`;
-    }
-    if (filters?.limit !== undefined) {
-      sql += ` LIMIT ?`;
-      params.push(filters.limit);
-    }
-    if (filters?.offset !== undefined) {
-      sql += ` OFFSET ?`;
-      params.push(filters.offset);
-    }
-
+    const { sql, params } = buildListSql(tableName, filters);
     return db.prepare(sql).all(...params) as T[];
   };
 
@@ -163,6 +198,179 @@ function createRepo<T extends BaseRow>(
   return { list, getById, insert, update, deleteById };
 }
 
+// ─── 消息仓库工厂 ──────────────────────────────────────────
+
+function createMessageRepo(db: Database.Database): MessageRepo {
+  const list = (filters?: ListFilters): Message[] => {
+    const { sql, params } = buildListSql("message", filters);
+    return db.prepare(sql).all(...params) as Message[];
+  };
+
+  const listByConversation = (conversationId: string): Message[] =>
+    list({
+      where: "conversation_id = ?",
+      params: [conversationId],
+      orderBy: "created_at ASC, id ASC",
+    });
+
+  const insert = (row: CreateMessageInput): Message => {
+    const fullRow = { ...row, id: uuid(), created_at: now() } as Message;
+    // 可选字段（stage / table_ref）未传时不绑定，避免 undefined 绑定失败
+    const entries = Object.entries(fullRow).filter(([, v]) => v !== undefined);
+    const columns = entries.map(([k]) => k);
+    const values = entries.map(([, v]) => v);
+
+    db.prepare(
+      `INSERT INTO message (${columns.join(", ")}) VALUES (${columns.map(() => "?").join(", ")})`,
+    ).run(...values);
+
+    return fullRow;
+  };
+
+  const deleteById = (id: string): boolean => {
+    const result = db.prepare(`DELETE FROM message WHERE id = ?`).run(id);
+    return result.changes > 0;
+  };
+
+  const deleteByConversation = (conversationId: string): number => {
+    const result = db
+      .prepare(`DELETE FROM message WHERE conversation_id = ?`)
+      .run(conversationId);
+    return result.changes;
+  };
+
+  return { list, listByConversation, insert, deleteById, deleteByConversation };
+}
+
+// ─── 质量关仓库 ────────────────────────────────────────────
+
+/** 质量关创建输入（id + checked_at 由仓储生成） */
+export type CreateQualityGateInput = Omit<QualityGate, "id" | "checked_at">;
+
+/** 质量关仓库：JSON 序列化 evidence_refs，自动生成 id/checked_at */
+export interface QualityGateRepo {
+  list(filters?: ListFilters): QualityGate[];
+  insert(row: CreateQualityGateInput): QualityGate;
+  /** 按场景+阶段列出质量关记录 */
+  listByScenarioStage(scenarioId: string, stage: StageId): QualityGate[];
+}
+
+function createQualityGateRepo(db: Database.Database): QualityGateRepo {
+  const list = (filters?: ListFilters): QualityGate[] => {
+    const { sql, params } = buildListSql("quality_gate", filters);
+    return (db.prepare(sql).all(...params) as QualityGate[]).map(deserializeQualityGate);
+  };
+
+  const listByScenarioStage = (scenarioId: string, stage: StageId): QualityGate[] =>
+    list({
+      where: "scenario_id = ? AND stage = ?",
+      params: [scenarioId, stage],
+      orderBy: "item_no ASC",
+    });
+
+  const insert = (row: CreateQualityGateInput): QualityGate => {
+    const fullRow: QualityGate = {
+      ...row,
+      id: uuid(),
+      checked_at: now(),
+    };
+    db.prepare(
+      `INSERT INTO quality_gate (id, scenario_id, stage, item_no, title, result, detail, evidence_refs, checked_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      fullRow.id,
+      fullRow.scenario_id,
+      fullRow.stage,
+      fullRow.item_no,
+      fullRow.title,
+      fullRow.result,
+      fullRow.detail,
+      JSON.stringify(fullRow.evidence_refs),
+      fullRow.checked_at,
+    );
+    return fullRow;
+  };
+
+  return { list, insert, listByScenarioStage };
+}
+
+function deserializeQualityGate(row: QualityGate): QualityGate {
+  const evidenceRefs = row.evidence_refs as unknown;
+  if (typeof evidenceRefs === "string") {
+    return { ...row, evidence_refs: JSON.parse(evidenceRefs) as Record<string, unknown> };
+  }
+  return row;
+}
+
+// ─── 阶段数据仓库 ──────────────────────────────────────────
+
+/** 阶段数据创建输入（id/created_at/updated_at 由仓储生成） */
+export type CreateStageDataInput = Omit<StageData, "id" | "created_at" | "updated_at">;
+
+/** 阶段数据仓库：JSON 序列化 row，is_stale 布尔↔整数转换 */
+export interface StageDataRepo {
+  list(filters?: ListFilters): StageData[];
+  insert(row: CreateStageDataInput): StageData;
+  /** 按场景+阶段列出阶段数据 */
+  listByScenarioStage(scenarioId: string, stage: StageId): StageData[];
+}
+
+function createStageDataRepo(db: Database.Database): StageDataRepo {
+  const list = (filters?: ListFilters): StageData[] => {
+    const { sql, params } = buildListSql("stage_data", filters);
+    return (db.prepare(sql).all(...params) as StageData[]).map(deserializeStageData);
+  };
+
+  const listByScenarioStage = (scenarioId: string, stage: StageId): StageData[] =>
+    list({
+      where: "scenario_id = ? AND stage = ?",
+      params: [scenarioId, stage],
+    });
+
+  const insert = (row: CreateStageDataInput): StageData => {
+    const timestamp = now();
+    const fullRow: StageData = {
+      ...row,
+      id: uuid(),
+      created_at: timestamp,
+      updated_at: timestamp,
+    };
+    db.prepare(
+      `INSERT INTO stage_data (id, scenario_id, stage, table_code, row, is_stale, source_type, source, source_authority, evidence_level, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      fullRow.id,
+      fullRow.scenario_id,
+      fullRow.stage,
+      fullRow.table_code,
+      JSON.stringify(fullRow.row),
+      fullRow.is_stale ? 1 : 0,
+      fullRow.source_type ?? null,
+      fullRow.source ?? null,
+      fullRow.source_authority ?? null,
+      fullRow.evidence_level ?? null,
+      fullRow.created_at,
+      fullRow.updated_at,
+    );
+    return fullRow;
+  };
+
+  return { list, insert, listByScenarioStage };
+}
+
+function deserializeStageData(row: StageData): StageData {
+  const raw = row as unknown as Record<string, unknown>;
+  const rowField = raw["row"];
+  if (typeof rowField === "string") {
+    return { ...row, row: JSON.parse(rowField) as Record<string, unknown> };
+  }
+  const isStale = raw["is_stale"];
+  if (typeof isStale === "number") {
+    return { ...row, is_stale: isStale === 1 };
+  }
+  return row;
+}
+
 // ─── createDb ──────────────────────────────────────────────
 
 export interface DbInstance {
@@ -175,6 +383,11 @@ export interface DbInstance {
   limitationRepo: Repo<Limitation>;
   costRateRepo: Repo<CostRate>;
   optionalMaterialRepo: Repo<OptionalMaterial>;
+  conversationRepo: Repo<Conversation>;
+  messageRepo: MessageRepo;
+  scenarioRepo: Repo<Scenario>;
+  stageDataRepo: StageDataRepo;
+  qualityGateRepo: QualityGateRepo;
 }
 
 /**
@@ -202,6 +415,11 @@ export function createDb(dbPath?: string): DbInstance {
     limitationRepo: createRepo<Limitation>(db, "limitation"),
     costRateRepo: createRepo<CostRate>(db, "cost_rate"),
     optionalMaterialRepo: createRepo<OptionalMaterial>(db, "optional_material"),
+    conversationRepo: createRepo<Conversation>(db, "conversation"),
+    messageRepo: createMessageRepo(db),
+    scenarioRepo: createRepo<Scenario>(db, "scenario"),
+    stageDataRepo: createStageDataRepo(db),
+    qualityGateRepo: createQualityGateRepo(db),
   };
 }
 

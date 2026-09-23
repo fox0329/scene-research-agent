@@ -85,7 +85,16 @@ export {
 export type { StaleMark } from "./workflow.js";
 
 // 全局 — 会话管理
-export { } from "./session.js";
+export {
+  SESSION_TITLE_MAX,
+  SESSION_STATUS_ACTIVE,
+  SESSION_STATUS_ARCHIVED,
+  validateSessionTitle,
+  canArchive,
+  canDelete,
+  normalizeConversationTitle,
+  normalizeTitle,
+} from "./session.js";
 
 // 全局 — 知识库
 export { } from "./knowledge.js";
