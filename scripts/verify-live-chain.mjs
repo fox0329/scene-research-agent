@@ -15,7 +15,8 @@ import { dirname, join } from "node:path";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(ROOT + "/");
-const { chromium } = require("playwright");
+/* 根 devDependency 是 @playwright/test（其再导出 chromium）；playwright 裸包未提升，不直接 require */
+const { chromium } = require("@playwright/test");
 
 const BASE = process.env.BASE_URL ?? "http://127.0.0.1:4098";
 const EXPORT_DIR = process.env.EXPORT_DIR ?? "/tmp/scene-verify-exports";
@@ -56,7 +57,8 @@ ok("1 构建产物单端口起应用，进入实时数据模式", true);
 
 /* 2. 产品线 + 真实白皮书上传入库（无密钥依赖的确定性链路） */
 await page.click(".nav-item:has-text('产品资料库')");
-await page.waitForSelector("select[aria-label='选择产品线'], text=新建产品线", { timeout: 8000 });
+/* 等产品线选择器出现（新库时先渲染空态，建线后才有 select；text= 引擎不能混进 CSS 逗号列表，用 locator） */
+await page.locator("select[aria-label='选择产品线'], .empty-state-title").first().waitFor({ state: "visible", timeout: 8000 });
 const hasTargetLine = () =>
   page.evaluate(
     () =>
