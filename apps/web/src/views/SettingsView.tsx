@@ -24,19 +24,11 @@ interface FormState {
   name: string;
   base_url: string;
   api_key: string;
-  /** 每行一个模型 ID */
-  models: string;
+  /** 模型 ID 列表 */
+  models: string[];
 }
 
-const EMPTY_FORM: FormState = { name: "", base_url: "", api_key: "", models: "" };
-
-function parseModels(lines: string): { id: string }[] {
-  return lines
-    .split("\n")
-    .map((s) => s.trim())
-    .filter(Boolean)
-    .map((id) => ({ id }));
-}
+const EMPTY_FORM: FormState = { name: "", base_url: "", api_key: "", models: [] };
 
 /** 检查结果 → 一行人类可读文案 */
 function describeCheck(r: ApiConnectionCheck): string {
@@ -60,6 +52,7 @@ const SettingsViewLive: React.FC = () => {
   const [draftCheck, setDraftCheck] = useState<ApiConnectionCheck | null>(null);
   const [rowCheck, setRowCheck] = useState<Record<string, ApiConnectionCheck | null>>({});
   const [busy, setBusy] = useState(false);
+  const [newModelId, setNewModelId] = useState("");
 
   const providers = useMemo(() => state.data?.providers ?? [], [state.data]);
   const defaultModel = state.data?.default_model ?? null;
@@ -70,6 +63,7 @@ const SettingsViewLive: React.FC = () => {
     setEditingName(null);
     setForm(EMPTY_FORM);
     setDraftCheck(null);
+    setNewModelId("");
   };
 
   const openEdit = (p: ApiProviderPublic) => {
@@ -79,9 +73,10 @@ const SettingsViewLive: React.FC = () => {
       name: p.name,
       base_url: p.base_url,
       api_key: "",
-      models: p.models.map((m) => m.id).join("\n"),
+      models: p.models.map((m) => m.id),
     });
     setDraftCheck(null);
+    setNewModelId("");
   };
 
   const closeForm = () => {
@@ -89,11 +84,24 @@ const SettingsViewLive: React.FC = () => {
     setEditingName(null);
     setForm(EMPTY_FORM);
     setDraftCheck(null);
+    setNewModelId("");
+  };
+
+  const handleAddModel = () => {
+    const id = newModelId.trim();
+    if (!id) return;
+    if (form.models.includes(id)) return;
+    setForm((f) => ({ ...f, models: [...f.models, id] }));
+    setNewModelId("");
+  };
+
+  const handleRemoveModel = (id: string) => {
+    setForm((f) => ({ ...f, models: f.models.filter((m) => m !== id) }));
   };
 
   /** 草稿态连接测试：未保存也可先测链接质量；编辑且未重输 Key 时用已存密钥 */
   const handleDraftTest = async () => {
-    const firstModel = parseModels(form.models)[0]?.id;
+    const firstModel = form.models[0];
     setBusy(true);
     try {
       const r =
@@ -119,7 +127,7 @@ const SettingsViewLive: React.FC = () => {
         name: form.name,
         base_url: form.base_url,
         ...(form.api_key.trim() ? { api_key: form.api_key.trim() } : {}),
-        models: parseModels(form.models),
+        models: form.models.map((id) => ({ id })),
       });
       showToast(`已保存供应商「${form.name.trim()}」`);
       closeForm();
@@ -177,7 +185,7 @@ const SettingsViewLive: React.FC = () => {
         <span className="pgs">data/providers.local.json</span>
       </div>
 
-      <div className="ws">
+      <div className="ws ws-settings">
         {/* 面板 0：应用状态 */}
         <section className="pnl">
           <div className="pnl-h">
@@ -273,8 +281,16 @@ const SettingsViewLive: React.FC = () => {
                         </span>
                       </div>
                       <div className="provider-item-meta kv-mono">{p.base_url}/models</div>
-                      <div className="provider-item-meta">
-                        模型：{p.models.map((m) => m.id).join("、") || "（无）"}
+                      <div className="provider-models-list">
+                        {p.models.length === 0 ? (
+                          <span className="provider-item-meta">（无模型）</span>
+                        ) : (
+                          p.models.map((m) => (
+                            <span key={m.id} className="provider-model-tag">
+                              {m.id}
+                            </span>
+                          ))
+                        )}
                       </div>
                       {check && (
                         <div className={`conn-check ${check.ok ? "conn-check--ok" : "conn-check--err"}`}>
@@ -350,14 +366,47 @@ const SettingsViewLive: React.FC = () => {
                   </label>
 
                   <label className="settings-field">
-                    <span className="settings-label">模型（每行一个模型 ID）</span>
-                    <textarea
-                      className="settings-textarea"
-                      rows={3}
-                      value={form.models}
-                      placeholder={"deepseek-chat\ndeepseek-reasoner"}
-                      onChange={(e) => setForm((f) => ({ ...f, models: e.target.value }))}
-                    />
+                    <span className="settings-label">模型列表</span>
+                    <div className="model-list">
+                      {form.models.length === 0 && (
+                        <span className="provider-item-meta">尚未添加模型</span>
+                      )}
+                      {form.models.map((id) => (
+                        <div key={id} className="model-list-item">
+                          <span className="kv-mono">{id}</span>
+                          <button
+                            className="btn btn-sm"
+                            type="button"
+                            onClick={() => handleRemoveModel(id)}
+                            aria-label={`删除模型 ${id}`}
+                          >
+                            删除
+                          </button>
+                        </div>
+                      ))}
+                      <div className="model-list-add">
+                        <input
+                          className="settings-input"
+                          value={newModelId}
+                          placeholder="输入模型 ID，如 deepseek-chat"
+                          onChange={(e) => setNewModelId(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              handleAddModel();
+                            }
+                          }}
+                        />
+                        <button
+                          className="btn btn-sm"
+                          type="button"
+                          onClick={handleAddModel}
+                          disabled={!newModelId.trim()}
+                        >
+                          添加
+                        </button>
+                      </div>
+                    </div>
                   </label>
                 </div>
 
@@ -438,7 +487,7 @@ const SettingsViewMock: React.FC = () => {
       </div>
 
       {/* 工作区 */}
-      <div className="ws">
+      <div className="ws ws-settings">
         {/* 面板 1：模型选择 */}
         <section className="pnl">
           <div className="pnl-h">

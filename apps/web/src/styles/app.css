@@ -1460,6 +1460,67 @@ td.ed {
   border-top: 1px solid var(--cb);
 }
 
+/* 设置页不滚动：内容适配视口 */
+.ws-settings {
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 供应商模型列表：一行一个 */
+.provider-models-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+  margin-top: var(--s1);
+}
+
+.provider-model-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: var(--s1) var(--s2);
+  font-size: var(--txs);
+  font-family: var(--ff-mono, monospace);
+  color: var(--ct);
+  background: var(--c-bg-2, rgba(0, 0, 0, 0.04));
+  border-radius: var(--r4);
+}
+
+/* 表单内模型列表：增删控件 */
+.model-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+}
+
+.model-list-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--s1) var(--s2);
+  background: var(--c-bg-2, rgba(0, 0, 0, 0.04));
+  border-radius: var(--r4);
+  font-size: var(--ts);
+}
+
+.model-list-add {
+  display: flex;
+  gap: var(--s2);
+  align-items: center;
+}
+
+.model-list-add .settings-input {
+  flex: 1;
+}
+
+/* 小按钮 */
+.btn-sm {
+  height: 28px;
+  padding: 0 var(--s2);
+  font-size: var(--txs);
+  border-radius: var(--r4);
+}
+
 .conn-check {
   margin-top: var(--s2);
   padding: var(--s2) var(--s3);
