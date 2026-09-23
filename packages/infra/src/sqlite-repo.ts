@@ -26,8 +26,6 @@ import type {
   StageData,
   QualityGate,
   StageId,
-  GateResult,
-  TableCode,
 } from "@scene/contract";
 
 // ─── 通用类型 ──────────────────────────────────────────────

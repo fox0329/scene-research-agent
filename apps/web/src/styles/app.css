@@ -1086,3 +1086,121 @@ td.ed {
   font-size: var(--t2x);
   color: var(--ct2);
 }
+
+/* ══════════════════════════════════════════════════════
+ * T2.4 阶段建议卡（AdviceCard 进度条）
+ * ══════════════════════════════════════════════════════ */
+
+/* 建议卡 */
+.rec {
+  background: var(--csr);
+  border-radius: var(--r8);
+  border: 1px solid var(--cb);
+  box-shadow: var(--sh);
+  padding: var(--s4);
+  margin-top: var(--s3);
+}
+
+.rec-hd {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  margin-bottom: var(--s3);
+}
+
+.rec-badge {
+  padding: 4px 12px;
+  border-radius: var(--rp);
+  font-weight: var(--fb);
+  font-size: var(--ts);
+}
+
+.rec-badge.pass {
+  background: var(--cs-s);
+  color: var(--cs-h);
+}
+
+.rec-badge.cond {
+  background: var(--cw-s);
+  color: var(--cw-h);
+}
+
+.rec-badge.no {
+  background: var(--ce-s);
+  color: var(--ce-h);
+}
+
+.rec-badge.none {
+  background: var(--cm);
+  color: var(--ct2);
+}
+
+.rec-title {
+  font-size: var(--ts);
+  font-weight: var(--fb);
+}
+
+.rec-sec {
+  margin-top: var(--s3);
+}
+
+.rec-sec h4 {
+  font-size: var(--t2x);
+  font-weight: var(--fm2);
+  color: var(--ct2);
+  margin-bottom: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.rec-list {
+  list-style: none;
+}
+
+.rec-list li {
+  padding: 2px 0 2px 12px;
+  position: relative;
+  font-size: var(--txs);
+}
+
+.rec-list li::before {
+  content: "\00b7";
+  position: absolute;
+  left: 0;
+  color: var(--ct2);
+}
+
+/* 进度条（与质量关快照共用风格） */
+.rec-progress {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  padding: var(--s2) 0;
+}
+
+.rec-bar {
+  flex: 1;
+  height: 6px;
+  background: var(--cm);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.rec-bar-fill {
+  height: 100%;
+  background: var(--cs);
+  border-radius: 3px;
+}
+
+.rec-bar-num {
+  font-size: var(--t2x);
+  font-weight: var(--fm2);
+  color: var(--ct2);
+  flex-shrink: 0;
+}
+
+.rec-actions {
+  display: flex;
+  gap: var(--s2);
+  margin-top: var(--s4);
+}
