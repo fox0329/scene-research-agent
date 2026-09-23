@@ -1394,3 +1394,44 @@ td.ed {
     transform: translateY(0);
   }
 }
+/* ═══ 联真模式（M5-T5.3）：加载指示 + 资料失效横幅 ═══ */
+
+.loading-strip {
+  position: relative;
+  height: var(--s1);
+  margin: var(--s4) 0;
+  border-radius: var(--rp);
+  background: var(--cb);
+  overflow: hidden;
+}
+
+.loading-strip::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: var(--rp);
+  background: linear-gradient(90deg, transparent, var(--cp-s), transparent);
+  animation: strip-slide 1.2s var(--e) infinite;
+}
+
+@keyframes strip-slide {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(100%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .loading-strip::after { animation: none; }
+}
+
+.stale-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  margin: var(--s2) var(--s4) 0;
+  padding: var(--s2) var(--s3);
+  font-size: var(--tx);
+  color: var(--ct2);
+  background: var(--cw-s);
+  border: 1px solid var(--cb);
+  border-radius: var(--r8);
+}

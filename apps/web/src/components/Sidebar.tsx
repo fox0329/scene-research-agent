@@ -9,6 +9,10 @@ interface SidebarProps {
   activeProjectId: string;
   /** 选中项目：父级切换 activeProjectId 并切到项目工作台视图 */
   onSelectProject: (id: string) => void;
+  /** 新建项目（联真模式接 api.createProject；演示模式不传，按钮保持占位） */
+  onNewProject?: () => void;
+  /** 项目 ⋯ 菜单动作（重命名/归档/删除） */
+  onProjectAction?: (project: Project, action: "重命名" | "归档" | "删除") => void;
 }
 
 /**
@@ -23,13 +27,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
   projects,
   activeProjectId,
   onSelectProject,
+  onNewProject,
+  onProjectAction,
 }) => {
   return (
     <nav className="side">
       <div className="side-hd">
         <h1>方案助手</h1>
-        {/* 新建项目：对话框在后续任务接入，当前为占位入口 */}
-        <button className="nbtn" type="button" aria-label="新建项目">
+        {/* 新建项目：联真模式接 API；演示模式保持占位入口 */}
+        <button className="nbtn" type="button" aria-label="新建项目" onClick={onNewProject}>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <line x1="12" y1="5" x2="12" y2="19" />
             <line x1="5" y1="12" x2="19" y2="12" />
@@ -39,7 +45,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
       </div>
 
       <div className="side-body">
-        <ProjectList projects={projects} activeProjectId={activeProjectId} onSelectProject={onSelectProject} />
+        <ProjectList
+          projects={projects}
+          activeProjectId={activeProjectId}
+          onSelectProject={onSelectProject}
+          onProjectAction={onProjectAction}
+        />
       </div>
       <div className="side-foot">
         <button
