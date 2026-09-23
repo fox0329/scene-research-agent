@@ -1,7 +1,393 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { useToast } from "../components/Toast";
+import {
+  api,
+  type ApiConnectionCheck,
+  type ApiProviderPublic,
+  type ApiProvidersState,
+} from "../api";
+import { useAsync } from "../hooks/useAsync";
 
-/* ── Mock 数据 ── */
+/* ── 视图入口 ── */
+
+interface SettingsViewProps {
+  /** 联真模式：应用自持供应商登记表（变更表 #16）；演示模式保持 mock 面板 */
+  live?: boolean;
+}
+
+export const SettingsView: React.FC<SettingsViewProps> = ({ live }) =>
+  live ? <SettingsViewLive /> : <SettingsViewMock />;
+
+/* ══════════════ 联真模式：模型配置（供应商/链接/Key/模型 + 测试连接） ══════════════ */
+
+interface FormState {
+  name: string;
+  base_url: string;
+  api_key: string;
+  /** 每行一个模型 ID */
+  models: string;
+}
+
+const EMPTY_FORM: FormState = { name: "", base_url: "", api_key: "", models: "" };
+
+function parseModels(lines: string): { id: string }[] {
+  return lines
+    .split("\n")
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .map((id) => ({ id }));
+}
+
+/** 检查结果 → 一行人类可读文案 */
+function describeCheck(r: ApiConnectionCheck): string {
+  const ms =
+    r.stage === "chat"
+      ? `模型可用 · 生成往返 ${r.chat_latency_ms ?? "-"}ms`
+      : `链路可达 · 往返 ${r.models_latency_ms ?? "-"}ms`;
+  const seen = r.models_seen?.length ? ` · 发现 ${r.models_seen.length} 个模型` : "";
+  return r.ok ? `✅ ${ms}${seen}` : `❌ ${r.error ?? "检查失败"}`;
+}
+
+const SettingsViewLive: React.FC = () => {
+  const { showToast } = useToast();
+  const state = useAsync<ApiProvidersState>(() => api.providers(), []);
+  const status = useAsync(() => api.systemStatus(), []);
+
+  const [creating, setCreating] = useState(false);
+  /** 编辑中的供应商名（null=新建） */
+  const [editingName, setEditingName] = useState<string | null>(null);
+  const [form, setForm] = useState<FormState>(EMPTY_FORM);
+  const [draftCheck, setDraftCheck] = useState<ApiConnectionCheck | null>(null);
+  const [rowCheck, setRowCheck] = useState<Record<string, ApiConnectionCheck | null>>({});
+  const [busy, setBusy] = useState(false);
+
+  const providers = useMemo(() => state.data?.providers ?? [], [state.data]);
+  const defaultModel = state.data?.default_model ?? null;
+  const defaultProvider = providers.find((p) => p.name === defaultModel?.provider) ?? null;
+
+  const openCreate = () => {
+    setCreating(true);
+    setEditingName(null);
+    setForm(EMPTY_FORM);
+    setDraftCheck(null);
+  };
+
+  const openEdit = (p: ApiProviderPublic) => {
+    setCreating(true);
+    setEditingName(p.name);
+    setForm({
+      name: p.name,
+      base_url: p.base_url,
+      api_key: "",
+      models: p.models.map((m) => m.id).join("\n"),
+    });
+    setDraftCheck(null);
+  };
+
+  const closeForm = () => {
+    setCreating(false);
+    setEditingName(null);
+    setForm(EMPTY_FORM);
+    setDraftCheck(null);
+  };
+
+  /** 草稿态连接测试：未保存也可先测链接质量；编辑且未重输 Key 时用已存密钥 */
+  const handleDraftTest = async () => {
+    const firstModel = parseModels(form.models)[0]?.id;
+    setBusy(true);
+    try {
+      const r =
+        editingName && !form.api_key.trim()
+          ? await api.testProvider({ name: editingName, model: firstModel })
+          : await api.testProvider({
+              base_url: form.base_url.trim(),
+              api_key: form.api_key.trim(),
+              model: firstModel,
+            });
+      setDraftCheck(r);
+    } catch (err: unknown) {
+      setDraftCheck({ ok: false, stage: "models", error: err instanceof Error ? err.message : String(err) });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleSave = async () => {
+    setBusy(true);
+    try {
+      await api.upsertProvider({
+        name: form.name,
+        base_url: form.base_url,
+        ...(form.api_key.trim() ? { api_key: form.api_key.trim() } : {}),
+        models: parseModels(form.models),
+      });
+      showToast(`已保存供应商「${form.name.trim()}」`);
+      closeForm();
+      state.reload();
+      void status.reload();
+    } catch (err: unknown) {
+      showToast(`保存失败：${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleRowTest = async (p: ApiProviderPublic) => {
+    setRowCheck((m) => ({ ...m, [p.name]: null }));
+    try {
+      const r = await api.testProvider({ name: p.name });
+      setRowCheck((m) => ({ ...m, [p.name]: r }));
+    } catch (err: unknown) {
+      setRowCheck((m) => ({
+        ...m,
+        [p.name]: { ok: false, stage: "models", error: err instanceof Error ? err.message : String(err) },
+      }));
+    }
+  };
+
+  const handleDelete = async (p: ApiProviderPublic) => {
+    if (!window.confirm(`删除供应商「${p.name}」？其链接与 API Key 一并删除。`)) return;
+    try {
+      await api.deleteProvider(p.name);
+      showToast(`已删除供应商「${p.name}」`);
+      state.reload();
+      void status.reload();
+    } catch (err: unknown) {
+      showToast(`删除失败：${err instanceof Error ? err.message : String(err)}`);
+    }
+  };
+
+  const handleSetDefault = async (p: ApiProviderPublic, model: string) => {
+    try {
+      await api.setDefaultModel(p.name, model);
+      showToast(`默认模型：${p.name} / ${model}`);
+      state.reload();
+      void status.reload();
+    } catch (err: unknown) {
+      showToast(`设置失败：${err instanceof Error ? err.message : String(err)}`);
+    }
+  };
+
+  const editingProvider = providers.find((p) => p.name === editingName) ?? null;
+
+  return (
+    <>
+      <div className="pgh">
+        <div className="pgt">设置</div>
+        <span className="pgs">data/providers.local.json</span>
+      </div>
+
+      <div className="ws">
+        {/* 面板 0：应用状态 */}
+        <section className="pnl">
+          <div className="pnl-h">
+            <div>
+              <h2>应用状态</h2>
+              <p>数据库与模型配置概览</p>
+            </div>
+          </div>
+          <div className="pnl-b">
+            <div className="settings-kv-grid">
+              <span className="kv-k">业务数据库</span>
+              <span className="kv-v">
+                {status.status === "loading" ? (
+                  <span className="badge">检测中…</span>
+                ) : (
+                  <span className={`badge ${status.data?.db === "ok" ? "success" : "error"}`}>
+                    {status.data?.db === "ok" ? "正常" : "异常"}
+                  </span>
+                )}
+              </span>
+
+              <span className="kv-k">模型配置</span>
+              <span className="kv-v">
+                {state.status === "ok" &&
+                  (state.data?.configured ? (
+                    <span className="badge success">
+                      已配置 · {defaultModel?.provider} / {defaultModel?.model}
+                    </span>
+                  ) : (
+                    <span className="badge warning">未配置（AI 分析暂不可用）</span>
+                  ))}
+              </span>
+            </div>
+          </div>
+        </section>
+
+        {/* 面板 1：模型配置 */}
+        <section className="pnl">
+          <div className="pnl-h">
+            <div>
+              <h2>模型配置</h2>
+              <p>供应商 / 链接 / API Key / 模型由本页录入，与 DSH 配置无关；密钥存本机 data/（不进 git）</p>
+            </div>
+            {!creating && providers.length > 0 && (
+              <button className="btn" type="button" onClick={openCreate}>
+                添加供应商
+              </button>
+            )}
+          </div>
+          <div className="pnl-b">
+            {state.status === "loading" && (
+              <div className="loading-strip" role="status" aria-label="加载中" />
+            )}
+            {state.status === "error" && (
+              <div className="empty-state">
+                <div className="empty-state-title">加载失败</div>
+                <div className="empty-state-desc">{state.error}</div>
+                <button className="btn" type="button" onClick={state.reload}>重试</button>
+              </div>
+            )}
+
+            {state.status === "ok" && providers.length === 0 && !creating && (
+              <div className="empty-state">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <circle cx="12" cy="12" r="10" />
+                  <line x1="12" y1="16" x2="12" y2="12" />
+                  <line x1="12" y1="8" x2="12.01" y2="8" />
+                </svg>
+                <div className="empty-state-title">尚未配置模型供应商</div>
+                <div className="empty-state-desc">
+                  填写供应商名称、OpenAI 兼容链接（以 /v1 结尾）、API Key 与模型 ID，
+                  点「测试连接」验证链路质量后保存，AI 分析即可用
+                </div>
+                <button className="btn primary" type="button" onClick={openCreate}>
+                  添加供应商
+                </button>
+              </div>
+            )}
+
+            {/* 供应商列表 */}
+            {providers.length > 0 && (
+              <div className="provider-list">
+                {providers.map((p) => {
+                  const isDefaultProvider = defaultModel?.provider === p.name;
+                  const check = rowCheck[p.name];
+                  return (
+                    <div key={p.name} className="provider-item">
+                      <div className="provider-item-head">
+                        <span className="provider-item-name">{p.name}</span>
+                        {isDefaultProvider && <span className="badge primary">默认</span>}
+                        <span className={`badge ${p.has_key ? "success" : "warning"}`}>
+                          {p.has_key ? `Key 已配置 ${p.key_masked ?? ""}` : "Key 未填"}
+                        </span>
+                      </div>
+                      <div className="provider-item-meta kv-mono">{p.base_url}/models</div>
+                      <div className="provider-item-meta">
+                        模型：{p.models.map((m) => m.id).join("、") || "（无）"}
+                      </div>
+                      {check && (
+                        <div className={`conn-check ${check.ok ? "conn-check--ok" : "conn-check--err"}`}>
+                          {describeCheck(check)}
+                        </div>
+                      )}
+                      <div className="provider-item-actions">
+                        <button className="btn" type="button" onClick={() => void handleRowTest(p)}>
+                          测试连接
+                        </button>
+                        <button className="btn" type="button" onClick={() => openEdit(p)}>
+                          编辑
+                        </button>
+                        <button className="btn" type="button" onClick={() => void handleDelete(p)}>
+                          删除
+                        </button>
+                        <select
+                          className="settings-select provider-model-select"
+                          aria-label={`${p.name} 默认模型`}
+                          value={isDefaultProvider ? defaultModel?.model ?? "" : ""}
+                          onChange={(e) => e.target.value && void handleSetDefault(p, e.target.value)}
+                        >
+                          <option value="" disabled>
+                            设为默认模型…
+                          </option>
+                          {p.models.map((m) => (
+                            <option key={m.id} value={m.id}>{m.id}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* 添加/编辑表单 */}
+            {creating && (
+              <div className="provider-form">
+                <div className="settings-form">
+                  <label className="settings-field">
+                    <span className="settings-label">供应商名称</span>
+                    <input
+                      className="settings-input"
+                      value={form.name}
+                      disabled={editingName !== null}
+                      placeholder="例：deepseek-official"
+                      onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+                    />
+                  </label>
+
+                  <label className="settings-field">
+                    <span className="settings-label">链接（OpenAI 兼容 baseURL，通常以 /v1 结尾）</span>
+                    <input
+                      className="settings-input"
+                      value={form.base_url}
+                      placeholder="https://api.example.com/v1"
+                      onChange={(e) => setForm((f) => ({ ...f, base_url: e.target.value }))}
+                    />
+                  </label>
+
+                  <label className="settings-field">
+                    <span className="settings-label">
+                      API Key{editingProvider?.has_key ? `（已存 ${editingProvider.key_masked}，留空保持不变）` : ""}
+                    </span>
+                    <input
+                      className="settings-input"
+                      type="password"
+                      value={form.api_key}
+                      placeholder="sk-…"
+                      onChange={(e) => setForm((f) => ({ ...f, api_key: e.target.value }))}
+                    />
+                  </label>
+
+                  <label className="settings-field">
+                    <span className="settings-label">模型（每行一个模型 ID）</span>
+                    <textarea
+                      className="settings-textarea"
+                      rows={3}
+                      value={form.models}
+                      placeholder={"deepseek-chat\ndeepseek-reasoner"}
+                      onChange={(e) => setForm((f) => ({ ...f, models: e.target.value }))}
+                    />
+                  </label>
+                </div>
+
+                {draftCheck && (
+                  <div className={`conn-check ${draftCheck.ok ? "conn-check--ok" : "conn-check--err"}`}>
+                    {describeCheck(draftCheck)}
+                  </div>
+                )}
+
+                <div className="settings-actions">
+                  <button className="btn" type="button" disabled={busy} onClick={() => void handleDraftTest()}>
+                    测试连接
+                  </button>
+                  <button className="btn primary" type="button" disabled={busy} onClick={() => void handleSave()}>
+                    保存
+                  </button>
+                  <button className="btn" type="button" onClick={closeForm}>
+                    取消
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </section>
+      </div>
+    </>
+  );
+};
+
+/* ══════════════ 演示模式（vite preview / 无后端：保持原型 mock 面板） ══════════════ */
 
 interface ModelProvider {
   key: string;
@@ -10,24 +396,11 @@ interface ModelProvider {
 }
 
 const PROVIDERS: ModelProvider[] = [
-  {
-    key: "talkweb",
-    label: "Talkweb",
-    models: ["deepseek-v4-pro", "deepseek-v4-lite", "deepseek-r1"],
-  },
-  {
-    key: "zai-coding-cn",
-    label: "ZAI Coding CN",
-    models: ["qwen-max", "qwen-plus", "qwen-turbo"],
-  },
-  {
-    key: "xiaomi-token-plan-cn",
-    label: "Xiaomi Token Plan CN",
-    models: ["mi-7b-chat", "mi-13b-chat", "mi-70b-chat"],
-  },
+  { key: "talkweb", label: "Talkweb", models: ["deepseek-v4-pro", "deepseek-v4-lite", "deepseek-r1"] },
+  { key: "zai-coding-cn", label: "ZAI Coding CN", models: ["qwen-max", "qwen-plus", "qwen-turbo"] },
+  { key: "xiaomi-token-plan-cn", label: "Xiaomi Token Plan CN", models: ["mi-7b-chat", "mi-13b-chat", "mi-70b-chat"] },
 ];
 
-/** 模型配置（mock 初始值） */
 interface ModelConfig {
   providerKey: string;
   defaultModel: string;
@@ -40,15 +413,7 @@ const INITIAL_CONFIG: ModelConfig = {
   analysisModel: "deepseek-r1",
 };
 
-/* ── 视图 ── */
-
-/**
- * 设置页视图（视图 4）
- * - 面板 1：DSH 连接
- * - 面板 2：模型选择
- * - 面板 3：数据管理
- */
-export const SettingsView: React.FC = () => {
+const SettingsViewMock: React.FC = () => {
   const { showToast } = useToast();
   const [config, setConfig] = useState<ModelConfig>(INITIAL_CONFIG);
 
@@ -69,45 +434,12 @@ export const SettingsView: React.FC = () => {
       {/* 页头 */}
       <div className="pgh">
         <div className="pgt">设置</div>
-        <span className="pgs">.dsh/settings.yaml</span>
+        <span className="pgs">原型演示数据</span>
       </div>
 
       {/* 工作区 */}
       <div className="ws">
-        {/* 面板 1：DSH 连接 */}
-        <section className="pnl">
-          <div className="pnl-h">
-            <div>
-              <h2>DSH 连接</h2>
-              <p>DeepSeek Harness 实例状态</p>
-            </div>
-            <span className="status-dot status-dot--ok" title="运行中" />
-          </div>
-          <div className="pnl-b">
-            <div className="settings-kv-grid">
-              <span className="kv-k">状态</span>
-              <span className="kv-v">
-                <span className="badge success">运行中</span>
-              </span>
-
-              <span className="kv-k">服务地址</span>
-              <span className="kv-v kv-mono">http://127.0.0.1:3081</span>
-
-              <span className="kv-k">实例隔离</span>
-              <span className="kv-v">项目独立（与本地 3080 不冲突）</span>
-
-              <span className="kv-k">数据目录</span>
-              <span className="kv-v kv-mono">.dsh/</span>
-            </div>
-
-            <div className="settings-actions">
-              <button className="btn" onClick={() => showToast("已发送重启请求")}>重启服务</button>
-              <button className="btn" onClick={() => showToast("日志路径：.dsh/dsh-web.log")}>查看日志</button>
-            </div>
-          </div>
-        </section>
-
-        {/* 面板 2：模型选择 */}
+        {/* 面板 1：模型选择 */}
         <section className="pnl">
           <div className="pnl-h">
             <div>
@@ -163,7 +495,7 @@ export const SettingsView: React.FC = () => {
           </div>
         </section>
 
-        {/* 面板 3：数据管理 */}
+        {/* 面板 2：数据管理 */}
         <section className="pnl">
           <div className="pnl-h">
             <div>

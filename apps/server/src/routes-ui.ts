@@ -28,12 +28,14 @@ import {
   parseDocument,
   exportDeliverables,
   exportFileName,
-  getDefaultModelConfig,
-  getDshPort,
-  getProviderConfig,
-  listProvidersSummary,
-  writeDefaultModel,
+  registrySummary,
+  loadRegistry,
+  upsertProvider,
+  removeProvider,
+  setDefaultModel,
+  checkProviderConnection,
 } from "@scene/infra";
+import type { ProviderModelEntry } from "@scene/infra";
 import type { SseHub } from "./sse-hub.js";
 import { createConverseCommand } from "./converse.js";
 import { createIngestCommand } from "./ingest.js";
@@ -656,53 +658,89 @@ function registerSystemRoutes(app: FastifyInstance, deps: UiRoutesDeps) {
   const { db } = deps;
 
   app.get("/api/v1/system/status", async () => {
-    const port = getDshPort();
-    let dsh: "ok" | "error" = "error";
-    try {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 1500);
-      const res = await fetch(`http://127.0.0.1:${port}/`, { signal: controller.signal });
-      clearTimeout(timer);
-      dsh = res.status < 500 ? "ok" : "error";
-    } catch {
-      dsh = "error";
-    }
     let database: "ok" | "error" = "ok";
     try {
       db.db.prepare("SELECT 1").get();
     } catch {
       database = "error";
     }
-    return { dsh, dsh_port: port, db: database };
+    const s = registrySummary();
+    return {
+      db: database,
+      model_configured: s.configured,
+      provider_count: s.providers.length,
+      default_model: s.default_model,
+    };
   });
 
-  app.get("/api/v1/system/settings", async (_request, reply) => {
+  // ─── 供应商登记表（变更表 #16：应用自持模型配置，密钥只进不出） ───
+
+  app.get("/api/v1/system/providers", async () => registrySummary());
+
+  app.post("/api/v1/system/providers", async (request, reply) => {
+    const body = (request.body ?? {}) as Record<string, unknown>;
+    const modelsRaw = Array.isArray(body.models) ? body.models : [];
+    const models: ProviderModelEntry[] = modelsRaw
+      .map((m) => {
+        if (typeof m === "string") return { id: m };
+        const o = (m ?? {}) as Record<string, unknown>;
+        return { id: String(o.id ?? ""), name: o.name ? String(o.name) : undefined };
+      })
+      .filter((m) => m.id);
     try {
-      return {
-        providers: listProvidersSummary(),
-        default_model: getDefaultModelConfig(),
-        dsh_port: getDshPort(),
-      };
+      const created = upsertProvider({
+        name: String(body.name ?? ""),
+        base_url: String(body.base_url ?? ""),
+        api_key: body.api_key === undefined ? undefined : String(body.api_key),
+        models,
+      });
+      return created;
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
-      return reply.code(503).send({ error: message });
+      return badRequest(reply, err instanceof Error ? err.message : String(err));
     }
   });
 
-  app.put("/api/v1/system/settings", async (request, reply) => {
+  app.delete("/api/v1/system/providers/:name", async (request, reply) => {
+    const { name } = request.params as { name?: string };
+    if (!name) return badRequest(reply, "需要供应商名");
+    if (!removeProvider(decodeURIComponent(name))) {
+      return reply.code(404).send({ error: `未找到供应商 "${name}"` });
+    }
+    return { deleted: true };
+  });
+
+  app.put("/api/v1/system/providers/default", async (request, reply) => {
     const body = (request.body ?? {}) as { provider?: unknown; model?: unknown };
-    const provider = String(body.provider ?? "");
-    const model = String(body.model ?? "");
-    if (!provider || !model) return badRequest(reply, "需要 provider 与 model");
     try {
-      const cfg = getProviderConfig(provider);
-      if (!cfg.models.some((m) => m.id === model)) {
-        return badRequest(reply, `供应商 ${provider} 不含模型 ${model}`);
-      }
-      writeDefaultModel({ provider, model });
-      return { provider, model };
+      return setDefaultModel({
+        provider: String(body.provider ?? ""),
+        model: String(body.model ?? ""),
+      });
     } catch (err: unknown) {
-      return commandError(reply, err);
+      return badRequest(reply, err instanceof Error ? err.message : String(err));
+    }
+  });
+
+  /**
+   * 链接质量检查：两段式（/models 探活+鉴权+延迟 → 指定模型时最小生成）。
+   * 传 name = 测已存供应商（密钥留在服务端）；或传草稿 base_url(+api_key/model) 测未保存配置。
+   */
+  app.post("/api/v1/system/providers/test", async (request, reply) => {
+    const body = (request.body ?? {}) as Record<string, unknown>;
+    const name = String(body.name ?? "").trim();
+    const saved = name ? loadRegistry().providers.find((p) => p.name === name) : undefined;
+    if (name && !saved) {
+      return reply.code(404).send({ error: `未找到供应商 "${name}"` });
+    }
+    const baseUrl = String(body.base_url ?? saved?.base_url ?? "").trim();
+    const apiKey = String(body.api_key ?? "").trim() || saved?.api_key || "";
+    // 已存供应商未指定模型时，默认测其第一个模型（两段式验证到"能出字"）
+    const model = String(body.model ?? "").trim() || saved?.models[0]?.id || undefined;
+    if (!baseUrl) return badRequest(reply, "需要 name 或 base_url");
+    try {
+      return await checkProviderConnection({ base_url: baseUrl, api_key: apiKey, model });
+    } catch (err: unknown) {
+      return badRequest(reply, err instanceof Error ? err.message : String(err));
     }
   });
 

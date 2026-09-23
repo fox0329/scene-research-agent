@@ -22,25 +22,35 @@ export type {
 export { parseDocument } from "./doc-parser.js";
 export type { ParseResult, ParsedTable } from "./doc-parser.js";
 
-/** DSH 客户端适配器 */
+/** LLM 客户端适配器 */
 export { createDshClient } from "./dsh-client.js";
 export type { DshClientOptions } from "./dsh-client.js";
 
-/** DSH 配置读取 */
+/** 应用自持供应商登记表（变更表 #16：模型配置与 DSH settings.yaml 解耦） */
 export {
-  getProviderConfig,
-  getDefaultModelConfig,
-  getApiKey,
-  getBaseURL,
-  getDshPort,
-  getDshToken,
-  parseSettings,
-  clearConfigCache,
-  listProvidersSummary,
-  getSettingsPath,
-  writeDefaultModel,
-} from "./dsh-config.js";
-export type { ProviderConfig, ModelSpec, DefaultModelConfig, ProviderSummary } from "./dsh-config.js";
+  loadRegistry,
+  upsertProvider,
+  removeProvider,
+  setDefaultModel,
+  registrySummary,
+  resolveActiveModel,
+  maskKey,
+  toPublic,
+  NOT_CONFIGURED_MESSAGE,
+} from "./provider-store.js";
+export type {
+  ProviderProfile,
+  ProviderPublic,
+  ProviderModelEntry,
+  DefaultModelRef,
+  ProviderRegistry,
+  ResolvedModel,
+  UpsertInput,
+} from "./provider-store.js";
+
+/** 供应商链接质量检查（探活+鉴权+延迟，可选模型最小生成） */
+export { checkProviderConnection, checkSavedProvider, normalizeBaseUrl } from "./provider-check.js";
+export type { ConnectionCheckResult } from "./provider-check.js";
 
 /** 交付物导出（Markdown） */
 export { exportDeliverables, exportFileName } from "./md-export.js";

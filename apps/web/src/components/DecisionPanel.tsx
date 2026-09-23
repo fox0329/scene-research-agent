@@ -23,16 +23,20 @@ const SOURCE_CLASSES: Record<string, string> = {
 interface DecisionPanelProps {
   /** 联真模式快照（来自当前阶段真实数据）；为空时回落 mock（演示模式） */
   snapshot?: DecisionSnapshot | null;
+  /** 联真模式：无快照时渲染空态，不再回落 mock（M5 试用反馈 #46） */
+  live?: boolean;
 }
 
 /**
  * 右栏：决策支撑面板
  * 四个分区：来源与证据 / 数据流向 / 风险与缺口 / 质量关快照
  * - 联真模式（snapshot）：三档建议 + 证据/权威性分布 + 真实质量关
+ * - 联真模式无快照：空态引导（当前阶段尚无分析数据）
  * - 演示模式：回落 mock decisionData，DOM 结构一致
  */
-export const DecisionPanel: React.FC<DecisionPanelProps> = ({ snapshot }) => {
+export const DecisionPanel: React.FC<DecisionPanelProps> = ({ snapshot, live }) => {
   if (snapshot) return <DecisionPanelLive s={snapshot} />;
+  if (live) return <DecisionPanelPending />;
   const d = decisionData;
   const gatePct = Math.round((d.gate.passed / d.gate.total) * 100);
   const stagClass = SOURCE_CLASSES[d.evidence.sourceTag] ?? "infer";
@@ -228,3 +232,25 @@ const DecisionPanelLive: React.FC<{ s: DecisionSnapshot }> = ({ s }) => {
     </>
   );
 };
+
+/** 联真模式空态：当前阶段尚无真实分析快照（不回 mock） */
+const DecisionPanelPending: React.FC = () => (
+  <>
+    <div className="det-h det-h-fixed">
+      <h3>决策支撑</h3>
+    </div>
+    <div className="det-body">
+      <div className="empty-state">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <circle cx="12" cy="12" r="10" />
+          <line x1="12" y1="16" x2="12" y2="12" />
+          <line x1="12" y1="8" x2="12.01" y2="8" />
+        </svg>
+        <div className="empty-state-title">暂无决策数据</div>
+        <div className="empty-state-desc">
+          对当前阶段发起分析后，这里会显示建议、证据与质量关快照
+        </div>
+      </div>
+    </div>
+  </>
+);

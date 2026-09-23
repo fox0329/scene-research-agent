@@ -1,22 +1,15 @@
 /**
- * @scene/infra — DSH 客户端适配器（直连 API 方案）
+ * @scene/infra — LLM 客户端适配器（直连 OpenAI 兼容 API）
  *
- * 首版实现：③直连 OpenAI 兼容 API。
- * 后续 M2/M3 可升级到 ②vendor workspace 挂载。
- *
- * DSH 未启动时返回有意义的错误信息（不静默失败）。
+ * 模型配置来源 = 应用自持供应商登记表（provider-store，变更表 #16）：
+ * 不再读取 .dsh/settings.yaml，也不假设 DSH 代理存在——用户未配置时
+ * 本客户端产出明确的"未配置"错误事件。baseURL 允许指向任意
+ * OpenAI 兼容端点（含自建 DSH 代理 /v1，由用户在设置页自行填链接）。
  */
 
 import { randomUUID } from "node:crypto";
 import type { DshClient, SessionHandle, FollowEvent, SseEventType } from "@scene/contract";
-import {
-  getProviderConfig,
-  getApiKey,
-  getBaseURL,
-  getDshPort,
-  getDshToken,
-  getDefaultModelConfig,
-} from "./dsh-config.js";
+import { resolveActiveModel, type ResolvedModel } from "./provider-store.js";
 
 // ─── 会话状态（内存 Map，首版实现） ─────────────────────
 
@@ -33,19 +26,19 @@ const sessions = new Map<string, SessionState>();
 // ─── 创建客户端工厂 ──────────────────────────────────────
 
 export interface DshClientOptions {
-  /** 供应商名称，不传则使用 agent-default-model 配置 */
+  /** 供应商名称，不传则使用登记表默认模型 */
   provider?: string;
-  /** 模型 ID，不传则使用供应商第一个模型 */
+  /** 模型 ID，不传则使用登记表默认模型 */
   model?: string;
-  /** DSH 端口，默认从 DSH_PORT 环境变量或 3081 */
+  /** 兼容旧签名：已废弃，不再使用 DSH 代理端口 */
   dshPort?: number;
 }
 
 /**
- * 创建 DSH 客户端实例。
+ * 创建 LLM 客户端实例。
  *
- * 直连 OpenAI 兼容 API：从 .dsh/settings.yaml 读取 provider 配置，
- * 用 apiKeyEnv 对应的环境变量作鉴权，流式调用 chat/completions。
+ * 直连 OpenAI 兼容 API：每次调用实时解析登记表（改配置即时生效），
+ * 用供应商自带的 api_key 鉴权，流式调用 chat/completions。
  */
 export function createDshClient(opts: DshClientOptions = {}): DshClient {
   return new DshClientImpl(opts);
@@ -53,49 +46,13 @@ export function createDshClient(opts: DshClientOptions = {}): DshClient {
 
 // ─── 内部实现 ─────────────────────────────────────────────
 
-const DEFAULT_PROVIDER = "talkweb";
-const DEFAULT_MODEL = "deepseek-v4-pro";
-
 class DshClientImpl implements DshClient {
-  private readonly providerName: string;
-  private readonly modelId: string;
-  private readonly dshPort: number;
+  private readonly providerOverride?: string;
+  private readonly modelOverride?: string;
 
-  constructor(opts: DshClientOptions) {
-    this.dshPort = opts.dshPort ?? getDshPort();
-
-    // 确定供应商
-    if (opts.provider) {
-      this.providerName = opts.provider;
-    } else {
-      try {
-        const def = getDefaultModelConfig();
-        this.providerName = def.provider;
-      } catch {
-        this.providerName = DEFAULT_PROVIDER;
-      }
-    }
-
-    // 确定模型
-    if (opts.model) {
-      this.modelId = opts.model;
-    } else {
-      try {
-        const def = getDefaultModelConfig();
-        if (def.provider === this.providerName) {
-          this.modelId = def.model;
-        } else {
-          const cfg = getProviderConfig(this.providerName);
-          const firstModel = cfg.models[0];
-          if (!firstModel) {
-            throw new Error(`供应商 "${this.providerName}" 未配置任何模型`);
-          }
-          this.modelId = firstModel.id;
-        }
-      } catch {
-        this.modelId = DEFAULT_MODEL;
-      }
-    }
+  constructor(opts: DshClientOptions = {}) {
+    this.providerOverride = opts.provider;
+    this.modelOverride = opts.model;
   }
 
   // ── createSession ──────────────────────────────────────
@@ -105,8 +62,8 @@ class DshClientImpl implements DshClient {
     sessions.set(sessionId, {
       id: sessionId,
       title: opts.title,
-      providerName: this.providerName,
-      modelId: this.modelId,
+      providerName: this.providerOverride ?? "",
+      modelId: this.modelOverride ?? "",
       abortController: null,
     });
     return { sessionId };
@@ -132,12 +89,23 @@ class DshClientImpl implements DshClient {
     session.abortController = abortController;
 
     try {
-      const apiKey = getApiKey(session.providerName);
-      const baseURL = getBaseURL(session.providerName, this.dshPort);
+      // 实时解析登记表：设置页改动无需重启即生效
+      let resolved: ResolvedModel;
+      try {
+        resolved = resolveActiveModel(
+          session.providerName || undefined,
+          session.modelId || undefined,
+        );
+      } catch (err: unknown) {
+        yield makeErrorEvent(err instanceof Error ? err.message : String(err));
+        return;
+      }
+      session.providerName = resolved.provider.name;
+      session.modelId = resolved.modelId;
 
-      const url = `${baseURL.replace(/\/+$/, "")}/chat/completions`;
+      const url = `${resolved.provider.base_url.replace(/\/+$/, "")}/chat/completions`;
       const body = buildRequestBody(
-        session.modelId,
+        resolved.modelId,
         input.system,
         input.user,
         input.outputContract,
@@ -145,16 +113,10 @@ class DshClientImpl implements DshClient {
 
       const headers: Record<string, string> = {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
+        Authorization: `Bearer ${resolved.provider.api_key}`,
       };
 
-      // DSH Token 鉴权（可选）
-      const dshToken = getDshToken();
-      if (dshToken) {
-        headers["X-DSH-Token"] = dshToken;
-      }
-
-      const response = await fetchWithDshCheck(url, {
+      const response = await fetchWithLlmCheck(url, {
         method: "POST",
         headers,
         body: JSON.stringify(body),
@@ -317,21 +279,16 @@ interface OpenAIChunk {
 function extractContent(chunk: OpenAIChunk): string | null {
   const delta = chunk.choices?.[0]?.delta;
   if (!delta) return null;
-
-  // 普通文本内容
   if (delta.content) return delta.content;
-
-  // tool_calls 流式参数拼接
   if (delta.tool_calls?.[0]?.function?.arguments) {
     return delta.tool_calls[0].function.arguments;
   }
-
   return null;
 }
 
 // ─── HTTP 工具 ───────────────────────────────────────────
 
-async function fetchWithDshCheck(
+async function fetchWithLlmCheck(
   url: string,
   init: RequestInit,
 ): Promise<Response> {
@@ -347,19 +304,16 @@ async function fetchWithDshCheck(
         // 忽略读取错误
       }
 
-      // 502/503 通常是 DSH 未启动
-      if (resp.status === 502 || resp.status === 503) {
-        throw new Error(
-          `DSH 服务未就绪（${statusText}）。` +
-          "请确认 DSH 已启动：npm run dsh:start",
-        );
-      }
-
       // 401/403 鉴权失败
       if (resp.status === 401 || resp.status === 403) {
         throw new Error(
-          `API 鉴权失败（${statusText}）。` +
-          "请检查对应环境变量中的 API Key 是否正确。",
+          `API 鉴权失败（${statusText}）。请在设置页检查该供应商的 API Key，或用「测试连接」复核`,
+        );
+      }
+      // 404 常为 baseURL 拼接或模型 ID 问题
+      if (resp.status === 404) {
+        throw new Error(
+          `接口或模型不存在（404）：${url}。请检查设置页的链接与模型 ID`,
         );
       }
 
@@ -372,10 +326,10 @@ async function fetchWithDshCheck(
   } catch (err: unknown) {
     if (isFetchConnectionError(err)) {
       throw new Error(
-        "无法连接到 LLM API。可能原因：\n" +
-        "1. DSH 未启动（运行 npm run dsh:start）\n" +
+        "无法连接到模型服务。可能原因：\n" +
+        "1. 链接填错或服务未启动\n" +
         "2. 网络不可达\n" +
-        "3. 供应商 baseURL 配置错误",
+        "3. 可在设置页用「测试连接」定位问题",
       );
     }
     throw err;

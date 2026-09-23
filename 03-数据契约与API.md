@@ -109,8 +109,12 @@
 |---|---|---|
 | GET | `/knowledge?category=&product_line_id=` | 知识查询 |
 | POST | `/projects/{id}/deliverables/export` | 双口径导出，返回 md 文件路径 |
-| GET | `/system/status` | DSH 探活（绿/黄 + 版本/端口） |
-| GET/PUT | `/system/settings` | 模型选择（读 .dsh/settings.yaml 或经 DSH settings） |
+| GET | `/system/status` | 探活 + 配置快照：`{ db, model_configured, provider_count, default_model }`（v1.6） |
+| GET | `/system/providers` | 供应商登记表（v1.6）：`{ providers, default_model }`，密钥不回显（`has_key` + `key_masked`） |
+| POST | `/system/providers` | 登记/更新（v1.6）：`{ name, base_url, api_key?, models }`；`api_key` 省略时保留旧密钥；链接非 http(s) 或无模型 400 |
+| DELETE | `/system/providers/{name}` | 删除档案（v1.6）：默认模型被引用时一并清除；未知名 404 |
+| PUT | `/system/providers/default` | 设默认模型（v1.6）：`{ provider, model }`，model 空取该供应商首模型；成员校验失败 400 |
+| POST | `/system/providers/test` | 连接质量检查（v1.6）：草稿 `{ base_url, api_key, model? }` 或已存 `{ name, model? }`（密钥服务端自取）；两段式 `/models` 探活鉴权 → 指定模型时 `chat/completions` 最小生成；返回 `{ ok, stage, models_latency_ms, chat_latency_ms, models_seen, error }` |
 
 ### 联真实现口径（v1.4 登记，M5-T5.1）
 
@@ -126,8 +130,8 @@
 | 会话流式 | 发消息走 `POST /conversations/{id}/messages`，SSE 复用 §四 格式与事件中枢（同 advance）；断线补拉 `GET .../messages?after_id=` |
 | 静态托管 | server 同源托管 web 构建产物（`@fastify/static`，可用 `WEB_DIST` 覆盖路径）；单端口 4081 起完整应用 |
 | 上传 | `POST /library/ingest` 用 multipart（`@fastify/multipart`，单文件上限 50MB）；解析进度经 SSE `/library/ingest/{id}/events` |
-| 设置读写 | `GET/PUT /system/settings` 直读直写项目 `.dsh/settings.yaml`（经 infra dsh-config，不触碰用户本地 `~/.dsh/`） |
-| 降级 | DSH 未启动/无凭据时：分析与会话端点返回流内 `error` 事件（不 500）；纯 CRUD 端点不受影响，UI 可离线浏览真实已入库数据 |
+| 模型配置（v1.6） | 应用自持：登记表 `data/providers.local.json`（0600、`SCENE_PROVIDERS_FILE` 可覆盖路径）是 LLM 调用唯一配置源；不再读项目 `.dsh/settings.yaml`，环境变量密钥通道退役；v1.4 的 `GET/PUT /system/settings*` 由 `/system/providers*` 取代，密钥永不下发前端（仅掩码） |
+| 降级 | 模型未配置/链接不可达时：分析与会话端点返回流内 `error` 事件（不 500，文案含设置页指引）；纯 CRUD 端点不受影响，UI 可离线浏览真实已入库数据 |
 
 ## 四、SSE 事件格式（统一）
 
@@ -160,3 +164,4 @@ interface DshClient {
 | v1.3 | 2026-09-23 | T4.2 回退清理：新增 `POST /projects/{id}/rollback`（下游标记待重算、数据保留）；advance 重算覆盖语义——同阶段重跑先清本阶段 stage_data/quality_gate 再写入，早期阶段重算不回拉 current_stage；已登记 `docs/项目变更表.md` |
 | v1.4 | 2026-09-23 | M5-T5.1 联真实现口径：`/api/v1` 前缀、错误信封 `{ error }`、行形态（布尔/对象反序列化）、阶段面板响应 `{ rows, gates, advice }`、会话 SSE 复用事件中枢、静态托管与上传（multipart 50MB）、设置读写走项目 `.dsh/settings.yaml`、DSH 缺失降级为流内 error；变更表 #14 |
 | v1.5 | 2026-09-23 | M5-T5.5 对话抽屉接 converse：新增 `GET /conversations/{id}/messages/events` 回复流重连端点（`Last-Event-ID`/`?lastEventId=` 增量重放，进程内事件中枢缓冲，与 `stages/{n}/events` 同构）；中枢事件补发单调 id 保证重放语义；变更表 #15 |
+| v1.6 | 2026-09-23 | 模型配置应用自持（试用反馈 #47）：新增 `/system/providers` 五端点（列表/登记更新/删除/默认模型/测试连接，两段式链接质量检查），`/system/status` 改为 `{ db, model_configured, provider_count, default_model }` 配置快照，移除 `GET/PUT /system/settings*`；配置落 `data/providers.local.json`（0600，`SCENE_PROVIDERS_FILE` 可覆盖），密钥不回显、环境变量与 `.dsh/settings.yaml` 通道退役；变更表 #16 |

@@ -35,8 +35,11 @@ for f in \
   apps/web/src/hooks/useAsync.ts \
   apps/web/src/views/RealStagePanel.tsx \
   apps/web/src/views/RealLibraryView.tsx \
+  apps/web/src/views/RealKnowledgeView.tsx \
   apps/web/src/components/ConversationDrawer.tsx \
   apps/web/src/components/decision-snapshot.ts \
+  packages/infra/src/provider-store.ts \
+  packages/infra/src/provider-check.ts \
   scripts/verify-live-chain.mjs; do
   if [ -f "$ROOT/$f" ]; then
     echo "✅ $(basename "$f")"
@@ -57,7 +60,8 @@ fi
 
 PORT=4096
 SDIR=$(mktemp -d)
-APP_PORT=$PORT DB_PATH="$SDIR/verify.db" WEB_DIST="$ROOT/apps/web/dist" \
+# 验收服务不读用户真实配置：显式指向不存在的登记表 → 「默认未配置」语义确定
+APP_PORT=$PORT DB_PATH="$SDIR/verify.db" SCENE_PROVIDERS_FILE="$SDIR/providers.none.json" WEB_DIST="$ROOT/apps/web/dist" \
   node apps/server/dist/index.js >"$SDIR/server.log" 2>&1 &
 SRV=$!
 ready=""
@@ -113,21 +117,37 @@ rm -rf "$SDIR"
 
 echo ""
 echo "=== [M5 验收] 5/6 真实链路走查（Playwright · 构建产物 :4098）+ 演示 E2E ==="
-# 密钥自动探测：默认供应商的 apiKeyEnv 环境变量非空 → SCENE_HAS_KEY=1 走真实 LLM 分支
+# 密钥探测（变更表 #16：模型配置应用自持后）：登记表 data/providers.local.json 中
+# 默认供应商已填 API Key → SCENE_HAS_KEY=1 走真实 LLM 分支；否则服务指向不存在的登记表，走「默认未配置」降级分支。
+PF="$ROOT/data/providers.local.json"
 HAS_KEY=0
-DEF_PROVIDER=$(awk -F': *' '/^  provider:/{gsub(/ /,"",$2); print $2; exit}' "$ROOT/.dsh/settings.yaml" 2>/dev/null || true)
-KEY_ENV=$(awk -v d="$DEF_PROVIDER" '
-  index($0, "    " d ":") == 1 { f = 1; next }
-  f && /apiKeyEnv:/ { print $2; exit }
-  f && $0 ~ /^    [a-z0-9._-]+:[[:space:]]*$/ { f = 0 }
-' "$ROOT/.dsh/settings.yaml" 2>/dev/null || true)
-if [ -n "$KEY_ENV" ] && [ -n "${!KEY_ENV:-}" ]; then
-  HAS_KEY=1
-fi
-
 PORT2=4098
 SDIR2=$(mktemp -d)
-APP_PORT=$PORT2 DB_PATH="$SDIR2/live.db" EXPORT_DIR="$SDIR2/exports" WEB_DIST="$ROOT/apps/web/dist" \
+PROVIDERS_FILE="$SDIR2/providers.none.json"
+PROVIDERS_LABEL="登记表未配置（走无密钥降级分支，真实 LLM 段待用户在设置页添加供应商后复跑）"
+if [ -f "$PF" ]; then
+  DEF_DESC=$(python3 - "$PF" <<'PY' 2>/dev/null || true
+import json, sys
+try:
+    reg = json.load(open(sys.argv[1]))
+except Exception:
+    sys.exit(0)
+d = reg.get("default_model") or {}
+provs = {p.get("name"): p for p in reg.get("providers", [])}
+p = provs.get(d.get("provider"))
+if p and (p.get("api_key") or "").strip():
+    model = d.get("model") or (p.get("models") or [{}])[0].get("id", "")
+    print(f"{p['name']} / {model}")
+PY
+)
+  if [ -n "$DEF_DESC" ]; then
+    HAS_KEY=1
+    PROVIDERS_FILE="$PF"
+    PROVIDERS_LABEL="检测到默认模型已配密钥（$DEF_DESC），走真实 LLM 分析分支"
+  fi
+fi
+
+APP_PORT=$PORT2 DB_PATH="$SDIR2/live.db" EXPORT_DIR="$SDIR2/exports" SCENE_PROVIDERS_FILE="$PROVIDERS_FILE" WEB_DIST="$ROOT/apps/web/dist" \
   node apps/server/dist/index.js >"$SDIR2/server.log" 2>&1 &
 SRV2=$!
 ready2=""
@@ -139,11 +159,7 @@ if [ -z "$ready2" ]; then
   echo "❌ 走查服务未就绪（见 $SDIR2/server.log）"
   FAIL=1
 else
-  if [ "$HAS_KEY" = "1" ]; then
-    echo "· 检测到默认供应商密钥（$KEY_ENV 已配置），走真实 LLM 分析分支"
-  else
-    echo "· 未检测到 API Key，走无密钥降级分支（真实 LLM 段待用户在设置页配置密钥后复跑）"
-  fi
+  echo "· $PROVIDERS_LABEL"
   LC_OUT=$(BASE_URL="http://127.0.0.1:${PORT2}" EXPORT_DIR="$SDIR2/exports" SCENE_HAS_KEY=$HAS_KEY \
     node scripts/verify-live-chain.mjs 2>&1) && LC_OK=1 || LC_OK=0
   printf '%s\n' "$LC_OUT" | tail -3
@@ -191,6 +207,10 @@ check_contains "docs/项目变更表.md" "| 15 |" "变更表 #15 重连端点登
 check_contains "docs/故障及解决清单.md" "request.raw" "故障 #6 Node22 SSE 断连记录"
 check_contains "docs/故障及解决清单.md" "selfManagedConvRef" "故障 #8 抽屉历史覆盖竞态记录"
 check_contains "docs/故障及解决清单.md" "| 9 |" "故障 #9 npm start 冷启动记录"
+check_contains "docs/故障及解决清单.md" "| 10 |" "故障 #10 联真模式 mock 残留记录"
+check_contains "03-数据契约与API.md" "v1.6" "契约版本记录 v1.6（模型配置应用自持）"
+check_contains "03-数据契约与API.md" "system/providers" "供应商登记端点契约登记"
+check_contains "docs/项目变更表.md" "| 16 |" "变更表 #16 模型配置应用自持登记"
 
 echo ""
 if [ "$FAIL" -eq 0 ]; then

@@ -8,6 +8,7 @@ import { LibraryView } from "./views/LibraryView";
 import { ProjectView } from "./views/ProjectView";
 import { SettingsView } from "./views/SettingsView";
 import { KnowledgeView } from "./views/KnowledgeView";
+import { RealKnowledgeView } from "./views/RealKnowledgeView";
 import { useColumnLayout } from "./hooks/useColumnLayout";
 import { api, type ApiConversation, type ApiProductLine, type ApiProject } from "./api";
 import { conversationMessages, projects, type Project } from "./mock/project-data";
@@ -285,8 +286,8 @@ const AppShell: React.FC = () => {
             onChanged={() => void refreshProjects().catch(() => {})}
           />
         )}
-        {view === "knowledge" && <KnowledgeView />}
-        {view === "settings" && <SettingsView />}
+        {view === "knowledge" && (live ? <RealKnowledgeView /> : <KnowledgeView />)}
+        {view === "settings" && <SettingsView live={live} />}
         {/* 对话抽屉：联真模式走 converse SSE；演示模式保持本地 mock */}
         <ConversationDrawer
           messages={conversationMessages}
@@ -300,7 +301,7 @@ const AppShell: React.FC = () => {
       {/* 右栏：决策支撑（项目工作台实装，其余视图预留） */}
       <aside className="det">
         {view === "project" ? (
-          <DecisionPanel snapshot={live ? decisionSnapshot : null} />
+          <DecisionPanel snapshot={live ? decisionSnapshot : null} live={live} />
         ) : (
           <>
             <div className="det-h">

@@ -6,7 +6,8 @@
  * 由 scripts/verify-m5.sh 拉起配套服务后调用；也可手动：
  *   APP_PORT=4098 DB_PATH=... EXPORT_DIR=... WEB_DIST=apps/web/dist node apps/server/dist/index.js &
  *   BASE_URL=http://127.0.0.1:4098 EXPORT_DIR=/tmp/... node scripts/verify-live-chain.mjs
- * 密钥可用性由 SCENE_HAS_KEY=1 显式声明（verify-m5.sh 按默认供应商 apiKeyEnv 自动探测）。
+ * 密钥可用性由 SCENE_HAS_KEY=1 显式声明（verify-m5.sh 按应用登记表 data/providers.local.json
+ * 的默认供应商是否已填 Key 自动探测，并通过 SCENE_PROVIDERS_FILE 注入对应文件）。
  */
 import { createRequire } from "node:module";
 import { existsSync, readdirSync, readFileSync } from "node:fs";

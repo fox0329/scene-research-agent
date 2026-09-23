@@ -91,6 +91,57 @@ export interface ApiQualitySummary {
   };
 }
 
+/** 知识库条目（契约 Knowledge 对齐） */
+export interface ApiKnowledge {
+  id: string;
+  product_line_id?: string;
+  scene?: string;
+  category: "竞品" | "需求" | "趋势" | "成本";
+  content: string;
+  source: string;
+  source_authority: string;
+  from_scenario_id: string;
+  created_at: string;
+}
+
+/** 供应商公共摘要（契约 v1.6：应用自持登记表，密钥脱敏不回显） */
+export interface ApiProviderPublic {
+  name: string;
+  base_url: string;
+  models: { id: string; name?: string }[];
+  has_key: boolean;
+  key_masked: string | null;
+  updated_at: string;
+}
+
+export interface ApiDefaultModelRef {
+  provider: string;
+  model: string;
+}
+
+export interface ApiProvidersState {
+  configured: boolean;
+  providers: ApiProviderPublic[];
+  default_model: ApiDefaultModelRef | null;
+}
+
+export interface ApiSystemStatus {
+  db: "ok" | "error";
+  model_configured: boolean;
+  provider_count: number;
+  default_model: ApiDefaultModelRef | null;
+}
+
+/** 链接质量检查结果（两段式：models 探活 → chat 最小生成） */
+export interface ApiConnectionCheck {
+  ok: boolean;
+  stage: "models" | "chat";
+  models_latency_ms?: number;
+  chat_latency_ms?: number;
+  models_seen?: string[];
+  error?: string;
+}
+
 /** SSE follow 事件（与 contract FollowEvent 对齐） */
 export interface FollowEvent {
   type: string;
@@ -237,9 +288,38 @@ export const api = {
     ),
 
   knowledge: (category?: string) =>
-    req<{ id: string; category: string; title: string }[]>(
+    req<ApiKnowledge[]>(
       `/knowledge${category ? `?category=${encodeURIComponent(category)}` : ""}`,
     ),
+
+  /** 系统状态（DB 健康 + 模型配置概览） */
+  systemStatus: () => req<ApiSystemStatus>("/system/status"),
+  /** 供应商登记表（脱敏） */
+  providers: () => req<ApiProvidersState>("/system/providers"),
+  /** 新增/更新供应商（api_key 省略 = 保留原密钥） */
+  upsertProvider: (input: {
+    name: string;
+    base_url: string;
+    api_key?: string;
+    models: { id: string; name?: string }[];
+  }) => req<ApiProviderPublic>("/system/providers", { method: "POST", body: input }),
+  deleteProvider: (name: string) =>
+    req<{ deleted: boolean }>(`/system/providers/${encodeURIComponent(name)}`, {
+      method: "DELETE",
+    }),
+  /** 设置默认供应商+模型（model 传空取该供应商第一个） */
+  setDefaultModel: (provider: string, model: string) =>
+    req<ApiDefaultModelRef>("/system/providers/default", {
+      method: "PUT",
+      body: { provider, model },
+    }),
+  /** 链接质量检查：name=测已存供应商；或草稿 base_url(+api_key/model) */
+  testProvider: (input: {
+    name?: string;
+    base_url?: string;
+    api_key?: string;
+    model?: string;
+  }) => req<ApiConnectionCheck>("/system/providers/test", { method: "POST", body: input }),
 };
 
 // ─── SSE 面（advance / 会话消息：POST 建流 + GET 续传） ─────

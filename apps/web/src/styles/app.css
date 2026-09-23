@@ -1368,6 +1368,115 @@ td.ed {
   border-top: 1px solid var(--cb);
 }
 
+/* 供应商登记表（M5 试用反馈 #47：应用自持模型配置） */
+.settings-input {
+  height: var(--size-32);
+  padding: 0 var(--s3);
+  font-family: inherit;
+  font-size: var(--ts);
+  color: var(--ct);
+  background: var(--csr);
+  border: 1px solid var(--cb);
+  border-radius: var(--r4);
+  outline: none;
+  transition: border-color var(--d) var(--e);
+}
+
+.settings-input:focus {
+  border-color: var(--cp);
+  box-shadow: 0 0 0 2px var(--cp-s);
+}
+
+.settings-textarea {
+  min-height: 72px;
+  padding: var(--s2) var(--s3);
+  font-family: var(--ff-mono, monospace);
+  font-size: var(--ts);
+  line-height: 1.6;
+  color: var(--ct);
+  background: var(--csr);
+  border: 1px solid var(--cb);
+  border-radius: var(--r4);
+  outline: none;
+  resize: vertical;
+  transition: border-color var(--d) var(--e);
+}
+
+.settings-textarea:focus {
+  border-color: var(--cp);
+  box-shadow: 0 0 0 2px var(--cp-s);
+}
+
+.provider-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.provider-item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  padding: var(--s3) 0;
+  border-top: 1px solid var(--cb);
+}
+
+.provider-item:first-child {
+  border-top: none;
+}
+
+.provider-item-head {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+}
+
+.provider-item-name {
+  font-size: var(--ts);
+  font-weight: var(--fm2);
+  color: var(--ct);
+}
+
+.provider-item-meta {
+  font-size: var(--txs);
+  color: var(--ct2);
+  word-break: break-all;
+}
+
+.provider-item-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+}
+
+.provider-model-select {
+  margin-left: auto;
+  min-width: 160px;
+  height: var(--size-32);
+}
+
+.provider-form {
+  margin-top: var(--s4);
+  padding-top: var(--s4);
+  border-top: 1px solid var(--cb);
+}
+
+.conn-check {
+  margin-top: var(--s2);
+  padding: var(--s2) var(--s3);
+  font-size: var(--txs);
+  border-radius: var(--r4);
+}
+
+.conn-check--ok {
+  color: var(--cs);
+  background: var(--cs-s);
+}
+
+.conn-check--err {
+  color: var(--ce);
+  background: var(--ce-s);
+}
+
 /* ══════════════════════════════════════════════════════
  * Toast 通知
  * ══════════════════════════════════════════════════════ */

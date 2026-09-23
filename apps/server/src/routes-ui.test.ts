@@ -1,9 +1,10 @@
 /**
- * @scene/server — UI 联真路由测试（M5-T5.2，契约 v1.4）
+ * @scene/server — UI 联真路由测试（M5-T5.2 + 供应商登记表改造，契约 v1.6）
  *
- * 真实 SQLite（:memory:）+ mock dshClient + mock DSH 配置读取，
+ * 真实 SQLite（:memory:）+ mock dshClient + SCENE_PROVIDERS_FILE 临时登记表
+ * （模型配置应用自持，变更表 #16——不再读 .dsh/settings.yaml），
  * 通过 fastify.inject 验证：项目 CRUD、阶段面板与单元格编辑、
- * 会话 CRUD + 消息 SSE、资料库 12 表 + F3 失效、知识库、系统设置、
+ * 会话 CRUD + 消息 SSE、资料库 12 表 + F3 失效、知识库、供应商登记表、
  * 交付物导出与静态托管回退。
  */
 
@@ -14,38 +15,8 @@ import { join } from "node:path";
 import type { DshClient, FollowEvent, StageId } from "@scene/contract";
 import { createDb } from "@scene/infra";
 import type { DbInstance } from "@scene/infra";
-import { writeDefaultModel } from "@scene/infra";
 import { createApp } from "./app.js";
 import { createSseHub } from "./sse-hub.js";
-
-// ─── infra 配置面 mock（不读真实 .dsh、不探测真实 DSH 端口） ───
-
-vi.mock("@scene/infra", async (importOriginal) => {
-  const orig = await importOriginal<typeof import("@scene/infra")>();
-  return {
-    ...orig,
-    getDshPort: () => 59991, // 必然无监听的端口 → system/status 走 error 分支
-    listProvidersSummary: () => [
-      {
-        name: "p-test",
-        display_name: "测试供应商",
-        api_key_env: "TEST_API_KEY_NOT_SET",
-        api_key_set: false,
-        models: [{ id: "m-a", name: "M-A" }],
-      },
-    ],
-    getDefaultModelConfig: () => ({ provider: "p-test", model: "m-a" }),
-    getProviderConfig: (name: string) => {
-      if (name !== "p-test") throw new Error(`供应商 ${name} 未配置`);
-      return {
-        apiKeyEnv: "TEST_API_KEY_NOT_SET",
-        api: "openai-completions" as const,
-        models: [{ id: "m-a", name: "M-A" }],
-      };
-    },
-    writeDefaultModel: vi.fn(),
-  };
-});
 
 // ─── 工厂 ──────────────────────────────────────────────────
 
@@ -77,6 +48,11 @@ function makeHarness(promptEvents?: FollowEvent[]): Harness {
   const dsh = mockDshClient(promptEvents);
   const exportDir = mkdtempSync(join(tmpdir(), "scene-export-"));
   process.env.EXPORT_DIR = exportDir;
+  // 每个 harness 用独立临时登记表：默认"未配置"态，不碰项目 data/
+  process.env.SCENE_PROVIDERS_FILE = join(
+    mkdtempSync(join(tmpdir(), "scene-providers-")),
+    "providers.local.json",
+  );
   const app = createApp({ db, dshClient: dsh, hub: createSseHub() });
   return { app, db, dsh, exportDir };
 }
@@ -704,42 +680,151 @@ describe("系统路由", () => {
     h = makeHarness();
   });
 
-  it("GET system/status：DSH 不可达走 error、DB ok（不依赖真实 DSH）", async () => {
+  it("GET system/status：DB ok + 默认未配置模型（v1.6 口径，不再探 DSH）", async () => {
     const res = await h.app.inject({ method: "GET", url: "/api/v1/system/status" });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ dsh: "error", dsh_port: 59991, db: "ok" });
+    expect(res.json()).toEqual({
+      db: "ok",
+      model_configured: false,
+      provider_count: 0,
+      default_model: null,
+    });
   });
 
-  it("GET settings：供应商摘要不泄露密钥", async () => {
-    const res = await h.app.inject({ method: "GET", url: "/api/v1/system/settings" });
-    expect(res.statusCode).toBe(200);
-    const body = res.json();
-    expect(body.providers[0].name).toBe("p-test");
-    expect(body.providers[0].api_key_set).toBe(false);
-    expect(body.default_model).toEqual({ provider: "p-test", model: "m-a" });
-    expect(JSON.stringify(body)).not.toContain("TEST_API_KEY_NOT_SET=");
+  it("GET providers：默认空登记表", async () => {
+    const res = await h.app.inject({ method: "GET", url: "/api/v1/system/providers" });
+    expect(res.json()).toEqual({ configured: false, providers: [], default_model: null });
   });
 
-  it("PUT settings：合法供应商+模型写回；模型不属于供应商 → 400", async () => {
+  it("POST providers：新建/更新 + 密钥脱敏不回显；非法链接 400", async () => {
+    const created = await h.app.inject({
+      method: "POST",
+      url: "/api/v1/system/providers",
+      payload: { name: "p-a", base_url: "https://a.example.com/v1/", api_key: "sk-secret-9999", models: ["m-1", "m-2"] },
+    });
+    expect(created.statusCode).toBe(200);
+    const pub = created.json();
+    expect(pub.base_url).toBe("https://a.example.com/v1");
+    expect(pub.has_key).toBe(true);
+    expect(JSON.stringify(pub)).not.toContain("sk-secret-9999");
+
+    // 更新时省略 api_key → 保留原密钥
+    const updated = await h.app.inject({
+      method: "POST",
+      url: "/api/v1/system/providers",
+      payload: { name: "p-a", base_url: "https://b.example.com/v1", models: [{ id: "m-1" }] },
+    });
+    expect(updated.json().has_key).toBe(true);
+
+    const bad = await h.app.inject({
+      method: "POST",
+      url: "/api/v1/system/providers",
+      payload: { name: "p-b", base_url: "ftp://x", models: ["m"] },
+    });
+    expect(bad.statusCode).toBe(400);
+    expect(bad.json().error).toContain("http");
+  });
+
+  it("PUT providers/default：设默认成功/模型不属于供应商 400；status 转已配置需有 Key", async () => {
+    await h.app.inject({
+      method: "POST",
+      url: "/api/v1/system/providers",
+      payload: { name: "p-a", base_url: "https://a.example.com/v1", api_key: "sk-1", models: ["m-1"] },
+    });
     const ok = await h.app.inject({
       method: "PUT",
-      url: "/api/v1/system/settings",
-      payload: { provider: "p-test", model: "m-a" },
+      url: "/api/v1/system/providers/default",
+      payload: { provider: "p-a", model: "m-1" },
     });
-    expect(ok.statusCode).toBe(200);
-    expect(vi.mocked(writeDefaultModel)).toHaveBeenCalled();
+    expect(ok.json()).toEqual({ provider: "p-a", model: "m-1" });
 
     const badModel = await h.app.inject({
       method: "PUT",
-      url: "/api/v1/system/settings",
-      payload: { provider: "p-test", model: "m-zzz" },
+      url: "/api/v1/system/providers/default",
+      payload: { provider: "p-a", model: "ghost" },
     });
     expect(badModel.statusCode).toBe(400);
 
-    const missing = await h.app.inject({
+    const status = await h.app.inject({ method: "GET", url: "/api/v1/system/status" });
+    expect(status.json().model_configured).toBe(true);
+    expect(status.json().default_model).toEqual({ provider: "p-a", model: "m-1" });
+  });
+
+  it("DELETE providers/:name：删除成功；不存在 404；删默认所在供应商清空默认", async () => {
+    await h.app.inject({
+      method: "POST",
+      url: "/api/v1/system/providers",
+      payload: { name: "p-del", base_url: "https://d.example.com/v1", api_key: "sk-1", models: ["m"] },
+    });
+    await h.app.inject({
       method: "PUT",
-      url: "/api/v1/system/settings",
-      payload: { provider: "p-test" },
+      url: "/api/v1/system/providers/default",
+      payload: { provider: "p-del", model: "m" },
+    });
+    const gone = await h.app.inject({ method: "DELETE", url: "/api/v1/system/providers/p-del" });
+    expect(gone.json()).toEqual({ deleted: true });
+    const status = await h.app.inject({ method: "GET", url: "/api/v1/system/status" });
+    expect(status.json().default_model).toBeNull();
+    const again = await h.app.inject({ method: "DELETE", url: "/api/v1/system/providers/p-del" });
+    expect(again.statusCode).toBe(404);
+  });
+
+  it("POST providers/test：草稿链接两段式检查（fetch mock，不出网）", async () => {
+    const fetchMock = vi.fn(async (url: string) =>
+      String(url).endsWith("/models")
+        ? new Response(JSON.stringify({ data: [{ id: "m-1" }] }), { status: 200 })
+        : new Response(JSON.stringify({ choices: [{ message: { content: "p" } }] }), { status: 200 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      const draft = await h.app.inject({
+        method: "POST",
+        url: "/api/v1/system/providers/test",
+        payload: { base_url: "https://t.example.com/v1", api_key: "sk-t", model: "m-1" },
+      });
+      expect(draft.statusCode).toBe(200);
+      expect(draft.json().ok).toBe(true);
+      expect(draft.json().stage).toBe("chat");
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("POST providers/test：测已存供应商时密钥服务端侧取，未知供应商 404，缺参数 400", async () => {
+    await h.app.inject({
+      method: "POST",
+      url: "/api/v1/system/providers",
+      payload: { name: "p-saved", base_url: "https://s.example.com/v1", api_key: "sk-saved", models: ["m-x"] },
+    });
+    const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) =>
+      new Response(JSON.stringify({ data: [{ id: "m-x" }] }), { status: 200 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      const r = await h.app.inject({
+        method: "POST",
+        url: "/api/v1/system/providers/test",
+        payload: { name: "p-saved" },
+      });
+      expect(r.json().ok).toBe(true);
+      // 请求带上了存储侧密钥（不回前端）
+      const headers = fetchMock.mock.calls[0]![1]!.headers as Record<string, string>;
+      expect(headers.authorization).toBe("Bearer sk-saved");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+
+    const nf = await h.app.inject({
+      method: "POST",
+      url: "/api/v1/system/providers/test",
+      payload: { name: "ghost" },
+    });
+    expect(nf.statusCode).toBe(404);
+    const missing = await h.app.inject({
+      method: "POST",
+      url: "/api/v1/system/providers/test",
+      payload: {},
     });
     expect(missing.statusCode).toBe(400);
   });
