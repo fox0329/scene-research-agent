@@ -26,6 +26,7 @@ import type {
   OptionalMaterial,
 } from "@scene/contract";
 import type { DbInstance } from "@scene/infra";
+import { tablesOfStage, type InfoStageId } from "@scene/contract";
 import {
   advance,
   LAST_STAGE,
@@ -100,6 +101,20 @@ async function* executeAdvanceStage(
     stage,
     message: `开始阶段 ${stage} 分析`,
   });
+
+  // 终态守卫（v1.4 起为 8 阶段口径）：交付阶段没有要填的信息表，
+  // 交付物由系统按「章节 ← 表映射」生成，**不调用模型填表**。
+  // 兼容旧数据：历史 current_stage = 8 视为新编号的阶段 7。
+  const effectiveStage = (stage === 8 ? 7 : stage) as InfoStageId;
+  if (tablesOfStage(effectiveStage).length === 0) {
+    yield emit({
+      type: "progress",
+      stage,
+      message: "本阶段不填表：交付物按章节 ← 表映射生成，无需模型分析",
+    });
+    yield emit({ type: "done", stage });
+    return;
+  }
 
   // 场景预检（v1.12）：信息不足/含糊/含推断 → 对话提澄清问题并中止本次分析。
   // 原则：需要向用户澄清的必须通过对话提出来，不能不管场景蒙头分析。

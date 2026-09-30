@@ -23,6 +23,9 @@ export type EvidenceLevel = "A" | "B" | "C" | "D";
 /** 阶段编号 0-8 */
 export type StageId = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
 
+// InfoTableCode 由 ./tables.js 导出并在文件末尾 re-export；此处仅作类型引用
+type InfoTableCode = import("./tables.js").InfoTableCode;
+
 /**
  * 建议三档（00b §3.3 / §4.3 / §5.3 统一口径）
  * - 建议通过：质量关全部达标或仅有不影响结论的轻微不满足项
@@ -246,8 +249,13 @@ export interface StageData extends TraceableFields {
   id: string;
   scenario_id: string;
   stage: StageId;
-  /** 表编号，如 "M1"、"表1-3"、"表2-2" */
-  table_code: TableCode;
+  /**
+   * 表编号（旧 00b 编号 ∪ 新信息表注册表编号）
+   *
+   * v1.4 起表定义以 `tables.ts` 注册表为唯一事实源（含「可选材料」等新表号），
+   * 旧 `TableCode` 联合类型待 P3-d 迁移完成后删除。
+   */
+  table_code: TableCode | InfoTableCode;
   /** JSON，结构由该表 schema 定义（v1.1 补齐阶段 3-8） */
   row: Record<string, unknown>;
   /** 资料失效标记（产品定义 §4.1 失效语义） */

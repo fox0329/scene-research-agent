@@ -1078,6 +1078,9 @@ export const TABLES: readonly TableDef[] = [
   ...TABLES_STAGE_6,
 ];
 
+/** 信息表表号联合类型（由注册表派生，供数据层使用） */
+export type InfoTableCode = (typeof TABLES)[number]["code"];
+
 export const TABLES_BY_CODE: Readonly<Record<string, TableDef>> = Object.fromEntries(
   TABLES.map((t) => [t.code, t]),
 );

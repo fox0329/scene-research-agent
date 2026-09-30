@@ -1,149 +1,181 @@
 /**
- * @scene/server — 阶段 prompt 模板单测（阶段 0-8）
+ * @scene/server — 阶段提示词生成测试（注册表驱动版）
  *
- * 覆盖：每个阶段 system/user/contract 三件套齐全、表号枚举与契约一致、
- * 上游数据注入格式。
+ * 与旧版的区别：提示词内容**由表定义注册表派生**，因此断言的是"派生是否正确"
+ * （表清单、字段名、枚举、必填标注、硬规则），而不是硬编码的文案片段。
  */
 
 import { describe, it, expect } from "vitest";
-import type { StageId } from "@scene/contract";
-import {
-  STAGE3_TABLES,
-  STAGE4_TABLES,
-  STAGE5_TABLES,
-  STAGE6_TABLES,
-  STAGE7_TABLES,
-  STAGE8_TABLES,
-} from "@scene/contract";
-import { buildStagePrompt, getStageOutputContract } from "./stage-prompts.js";
+import { STAGE_DEFS, middleColumns, tablesOfStage } from "@scene/contract";
+import { buildStagePrompt, getStageOutputContract, renderTableSpec, stageMeta } from "./stage-prompts.js";
 
-const ALL_STAGES: StageId[] = [0, 1, 2, 3, 4, 5, 6, 7, 8];
+const scenario = { name: "智慧水务", description: "客户：市政水务集团", brief: "想搞清楚值不值得进" };
+const anchor = [
+  { item: "场景名称", content: "智慧水务" },
+  { item: "客户类型/行业", content: "市政水务集团" },
+];
 
-describe("buildStagePrompt 阶段 0-8", () => {
-  for (const stage of ALL_STAGES) {
-    it(`阶段 ${stage} 返回完整 StagePrompt`, () => {
-      const prompt = buildStagePrompt(stage, {
-        "表1-1": [{ scene_name: "测试场景" }],
-      });
-      expect(prompt.system.length).toBeGreaterThan(50);
-      expect(prompt.user).toContain("表1-1");
-      expect(prompt.user).toContain("测试场景");
-      expect(prompt.outputContract).toBeTruthy();
-    });
-  }
-
-  it("阶段 3 system 含利润池/替代方案/未被满足的需求表结构", () => {
-    const { system } = buildStage3();
-    expect(system).toContain("表3-1 利润池");
-    expect(system).toContain("表3-6 替代方案");
-    expect(system).toContain("表3-8 未被满足的需求");
-  });
-
-  it("阶段 4 system 含匹配矩阵三档判定与买方语言规则", () => {
-    const { system } = buildStage4();
-    expect(system).toContain("真能解/条件能解/不能承诺");
-    expect(system).toContain("买方语言");
-  });
-
-  it("阶段 5 system 含成本单价来源硬规则", () => {
-    const { system } = buildStage5();
-    expect(system).toContain("M6 内部费率基准");
-    expect(system).toContain("禁止编造");
-  });
-
-  it("阶段 6 system 含 ROI C 级假设与双口径分离", () => {
-    const { system } = buildStage6();
-    expect(system).toContain("C 级假设");
-    expect(system).toContain("表6-6 价值呈现双口径");
-  });
-
-  it("阶段 7 system 声明不负责的数据库回写", () => {
-    const { system } = buildStage7();
-    expect(system).toContain("本阶段不负责回写");
-  });
-
-  it("阶段 8 system 含对外材料硬性禁令", () => {
-    const { system } = buildStage8();
-    expect(system).toContain("不含竞品名字");
-    expect(system).toContain("表8-内部");
-    expect(system).toContain("表8-对外");
-  });
-
-  it("上游空数组不注入 user prompt", () => {
-    const { user } = buildStagePrompt(3, { "表3-1": [], "表3-2": undefined });
-    expect(user).not.toContain("### 表3-1");
-    expect(user).not.toContain("### 表3-2");
-  });
-});
-
-describe("getStageOutputContract 阶段 0-8", () => {
-  const expectedEnums: Array<[StageId, readonly string[]]> = [
-    [3, STAGE3_TABLES],
-    [4, STAGE4_TABLES],
-    [5, STAGE5_TABLES],
-    [6, STAGE6_TABLES],
-    [7, STAGE7_TABLES],
-    [8, STAGE8_TABLES],
-  ];
-
-  for (const [stage, tables] of expectedEnums) {
-    it(`阶段 ${stage} 契约 table_code 枚举与契约表号一致`, () => {
-      const contract = getStageOutputContract(stage);
-      const rows = contract.properties as Record<string, unknown>;
-      const items = (rows.rows as Record<string, unknown>).items as Record<string, unknown>;
-      const props = items.properties as Record<string, unknown>;
-      const tc = props.table_code as Record<string, unknown>;
-      expect(tc.enum).toEqual([...tables]);
-    });
-  }
-
-  it("阶段 0-2 契约可获取", () => {
-    for (const stage of [0, 1, 2] as StageId[]) {
-      expect(getStageOutputContract(stage)).toBeTruthy();
+describe("stage-prompts — 阶段覆盖（8 阶段口径）", () => {
+  it("阶段 0-7 都能构建 prompt", () => {
+    for (const s of STAGE_DEFS) {
+      const p = buildStagePrompt(s.id, { "表1-1": anchor }, scenario);
+      expect(p.system.length, `阶段 ${s.id}`).toBeGreaterThan(200);
+      expect(p.user.length).toBeGreaterThan(100);
+      expect(p.outputContract).toBeTruthy();
     }
   });
+
+  it("旧编号的阶段 8 明确报错（已合并为阶段 7）", () => {
+    expect(() => buildStagePrompt(8, {})).toThrow(/阶段 8 已合并为阶段 7/);
+    expect(() => getStageOutputContract(8)).toThrow(/阶段 8 已合并为阶段 7/);
+  });
 });
 
-// ─── 便捷封装（避免重复传参） ──────────────────────────────
-
-function buildStage3() {
-  return buildStagePrompt(3, {});
-}
-function buildStage4() {
-  return buildStagePrompt(4, {});
-}
-function buildStage5() {
-  return buildStagePrompt(5, {});
-}
-function buildStage6() {
-  return buildStagePrompt(6, {});
-}
-function buildStage7() {
-  return buildStagePrompt(7, {});
-}
-function buildStage8() {
-  return buildStagePrompt(8, {});
-}
-
-describe("场景锚（v1.11）", () => {
-  it("user prompt 注入场景名称/描述与硬规则；无描述时给防臆造指引", () => {
-    const withDesc = buildStagePrompt(1, {}, {
-      name: "智慧水务-漏损监测",
-      description: "客户是城市自来水公司；目标是漏损实时监测预警。",
-    });
-    expect(withDesc.user).toContain("【场景锚");
-    expect(withDesc.user).toContain("智慧水务-漏损监测");
-    expect(withDesc.user).toContain("城市自来水公司");
-    expect(withDesc.user).toContain("只分析与本场景直接相关的内容");
-
-    const noDesc = buildStagePrompt(1, {}, { name: "X场景", description: "" });
-    expect(noDesc.user).toContain("（未提供——只允许基于材料中与场景名称直接相关的内容分析");
-    expect(noDesc.user).toContain("禁止臆造");
+describe("stage-prompts — 内容由注册表派生", () => {
+  it("system 列出本阶段全部表（表号 + 名称 + 级别 + 行粒度）", () => {
+    for (const s of STAGE_DEFS) {
+      const p = buildStagePrompt(s.id, {}, scenario);
+      for (const t of tablesOfStage(s.id)) {
+        expect(p.system, `阶段 ${s.id} / ${t.code}`).toContain(`${t.code} ${t.name}`);
+        expect(p.system).toContain(t.rowUnit);
+        expect(p.system).toContain(`级别：${t.tier}`);
+      }
+    }
   });
 
-  it("表1-1 场景要素以场景锚为准，禁止臆造", () => {
-    const p = buildStagePrompt(1, {}, { name: "S", description: "D" });
-    expect(p.system).toContain("以【场景锚】为唯一事实来源整理推导");
-    expect(p.system).toContain("禁止臆造客户、用途与价值主张");
+  it("system 列出每张表的全部中栏列字段名", () => {
+    const p = buildStagePrompt(1, {}, scenario);
+    for (const t of tablesOfStage(1)) {
+      for (const c of middleColumns(t)) {
+        expect(p.system, `${t.code}.${c.key}`).toContain(`\`${c.key}\``);
+      }
+    }
+  });
+
+  it("必填与枚举在字段清单里标注", () => {
+    const p = buildStagePrompt(1, {}, scenario);
+    expect(p.system).toContain("必填");
+    expect(p.system).toContain("枚举 can_touch");
+  });
+
+  it("表1-1 的固定行逐个列出（含需用户确认标记）", () => {
+    const p = buildStagePrompt(1, {}, scenario);
+    expect(p.system).toContain("固定行");
+    expect(p.system).toContain("客户类型/行业（必填）（需用户确认）");
+    expect(p.system).toContain("价值主张（必填）（需用户确认）");
+  });
+
+  it("renderTableSpec 对可选材料列出 6 种 payload", () => {
+    const t = tablesOfStage(0).find((x) => x.code === "可选材料")!;
+    const spec = renderTableSpec(t);
+    for (const cat of ["O1认证", "O2案例", "O3价格与授权", "O4开发资料", "O5路线图", "O6交付与生态"]) {
+      expect(spec).toContain(cat);
+    }
+  });
+
+  it("多子块表（成本估算）按块渲染字段", () => {
+    const p = buildStagePrompt(4, {}, scenario);
+    expect(p.system).toContain("表5-5 成本估算");
+    expect(p.system).toContain("`annual_fee`");
+    expect(p.system).toContain("`subtotal`");
+  });
+
+  it("跨阶段填写的表在 system 里标注（阶段 1 的表2-5 / 阶段 2 的表3-6、表3-8）", () => {
+    expect(buildStagePrompt(1, {}, scenario).system).toContain("跨阶段填写");
+    expect(buildStagePrompt(2, {}, scenario).system).toContain("跨阶段填写");
+    // 阶段 4 产出的表不是跨阶段表，不应出现该标注
+    expect(buildStagePrompt(4, {}, scenario).system).not.toContain("跨阶段填写");
+  });
+});
+
+describe("stage-prompts — 信息版口径（不产出判断）", () => {
+  const forbidden = ["建议进", "建议有条件进", "建议不通过", "一票否决后不进"];
+
+  it("任何阶段的 prompt 都不含建议档位措辞", () => {
+    for (const s of STAGE_DEFS) {
+      const p = buildStagePrompt(s.id, {}, scenario);
+      for (const bad of forbidden) {
+        expect(p.system, `阶段 ${s.id}`).not.toContain(bad);
+        expect(p.user).not.toContain(bad);
+      }
+    }
+  });
+
+  it("system 明确声明「不产出判断」与「不得自称用户确认」", () => {
+    const p = buildStagePrompt(3, {}, scenario);
+    expect(p.system).toContain("不产出判断");
+    expect(p.system).toContain("不得自称「用户确认」");
+    expect(p.system).toContain("依据不足就填「未提供」");
+  });
+
+  it("user 注入场景诉求与场景锚", () => {
+    const p = buildStagePrompt(2, { "表1-1": anchor }, scenario);
+    expect(p.user).toContain("场景诉求（第一输入，唯一基准）");
+    expect(p.user).toContain("想搞清楚值不值得进");
+    expect(p.user).toContain("场景锚（表1-1");
+    expect(p.user).toContain("客户类型/行业：市政水务集团");
+  });
+
+  it("场景锚为空时给出明确提示而非留白", () => {
+    const p = buildStagePrompt(1, {}, scenario);
+    expect(p.user).toContain("场景锚尚未填写");
+  });
+
+  it("上游数据按表渲染为表格，空表不出现", () => {
+    const p = buildStagePrompt(1, { M1: [{ model: "IPC-3000", name: "IPC" }], M2: [] }, scenario);
+    expect(p.user).toContain("M1 产品清单（1 行）");
+    expect(p.user).not.toContain("M2 规格书（0 行）");
+  });
+});
+
+describe("stage-prompts — 输出契约（补契约空壳）", () => {
+  it("table_code 的 enum 等于本阶段表号（由注册表派生）", () => {
+    for (const s of STAGE_DEFS) {
+      if (tablesOfStage(s.id).length === 0) continue;
+      const c = getStageOutputContract(s.id) as {
+        properties: { rows: { items: { properties: { table_code: { enum: string[] } } } } };
+      };
+      expect(c.properties.rows.items.properties.table_code.enum).toEqual(
+        tablesOfStage(s.id).map((t) => t.code),
+      );
+    }
+  });
+
+  it("fields.properties 列出本阶段全部合法字段名（模型不能自创键名）", () => {
+    const c = getStageOutputContract(1) as {
+      properties: { rows: { items: { properties: { fields: { properties: Record<string, unknown> } } } } };
+    };
+    const keys = Object.keys(c.properties.rows.items.properties.fields.properties);
+    for (const t of tablesOfStage(1)) {
+      for (const col of t.columns) {
+        expect(keys, `${t.code}.${col.key}`).toContain(col.key);
+      }
+    }
+    expect(keys).toContain("source");
+  });
+
+  it("source_type 只允许 AI提取 / AI推断", () => {
+    const c = getStageOutputContract(2) as {
+      properties: { rows: { items: { properties: { source_type: { enum: string[] } } } } };
+    };
+    expect(c.properties.rows.items.properties.source_type.enum).toEqual(["AI提取", "AI推断"]);
+  });
+
+  it("阶段 7（交付物）不要求 rows，而要两份文档", () => {
+    const c = getStageOutputContract(7) as { required: string[]; properties: Record<string, unknown> };
+    expect(c.required).toEqual(["internal_report", "external_report"]);
+    expect(c.properties["rows"]).toBeUndefined();
+  });
+});
+
+describe("stage-prompts — 阶段元信息", () => {
+  it("stageMeta 覆盖 8 阶段且表清单与注册表一致", () => {
+    const meta = stageMeta();
+    expect(meta).toHaveLength(8);
+    for (const m of meta) {
+      expect(m.name.length).toBeGreaterThan(0);
+      expect(m.tables).toEqual(tablesOfStage(m.id as 0).map((t) => t.code));
+    }
+    expect(meta[7]?.tables).toEqual([]);
   });
 });
