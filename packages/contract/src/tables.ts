@@ -1082,6 +1082,52 @@ export const TABLES_BY_CODE: Readonly<Record<string, TableDef>> = Object.fromEnt
   TABLES.map((t) => [t.code, t]),
 );
 
+// ─── 覆盖度规则（可机器判定） ──────────────────────────────
+//
+// `TableDef.completeness` 是给人看的自然语言规则；本表是**可执行**的那部分，
+// 供领域层的完整度检查直接跑（阶段进度与缺口清单的唯一依据）。
+
+export type CoverageRule =
+  | { kind: "min-rows"; min: number; label: string }
+  | { kind: "enum-complete"; column: string; values: readonly string[]; label: string }
+  | { kind: "all-columns-non-empty"; columns: readonly string[]; label: string };
+
+export const COVERAGE_RULES: Readonly<Record<string, readonly CoverageRule[]>> = {
+  "表1-2": [{ kind: "min-rows", min: 3, label: "业务环节 ≥3 个" }],
+  "表1-3": [
+    {
+      kind: "enum-complete",
+      column: "barrier_type",
+      values: ENUMS.barrier_type,
+      label: "五类门槛各 ≥1 行",
+    },
+  ],
+  "表3-1": [{ kind: "min-rows", min: 3, label: "覆盖 ≥3 个产业链环节" }],
+  "表3-2": [{ kind: "min-rows", min: 3, label: "≥3 种方案形态" }],
+  "表3-4": [
+    { kind: "min-rows", min: 3, label: "对照维度 ≥3 个" },
+    {
+      kind: "all-columns-non-empty",
+      columns: ["competitor_a", "competitor_b", "competitor_c"],
+      label: "竞品 ≥3 家（A/B/C 均填）",
+    },
+  ],
+  "表3-6": [{ kind: "min-rows", min: 2, label: "≥2 个对照方案（含我方方案行）" }],
+  "表3-7": [{ kind: "min-rows", min: 2, label: "失败反模式 ≥2 条" }],
+  "表3-8": [{ kind: "min-rows", min: 3, label: "需求缺口 ≥3 条" }],
+  "表4-4": [{ kind: "min-rows", min: 2, label: "细分场景 ≥2 个" }],
+  "表4-5": [{ kind: "min-rows", min: 4, label: "竞争力维度 ≥4 个" }],
+  "表6-1": [{ kind: "min-rows", min: 2, label: "价值与指标 ≥2 条" }],
+  "表6-4": [
+    {
+      kind: "enum-complete",
+      column: "kind",
+      values: ["成功判据", "验收口径"],
+      label: "覆盖『成功判据』与『验收口径』两类",
+    },
+  ],
+};
+
 // ─── 计算卡片（派生值，不是表） ────────────────────────────
 
 export interface ComputedCardDef {
@@ -1264,6 +1310,23 @@ export function registryIssues(): readonly string[] {
 
   // 阶段 7 无表
   if (tablesOfStage(7).length !== 0) issues.push("阶段 7 不应有信息表（交付物是文档）");
+
+  // 覆盖度规则只能挂在存在的表上，且列名必须真实存在
+  for (const [code, rules] of Object.entries(COVERAGE_RULES)) {
+    const t = TABLES_BY_CODE[code];
+    if (!t) {
+      issues.push(`覆盖度规则挂在未知表号：${code}`);
+      continue;
+    }
+    for (const r of rules) {
+      const cols = r.kind === "enum-complete" ? [r.column] : r.kind === "all-columns-non-empty" ? r.columns : [];
+      for (const key of cols) {
+        if (!t.columns.some((c) => c.key === key)) {
+          issues.push(`${code} 覆盖度规则引用了不存在的列：${key}`);
+        }
+      }
+    }
+  }
 
   return issues;
 }

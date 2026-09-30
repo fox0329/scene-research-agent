@@ -188,3 +188,37 @@ export type {
 // ─── 对话即导入：消息内文件路径提取 ─────────────────────────
 
 export { extractImportablePaths, expandHomePath, IMPORTABLE_EXTS } from "./chat-import.js";
+
+// ─── 信息完整度检查（替代旧「质量关」；见 04 §六） ─────────────
+export {
+  checkStageCompleteness,
+  gapsToSummaryLines,
+  gapsBrief,
+  isEmptyValue,
+} from "./completeness.js";
+export type {
+  InfoRow,
+  Gap,
+  GapKind,
+  StageCompleteness,
+} from "./completeness.js";
+
+// ─── 确认机制（见 04 §4.7） ────────────────────────────────
+export {
+  confirmStateOf,
+  usableDownstream,
+  applyConfirmation,
+  buildChecklist,
+  alignmentWithBrief,
+  pendingConfirmationCount,
+  l1Rows,
+  ALIGNMENT_CONFLICT_NOTE,
+} from "./confirmation.js";
+export type {
+  ConfirmState,
+  ConfirmAction,
+  ChecklistItem,
+  ConfirmationChecklist,
+  Alignment,
+  AlignmentItem,
+} from "./confirmation.js";
