@@ -249,6 +249,10 @@ export const DemoStagePanel: React.FC<DemoStagePanelProps> = ({ stage, onStageSn
             </h2>
             <p>演示模式：结构、列定义与完整度口径与联真一致（数据为示例）</p>
           </div>
+          {/* 导航动作与联真一致：信息不齐备也不阻断 */}
+          <button className="btn" type="button">
+            进入下一阶段
+          </button>
         </div>
         <div className="pnl-b flush">
           <div className="completeness-bar">

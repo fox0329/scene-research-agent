@@ -76,7 +76,7 @@ else
   if [ "$C1" = "404" ] && [ "$C2" = "404" ] && [ "$C3" = "404" ]; then
     echo "✅ 冒烟通过：health 200 / resume 404 / rollback 404 / events 404"
   else
-    echo "❌ 冒烟异常（resume=$C1 rollback=$C2 events=$C3，期望均 404）"
+    echo "❌ 冒烟异常（resume=$C1 rollback=$C2 events=${C3}，期望均 404）"
     FAIL=1
   fi
 fi

@@ -35,10 +35,10 @@ echo "health: $HEALTH"
 echo "$HEALTH" | grep -q '"status":"ok"' || { echo "❌ health 异常"; exit 1; }
 
 CODE=$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:${SMOKE_PORT}/api/v1/projects/nope/resume")
-[[ "$CODE" == "404" ]] || { echo "❌ resume 路由异常（HTTP $CODE）"; exit 1; }
+[[ "$CODE" == "404" ]] || { echo "❌ resume 路由异常（HTTP ${CODE}）"; exit 1; }
 
 CODE=$(curl -s -o /dev/null -w '%{http_code}' -X POST "http://127.0.0.1:${SMOKE_PORT}/api/v1/projects/nope/rollback" -H 'content-type: application/json' -d '{"targetStage":1}')
-[[ "$CODE" == "404" ]] || { echo "❌ rollback 路由异常（HTTP $CODE）"; exit 1; }
+[[ "$CODE" == "404" ]] || { echo "❌ rollback 路由异常（HTTP ${CODE}）"; exit 1; }
 
 kill "$SRV_PID" 2>/dev/null || true; wait "$SRV_PID" 2>/dev/null || true; SRV_PID=""
 echo "✅ 构建产物冒烟通过（health / resume / rollback）"
@@ -67,5 +67,5 @@ rm -rf "$(dirname "$STAGE")"
 
 SIZE=$(du -h "$TARBALL" | cut -f1)
 echo "── 4/4 完成 ───────────────────────────────────────────"
-echo "✅ release 包：$TARBALL（$SIZE）"
+echo "✅ release 包：${TARBALL}（${SIZE}）"
 echo "   运行方式：解压后 pnpm install（native 依赖）→ pnpm build → pnpm --filter @scene/server start（需在解压根目录启动，DSH 配置按相对路径解析）"

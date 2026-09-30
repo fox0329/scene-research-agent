@@ -183,3 +183,64 @@ interface DshClient {
 | v1.15 | 2026-09-24 | 场景定义精简为两段式（场景长什么样+范围，问题/目标移出定义期）+ 建场景即弹对话抽屉；变更表 #28 |
 | v1.16 | 2026-09-24 | 对话抽屉弹出即显状态提示（场景范围梳理中…），生成完成自动清除；变更表 #29 |
 | v1.17 | 2026-09-24 | 对话即操作：converse 注入业务流操作手册 + 【执行命令】分发（advance_stage/export_deliverables/dedupe_products/clarify_scenario），结果回写对话；变更表 #30 |
+| v2.0 | 2026-09-25 | **信息模型重构（不兼容变更）**：产品定位改为「用方法论帮用户一步步获得有价值、全面的信息」，**整体移除判断与建议产出**。详见 §七 迁移说明；变更表 #31–#53 |
+
+---
+
+## 七、v2.0 信息模型迁移说明（不兼容变更）
+
+> 依据：`04-业务过程重定义.md` v1.4、`05-表格定义总表.md`、`06-设计审查与压缩方案.md`、`07-业务流程总表.md`。
+> 一句话：**产品不再产出判断，只产出信息**；判断由用户自己做。
+
+### 7.1 表定义成为唯一事实源
+
+新增 `packages/contract/src/tables.ts`（34 张信息表）：表号/名称/阶段/级别/行粒度/列定义（字段·中文表头·必填·条件必填·枚举·类型·截断·块·引用）/**栏位分配（中栏 | 右栏补充）**/完整度规则/被引用阶段。
+后端提示词、前端列定义、交付物装配**全部由它派生**；`05-表格定义总表.md` 亦由它生成（`pnpm gen:docs`，`pnpm check:docs` 做漂移守卫）。
+
+- 阶段口径：**8 阶段（0-7）**。阶段 0 材料解析与入库（`producedBy: 解析入库`）、阶段 1-6 模型分析、阶段 7 最终交付物（`系统组装`）。
+  旧编号阶段 8 已合并为阶段 7；`GET .../stages/8/...` 仍可用（按 7 处理），但不再有独立语义。
+- 级别：`重要`（中栏表格，逐格校对）/ `支撑`（中栏折叠，抽查）/ `过程`（归右栏阶段总结）。
+- **列预算**：中栏 ≤ 6 列；元信息列（`source`/`evidence_level`/`authority`）与长文本说明一律进**右栏补充列**；表格默认不出现横向滚动。
+
+### 7.2 数据表变更
+
+| 变更 | 说明 |
+|---|---|
+| 新增 `scenario_brief` | 场景诉求（第一输入，一场景一行）：`scene_name`/`intent`（想搞清楚什么，必填）/客户·地域·范围·用途·时间线索/`raw_text`（**用户原文，确认基准，系统不得改写**） |
+| 新增 `stage_summary` | 阶段总结文档（复合主键 `scenario_id + stage`）：六段骨架 Markdown，**确定性生成，不需要 LLM** |
+| `stage_data.table_code` 放宽 | 由 `TableCode` 放宽为 `TableCode \| InfoTableCode`（含「可选材料」等新表号）；**未知表号的产出行不入库**（无 schema 无法渲染） |
+| `quality_gate` 停用 | 保留表结构但**不再读写**（判断类产出整体移除） |
+| 场景锚（表1-1）落点 | 不再写 `scenario.description` 文本；**锚行存 `stage_data`（stage=1, table_code=表1-1）**，`description` **降级为由锚行派生的展示缓存** |
+
+### 7.3 新增/变更端点
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| GET | `/projects/{id}/brief` | 读场景诉求 + 场景锚（幂等预建 12 行锚骨架） |
+| PUT | `/projects/{id}/brief` | 写场景诉求（`intent` 必填）；`raw_text` 首次写入后不再改写 |
+| POST | `/projects/{id}/brief/draft` | 起草场景锚：诉求 + 资料库 → 12 项内容；**用户确认过的行不被覆盖**；LLM 失败降级为按线索预填（`used_llm=false`） |
+| PUT | `/projects/{id}/anchor` | 批量写锚行（逐格确认/编辑）；返回重算后的 `description` |
+| GET | `/projects/{id}/stages/{n}/completeness` | **信息完整度**（替代旧质量关读接口）：`{ stage, expectedTables, tablesWithData, missingTables, gaps, percent }`——只说明"还缺什么"，**不产出通过/不通过** |
+| GET | `/projects/{id}/stages/{n}/summary` | 阶段总结文档：`{ stage, markdown, completeness }`；`?format=md` 直接下载；`?refresh=1` 强制重算 |
+| POST | `/projects` | 可随建随传场景诉求字段（`intent`/`customer_hint`/`region_hint`/`scope_hint`/`audience`/`deadline`） |
+| POST | `/projects/{id}/draft-definition` | **兼容保留**：内部改走场景锚，响应形状不变（`description`/`open_questions`/`conversation_id`）；`description` 变为派生缓存 |
+| POST | `/projects/{id}/deliverables/export` | 交付物改为**装配式**：内部报告 = 各阶段总结装配 + 附录（来源索引/覆盖概览）；对外材料 = 章节 ← 表映射且**只渲染中栏列**（天然不含来源/证据级/权威性） |
+
+### 7.4 SSE 事件类型变更
+
+| 旧 | 新 | 说明 |
+|---|---|---|
+| `gate` | `completeness` | 载荷 `{ completeness, violations }`：完整度报告 + 产出行校验违规（未知表号/缺必填列/枚举非法/缺来源/自称用户确认）。**不阻断** |
+| `advice` | `summary` | 载荷 `{ markdown }`：该阶段总结文档（六段骨架） |
+
+### 7.5 确认机制（新增）
+
+- 三层确认对象：**L1 场景本体**（表1-1 的 6 个必确认固定行）、**L2 环节与角色**（表1-2 每环节的能否参与/我方角色）、**L3 事实与枚举**（其余表抽查 + 待确认清单）。
+- 状态机：系统推断 → 待确认 → 用户确认 / 用户修改 / 用户否决（由 `source_type` 推导，显式 `confirm_state` 优先）。
+- **铁律：只有「用户确认」「用户补充」可被下游当依据**；模型产出只允许标 `AI提取` / `AI推断`（本地校验拦截自称用户确认）。
+- 对照式确认以**用户诉求原文**为基准，把系统理解分为 一致 / 系统补充 / 推断 / 待补充 四态；「冲突」需语义判断，交由对话确认处理。
+
+### 7.6 存量库迁移
+
+旧表号与旧阶段号需要迁移（`O1..O6` → `可选材料`、`表1-4`/`表1-5` → `表1-3`、`表2-8` → `表1-2`、阶段 7/8 重编号等）。
+提供 `scripts/migrate-info-model.mjs`：默认**只报告**（dry-run），`--apply` 才写入；无法无损映射的行会被列出待人工处理。

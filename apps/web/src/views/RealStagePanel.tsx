@@ -54,6 +54,17 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
   );
   const { showToast } = useToast();
 
+  /** 进入下一阶段：这是**导航动作**，不是判断——信息不齐备也不阻断（用户自己决定先补还是先走） */
+  const goNextStage = useCallback(async () => {
+    try {
+      const project = await api.decide(projectId, stage, "继续");
+      showToast(`已进入阶段 ${project.current_stage}（信息缺口可在右栏随时回看）`);
+      onChanged?.();
+    } catch (err: unknown) {
+      showToast(`推进失败：${err instanceof Error ? err.message : String(err)}`);
+    }
+  }, [projectId, stage, showToast, onChanged]);
+
   const [streamLines, setStreamLines] = useState<string[]>([]);
   const [running, setRunning] = useState(false);
   const runningRef = useRef(false);
@@ -354,16 +365,22 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
                 : `本阶段信息由「${stageDefRow?.producedBy ?? ""}」产生，不需要模型分析`}
             </p>
           </div>
-          {isModel ? (
-            <button
-              className="btn primary"
-              type="button"
-              onClick={() => void startAnalysis()}
-              disabled={running}
-            >
-              {running ? "分析进行中…" : activeRows.length > 0 ? "重算本阶段" : "开始本阶段分析"}
+          <div className="pnl-actions">
+            {isModel ? (
+              <button
+                className="btn primary"
+                type="button"
+                onClick={() => void startAnalysis()}
+                disabled={running}
+              >
+                {running ? "分析进行中…" : activeRows.length > 0 ? "重算本阶段" : "开始本阶段分析"}
+              </button>
+            ) : null}
+            {/* 导航动作：信息不齐备也可继续（缺口只在右栏提示） */}
+            <button className="btn" type="button" onClick={() => void goNextStage()} disabled={running}>
+              进入下一阶段
             </button>
-          ) : null}
+          </div>
         </div>
         <div className="pnl-b flush">
           <div className="completeness-bar">

@@ -37,10 +37,26 @@ for f in \
   apps/web/src/views/RealLibraryView.tsx \
   apps/web/src/views/RealKnowledgeView.tsx \
   apps/web/src/components/ConversationDrawer.tsx \
-  apps/web/src/components/decision-snapshot.ts \
   packages/infra/src/provider-store.ts \
   packages/infra/src/provider-check.ts \
-  scripts/verify-live-chain.mjs; do
+  scripts/verify-live-chain.mjs \
+  packages/contract/src/tables.ts \
+  packages/contract/src/tables.test.ts \
+  packages/contract/src/docgen.ts \
+  packages/domain/src/completeness.ts \
+  packages/domain/src/confirmation.ts \
+  packages/domain/src/anchor.ts \
+  packages/domain/src/stage-summary.ts \
+  packages/domain/src/row-validation.ts \
+  apps/server/src/scenario-anchor.ts \
+  apps/server/src/stage-summary-service.ts \
+  apps/web/src/components/SchemaTable.tsx \
+  apps/web/src/components/StageRightPanel.tsx \
+  apps/web/src/components/ScenarioBriefDialog.tsx \
+  apps/web/src/views/DemoStagePanel.tsx \
+  scripts/copy-infra-sql.mjs \
+  scripts/migrate-info-model.mjs \
+  05-表格定义总表.md; do
   if [ -f "$ROOT/$f" ]; then
     echo "✅ $(basename "$f")"
   else
@@ -79,7 +95,7 @@ else
   if [ "$C_STATIC" = "200" ] && printf '%s' "$HTML" | grep -q 'id="root"'; then
     echo "✅ 静态托管：GET / 200 且含 SPA 挂载点"
   else
-    echo "❌ 静态托管异常（GET / = $C_STATIC）"
+    echo "❌ 静态托管异常（GET / = ${C_STATIC}）"
     FAIL=1
   fi
   # 真实路由 CRUD 往返：创建 → 读取 → 重命名 → 删除
@@ -95,7 +111,7 @@ else
     if [ "$C_GET" = "200" ] && [ "$C_PATCH" = "200" ] && [ "$C_DEL" = "200" ] && [ "$C_GONE" = "404" ]; then
       echo "✅ CRUD 往返：create/get/patch/delete 通过，删除后 404"
     else
-      echo "❌ CRUD 异常（get=$C_GET patch=$C_PATCH delete=$C_DEL after=$C_GONE，期望 200/200/200/404）"
+      echo "❌ CRUD 异常（get=$C_GET patch=$C_PATCH delete=$C_DEL after=${C_GONE}，期望 200/200/200/404）"
       FAIL=1
     fi
   else
@@ -107,7 +123,7 @@ else
   if [ "$C_EVT" = "404" ]; then
     echo "✅ messages/events 路由在册（未知会话 404）"
   else
-    echo "❌ messages/events 异常（$C_EVT，期望 404）"
+    echo "❌ messages/events 异常（${C_EVT}，期望 404）"
     FAIL=1
   fi
 fi
@@ -143,7 +159,7 @@ PY
   if [ -n "$DEF_DESC" ]; then
     HAS_KEY=1
     PROVIDERS_FILE="$PF"
-    PROVIDERS_LABEL="检测到默认模型已配密钥（$DEF_DESC），走真实 LLM 分析分支"
+    PROVIDERS_LABEL="检测到默认模型已配密钥（${DEF_DESC}），走真实 LLM 分析分支"
   fi
 fi
 
@@ -194,7 +210,8 @@ check_contains() {
     FAIL=1
   fi
 }
-check_contains "package.json" '"start": "node apps/server/dist/index.js"' "冷启动一条命令 npm start 在册（故障 #9）"
+check_contains "package.json" '"start":' "冷启动一条命令 npm start 在册（故障 #9）"
+check_contains "package.json" 'copy-infra-sql.mjs' "start 前同步 SQL 迁移文件（tsc -b 不拷贝 .sql）"
 check_contains "03-数据契约与API.md" "v1.4" "契约版本记录 v1.4"
 check_contains "03-数据契约与API.md" "messages/events" "会话重连端点契约登记（v1.5）"
 check_contains "03-数据契约与API.md" "联真实现口径" "联真实现口径表"
@@ -211,6 +228,31 @@ check_contains "docs/故障及解决清单.md" "| 10 |" "故障 #10 联真模式
 check_contains "03-数据契约与API.md" "v1.6" "契约版本记录 v1.6（模型配置应用自持）"
 check_contains "03-数据契约与API.md" "system/providers" "供应商登记端点契约登记"
 check_contains "docs/项目变更表.md" "| 16 |" "变更表 #16 模型配置应用自持登记"
+# ── v2.0 信息模型收口 ──────────────────────────────────────
+check_contains "03-数据契约与API.md" "v2.0" "契约版本记录 v2.0（信息模型重构）"
+check_contains "03-数据契约与API.md" "/stages/{n}/completeness" "信息完整度端点登记（替代质量关）"
+check_contains "03-数据契约与API.md" "/stages/{n}/summary" "阶段总结端点登记"
+check_contains "03-数据契约与API.md" "/projects/{id}/brief" "场景诉求端点登记（第一输入）"
+check_contains "03-数据契约与API.md" "只有「用户确认」「用户补充」可被下游当依据" "确认机制铁律登记"
+check_contains "docs/项目变更表.md" "| 53 |" "变更表 #53 三段式诉求与 SQL 迁移修复"
+if [ -f "$ROOT/05-表格定义总表.md" ] && pnpm check:docs >/dev/null 2>&1; then
+  echo "✅ 05-表格定义总表.md 与表定义注册表一致（漂移守卫）"
+else
+  echo "❌ 05 与注册表不一致（跑 pnpm gen:docs 重新生成）"
+  FAIL=1
+fi
+if grep -q "建议通过\|建议不通过" "$ROOT/apps/server/src/stage-prompts.ts" 2>/dev/null; then
+  echo "❌ 提示词里仍出现建议档位措辞（产品不产出判断）"
+  FAIL=1
+else
+  echo "✅ 提示词不含建议档位措辞（信息版口径）"
+fi
+if grep -rq "adviceFromGateRecords\|decideAdvice" "$ROOT/apps" "$ROOT/packages" --include=*.ts --exclude-dir=dist --exclude-dir=node_modules 2>/dev/null; then
+  echo "❌ 旧门禁装置仍被引用"
+  FAIL=1
+else
+  echo "✅ 旧门禁装置（质量关/建议三档）已彻底移除"
+fi
 
 echo ""
 if [ "$FAIL" -eq 0 ]; then

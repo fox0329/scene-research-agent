@@ -34,6 +34,8 @@
     "verify:m5": "bash scripts/verify-m5.sh",
     "gen:docs": "pnpm --filter @scene/contract build && node scripts/gen-table-docs.mjs",
     "check:docs": "pnpm --filter @scene/contract build && node scripts/gen-table-docs.mjs --check",
-    "typecheck:packages": "tsc --noEmit -p tsconfig.json"
+    "typecheck:packages": "tsc --noEmit -p tsconfig.json",
+    "migrate:info-model": "node scripts/copy-infra-sql.mjs && node scripts/migrate-info-model.mjs",
+    "clean": "rm -rf packages/*/dist apps/*/dist *.tsbuildinfo packages/*/*.tsbuildinfo apps/*/*.tsbuildinfo"
   }
 }

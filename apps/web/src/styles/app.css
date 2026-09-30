@@ -2047,3 +2047,6 @@ td.ed {
 .align-hint { display: block; margin-top: var(--s1); font-size: var(--txs); color: var(--ct3); }
 .align-questions h4 { margin: 0 0 var(--s1); font-size: var(--ts); }
 .align-questions ul { margin: 0; padding-left: var(--s4); font-size: var(--ts); color: var(--ct2); }
+
+/* 阶段头右侧动作组（分析 / 进入下一阶段） */
+.pnl-actions { display: flex; align-items: center; gap: var(--s2); }

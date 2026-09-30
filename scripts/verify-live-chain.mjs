@@ -83,22 +83,33 @@ if (!(await hasTargetLine())) {
 ok("2a 产品线就绪（真实落库并选中）", true);
 await page.setInputFiles("main input[type=file]", PDF);
 await page.waitForFunction(
-  () => /【完成】入库 \d+ 行/.test(document.querySelector(".stale-banner")?.textContent ?? ""),
+  () => /【完成】\d+ 个文件 · 共入库 \d+ 行/.test(document.querySelector(".stale-banner")?.textContent ?? ""),
   null,
   { timeout: 60_000 },
 );
 const ingestLine = await page.evaluate(
   () =>
-    (document.querySelector(".stale-banner")?.textContent ?? "").match(/【完成】入库 \d+ 行/)?.[0],
+    (document.querySelector(".stale-banner")?.textContent ?? "").match(/【完成】\d+ 个文件 · 共入库 \d+ 行/)?.[0],
 );
 ok("2b 真实白皮书 PDF 上传 → 解析入库 SSE 完成", !!ingestLine, ingestLine);
 
-/* 3. 项目创建（侧栏「新建」→ prompt → 自动进工作台） */
-dialogQueue.push({ text: "端到端实测项目" });
+/* 3. 项目创建：已改为「场景诉求」三段式对话框（v1.4 第一输入） */
 await page.click(".nbtn");
+const briefDlg = page.locator(".modal[aria-label='场景诉求']");
+await briefDlg.waitFor({ state: "visible", timeout: 8000 });
+await briefDlg.locator("input.brief-input").first().fill("端到端实测项目");
+await briefDlg.getByRole("button", { name: "下一步" }).click();
+await briefDlg.locator("textarea.brief-input").fill("这个场景值不值得进");
+await briefDlg.getByRole("button", { name: "下一步" }).click();
+await briefDlg.locator("input.brief-input").nth(0).fill("市政水务集团");
+await briefDlg.getByRole("button", { name: "起草场景锚" }).click();
+/* 第四段：对照式确认（真实模型较慢；无模型时降级为按线索预填） */
+await briefDlg.locator(".align-table").waitFor({ state: "visible", timeout: 180_000 });
+const l1Rows = await briefDlg.locator(".align-table tbody tr").count();
+await briefDlg.getByRole("button", { name: /去确认/ }).click();
 await page.waitForSelector(".proj-hd:has-text('端到端实测项目')", { timeout: 8000 });
 await page.waitForSelector("text=导出交付物", { timeout: 8000 });
-ok("3 项目创建（真实落库、自动进入工作台）", true);
+ok("3 场景诉求三段式建项目（真实落库 + 起草场景锚 + L1 六项对照）", l1Rows === 6, `${l1Rows} 行`);
 
 /* 4. 阶段分析 SSE 链路：密钥在 → 真实落库；密钥缺 → 流内降级【错误】 */
 const startBtn = page.locator("button:has-text('开始本阶段分析')");
@@ -123,20 +134,20 @@ if (await startBtn.count()) {
 }
 ok("4 阶段分析 SSE 链路（真实或降级）实时上屏", true, analysisNote);
 
-/* 5. 右栏决策支撑：真实快照（联真版专属文案，非 mock） */
-await page.waitForFunction(
-  () => {
-    const det = document.querySelector(".det");
-    return det && /来源与证据/.test(det.innerText) && /GET stages/.test(det.innerText);
-  },
-  null,
-  { timeout: 10_000 },
-);
-const detSummary = await page.evaluate(() => {
-  const t = document.querySelector(".det").innerText;
-  return (t.match(/\d+ 行（用户确认 \d+）/) ?? [""])[0];
-});
-ok("5 右栏决策支撑为真实数据快照（非 mock 文案）", true, detSummary);
+/* 5. 右栏双 Tab：补充说明（确认清单 L1 ≥6）/ 阶段总结（六段骨架） */
+const detTabs = page.locator(".det .det-tab");
+await detTabs.first().waitFor({ state: "visible", timeout: 15_000 });
+const tabCount = await detTabs.count();
+await detTabs.nth(0).click();
+const l1Count = await page.locator(".det .layer-L1").count();
+await detTabs.nth(1).click();
+const mdText = (await page.locator(".det .md-body").innerText().catch(() => "")) || "";
+const hasSix = /信息摘要/.test(mdText) && /信息缺口与待补充/.test(mdText);
+/* 产品不产出判断：整页不得出现建议档位措辞 */
+const noAdvice = !/建议(通过|有条件通过|不通过|进)/.test(await page.locator(".shell").innerText());
+ok("5 右栏双 Tab（补充说明 + 阶段总结）且不产出判断",
+  tabCount === 2 && l1Count >= 6 && hasSix && noAdvice,
+  `Tab ${tabCount} 个 · L1 ${l1Count} 项 · 六段 ${hasSix} · 无建议措辞 ${noAdvice}`);
 
 /* 6. 交付物双口径导出：服务端落盘 md + toast 回显路径 */
 const filesBefore = existsSync(EXPORT_DIR) ? readdirSync(EXPORT_DIR).length : 0;
@@ -148,18 +159,26 @@ await page.waitForFunction(
 );
 const mdFiles = readdirSync(EXPORT_DIR).filter((f) => f.endsWith(".md"));
 ok("6a 双口径导出 toast 回显服务端路径", mdFiles.length > filesBefore, mdFiles.slice(-2).join(", "));
+/* 注意：文件名按字典序排会把「对外」排到最后，因此必须按文件名分别读取 */
 const newest = mdFiles.sort().slice(-1)[0];
-const content = readFileSync(join(EXPORT_DIR, newest), "utf-8");
-ok("6b 导出 md 非空且含报告结构", content.length > 200 && /#/.test(content), `${newest} ${content.length}B`);
+const intPath = join(EXPORT_DIR, "内部调研报告.md");
+const content = existsSync(intPath) ? readFileSync(intPath, "utf-8") : "";
+/* 装配式交付物：内部报告含阶段总结与附录；对外材料只放中栏列（不含来源/证据级） */
+const extPath = join(EXPORT_DIR, "对外汇报材料.md");
+const extContent = existsSync(extPath) ? readFileSync(extPath, "utf-8") : "";
+const internalOk = content.length > 200 && /场景调研/.test(content) && /来源索引/.test(content);
+const externalClean = extContent.length > 100 && !/证据等级|来源权威性/.test(extContent);
+ok("6b 交付物为装配式（内部含阶段总结+附录；对外不含内部治理信息）",
+  internalOk && externalClean, `${newest} ${content.length}B · 内部 ${internalOk} / 对外 ${externalClean}`);
 
-/* 7. decide「继续」真实推进阶段 */
-await page.click("button:has-text('完成阶段')");
+/* 7. 导航动作「进入下一阶段」真实推进（不是判断，信息不齐备也不阻断） */
+await page.click("button:has-text('进入下一阶段')");
 await page.waitForFunction(
-  () => /已确认继续，项目进入阶段/.test(document.body.innerText),
+  () => /已进入阶段/.test(document.body.innerText),
   null,
-  { timeout: 10_000 },
+  { timeout: 15_000 },
 );
-ok("7 decide「继续」真实推进阶段", true);
+ok("7 「进入下一阶段」真实推进（导航动作，缺口不阻断）", true);
 
 /* 8. 对话 converse 闭环存在性（细节覆盖见 M5-T5.5 验收） */
 await page.click(".conv-ta");
