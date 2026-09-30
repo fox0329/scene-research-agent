@@ -137,3 +137,46 @@ test.describe("上传入库（联真）", () => {
       .not.toContain("【错误】未收到回复内容");
   });
 });
+
+/* ─── 场景诉求（第一输入）三段式 → 起草场景锚 → 对照确认 ─────────── */
+
+test("场景诉求三段式：新建项目问「想梳理什么」→ 起草表1-1 → 对照确认", async ({ page }) => {
+  // 真实模型链路可能较慢（无模型时会降级为按线索预填，不阻断）
+  test.setTimeout(150_000);
+
+  await page.goto(`${LIVE}/`);
+  await expect(page.locator(".shell")).toBeVisible();
+
+  // 新建项目应弹出三段的「场景诉求」（不再是一个 window.prompt）
+  await page.getByRole("button", { name: /新建项目|^新建$/ }).first().click();
+  const dlg = page.locator(".modal[aria-label='场景诉求']");
+  await expect(dlg).toBeVisible();
+
+  // ① 场景名称
+  await dlg.locator("input.brief-input").first().fill(`E2E 智慧水务 ${Date.now()}`);
+  await dlg.getByRole("button", { name: "下一步" }).click();
+
+  // ② 你想搞清楚什么（必填，未填应拦住）
+  await dlg.getByRole("button", { name: "下一步" }).click();
+  await expect(dlg.locator(".modal-error")).toContainText("想搞清楚什么");
+  await dlg.locator("textarea.brief-input").fill("这个场景值不值得进");
+  await dlg.getByRole("button", { name: "下一步" }).click();
+
+  // ③ 线索（选填）
+  await dlg.locator("input.brief-input").nth(0).fill("市政水务集团");
+  await dlg.locator("input.brief-input").nth(2).fill("只看出厂到管网");
+  await dlg.getByRole("button", { name: "起草场景锚" }).click();
+
+  // ④ 对照式确认：四态分类 + 对照表
+  await expect(dlg.locator(".align-table")).toBeVisible({ timeout: 120_000 });
+  await expect(dlg.locator(".align-badge").first()).toBeVisible();
+  await expect(dlg.locator(".align-table tbody tr")).toHaveCount(6); // L1 六项
+
+  await dlg.getByRole("button", { name: /去确认/ }).click();
+  await expect(dlg).toBeHidden();
+
+  // 中栏出现常驻场景锚（表1-1），且带 L1 必确认标记
+  const anchor = page.locator(".ws .schema-table--anchor").first();
+  await expect(anchor).toBeVisible({ timeout: 20_000 });
+  expect(await anchor.locator(".confirm-dot").count()).toBeGreaterThanOrEqual(6);
+});

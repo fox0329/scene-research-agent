@@ -1990,3 +1990,60 @@ td.ed {
 .chip.active .chip-n { color: var(--cp); }
 
 .supplement-table .cell-input { font-size: var(--txs); }
+
+/* ─────────────────────────────────────────────────────────────
+   场景诉求对话框（第一输入，三步走）
+   ───────────────────────────────────────────────────────────── */
+
+.modal-backdrop {
+  position: fixed; inset: 0; z-index: var(--z-modal, 100);
+  display: flex; align-items: center; justify-content: center;
+  background: rgb(0 0 0 / 0.32);
+}
+.modal {
+  width: min(680px, calc(100vw - var(--s8)));
+  max-height: calc(100vh - var(--s8));
+  display: flex; flex-direction: column;
+  background: #fff; border-radius: var(--r8); box-shadow: var(--sh);
+}
+.modal-h { padding: var(--s4) var(--s4) var(--s2); }
+.modal-h h3 { margin: 0 0 var(--s1); font-size: var(--tb); }
+.modal-h p { margin: 0; font-size: var(--txs); color: var(--ct2); }
+.modal-steps { display: flex; gap: var(--s1); padding: 0 var(--s4) var(--s3); }
+.step-dot { width: 24px; height: 3px; border-radius: var(--r4); background: var(--cb); }
+.step-dot.active { background: var(--cp); }
+.modal-b { flex: 1; min-height: 0; overflow: auto; padding: var(--s3) var(--s4); }
+.modal-f {
+  display: flex; align-items: center; gap: var(--s2);
+  padding: var(--s3) var(--s4); border-top: 1px solid var(--cb);
+}
+.modal-spacer { flex: 1; }
+.modal-error { margin: var(--s2) 0 0; font-size: var(--ts); color: var(--ce); }
+
+.brief-field { display: flex; flex-direction: column; gap: var(--s1); margin-bottom: var(--s3); }
+.brief-label { font-size: var(--ts); color: var(--ct); }
+.brief-label em { font-style: normal; font-size: var(--txs); color: var(--ce); margin-left: var(--s1); }
+.brief-input {
+  width: 100%; box-sizing: border-box; padding: var(--s2) var(--s3);
+  font: inherit; font-size: var(--ts); color: var(--ct);
+  border: 1px solid var(--cb); border-radius: var(--r4); background: #fff;
+}
+.brief-input:focus-visible { outline: none; border-color: var(--cp); }
+.brief-textarea { min-height: 84px; resize: vertical; }
+.brief-hint { font-size: var(--txs); color: var(--ct3); line-height: 1.6; }
+.brief-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 var(--s3); }
+.brief-grid .brief-hint { grid-column: 1 / -1; }
+
+.align-wrap { display: flex; flex-direction: column; gap: var(--s3); }
+.align-table { font-size: var(--ts); }
+.align-badge {
+  display: inline-block; padding: 0 var(--s2); font-size: var(--txs);
+  border-radius: var(--r4); white-space: nowrap;
+}
+.align-一致 { color: var(--cs-h); background: var(--cs-s); }
+.align-系统补充 { color: var(--ct2); background: var(--cb); }
+.align-推断 { color: var(--cp); background: var(--cp-s); }
+.align-待补充 { color: var(--ct3); background: transparent; border: 1px solid var(--cb); }
+.align-hint { display: block; margin-top: var(--s1); font-size: var(--txs); color: var(--ct3); }
+.align-questions h4 { margin: 0 0 var(--s1); font-size: var(--ts); }
+.align-questions ul { margin: 0; padding-left: var(--s4); font-size: var(--ts); color: var(--ct2); }

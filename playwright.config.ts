@@ -30,7 +30,8 @@ export default defineConfig({
     },
     {
       command:
-        "APP_PORT=4181 DB_PATH=/tmp/scene-e2e-$(date +%s).db SCENE_PROVIDERS_FILE=data/providers.local.json node apps/server/dist/index.js",
+        // 先同步 SQL：tsc -b 不会拷贝 .sql，而运行时从 dist/sql/ 读迁移文件
+        "node scripts/copy-infra-sql.mjs && APP_PORT=4181 DB_PATH=/tmp/scene-e2e-$(date +%s).db SCENE_PROVIDERS_FILE=data/providers.local.json node apps/server/dist/index.js",
       url: "http://127.0.0.1:4181/api/v1/health",
       reuseExistingServer: false,
       timeout: 30_000,

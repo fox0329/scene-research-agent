@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import { Sidebar } from "./components/Sidebar";
 import { ConversationDrawer } from "./components/ConversationDrawer";
 import { StageRightPanel } from "./components/StageRightPanel";
+import { ScenarioBriefDialog } from "./components/ScenarioBriefDialog";
 import { RowDetailPanel, type RowDetail } from "./components/RowDetailPanel";
 import type { StageSnapshot } from "./components/stage-snapshot";
 import { ToastProvider, useToast } from "./components/Toast";
@@ -78,6 +79,8 @@ const AppShell: React.FC = () => {
   const [activeProjectId, setActiveProjectId] = useState(projects[0].id);
   /** 右栏决策支撑快照（联真模式，来自当前阶段真实数据；T5.6） */
   const [stageSnapshot, setStageSnapshot] = useState<StageSnapshot | null>(null);
+  /** 场景诉求对话框（第一输入）：新建项目 / 修改诉求都用它 */
+  const [briefOpen, setBriefOpen] = useState(false);
   /** 资料库行详情（右栏备注区，变更表 #19） */
   const [rowDetail, setRowDetail] = useState<RowDetail | null>(null);
   /** 对话抽屉唤起信号（v1.14：定义/澄清生成后主动弹出） */
@@ -173,34 +176,21 @@ const AppShell: React.FC = () => {
   /** 新建项目（仅联真模式；演示模式保持占位入口） */
   const handleNewProject = useCallback(async () => {
     if (!live) return;
-    const name = window.prompt("新建项目 · 请输入项目名称");
-    if (!name?.trim()) return;
-    try {
-      const created = await api.createProject(name.trim());
-      await refreshProjects(created.id);
+    // v1.4：先问「想梳理什么场景」（三段式），再起草场景锚——
+    // 不再让用户手填大段描述，也不再只凭一个名字就让系统猜。
+    setBriefOpen(true);
+  }, [live]);
+
+  const handleBriefDone = useCallback(
+    async (projectId: string) => {
+      setBriefOpen(false);
+      await refreshProjects(projectId);
       setView("project");
-      openConversation(); // 建场景即弹对话框
-      setDrawerHint("【场景范围梳理中…】正在根据场景名起草定义，稍等片刻就好");
-      showToast(`项目「${created.name}」已创建，正在起草场景定义…`);
-      // v1.13：定义由系统起草、用户在对话里确认/修正——不再让用户手填大段描述
-      try {
-        const draft = await api.draftScenarioDefinition(created.id);
-        await refreshProjects(created.id);
-        setDrawerHint(null);
-        openConversation(draft.conversation_id);
-        showToast(
-          draft.description
-            ? "场景定义草稿已生成，直接在对话框里确认或修改"
-            : "起草暂不可用，请在对话里描述场景，我会整理成定义",
-        );
-      } catch {
-        setDrawerHint(null);
-        showToast("场景定义起草失败，可在场景锚条手动编辑");
-      }
-    } catch (err: unknown) {
-      showToast(`创建失败：${err instanceof Error ? err.message : String(err)}`);
-    }
-  }, [live, refreshProjects, showToast]);
+      showToast("场景诉求已保存，场景锚已起草——请在右栏确认清单里逐项确认");
+    },
+    [refreshProjects, showToast],
+  );
+
 
   /** 项目 ⋯ 菜单动作（仅联真模式落地） */
   const handleProjectAction = useCallback(
@@ -363,6 +353,13 @@ const AppShell: React.FC = () => {
           </>
         )}
       </aside>
+
+      <ScenarioBriefDialog
+        open={briefOpen}
+        projectId={null}
+        onClose={() => setBriefOpen(false)}
+        onDone={(id) => void handleBriefDone(id)}
+      />
 
       {/* 列宽热区（骑在分割线上，不画第二根线）+ 缘收起胶囊柄 */}
       <span

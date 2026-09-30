@@ -277,8 +277,23 @@ export const api = {
   health: () => req<{ status: string }>("/health"),
 
   listProjects: () => req<ApiProject[]>("/projects"),
-  createProject: (name: string, description?: string) =>
-    req<ApiProject>("/projects", { method: "POST", body: { name, description } }),
+  /**
+   * 新建项目
+   *
+   * v1.4：可一并提交**场景诉求**（第一输入）——服务端会落库并预建表1-1 锚骨架。
+   */
+  createProject: (
+    name: string,
+    brief?: {
+      scene_name?: string;
+      intent?: string;
+      customer_hint?: string;
+      region_hint?: string;
+      scope_hint?: string;
+      audience?: string;
+      deadline?: string;
+    },
+  ) => req<ApiProject>("/projects", { method: "POST", body: { name, ...(brief ?? {}) } }),
   patchProject: (id: string, patch: { name?: string; status?: ProjectStatusApi; description?: string }) =>
     req<ApiProject>(`/projects/${encodeURIComponent(id)}`, {
       method: "PATCH",

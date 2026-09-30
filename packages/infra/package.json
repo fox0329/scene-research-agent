@@ -26,7 +26,6 @@
     "typescript": "^5.7.2"
   },
   "scripts": {
-    "build": "tsc -b",
-    "postbuild": "rm -rf dist/sql && cp -R src/sql dist/sql"
+    "build": "tsc -b && node ../../scripts/copy-infra-sql.mjs"
   }
 }
