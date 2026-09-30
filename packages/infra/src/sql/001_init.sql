@@ -176,6 +176,16 @@ CREATE TABLE IF NOT EXISTS scenario_brief (
   updated_at     TEXT NOT NULL
 );
 
+-- 阶段总结文档（每阶段一份；确定性生成，见 04 §五）
+CREATE TABLE IF NOT EXISTS stage_summary (
+  scenario_id  TEXT NOT NULL REFERENCES scenario(id),
+  stage        INTEGER NOT NULL,
+  content      TEXT NOT NULL,
+  created_at   TEXT NOT NULL,
+  updated_at   TEXT NOT NULL,
+  PRIMARY KEY (scenario_id, stage)
+);
+
 CREATE TABLE IF NOT EXISTS scenario_material (
   id               TEXT PRIMARY KEY,
   scenario_id      TEXT NOT NULL REFERENCES scenario(id),

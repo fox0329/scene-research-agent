@@ -24,6 +24,7 @@ import type {
   Message,
   Scenario,
   ScenarioBrief,
+  StageSummaryRow,
   ScenarioMaterial,
   ScenarioLinkedLine,
   StageData,
@@ -260,6 +261,53 @@ function createScenarioBriefRepo(db: Database.Database): ScenarioBriefRepo {
     db.prepare("DELETE FROM scenario_brief WHERE scenario_id = ?").run(scenarioId).changes > 0;
 
   return { get, upsert, remove };
+}
+
+// ─── 阶段总结文档仓库（复合主键 scenario_id + stage） ──────────
+
+/** 阶段总结文档仓储 */
+export interface StageSummaryRepo {
+  get(scenarioId: string, stage: StageId): StageSummaryRow | undefined;
+  upsert(scenarioId: string, stage: StageId, content: string): StageSummaryRow;
+  listByScenario(scenarioId: string): StageSummaryRow[];
+  remove(scenarioId: string, stage: StageId): boolean;
+}
+
+function createStageSummaryRepo(db: Database.Database): StageSummaryRepo {
+  const get = (scenarioId: string, stage: StageId): StageSummaryRow | undefined =>
+    db
+      .prepare("SELECT * FROM stage_summary WHERE scenario_id = ? AND stage = ?")
+      .get(scenarioId, stage) as StageSummaryRow | undefined;
+
+  const upsert = (scenarioId: string, stage: StageId, content: string): StageSummaryRow => {
+    const timestamp = now();
+    const existing = get(scenarioId, stage);
+    if (existing) {
+      db.prepare("UPDATE stage_summary SET content = ?, updated_at = ? WHERE scenario_id = ? AND stage = ?").run(
+        content,
+        timestamp,
+        scenarioId,
+        stage,
+      );
+    } else {
+      db.prepare(
+        "INSERT INTO stage_summary (scenario_id, stage, content, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+      ).run(scenarioId, stage, content, timestamp, timestamp);
+    }
+    return get(scenarioId, stage)!;
+  };
+
+  const listByScenario = (scenarioId: string): StageSummaryRow[] =>
+    db
+      .prepare("SELECT * FROM stage_summary WHERE scenario_id = ? ORDER BY stage ASC")
+      .all(scenarioId) as StageSummaryRow[];
+
+  const remove = (scenarioId: string, stage: StageId): boolean =>
+    db
+      .prepare("DELETE FROM stage_summary WHERE scenario_id = ? AND stage = ?")
+      .run(scenarioId, stage).changes > 0;
+
+  return { get, upsert, listByScenario, remove };
 }
 
 // ─── 消息仓库工厂 ──────────────────────────────────────────
@@ -568,6 +616,7 @@ export interface DbInstance {
   messageRepo: MessageRepo;
   scenarioRepo: Repo<Scenario>;
   scenarioBriefRepo: ScenarioBriefRepo;
+  stageSummaryRepo: StageSummaryRepo;
   stageDataRepo: StageDataRepo;
   qualityGateRepo: QualityGateRepo;
   scenarioMaterialRepo: Repo<ScenarioMaterial>;
@@ -606,6 +655,7 @@ export function createDb(dbPath?: string): DbInstance {
     messageRepo: createMessageRepo(db),
     scenarioRepo: createRepo<Scenario>(db, "scenario"),
     scenarioBriefRepo: createScenarioBriefRepo(db),
+    stageSummaryRepo: createStageSummaryRepo(db),
     stageDataRepo: createStageDataRepo(db),
     qualityGateRepo: createQualityGateRepo(db),
     scenarioMaterialRepo: createRepo<ScenarioMaterial>(db, "scenario_material"),

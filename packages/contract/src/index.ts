@@ -484,3 +484,15 @@ export interface AnchorRow {
 export const ANCHOR_TABLE_CODE = "表1-1";
 /** 场景锚所属阶段 */
 export const ANCHOR_STAGE: StageId = 1;
+
+// ─── 阶段总结文档（每阶段一份，右栏显示、可导出；见 04 §五） ──────
+
+/** 阶段总结文档行（一场景一阶段一份） */
+export interface StageSummaryRow {
+  scenario_id: string;
+  stage: StageId;
+  /** Markdown 正文（六段骨架，不含建议与判断） */
+  content: string;
+  created_at: string;
+  updated_at: string;
+}

@@ -240,3 +240,7 @@ export type { AnchorCompletion } from "./anchor.js";
 // ─── 模型产出行校验（补「输出契约空壳」，见 04 §一） ────────────
 export { validateIncomingRows, violationsBrief, mustDowngrade } from "./row-validation.js";
 export type { IncomingRow, RowViolation, ViolationKind } from "./row-validation.js";
+
+// ─── 阶段总结文档（见 04 §五；确定性生成，不需要 LLM） ──────────
+export { buildStageSummary } from "./stage-summary.js";
+export type { StageSummaryInput } from "./stage-summary.js";

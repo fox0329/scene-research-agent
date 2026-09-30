@@ -42,6 +42,11 @@ import type { SseHub } from "./sse-hub.js";
 import { createConverseCommand, type ChatImportOutcome } from "./converse.js";
 import { requestScenarioClarify } from "./scenario-clarify.js";
 import {
+  generateStageSummary,
+  getOrGenerateStageSummary,
+  stageCompletenessOf,
+} from "./stage-summary-service.js";
+import {
   draftAnchor,
   ensureAnchorRows,
   readAnchorRows,
@@ -602,6 +607,53 @@ function registerProjectRoutes(app: FastifyInstance, deps: UiRoutesDeps) {
   });
 
   // 阶段表单元格编辑（落库 + source_type 转「用户确认」）
+  /**
+   * 阶段信息完整度（右栏状态行 / 缺口清单）
+   *
+   * 替代旧「质量关 + 建议档位」：只给"还缺什么"，不给任何判定。
+   */
+  app.get("/api/v1/projects/:id/stages/:stage/completeness", async (request, reply) => {
+    const { id, stage } = request.params as { id: string; stage: string };
+    const scenario = db.scenarioRepo.getById(id);
+    if (!scenario) return notFound(reply, `场景 ${id} 不存在`);
+    const n = parseStage(stage);
+    if (n === undefined) return badRequest(reply, `阶段号非法：${stage}`);
+    return stageCompletenessOf(db, id, n);
+  });
+
+  /**
+   * 阶段总结文档（右栏 Tab ②；六段骨架）
+   *
+   * `?format=md` 直接下载 Markdown；默认返回 JSON（含完整度）。
+   * `?refresh=1` 强制重新生成。
+   */
+  app.get("/api/v1/projects/:id/stages/:stage/summary", async (request, reply) => {
+    const { id, stage } = request.params as { id: string; stage: string };
+    const scenario = db.scenarioRepo.getById(id);
+    if (!scenario) return notFound(reply, `场景 ${id} 不存在`);
+    const n = parseStage(stage);
+    if (n === undefined) return badRequest(reply, `阶段号非法：${stage}`);
+    const query = request.query as { format?: string; refresh?: string };
+    const result =
+      query.refresh === "1"
+        ? generateStageSummary(db, scenario, n)
+        : getOrGenerateStageSummary(db, scenario, n);
+    if (query.format === "md") {
+      return reply
+        .header("content-type", "text/markdown; charset=utf-8")
+        .header(
+          "content-disposition",
+          `attachment; filename="stage-${result.stage}-summary.md"`,
+        )
+        .send(result.markdown);
+    }
+    return {
+      stage: result.stage,
+      markdown: result.markdown,
+      completeness: result.completeness,
+    };
+  });
+
   app.patch("/api/v1/projects/:id/stage-data/:rowId", async (request, reply) => {
     const { id, rowId } = request.params as { id: string; rowId: string };
     const body = (request.body ?? {}) as { cell?: unknown; value?: unknown };
