@@ -1,5 +1,9 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import { fileURLToPath } from "node:url";
+import { dirname, resolve } from "node:path";
+
+const here = dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
   plugins: [react()],
@@ -20,7 +24,10 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      "@scene/contract": "/src/__stub__/contract.ts",
+      // v1.4：前端需要**运行时的表定义**（34 张表的列/枚举/固定行），
+      // 因此 @scene/contract 指向真实源码；表定义只有注册表这一个事实源。
+      "@scene/contract": resolve(here, "../../packages/contract/src/index.ts"),
+      // 领域层前端不需要（完整度/总结由服务端算好返回），仍走空 stub
       "@scene/domain": "/src/__stub__/domain.ts",
     },
   },

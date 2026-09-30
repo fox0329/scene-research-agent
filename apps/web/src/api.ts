@@ -61,10 +61,70 @@ export interface ApiGate {
   detail: string;
 }
 
+/** 信息缺口（完整度检查产出；只说明"还缺什么"，不含判定） */
+export interface ApiCompletenessGap {
+  kind: "缺表" | "缺必填列" | "覆盖度不足" | "缺来源" | "推断未标注" | "待确认未处理";
+  tableCode: string;
+  column?: string;
+  detail: string;
+  count?: number;
+}
+
+/** 阶段信息完整度报告 */
+export interface ApiCompleteness {
+  stage: number;
+  expectedTables: number;
+  tablesWithData: number;
+  missingTables: string[];
+  gaps: ApiCompletenessGap[];
+  percent: number;
+}
+
+/**
+ * 阶段面板响应
+ *
+ * v1.4：`gates` / `advice` 已废弃（产品不产出判断），服务端仅返回空值以兼容过渡期；
+ * 新前端请使用 `completeness` 与 `summary_ready`。
+ */
 export interface ApiStagePanel {
   rows: ApiStageRow[];
+  completeness: ApiCompleteness;
+  summary_ready: boolean;
+  /** @deprecated 旧质量关，恒为空数组 */
   gates: ApiGate[];
+  /** @deprecated 旧建议档位，恒为 null */
   advice: AdviceLevelApi | null;
+}
+
+/** 场景诉求（第一输入；`raw_text` 是确认基准，不可改写） */
+export interface ApiScenarioBrief {
+  scenario_id: string;
+  scene_name: string;
+  intent: string;
+  customer_hint?: string | null;
+  region_hint?: string | null;
+  scope_hint?: string | null;
+  audience?: string | null;
+  deadline?: string | null;
+  raw_text: string;
+  created_at: string;
+  updated_at: string;
+}
+
+/** 场景锚（表1-1）的一行：项 / 内容 */
+export interface ApiAnchorRow {
+  item: string;
+  content: string;
+  source?: string | null;
+  source_type?: string | null;
+  confirm_state?: string | null;
+}
+
+/** 阶段总结文档（六段骨架 Markdown） */
+export interface ApiStageSummary {
+  stage: number;
+  markdown: string;
+  completeness: ApiCompleteness;
 }
 
 export interface ApiStaleInfo {
@@ -232,6 +292,53 @@ export const api = {
     req<ApiStaleInfo>(`/projects/${encodeURIComponent(id)}/stale`),
   stagePanel: (id: string, stage: number) =>
     req<ApiStagePanel>(`/projects/${encodeURIComponent(id)}/stages/${stage}`),
+
+  // ─── 场景诉求（第一输入）与场景锚（表1-1） ───────────────
+  getBrief: (id: string) =>
+    req<{ brief: ApiScenarioBrief | null; anchor: ApiAnchorRow[] }>(
+      `/projects/${encodeURIComponent(id)}/brief`,
+    ),
+  saveBrief: (
+    id: string,
+    brief: {
+      scene_name?: string;
+      intent: string;
+      customer_hint?: string;
+      region_hint?: string;
+      scope_hint?: string;
+      audience?: string;
+      deadline?: string;
+    },
+  ) =>
+    req<{ brief: ApiScenarioBrief; anchor: ApiAnchorRow[] }>(
+      `/projects/${encodeURIComponent(id)}/brief`,
+      { method: "PUT", body: brief },
+    ),
+  /** 起草场景锚（诉求 + 资料库 → 表1-1 各行；用户确认过的行不会被覆盖） */
+  draftBrief: (id: string) =>
+    req<{
+      rows: ApiAnchorRow[];
+      open_questions: string[];
+      conversation_id: string;
+      used_llm: boolean;
+    }>(`/projects/${encodeURIComponent(id)}/brief/draft`, { method: "POST" }),
+  /** 批量写锚行（逐格确认/编辑；也可只传部分行） */
+  saveAnchor: (id: string, rows: ApiAnchorRow[]) =>
+    req<{ rows: ApiAnchorRow[]; description: string }>(
+      `/projects/${encodeURIComponent(id)}/anchor`,
+      { method: "PUT", body: { rows } },
+    ),
+
+  // ─── 阶段完整度与总结 ────────────────────────────────────
+  stageCompleteness: (id: string, stage: number) =>
+    req<ApiCompleteness>(`/projects/${encodeURIComponent(id)}/stages/${stage}/completeness`),
+  stageSummary: (id: string, stage: number, refresh = false) =>
+    req<ApiStageSummary>(
+      `/projects/${encodeURIComponent(id)}/stages/${stage}/summary${refresh ? "?refresh=1" : ""}`,
+    ),
+  /** 阶段总结 Markdown 下载地址（直接给 <a download> 用） */
+  stageSummaryDownloadUrl: (id: string, stage: number) =>
+    `${BASE}/projects/${encodeURIComponent(id)}/stages/${stage}/summary?format=md`,
   patchStageCell: (id: string, rowId: string, cell: string, value: unknown) =>
     req<ApiStageRow>(
       `/projects/${encodeURIComponent(id)}/stage-data/${encodeURIComponent(rowId)}`,

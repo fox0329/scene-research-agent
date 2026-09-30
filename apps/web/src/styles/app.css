@@ -1830,3 +1830,66 @@ td.ed {
   font-size: var(--t2x);
   white-space: nowrap;
 }
+
+/* ─────────────────────────────────────────────────────────────
+   SchemaTable —— 注册表驱动的表格（v1.4）
+   列来自 packages/contract/src/tables.ts 的中栏列；
+   元信息与长文本说明在右栏补充列，因此表格不需要横向滚动。
+   ───────────────────────────────────────────────────────────── */
+
+.schema-table-wrap { display: flex; flex-direction: column; gap: var(--s2); min-width: 0; }
+
+.schema-table-title {
+  display: flex; align-items: baseline; gap: var(--s2);
+  font-size: var(--ts); color: var(--ct);
+}
+.schema-table-title .tier-badge {
+  font-size: var(--txs); padding: 0 var(--s05, 2px) 0 var(--s1);
+  border: 1px solid var(--cb); border-radius: var(--r4); color: var(--ct2);
+}
+.schema-table-title .row-unit { font-size: var(--txs); color: var(--ct3); }
+
+.schema-table-note { margin: 0; font-size: var(--txs); color: var(--ct3); }
+
+/* 表格本体：固定布局 + 100% 宽，默认不出现横向滚动 */
+.schema-table {
+  width: 100%; table-layout: fixed; border-collapse: collapse;
+  font-size: var(--ts); color: var(--ct);
+}
+.schema-table th, .schema-table td {
+  padding: var(--s2) var(--s3); text-align: left; vertical-align: top;
+  border-bottom: 1px solid var(--cb);
+}
+.schema-table th { font-weight: var(--fm2); color: var(--ct2); background: var(--cis); }
+.schema-table tbody tr:hover { background: var(--cis); }
+
+/* 单行省略：控件行高，全文靠 title 悬浮查看 */
+.cell-truncate {
+  display: inline-block; max-width: 100%;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  vertical-align: bottom;
+}
+
+.cell-input {
+  width: 100%; box-sizing: border-box;
+  padding: var(--s1) var(--s2);
+  font: inherit; color: inherit;
+  background: transparent; border: 1px solid transparent; border-radius: var(--r4);
+}
+.cell-input:hover { border-color: var(--cb); }
+.cell-input:focus-visible { outline: none; border-color: var(--cp); background: #fff; }
+
+/* 场景锚（表1-1）：必填与 L1 必确认标记 */
+.req-dot { color: var(--ce); margin-left: var(--s05, 2px); }
+.confirm-dot { color: var(--cp); margin-left: var(--s1); font-size: var(--txs); }
+.anchor-row--confirm td:first-child { font-weight: var(--fm2); }
+
+.state-badge {
+  display: inline-block; padding: 0 var(--s15, 6px);
+  font-size: var(--txs); border-radius: var(--r4); white-space: nowrap;
+}
+.state-badge--ok { color: var(--cs-h); background: var(--cs-s); }
+.state-badge--warn { color: var(--ct2); background: var(--cb); }
+.state-badge--muted { color: var(--ct3); background: transparent; }
+
+.empty-hint { margin: 0; padding: var(--s4); font-size: var(--ts); color: var(--ct3); }
