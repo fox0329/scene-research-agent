@@ -26,3 +26,11 @@ exports/
 # tsc 误编译落盘（源码目录只留 .ts；根 vitest.config 以 .ts 为准）
 /packages/*/src/**/*.js
 /vitest.config.js
+
+# 构建产物不入库（源码库只留源码；构建命令见 package.json / scripts/build-release.sh）
+# 理由：dist 与 tsbuildinfo 每次构建都变，入库会产生噪音 diff，且与 server/infra/domain 的既有做法不一致
+dist/
+*.tsbuildinfo
+
+# 本地包管理器存储（36MB，pnpm 本地 store）
+.pnpm-store/
