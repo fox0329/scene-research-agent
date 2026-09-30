@@ -164,10 +164,21 @@ export const TRUNCATE_DEFAULT = 20;
 
 // ─── 阶段定义 ──────────────────────────────────────────────
 
+/** 本阶段信息的产出方式——决定是否需要模型分析 */
+export type StageProducer =
+  /** 确定性解析入库（材料流水线填充 M 表，不调用模型） */
+  | "解析入库"
+  /** 模型分析（按表定义生成行） */
+  | "模型分析"
+  /** 系统组装（交付物按章节 ← 表映射生成，不调用模型） */
+  | "系统组装";
+
 export interface StageDef {
   id: InfoStageId;
   /** 阶段名 */
   name: string;
+  /** 本阶段信息由谁产出（阶段 0 解析入库、1-6 模型分析、7 系统组装） */
+  producedBy: StageProducer;
   /** 这一步要获得什么信息 */
   goal: string;
   /** 本阶段产出的表号 */
@@ -180,6 +191,7 @@ export const STAGE_DEFS: readonly StageDef[] = [
   {
     id: 0,
     name: "材料解析与入库",
+    producedBy: "解析入库",
     goal: "我方有哪些产品、能力、边界、限制、费率；有哪些认证/案例/价格/资料/路线图/生态",
     tableCodes: ["M1", "M2", "M3", "M4", "M5", "M6", "可选材料"],
     summaryTitle: "① 材料入库总结",
@@ -187,6 +199,7 @@ export const STAGE_DEFS: readonly StageDef[] = [
   {
     id: 1,
     name: "认识场景（含门槛与合规）",
+    producedBy: "模型分析",
     goal: "场景是什么、由哪些业务环节组成、每环节能否参与、有哪些要素、系统怎么连、有哪些硬约束与门槛、认证现状、现有交付运维方式",
     tableCodes: ["表1-1", "表1-2", "表1-3", "表2-2", "表2-3", "表2-4", "表2-5", "表2-7"],
     summaryTitle: "② 场景认识总结",
@@ -194,6 +207,7 @@ export const STAGE_DEFS: readonly StageDef[] = [
   {
     id: 2,
     name: "理解商业",
+    producedBy: "模型分析",
     goal: "钱怎么分、有哪些方案形态、客户怎么买、对手位势、替代方案与价格、别人踩过的坑、没被满足的需求、行业趋势",
     tableCodes: ["表3-1", "表3-2", "表3-3", "表3-4", "表3-6", "表3-7", "表3-8", "表3-9"],
     summaryTitle: "③ 商业格局总结",
@@ -201,6 +215,7 @@ export const STAGE_DEFS: readonly StageDef[] = [
   {
     id: 3,
     name: "能力匹配",
+    producedBy: "模型分析",
     goal: "我方能力底账、客户每条需求能否满足、细分优先级、竞争力评分",
     tableCodes: ["表4-1", "表4-3", "表4-4", "表4-5"],
     summaryTitle: "④ 能力匹配总结",
@@ -208,6 +223,7 @@ export const STAGE_DEFS: readonly StageDef[] = [
   {
     id: 4,
     name: "方案与实现",
+    producedBy: "模型分析",
     goal: "方案架构与接口、边界声明、约束满足路径、实施计划、交付运维与 SLA、成本构成",
     tableCodes: ["表5-1", "表5-3", "表5-4", "表5-5"],
     summaryTitle: "⑤ 方案与成本总结",
@@ -215,6 +231,7 @@ export const STAGE_DEFS: readonly StageDef[] = [
   {
     id: 5,
     name: "价值与验证",
+    producedBy: "模型分析",
     goal: "收益对应指标、怎么测、基线、预期改善、用户感受、投入产出、试点设计与验收口径",
     tableCodes: ["表6-1", "表6-4"],
     summaryTitle: "⑥ 价值与验证总结",
@@ -222,6 +239,7 @@ export const STAGE_DEFS: readonly StageDef[] = [
   {
     id: 6,
     name: "总结沉淀",
+    producedBy: "模型分析",
     goal: "哪些结论应回写成资产（产品路线图 / 能力底账 / 新发现的限制 / 销售打法）",
     tableCodes: ["表7-1"],
     summaryTitle: "⑦ 沉淀总结",
@@ -229,6 +247,7 @@ export const STAGE_DEFS: readonly StageDef[] = [
   {
     id: 7,
     name: "最终交付物",
+    producedBy: "系统组装",
     goal: "内部调研报告 + 对外汇报材料（文档产出，非表）",
     tableCodes: [],
     summaryTitle: "⑧ 交付说明",
@@ -1183,6 +1202,11 @@ export function middleColumnsByBlock(t: TableDef): Readonly<Record<string, reado
 }
 
 /** 取阶段定义 */
+/** 本阶段是否需要模型分析（阶段 0 解析入库、阶段 7 系统组装都不需要） */
+export function isModelStage(stage: InfoStageId): boolean {
+  return stageDef(stage).producedBy === "模型分析";
+}
+
 export function stageDef(id: InfoStageId): StageDef {
   const d = STAGE_DEFS.find((s) => s.id === id);
   if (!d) throw new Error(`未知阶段：${id}`);

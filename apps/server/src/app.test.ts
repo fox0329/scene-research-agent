@@ -117,9 +117,28 @@ function createMockDb() {
     conversationRepo,
     messageRepo,
     scenarioRepo,
+    scenarioBriefRepo: {
+      get: vi.fn(() => undefined),
+      upsert: vi.fn((id: string, patch: Record<string, unknown>) => ({ ...patch, scenario_id: id })),
+      remove: vi.fn(() => false),
+    },
+    stageSummaryRepo: {
+      get: vi.fn(() => undefined),
+      upsert: vi.fn((scenarioId: string, stage: number, content: string) => ({
+        scenario_id: scenarioId,
+        stage,
+        content,
+        created_at: "",
+        updated_at: "",
+      })),
+      listByScenario: vi.fn(() => []),
+      remove: vi.fn(() => false),
+    },
     stageDataRepo,
     qualityGateRepo,
     scenarioLinkedLineRepo: createMockRepo(),
+    scenarioMaterialRepo: createMockRepo(),
+    knowledgeRepo: { list: vi.fn(() => []) },
   } as unknown as DbInstance;
 
   return { db, scenarioRepo, conversationRepo, stageDataStore, messageStore };
@@ -132,8 +151,15 @@ function createMockDshClient(rowsText?: string): DshClient {
     JSON.stringify({
       rows: [
         {
-          table_code: "表0-1",
-          fields: { item: "产品清单" },
+          // 必须是注册表里属于该阶段的表号，否则会被本地校验拦下、不入库（无 schema 无法渲染）
+          table_code: "表1-2",
+          fields: {
+            link: "视频监控",
+            is_digital: "可以联网采集",
+            can_touch: "可以碰",
+            our_role: "替代",
+            description: "园区摄像头接入",
+          },
           source: "手册.pdf:1",
         },
       ],
@@ -340,7 +366,7 @@ describe("POST advance / GET events（SSE 续传）", () => {
     const app = createApp({ db, dshClient: createMockDshClient() });
     const res = await app.inject({
       method: "POST",
-      url: "/api/v1/projects/sc-1/stages/0/advance",
+      url: "/api/v1/projects/sc-1/stages/1/advance",
     });
     expect(res.statusCode).toBe(200);
     expect(res.headers["content-type"]).toContain("text/event-stream");
@@ -363,14 +389,14 @@ describe("POST advance / GET events（SSE 续传）", () => {
 
     const first = await app.inject({
       method: "POST",
-      url: "/api/v1/projects/sc-1/stages/0/advance",
+      url: "/api/v1/projects/sc-1/stages/1/advance",
     });
     const all = parseSse(first.payload);
     const midId = all[Math.floor(all.length / 2)]!.id!;
 
     const replay = await app.inject({
       method: "GET",
-      url: `/api/v1/projects/sc-1/stages/0/events?lastEventId=${midId}`,
+      url: `/api/v1/projects/sc-1/stages/1/events?lastEventId=${midId}`,
     });
     expect(replay.statusCode).toBe(200);
     const replayed = parseSse(replay.payload);

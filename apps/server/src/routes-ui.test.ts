@@ -214,33 +214,34 @@ describe("项目路由", () => {
     expect(ok.json().current_stage).toBe(1);
   });
 
-  it("GET 阶段面板：行 + 质量关 + 领域层建议", async () => {
+  it("GET 阶段面板：行 + 信息完整度（不再返回质量关与建议）", async () => {
     const { scenarioId } = seedScenario(h.db);
     h.db.stageDataRepo.insert({
       scenario_id: scenarioId,
       stage: 1 as StageId,
-      table_code: "表1-1",
-      row: { k: "v" },
+      table_code: "表1-2",
+      row: { link: "视频监控", is_digital: "可以联网采集", can_touch: "可以碰", our_role: "替代", description: "接入" },
       is_stale: false,
       source_type: "AI提取",
-    });
-    h.db.qualityGateRepo.insert({
-      scenario_id: scenarioId,
-      stage: 1 as StageId,
-      item_no: "G1-1",
-      title: "来源抽查",
-      result: "不通过",
-      detail: "缺来源",
-      evidence_refs: {},
     });
     const res = await h.app.inject({
       method: "GET",
       url: `/api/v1/projects/${scenarioId}/stages/1`,
     });
-    const body = res.json();
-    expect(body.rows[0].row).toEqual({ k: "v" });
-    expect(body.gates).toHaveLength(1);
-    expect(body.advice).toBe("建议不通过");
+    const body = res.json() as {
+      rows: { table_code: string }[];
+      completeness: { expectedTables: number; tablesWithData: number; gaps: unknown[] };
+      summary_ready: boolean;
+    };
+    expect(body.rows[0]!.table_code).toBe("表1-2");
+    // 阶段 1 共 8 张表；完整度只给缺口，不给判定
+    expect(body.completeness.expectedTables).toBe(8);
+    expect(body.completeness.tablesWithData).toBe(1);
+    expect(body.completeness.gaps.length).toBeGreaterThan(0);
+    expect(body.summary_ready).toBe(false);
+    // 旧字段保留为空值（过渡期兼容）
+    expect((body as unknown as { gates: unknown[] }).gates).toEqual([]);
+    expect((body as unknown as { advice: unknown }).advice).toBeNull();
   });
 
   it("GET 阶段面板：阶段非法 400 / 场景不存在 404", async () => {

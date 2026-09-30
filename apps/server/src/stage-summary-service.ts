@@ -9,14 +9,18 @@
  *  - 交付阶段（无信息表）也生成一份说明，而不是留空
  */
 
-import { tablesOfStage, type Scenario, type StageId } from "@scene/contract";
+import {
+  tablesOfStage,
+  type InfoStageId,
+  type Scenario,
+  type StageId,
+} from "@scene/contract";
 import type { DbInstance } from "@scene/infra";
 import {
   buildStageSummary,
   checkStageCompleteness,
   pendingConfirmationCount,
   type InfoRow,
-  type InfoStageId,
   type StageCompleteness,
 } from "@scene/domain";
 import { readAnchorRows, readBrief } from "./scenario-anchor.js";

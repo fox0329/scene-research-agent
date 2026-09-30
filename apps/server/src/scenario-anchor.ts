@@ -338,7 +338,7 @@ export async function draftAnchor(
   db.messageRepo.insert({
     conversation_id: conversationId,
     role: "系统",
-    content: buildDraftMessage(scenario, rows, openQuestions, usedLlm),
+    content: buildDraftMessage(rows, openQuestions, usedLlm),
   });
 
   return { rows, openQuestions, conversationId, usedLlm };
@@ -381,7 +381,6 @@ async function ensureScenarioConversation(
 }
 
 function buildDraftMessage(
-  scenario: Scenario,
   rows: readonly AnchorRow[],
   openQuestions: readonly string[],
   usedLlm: boolean,

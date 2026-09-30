@@ -15,7 +15,6 @@ import type {
   Authority,
   EvidenceLevel,
   StageId,
-  AdviceLevel,
   ProductLine,
   Product,
   SpecParam,
@@ -59,19 +58,24 @@ describe("@scene/contract 通用枚举", () => {
     expect(v).toHaveLength(9);
   });
 
-  it("AdviceLevel 三档（与 00b 一致）", () => {
-    const v: AdviceLevel[] = ["建议通过", "建议有条件通过", "建议不通过"];
-    expect(v).toHaveLength(3);
-  });
-
   it("DecisionAction 四种动作", () => {
     const v: DecisionAction[] = ["继续", "补充", "停止", "重算"];
     expect(v).toHaveLength(4);
   });
 
-  it("SseEventType 八种事件", () => {
-    const v: SseEventType[] = ["text", "tool_call", "progress", "row", "gate", "advice", "done", "error"];
+  it("SseEventType 不再含建议类事件（信息版口径）", () => {
+    const v: SseEventType[] = [
+      "text",
+      "tool_call",
+      "progress",
+      "row",
+      "completeness",
+      "summary",
+      "done",
+      "error",
+    ];
     expect(v).toHaveLength(8);
+    expect(v).not.toContain("advice" as SseEventType);
   });
 });
 

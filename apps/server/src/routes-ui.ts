@@ -16,7 +16,6 @@ import type {
   Conversation,
   DshClient,
   FollowEvent,
-  GateResult,
   Knowledge,
   OptionalMaterial,
   Product,
@@ -58,7 +57,6 @@ import {
 import { createIngestCommand } from "./ingest.js";
 import { parseStage, streamEvents } from "./sse-stream.js";
 import {
-  adviceFromGateRecords,
   assessQuality,
   checkCompleteness,
   getAffectedStages,
@@ -250,10 +248,6 @@ export function registerUiRoutes(app: FastifyInstance, deps: UiRoutesDeps): void
       where: "scenario_id = ?",
       params: [id],
     });
-    const gates = db.qualityGateRepo.list({
-      where: "scenario_id = ?",
-      params: [id],
-    });
     const knowledge = db.knowledgeRepo.list({
       where: "product_line_id = ?",
       params: [scenario.product_line_id],
@@ -273,7 +267,7 @@ export function registerUiRoutes(app: FastifyInstance, deps: UiRoutesDeps): void
         costRates: db.costRateRepo.list() as never,
       },
       stageData: stageRows,
-      qualityGates: gates,
+      qualityGates: [],
       knowledge: knowledge as never,
     });
 
@@ -599,11 +593,11 @@ function registerProjectRoutes(app: FastifyInstance, deps: UiRoutesDeps) {
     if (!db.scenarioRepo.getById(id)) return notFound(reply, `场景 ${id} 不存在`);
 
     const rows = db.stageDataRepo.listByScenarioStage(id, stage);
-    const gates = db.qualityGateRepo.listByScenarioStage(id, stage);
-    const advice = gates.length > 0
-      ? adviceFromGateRecords(gates.map((g) => g.result as GateResult))
-      : null;
-    return { rows, gates, advice };
+    // v1.4：不再返回质量关与建议档位——改为信息完整度（缺口清单）+ 总结是否已生成。
+    // gates/advice 保留为空值仅为过渡期兼容旧前端（P4 前端改造后移除）。
+    const completeness = stageCompletenessOf(db, id, stage);
+    const summaryReady = Boolean(db.stageSummaryRepo.get(id, stage === 8 ? 7 : stage));
+    return { rows, gates: [], advice: null, completeness, summary_ready: summaryReady };
   });
 
   // 阶段表单元格编辑（落库 + source_type 转「用户确认」）
@@ -694,7 +688,7 @@ function deleteScenarioCascade(db: DbInstance, scenarioId: string) {
   }
   for (let stage = 0; stage <= 8; stage += 1) {
     db.stageDataRepo.deleteByScenarioStage(scenarioId, stage as StageId);
-    db.qualityGateRepo.deleteByScenarioStage(scenarioId, stage as StageId);
+    db.stageSummaryRepo.remove(scenarioId, stage === 8 ? 7 : (stage as StageId));
   }
   const refs = db.scenarioMaterialRepo.list({
     where: "scenario_id = ?",

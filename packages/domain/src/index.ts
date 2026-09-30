@@ -107,20 +107,6 @@ export type {
   MetricValidation,
 } from "./value-verify.js";
 
-// 全局 — 质量关检查
-export {
-  runGate,
-  sampleSources,
-  decideAdvice,
-  adviceFromGateRecords,
-  GATE_CHECK_TITLES,
-  MIN_SAMPLE_SIZE,
-} from "./gate.js";
-export type {
-  GateCheckInput,
-  GateCheckResult,
-} from "./gate.js";
-
 // 全局 — 工作流编排
 export {
   advance,

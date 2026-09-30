@@ -26,18 +26,20 @@ import type {
   OptionalMaterial,
 } from "@scene/contract";
 import type { DbInstance } from "@scene/infra";
-import { tablesOfStage, type InfoStageId } from "@scene/contract";
+import { isModelStage, stageDef, tablesOfStage, type InfoStageId } from "@scene/contract";
 import {
   advance,
   LAST_STAGE,
-  runGate,
-  decideAdvice,
-  GATE_CHECK_TITLES,
-  sampleSources,
+  checkStageCompleteness,
+  pendingConfirmationCount,
+  gapsBrief,
+  validateIncomingRows,
 } from "@scene/domain";
-import type { GateCheckInput, GateCheckResult } from "@scene/domain";
+import type { InfoRow } from "@scene/domain";
 import { buildStagePrompt, getStageOutputContract } from "./stage-prompts.js";
 import { runScenarioClarify, clarifyAbortEvent } from "./scenario-clarify.js";
+import { generateStageSummary } from "./stage-summary-service.js";
+import { readAnchorRows, writeAnchorRows } from "./scenario-anchor.js";
 
 // ─── 依赖注入接口 ──────────────────────────────────────────
 
@@ -51,10 +53,12 @@ export interface AdvanceStageDeps {
 
 interface DshStageOutput {
   rows: Array<{
-    /** 由输出契约 JSON Schema 在 DSH 侧约束枚举；阶段 0 总结允许自由表号 */
-    table_code: TableCode;
+    /** 由输出契约约束枚举；服务端再用注册表本地校验（未知表号不入库） */
+    table_code: string;
     fields: Record<string, unknown>;
     source: string;
+    /** AI提取 / AI推断（模型不得自称用户确认，由本地校验拦下） */
+    source_type?: string;
   }>;
 }
 
@@ -102,17 +106,26 @@ async function* executeAdvanceStage(
     message: `开始阶段 ${stage} 分析`,
   });
 
-  // 终态守卫（v1.4 起为 8 阶段口径）：交付阶段没有要填的信息表，
-  // 交付物由系统按「章节 ← 表映射」生成，**不调用模型填表**。
+  // 非模型阶段守卫（v1.4 起为 8 阶段口径）：
+  //   阶段 0 = 解析入库（材料流水线确定性填 M 表，不调用模型）
+  //   阶段 7 = 系统组装（交付物按「章节 ← 表映射」生成，不调用模型）
   // 兼容旧数据：历史 current_stage = 8 视为新编号的阶段 7。
   const effectiveStage = (stage === 8 ? 7 : stage) as InfoStageId;
-  if (tablesOfStage(effectiveStage).length === 0) {
+  if (!isModelStage(effectiveStage)) {
     yield emit({
       type: "progress",
       stage,
-      message: "本阶段不填表：交付物按章节 ← 表映射生成，无需模型分析",
+      message: `${stageDef(effectiveStage).name}：本阶段信息由「${stageDef(effectiveStage).producedBy}」产生，不调用模型分析`,
     });
-    yield emit({ type: "done", stage });
+    // 仍生成右栏总结（确定性），保证用户随时有可读的阶段交代
+    const summary = generateStageSummary(db, scenario, stage);
+    yield emit({ type: "summary", stage, markdown: summary.markdown });
+    // 推进阶段是**用户动作**而非模型动作：非模型阶段同样可以推进
+    const next: StageId = stage < LAST_STAGE ? advance(stage) : stage;
+    if (next > scenario.current_stage) {
+      db.scenarioRepo.update(scenarioId, { current_stage: next });
+    }
+    yield emit({ type: "done", stage, rowsWritten: 0 });
     return;
   }
 
@@ -185,18 +198,33 @@ async function* executeAdvanceStage(
   //    旧数据在被重算前始终保留（§4.1 失效语义），重算即用户决定。
   yield emit({ type: "progress", stage, message: "正在写入分析结果..." });
 
+  // 场景锚（表1-1）是跨阶段常驻的全链唯一场景定义：
+  // 重算阶段不能把它一起删掉（且用户确认过的内容必须保留），故先快照后恢复。
+  const anchorSnapshot = readAnchorRows(db, scenarioId);
   db.stageDataRepo.deleteByScenarioStage(scenarioId, stage);
   db.qualityGateRepo.deleteByScenarioStage(scenarioId, stage);
 
+  // 未知表号的产出行不入库（无 schema 就无法渲染，入库只会污染数据）
+  const allowedCodes = new Set(tablesOfStage(effectiveStage).map((t) => t.code));
+  const violations = validateIncomingRows(
+    effectiveStage,
+    dshOutput.rows as Parameters<typeof validateIncomingRows>[1],
+  );
+  const acceptedRows = dshOutput.rows.filter((r) => allowedCodes.has(String(r.table_code)));
+
   const writtenRows: StageData[] = [];
-  for (const row of dshOutput.rows) {
+  for (const row of acceptedRows) {
+    // 通用列从行里剥掉：`source_type`/`confirm_state` 由服务端掌握，
+    // **模型自封的「用户确认」不得进入数据**（否则污染证据等级）
+    const { source_type: declared, confirm_state: _ignored, ...fields } = row.fields;
+    const sourceType = declared === "AI推断" || row.source_type === "AI推断" ? "AI推断" : "AI提取";
     const inserted = db.stageDataRepo.insert({
       scenario_id: scenarioId,
       stage,
-      table_code: row.table_code,
-      row: row.fields,
+      table_code: row.table_code as TableCode,
+      row: fields,
       is_stale: false,
-      source_type: "AI提取",
+      source_type: sourceType,
       source: row.source,
       source_authority: "T3",
       evidence_level: "B",
@@ -207,60 +235,50 @@ async function* executeAdvanceStage(
       stage,
       tableCode: row.table_code,
       rowId: inserted.id,
-      fields: row.fields,
+      fields,
     });
   }
 
-  // 9. 质量关检查（阶段 0/7/8 无质量关）
-  const gateTitles = GATE_CHECK_TITLES[stage];
-  if (gateTitles.length > 0) {
-    yield emit({ type: "progress", stage, message: "正在执行质量关检查..." });
-
-    const gateResults = runStageGate(db, scenarioId, stage, writtenRows);
-
-    // 写入 quality_gate 表
-    for (const result of gateResults) {
-      db.qualityGateRepo.insert({
-        scenario_id: scenarioId,
-        stage,
-        item_no: result.itemNo,
-        title: result.title,
-        result: result.result,
-        detail: result.detail,
-        evidence_refs: {},
-      });
-    }
-
-    // 建议三档
-    const advice = decideAdvice(gateResults);
-
-    yield emit({
-      type: "gate",
-      stage,
-      results: gateResults,
-      passed: gateResults.filter((r) => r.isPassed).length,
-      total: gateResults.length,
-    });
-
-    yield emit({ type: "advice", stage, level: advice });
-
-    // 10. 记录系统消息到 conversation
-    db.messageRepo.insert({
-      conversation_id: conversation.id,
-      role: "系统",
-      content: `阶段 ${stage} 分析完成。共 ${writtenRows.length} 条数据。质量关 ${gateResults.filter((r) => r.isPassed).length}/${gateResults.length} 通过。建议：${advice}。`,
-      stage,
-    });
-  } else {
-    // 无质量关的阶段（0/7/8），直接记录消息
-    db.messageRepo.insert({
-      conversation_id: conversation.id,
-      role: "系统",
-      content: `阶段 ${stage} 分析完成。共 ${writtenRows.length} 条数据。`,
-      stage,
-    });
+  // 恢复场景锚（重算不丢用户确认过的锚行）
+  if (anchorSnapshot.length > 0 && isModelStage(effectiveStage) && stage === 1) {
+    writeAnchorRows(db, scenarioId, anchorSnapshot);
   }
 
+  // 9. 信息完整度检查（**替代旧「质量关 + 建议三档」**）
+  //    只输出"还缺什么"，不输出通过/不通过、不给建议；不齐备不阻断。
+  yield emit({ type: "progress", stage, message: "正在检查信息完整度..." });
+
+  const rowsByTable: Record<string, InfoRow[]> = {};
+  for (const t of tablesOfStage(effectiveStage)) {
+    rowsByTable[t.code] = db.stageDataRepo
+      .list({ where: "scenario_id = ? AND table_code = ?", params: [scenarioId, t.code] })
+      .map((r) => r.row as InfoRow);
+  }
+  const completeness = checkStageCompleteness({
+    stage: effectiveStage,
+    rowsByTable,
+    pendingConfirmations: pendingConfirmationCount(rowsByTable),
+  });
+  yield emit({ type: "completeness", stage, completeness, violations });
+
+  // 10. 右栏阶段总结文档（确定性生成，不额外调用模型）
+  const summary = generateStageSummary(db, scenario, stage);
+  yield emit({ type: "summary", stage, markdown: summary.markdown });
+
+  // 11. 记录系统消息到 conversation
+  db.messageRepo.insert({
+    conversation_id: conversation.id,
+    role: "系统",
+    content: [
+      `阶段 ${stage} 分析完成，共写入 ${writtenRows.length} 条信息。`,
+      gapsBrief(completeness),
+      violations.length > 0 ? `产出行校验：${violations.length} 处需修正（见右栏）。` : "",
+      "右栏已生成阶段总结文档。",
+    ]
+      .filter(Boolean)
+      .join(" "),
+    stage,
+  });
   // 11. 更新 scenario.current_stage（只前进不回退：重算早期阶段时保持进度，
   //     阶段 8 为终态；是否继续推进由用户决定——核心原则）
   const nextStage: StageId = stage < LAST_STAGE ? advance(stage) : stage;
@@ -345,56 +363,6 @@ function collectUpstreamData(
 }
 
 // ─── 子函数：执行质量关 ────────────────────────────────────
-
-/**
- * 对写入的 stage_data 执行质量关检查。
- *
- * 简化实现：对每项检查，基于已写入数据的数量和来源质量给出通过/不通过。
- * 完整实现应由各阶段的确定性规则产出单项判定。
- */
-function runStageGate(
-  _db: DbInstance,
-  _scenarioId: string,
-  stage: StageId,
-  writtenRows: StageData[],
-): GateCheckResult[] {
-  const titles = GATE_CHECK_TITLES[stage];
-  if (titles.length === 0) return [];
-
-  // 基于写入数据量和来源多样性做基础判定
-  const hasData = writtenRows.length > 0;
-  const sourceSet = new Set(
-    writtenRows.map((r) => r.source).filter((s): s is string => Boolean(s)),
-  );
-  const sourceSample = sampleSources([...sourceSet], 3);
-  const hasEnoughSources = sourceSample.length >= 3;
-
-  const checks: GateCheckInput[] = titles.map((title, i) => {
-    // 最后一项通常是"来源抽查至少 3 条通过"
-    if (title.includes("来源抽查")) {
-      return {
-        title,
-        result: hasEnoughSources ? "通过" : "不通过",
-        isCritical: false,
-        detail: hasEnoughSources
-          ? `抽查 ${sourceSample.length} 条来源`
-          : `来源不足（${sourceSample.length}/3）`,
-      };
-    }
-
-    // 其他项：有数据则通过，无数据则未检
-    return {
-      title,
-      result: hasData ? "通过" : "未检",
-      isCritical: i < 3, // 前 3 项通常为关键项
-      detail: hasData
-        ? `基于 ${writtenRows.length} 条分析数据`
-        : "无分析数据",
-    };
-  });
-
-  return runGate(stage, checks);
-}
 
 // ─── DSH 输出解析 ──────────────────────────────────────────
 

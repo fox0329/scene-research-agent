@@ -32,7 +32,6 @@ type InfoTableCode = import("./tables.js").InfoTableCode;
  * - 建议有条件通过：存在需补齐的前提条件，补齐后可继续
  * - 建议不通过：存在阻止性风险，不建议继续
  */
-export type AdviceLevel = "建议通过" | "建议有条件通过" | "建议不通过";
 
 /** 产品状态 */
 export type ProductStatus = "在售" | "停售" | "在研" | "规划" | "待确认";
@@ -361,8 +360,8 @@ export type SseEventType =
   | "tool_call"
   | "progress"
   | "row"
-  | "gate"
-  | "advice"
+  | "completeness"
+  | "summary"
   | "done"
   | "error";
 

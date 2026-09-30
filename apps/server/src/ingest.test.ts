@@ -185,6 +185,8 @@ function createMockDb(): DbInstance {
     // ingest 流程不使用的仓库：占位 mock（Conversation 走 Repo，其余用空对象占位）
     conversationRepo: createMockRepo<Conversation>(),
     scenarioRepo: createMockRepo<Scenario>(),
+    scenarioBriefRepo: { get: () => undefined, upsert: () => ({}), remove: () => false } as never,
+    stageSummaryRepo: { get: () => undefined, upsert: () => ({}), listByScenario: () => [], remove: () => false } as never,
     messageRepo: {} as DbInstance["messageRepo"],
     stageDataRepo: {} as DbInstance["stageDataRepo"],
     qualityGateRepo: {} as DbInstance["qualityGateRepo"],

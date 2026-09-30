@@ -20,12 +20,14 @@ import type {
   Conversation,
   Message,
   StageData,
+  StageSummaryRow,
   QualityGate,
 } from "@scene/contract";
 import type {
   DbInstance,
   Repo,
   StageDataRepo,
+  StageSummaryRepo,
   QualityGateRepo,
   MessageRepo,
 } from "@scene/infra";
@@ -220,11 +222,41 @@ function createMockDb(opts: {
     conversationRepo,
     messageRepo: createMockMessageRepo(),
     scenarioRepo,
+    scenarioBriefRepo: {
+      get: vi.fn(() => undefined),
+      upsert: vi.fn(),
+      remove: vi.fn(() => false),
+    },
+    stageSummaryRepo: createMockStageSummaryRepo(),
     stageDataRepo: createMockStageDataRepo(),
     qualityGateRepo: createMockQualityGateRepo(),
     scenarioLinkedLineRepo: { list: () => [], insert: vi.fn(), getById: vi.fn(), update: vi.fn(), deleteById: vi.fn() },
     scenarioMaterialRepo: createMockRepo(),
     knowledgeRepo: { list: vi.fn(() => []) },
+  };
+}
+
+/** 阶段总结仓储 mock（内存实现） */
+function createMockStageSummaryRepo(): StageSummaryRepo {
+  const store = new Map<string, StageSummaryRow>();
+  const key = (s: string, st: number): string => `${s}#${st}`;
+  return {
+    get: vi.fn((scenarioId: string, stage: number) => store.get(key(scenarioId, stage))),
+    upsert: vi.fn((scenarioId: string, stage: number, content: string) => {
+      const row: StageSummaryRow = {
+        scenario_id: scenarioId,
+        stage: stage as StageSummaryRow["stage"],
+        content,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+      store.set(key(scenarioId, stage), row);
+      return row;
+    }),
+    listByScenario: vi.fn((scenarioId: string) =>
+      [...store.values()].filter((r) => r.scenario_id === scenarioId),
+    ),
+    remove: vi.fn((scenarioId: string, stage: number) => store.delete(key(scenarioId, stage))),
   };
 }
 
@@ -245,13 +277,14 @@ function makeStage1DshOutput() {
   return {
     rows: [
       {
-        table_code: "表1-1",
+        // 场景锚（表1-1）由「场景诉求 → 起草 → 用户确认」写入，**不在本阶段模型产出里**
+        table_code: "表1-2",
         fields: {
-          scene_name: "智慧园区安防",
-          customer_type: "政府/国企",
-          use_case: "园区综合安防管理",
-          entry_point: "视频监控系统升级",
-          value_proposition: "降低安保人力成本 30%",
+          link: "视频监控",
+          is_digital: "可以联网采集",
+          can_touch: "可以碰",
+          our_role: "替代",
+          description: "园区摄像头接入与智能分析",
         },
         source: "需求文档.pdf:5",
       },
@@ -259,10 +292,10 @@ function makeStage1DshOutput() {
         table_code: "表1-3",
         fields: {
           barrier_type: "技术",
-          criteria: "AI 识别准确率 ≥ 95%",
-          current_status: "满足，已具备",
+          barrier_name: "AI 识别准确率",
+          criteria: "≥ 95%",
+          current_status: "过得了",
           judgment: "过得了",
-          evidence: "白皮书.pdf:12",
         },
         source: "白皮书.pdf:12",
       },
@@ -270,34 +303,30 @@ function makeStage1DshOutput() {
         table_code: "表1-3",
         fields: {
           barrier_type: "行业准入",
-          criteria: "安防资质",
-          current_status: "不知道",
-          judgment: "不知道",
-          evidence: "",
+          barrier_name: "安防工程资质",
+          criteria: "需安防资质二级",
+          current_status: "绕道",
+          judgment: "绕道",
         },
-        source: "需求文档.pdf:8",
+        source: "资质目录.pdf:2",
       },
       {
-        table_code: "表1-4",
+        table_code: "表2-2",
         fields: {
-          barrier_ref: "技术",
-          strategy: "直接进入",
-          action_items: "准备技术方案",
-          owner: "技术组",
-          timeline: "2周",
+          element_name: "网络摄像机",
+          element_type: "感知设备",
+          function: "视频采集",
         },
-        source: "内部讨论.md:1",
+        source: "选型手册.pdf:8",
       },
       {
-        table_code: "表1-5",
+        table_code: "表2-3",
         fields: {
-          risk_id: "R1",
-          description: "安防资质缺失",
-          severity: "高",
-          inherited_from: "行业准入",
-          mitigation: "寻找有资质的合作伙伴",
+          layer: "感知层",
+          components: "摄像机、门禁、周界",
+          interface: "ONVIF/RTSP",
         },
-        source: "需求文档.pdf:8",
+        source: "架构设计.pptx:3",
       },
     ],
   };
@@ -307,35 +336,31 @@ function makeStage2DshOutput() {
   return {
     rows: [
       {
-        table_code: "表2-1",
-        fields: {
-          architecture_name: "分布式视频分析架构",
-          components: ["前端摄像头", "边缘计算节点", "中心管理平台"],
-          interfaces: "ONVIF/RTSP",
-          deployment_model: "混合云",
-        },
-        source: "架构设计.pptx:3",
+        table_code: "表3-1",
+        fields: { link: "视频监控", gross_margin: "35%", representative: "海康/大华" },
+        source: "行业报告.pdf:4",
       },
       {
-        table_code: "表2-4",
+        table_code: "表3-2",
         fields: {
-          constraint_type: "合规",
-          description: "数据不得出境",
-          requirement: "数据存储在国内机房",
-          compliance_path: "选择国内云服务商",
-          owner: "合规组",
+          form: "一体化平台",
+          key_points: "软硬一体、统一运维",
+          leader: "海康",
+          position: "主导",
+          our_entry: "从边缘分析切入",
         },
-        source: "合规要求.pdf:1",
+        source: "行业报告.pdf:9",
       },
       {
-        table_code: "表2-7",
+        table_code: "表3-4",
         fields: {
-          boundary_area: "安全责任",
-          description: "不承担第三方设备的安全责任",
-          reason: "无授权",
-          alternative: "明确 SLA 边界",
+          dimension: "算法准确率",
+          our: "95%",
+          competitor_a: "96%",
+          competitor_b: "93%",
+          competitor_c: "90%",
         },
-        source: "白皮书.pdf:15",
+        source: "测评报告.pdf:3",
       },
     ],
   };
@@ -365,20 +390,24 @@ describe("createAdvanceStageCommand", () => {
       deps = { db, dshClient };
     });
 
-    it("应产出 progress → row → done 事件（无质量关）", async () => {
+    it("阶段 0 是解析入库阶段：不调用模型、不写行，只生成总结并推进", async () => {
       const cmd = createAdvanceStageCommand(deps);
       const events = await collectEvents(
         cmd.execute({ scenarioId: "sc-1", stage: 0 }),
       );
 
       const types = events.map((e) => e.type);
-      expect(types[0]).toBe("progress"); // 开始
-      expect(types[1]).toBe("progress"); // 调用 AI
-      expect(types).toContain("row");
+      expect(types[0]).toBe("progress");
+      expect(types).toContain("summary");
       expect(types).toContain("done");
-      // 阶段 0 无质量关 → 不应有 gate/advice
+      expect(types).not.toContain("row");
+      expect(types).not.toContain("completeness");
+      // 不再有质量关/建议档位事件
       expect(types).not.toContain("gate");
       expect(types).not.toContain("advice");
+      // **不调用模型**：材料入库由确定性流水线填充
+      expect(dshClient.prompt).not.toHaveBeenCalled();
+      expect(dshClient.createSession).not.toHaveBeenCalled();
     });
 
     it("应更新 scenario.current_stage 为 1", async () => {
@@ -390,28 +419,10 @@ describe("createAdvanceStageCommand", () => {
       });
     });
 
-    it("应登记 conversation", async () => {
+    it("不登记分析会话（本阶段没有模型分析）", async () => {
       const cmd = createAdvanceStageCommand(deps);
       await collectEvents(cmd.execute({ scenarioId: "sc-1", stage: 0 }));
-
-      expect(db.conversationRepo.insert).toHaveBeenCalledWith(
-        expect.objectContaining({
-          scenario_id: "sc-1",
-          title: "阶段 0 · 分析",
-          status: "活跃",
-          dsh_session_id: "mock-session-stage",
-        }),
-      );
-    });
-
-    it("重算覆盖：第二次运行同一阶段不叠加旧行（T4.2）", async () => {
-      const cmd = createAdvanceStageCommand(deps);
-      await collectEvents(cmd.execute({ scenarioId: "sc-1", stage: 0 }));
-      const firstCount = db.stageDataRepo.list().length;
-      expect(firstCount).toBe(1);
-
-      await collectEvents(cmd.execute({ scenarioId: "sc-1", stage: 0 }));
-      expect(db.stageDataRepo.list()).toHaveLength(1);
+      expect(db.conversationRepo.insert).not.toHaveBeenCalled();
     });
 
     it("重算早期阶段不应把 current_stage 拉回（只前进不回退）", async () => {
@@ -423,7 +434,6 @@ describe("createAdvanceStageCommand", () => {
         "sc-1",
         expect.anything(),
       );
-      expect(db.stageDataRepo.list()).toHaveLength(1);
     });
 
     it("阶段 8 终态运行不抛错、current_stage 保持 8", async () => {
@@ -447,7 +457,7 @@ describe("createAdvanceStageCommand", () => {
       deps = { db, dshClient };
     });
 
-    it("应产出 progress → row... → gate → advice → done 事件", async () => {
+    it("应产出 progress → row... → completeness → summary → done 事件", async () => {
       const cmd = createAdvanceStageCommand(deps);
       const events = await collectEvents(
         cmd.execute({ scenarioId: "sc-1", stage: 1 }),
@@ -455,18 +465,18 @@ describe("createAdvanceStageCommand", () => {
 
       const types = events.map((e) => e.type);
 
-      // 事件顺序：progress → progress → row(s) → progress → gate → advice → done
+      // 事件顺序：progress → progress → row(s) → completeness → summary → done
       const firstProgress = types.indexOf("progress");
       const lastRow = types.lastIndexOf("row");
-      const gateIdx = types.indexOf("gate");
-      const adviceIdx = types.indexOf("advice");
+      const completenessIdx = types.indexOf("completeness");
+      const summaryIdx = types.indexOf("summary");
       const doneIdx = types.indexOf("done");
 
       expect(firstProgress).toBeGreaterThanOrEqual(0);
       expect(lastRow).toBeGreaterThan(firstProgress);
-      expect(gateIdx).toBeGreaterThan(lastRow);
-      expect(adviceIdx).toBeGreaterThan(gateIdx);
-      expect(doneIdx).toBeGreaterThan(adviceIdx);
+      expect(completenessIdx).toBeGreaterThan(lastRow);
+      expect(summaryIdx).toBeGreaterThan(completenessIdx);
+      expect(doneIdx).toBeGreaterThan(summaryIdx);
     });
 
     it("应将 DSH 输出的行写入 stageDataRepo", async () => {
@@ -481,47 +491,69 @@ describe("createAdvanceStageCommand", () => {
         .mock.calls[0]![0];
       expect(firstCall.scenario_id).toBe("sc-1");
       expect(firstCall.stage).toBe(1);
-      expect(firstCall.table_code).toBe("表1-1");
+      expect(firstCall.table_code).toBe("表1-2");
       expect(firstCall.source_type).toBe("AI提取");
     });
 
-    it("应将质量关结果写入 qualityGateRepo", async () => {
+    it("不应再写质量关（旧装置已移除），而应落库阶段总结", async () => {
       const cmd = createAdvanceStageCommand(deps);
       await collectEvents(cmd.execute({ scenarioId: "sc-1", stage: 1 }));
 
-      // 阶段 1 有 10 项质量关
-      expect(db.qualityGateRepo.insert).toHaveBeenCalledTimes(10);
+      expect(db.qualityGateRepo.insert).not.toHaveBeenCalled();
+      expect(db.stageSummaryRepo.upsert).toHaveBeenCalledTimes(1);
+      const call = (db.stageSummaryRepo.upsert as ReturnType<typeof vi.fn>).mock.calls[0]!;
+      expect(call[0]).toBe("sc-1");
+      expect(call[1]).toBe(1);
+      expect(String(call[2])).toContain("## 五、信息缺口与待补充");
     });
 
-    it("应产出 gate 事件含通过数和总数", async () => {
+    it("应产出 completeness 事件含缺口清单（不含判定）", async () => {
       const cmd = createAdvanceStageCommand(deps);
       const events = await collectEvents(
         cmd.execute({ scenarioId: "sc-1", stage: 1 }),
       );
 
-      const gateEvent = events.find((e) => e.type === "gate") as FollowEvent & {
-        results: unknown[];
-        passed: number;
-        total: number;
+      const ev = events.find((e) => e.type === "completeness") as FollowEvent & {
+        completeness: { expectedTables: number; tablesWithData: number; gaps: unknown[]; percent: number };
+        violations: unknown[];
       };
-      expect(gateEvent).toBeDefined();
-      expect(gateEvent.total).toBe(10);
-      expect(typeof gateEvent.passed).toBe("number");
+      expect(ev).toBeDefined();
+      expect(ev.completeness.expectedTables).toBe(8);
+      expect(Array.isArray(ev.completeness.gaps)).toBe(true);
+      expect(Array.isArray(ev.violations)).toBe(true);
+      // 缺口文案不得含通过/不通过等判定
+      const text = JSON.stringify(ev.completeness);
+      expect(text).not.toContain("建议");
+      expect(text).not.toContain("不通过");
     });
 
-    it("应产出 advice 事件含建议三档", async () => {
+    it("不应产出 advice 事件（产品不产出判断）", async () => {
       const cmd = createAdvanceStageCommand(deps);
       const events = await collectEvents(
         cmd.execute({ scenarioId: "sc-1", stage: 1 }),
       );
+      expect(events.some((e) => String(e.type) === "advice")).toBe(false);
+    });
 
-      const adviceEvent = events.find((e) => e.type === "advice") as FollowEvent & {
-        level: string;
-      };
-      expect(adviceEvent).toBeDefined();
-      expect(["建议通过", "建议有条件通过", "建议不通过"]).toContain(
-        adviceEvent.level,
-      );
+    it("重算阶段 1 不丢场景锚（表1-1 常驻，用户确认内容保留）", async () => {
+      // 预置一条用户已确认的锚行，模拟阶段 1 之前已完成的场景认识
+      db.stageDataRepo.insert({
+        scenario_id: "sc-1",
+        stage: 1,
+        table_code: "表1-1",
+        row: { item: "客户类型/行业", content: "政府/国企", source_type: "用户确认" },
+        is_stale: false,
+        source_type: "用户确认",
+      });
+
+      const cmd = createAdvanceStageCommand(deps);
+      await collectEvents(cmd.execute({ scenarioId: "sc-1", stage: 1 }));
+
+      // 重算会 deleteByScenarioStage(stage=1)，但锚必须被快照-恢复
+      const anchorRows = db.stageDataRepo.list().filter((r) => r.table_code === "表1-1");
+      expect(anchorRows).toHaveLength(1);
+      expect(anchorRows[0]!.row["content"]).toBe("政府/国企");
+      expect(anchorRows[0]!.source_type).toBe("用户确认");
     });
 
     it("应更新 scenario.current_stage 为 2", async () => {
@@ -556,7 +588,7 @@ describe("createAdvanceStageCommand", () => {
       deps = { db, dshClient };
     });
 
-    it("应产出完整事件流（含 gate 和 advice）", async () => {
+    it("应产出完整事件流（含 completeness 和 summary）", async () => {
       const cmd = createAdvanceStageCommand(deps);
       const events = await collectEvents(
         cmd.execute({ scenarioId: "sc-1", stage: 2 }),
@@ -565,9 +597,11 @@ describe("createAdvanceStageCommand", () => {
       const types = events.map((e) => e.type);
       expect(types).toContain("progress");
       expect(types).toContain("row");
-      expect(types).toContain("gate");
-      expect(types).toContain("advice");
+      expect(types).toContain("completeness");
+      expect(types).toContain("summary");
       expect(types).toContain("done");
+      expect(types).not.toContain("gate");
+      expect(types).not.toContain("advice");
     });
 
     it("应将 3 条行写入 stageDataRepo", async () => {
@@ -577,11 +611,12 @@ describe("createAdvanceStageCommand", () => {
       expect(db.stageDataRepo.insert).toHaveBeenCalledTimes(3);
     });
 
-    it("应将质量关结果写入（阶段 2 有 9 项）", async () => {
+    it("阶段 2 也应落库阶段总结（不再写质量关）", async () => {
       const cmd = createAdvanceStageCommand(deps);
       await collectEvents(cmd.execute({ scenarioId: "sc-1", stage: 2 }));
 
-      expect(db.qualityGateRepo.insert).toHaveBeenCalledTimes(9);
+      expect(db.qualityGateRepo.insert).not.toHaveBeenCalled();
+      expect(db.stageSummaryRepo.upsert).toHaveBeenCalledTimes(1);
     });
 
     it("应更新 scenario.current_stage 为 3", async () => {
@@ -616,7 +651,8 @@ describe("createAdvanceStageCommand", () => {
     });
 
     it("DSH 返回 error 事件时应传播错误", async () => {
-      db = createMockDb({ scenario: { current_stage: 0 } });
+      // 用一个「模型分析」阶段（阶段 0 是解析入库，不调用模型）
+      db = createMockDb({ scenario: { current_stage: 1 } });
       dshClient = {
         createSession: vi.fn(async () => ({ sessionId: "err-session" })),
         prompt: vi.fn(async function* (): AsyncGenerator<FollowEvent> {
@@ -628,7 +664,7 @@ describe("createAdvanceStageCommand", () => {
 
       const cmd = createAdvanceStageCommand(deps);
       const events = await collectEvents(
-        cmd.execute({ scenarioId: "sc-1", stage: 0 }),
+        cmd.execute({ scenarioId: "sc-1", stage: 1 }),
       );
 
       // 最后一个事件应是 error（来自 DSH）

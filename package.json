@@ -19,7 +19,7 @@
     "dsh:stop": "bash scripts/stop.sh",
     "dsh:status": "curl -s -o /dev/null -w 'HTTP %{http_code}\\n' --max-time 3 http://127.0.0.1:3081/ || echo '未运行'",
     "dsh:logs": "tail -f .dsh/dsh-web.log",
-    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "typecheck": "pnpm run typecheck:packages && tsc -b apps/server apps/web",
     "build": "pnpm -r --if-present run build",
     "lint": "echo 'lint placeholder — TODO: 集成 eslint'",
     "test": "vitest run",
@@ -33,6 +33,7 @@
     "test:e2e": "pnpm --filter @scene/web exec vite build && playwright test",
     "verify:m5": "bash scripts/verify-m5.sh",
     "gen:docs": "pnpm --filter @scene/contract build && node scripts/gen-table-docs.mjs",
-    "check:docs": "pnpm --filter @scene/contract build && node scripts/gen-table-docs.mjs --check"
+    "check:docs": "pnpm --filter @scene/contract build && node scripts/gen-table-docs.mjs --check",
+    "typecheck:packages": "tsc --noEmit -p tsconfig.json"
   }
 }
