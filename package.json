@@ -31,6 +31,8 @@
     "verify:m4": "bash scripts/verify-m4.sh",
     "release": "bash scripts/build-release.sh",
     "test:e2e": "pnpm --filter @scene/web exec vite build && playwright test",
-    "verify:m5": "bash scripts/verify-m5.sh"
+    "verify:m5": "bash scripts/verify-m5.sh",
+    "gen:docs": "pnpm --filter @scene/contract build && node scripts/gen-table-docs.mjs",
+    "check:docs": "pnpm --filter @scene/contract build && node scripts/gen-table-docs.mjs --check"
   }
 }

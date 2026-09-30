@@ -2,8 +2,6 @@ import { describe, it, expect } from "vitest";
 import {
   TABLES,
   TABLES_BY_CODE,
-  type TableColumn,
-  type TableDef,
   STAGE_DEFS,
   ENUMS,
   COMPUTED_CARDS,
@@ -15,29 +13,13 @@ import {
   middleColumns,
   supplementColumns,
   middleColumnsByBlock,
+  middleColumnGroups,
   tablesOfStage,
   pinnedTables,
   crossStageTables,
   tableDef,
   stageDef,
 } from "./tables.js";
-
-/** 按「块 / payload / 整表」分组取中栏列——与 columnBudgetViolations 同口径 */
-function midGroups(t: TableDef): { label: string; cols: readonly TableColumn[] }[] {
-  if (t.payloads) {
-    return Object.entries(t.payloads).map(([cat, cols]) => ({
-      label: `${t.code}(${cat})`,
-      cols: [...t.columns, ...cols].filter((c) => c.slot === "中栏" && c.key !== t.groupBy),
-    }));
-  }
-  if (t.columns.some((c) => c.block)) {
-    return Object.entries(middleColumnsByBlock(t)).map(([b, cols]) => ({
-      label: `${t.code}(${b})`,
-      cols,
-    }));
-  }
-  return [{ label: t.code, cols: middleColumns(t) }];
-}
 
 describe("表定义注册表 — 完整性", () => {
   it("registryIssues 为空（表数/表号唯一/列预算/枚举/长文本截断/阶段一致）", () => {
@@ -77,7 +59,7 @@ describe("表定义注册表 — 列预算（中栏 ≤6 列）", () => {
 
   it("每张表的中栏列数 ≤ 上限（按块 / payload 分别核算）", () => {
     for (const t of TABLES) {
-      for (const g of midGroups(t)) {
+      for (const g of middleColumnGroups(t)) {
         expect(g.cols.length, `${g.label} 中栏 ${g.cols.length} 列`).toBeLessThanOrEqual(
           MIDDLE_COLUMN_BUDGET,
         );
@@ -88,7 +70,7 @@ describe("表定义注册表 — 列预算（中栏 ≤6 列）", () => {
   it("元信息列（source/evidence_level/authority）一律在右栏补充，不进中栏", () => {
     const metaKeys = ["source", "evidence_level", "authority"];
     for (const t of TABLES) {
-      for (const g of midGroups(t)) {
+      for (const g of middleColumnGroups(t)) {
         for (const c of g.cols) {
           expect(metaKeys, `${g.label}.${c.key}`).not.toContain(c.key);
         }

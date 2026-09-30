@@ -1170,24 +1170,43 @@ export function enumValues(name: EnumName): readonly string[] {
 /** 列预算上限 */
 export const MIDDLE_COLUMN_BUDGET = 6;
 
-/** 列预算违规清单（中栏列数 > 上限的表） */
+/**
+ * 按「块 / payload / 整表」分组取中栏列——**列预算的唯一核算口径**
+ *
+ * 多子块表（成本估算、方案架构）与 payload 表（可选材料）不能把各块列数相加，
+ * 因为界面同一时刻只渲染一个块/一种 payload。
+ */
+export function middleColumnGroups(
+  t: TableDef,
+): readonly { label: string; cols: readonly TableColumn[] }[] {
+  if (t.payloads) {
+    return Object.entries(t.payloads).map(([cat, cols]) => ({
+      label: `${t.code}(${cat})`,
+      cols: [...t.columns, ...cols].filter((c) => c.slot === "中栏" && c.key !== t.groupBy),
+    }));
+  }
+  if (t.columns.some((c) => c.block)) {
+    return Object.entries(middleColumnsByBlock(t)).map(([b, cols]) => ({
+      label: `${t.code}(${b})`,
+      cols,
+    }));
+  }
+  return [{ label: t.code, cols: middleColumns(t) }];
+}
+
+/** 该表在任一时刻实际渲染的最大中栏列数 */
+export function effectiveMiddleMax(t: TableDef): number {
+  return Math.max(...middleColumnGroups(t).map((g) => g.cols.length));
+}
+
+/** 列预算违规清单（任一时刻的中栏列数 > 上限） */
 export function columnBudgetViolations(): readonly { code: string; count: number; columns: string[] }[] {
   const out: { code: string; count: number; columns: string[] }[] = [];
   for (const t of TABLES) {
-    const check = (cols: readonly TableColumn[], label: string): void => {
-      if (cols.length > MIDDLE_COLUMN_BUDGET) {
-        out.push({ code: `${t.code}${label}`, count: cols.length, columns: cols.map((c) => c.label) });
+    for (const g of middleColumnGroups(t)) {
+      if (g.cols.length > MIDDLE_COLUMN_BUDGET) {
+        out.push({ code: g.label, count: g.cols.length, columns: g.cols.map((c) => c.label) });
       }
-    };
-    if (t.payloads) {
-      for (const [cat, cols] of Object.entries(t.payloads)) {
-        check([...t.columns, ...cols].filter((c) => c.slot === "中栏" && c.key !== t.groupBy), `(${cat})`);
-      }
-    } else if (t.columns.some((c) => c.block)) {
-      const byBlock = middleColumnsByBlock(t);
-      for (const [b, cols] of Object.entries(byBlock)) check(cols, `(${b})`);
-    } else {
-      check(middleColumns(t), "");
     }
   }
   return out;

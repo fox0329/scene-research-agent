@@ -1,0 +1,121 @@
+import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { composeTableDoc, renderTables, renderSummary } from "./docgen.js";
+import { TABLES, STAGE_DEFS, MIDDLE_COLUMN_BUDGET, effectiveMiddleMax } from "./tables.js";
+
+const root = process.cwd();
+const read = (p: string): string => readFileSync(resolve(root, p), "utf8");
+
+const composed = (): string =>
+  composeTableDoc({
+    preamble: read("docs-src/05-a-preamble.md"),
+    appendix: read("docs-src/05-b-appendix.md"),
+    version: read("docs-src/05-c-version.md"),
+  });
+
+describe("文档生成 — 与注册表一致（漂移守卫）", () => {
+  it("05-表格定义总表.md 与注册表生成结果一致（不一致请跑 pnpm gen:docs）", () => {
+    expect(read("05-表格定义总表.md")).toBe(composed());
+  });
+
+  it("人工撰写的三部分存在且非空", () => {
+    expect(read("docs-src/05-a-preamble.md").length).toBeGreaterThan(500);
+    expect(read("docs-src/05-b-appendix.md").length).toBeGreaterThan(500);
+    expect(read("docs-src/05-c-version.md").length).toBeGreaterThan(100);
+  });
+});
+
+describe("文档生成 — 内容完整性", () => {
+  const body = renderTables();
+
+  it("34 张表全部渲染为三级标题", () => {
+    for (const t of TABLES) {
+      expect(body, t.code).toContain(`### ${t.code} ${t.name} `);
+    }
+    expect(body.match(/^### /gm)?.length).toBe(34);
+  });
+
+  it("每张表都渲染了目的、行粒度、栏位分配、完整度规则", () => {
+    for (const t of TABLES) {
+      expect(body).toContain(t.purpose);
+      expect(body).toContain(t.rowUnit);
+      expect(body).toContain(t.completeness[0]);
+    }
+    expect(body.match(/- \*\*栏位分配\*\*/g)?.length).toBe(34);
+    expect(body.match(/- \*\*完整度规则\*\*/g)?.length).toBe(34);
+  });
+
+  it("表1-1 渲染固定行并标出 6 项 L1 必确认", () => {
+    const section = body.slice(body.indexOf("### 表1-1 "), body.indexOf("### 表1-2 "));
+    expect(section).toContain("**= 场景锚**");
+    expect(section).toContain("固定行");
+    const l1 = section.match(/\*\*是\*\*/g) ?? [];
+    expect(l1).toHaveLength(6);
+  });
+
+  it("跨阶段填写的表标出所属阶段", () => {
+    for (const code of ["表2-5", "表3-6", "表3-8"]) {
+      const i = body.indexOf(`### ${code} `);
+      const section = body.slice(i, body.indexOf("\n### ", i + 1));
+      expect(section, code).toContain("跨阶段填写");
+    }
+  });
+
+  it("可选材料渲染 6 种 payload", () => {
+    const i = body.indexOf("### 可选材料 ");
+    const section = body.slice(i, body.indexOf("\n## ", i + 1));
+    for (const cat of ["O1认证", "O2案例", "O3价格与授权", "O4开发资料", "O5路线图", "O6交付与生态"]) {
+      expect(section, cat).toContain(`**${cat}**`);
+    }
+  });
+
+  it("多子块表（成本估算 / 方案架构）按块渲染", () => {
+    expect(body).toContain("**硬件块**");
+    expect(body).toContain("**人工块**");
+    expect(body).toContain("**运营块**");
+    expect(body).toContain("**汇总块**");
+    expect(body).toContain("**架构块**");
+    expect(body).toContain("**接口块**");
+  });
+
+  it("列说明（note）被渲染出来（如表2-5 的「阶段 4 补填」）", () => {
+    expect(body).toContain("阶段 4 补填");
+    expect(body).toContain("必须含『什么都不做』");
+  });
+
+  it("生成内容不含任何建议档位措辞（产品不产出判断）", () => {
+    for (const bad of ["建议进", "建议通过", "建议不通过", "红线", "一票否决 →"]) {
+      expect(body, bad).not.toContain(bad);
+      expect(renderSummary(), bad).not.toContain(bad);
+    }
+  });
+});
+
+describe("文档生成 — 汇总校验自动计算", () => {
+  const summary = renderSummary();
+
+  it("计数来自注册表而非手写", () => {
+    expect(summary).toContain(`| **保留** | **${TABLES.length}** |`);
+    expect(summary).toContain(`| 其中 \`重要\`（中栏表格，逐格校对） | **${TABLES.filter((t) => t.tier === "重要").length}** |`);
+    expect(summary).toContain(`中栏列数上限 **${MIDDLE_COLUMN_BUDGET} 列**`);
+  });
+
+  it("逐阶段分布覆盖全部有表的阶段", () => {
+    for (const s of STAGE_DEFS) {
+      const n = TABLES.filter((t) => t.stage === s.id).length;
+      if (n === 0) continue;
+      expect(summary, `阶段 ${s.id}`).toContain(`阶段 ${s.id} · ${s.name}`);
+    }
+  });
+
+  it("每阶段「实际最大中栏列数」不超过预算", () => {
+    for (const s of STAGE_DEFS) {
+      const ts = TABLES.filter((t) => t.stage === s.id);
+      if (ts.length === 0) continue;
+      const max = Math.max(...ts.map((t) => effectiveMiddleMax(t)));
+      expect(max, `阶段 ${s.id}`).toBeLessThanOrEqual(MIDDLE_COLUMN_BUDGET);
+      expect(summary).toContain(`实际最大 ${max}`);
+    }
+  });
+});
