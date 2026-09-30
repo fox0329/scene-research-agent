@@ -38,6 +38,8 @@ function mapApiProject(
   return {
     id: p.id,
     name: p.name,
+    description: p.description ?? "",
+    product_line_id: p.product_line_id,
     stage: p.current_stage,
     status:
       p.current_stage >= 8 || p.status === "已完成" || p.status === "已归档"
@@ -78,6 +80,14 @@ const AppShell: React.FC = () => {
   const [decisionSnapshot, setDecisionSnapshot] = useState<DecisionSnapshot | null>(null);
   /** 资料库行详情（右栏备注区，变更表 #19） */
   const [rowDetail, setRowDetail] = useState<RowDetail | null>(null);
+  /** 对话抽屉唤起信号（v1.14：定义/澄清生成后主动弹出） */
+  const [drawerKick, setDrawerKick] = useState(0);
+  /** 抽屉内状态提示（v1.16）：弹出即显示「梳理中」，生成完成后清除 */
+  const [drawerHint, setDrawerHint] = useState<string | null>(null);
+  const openConversation = useCallback((convId?: string) => {
+    if (convId) setActiveConvId(convId);
+    setDrawerKick((k) => k + 1);
+  }, []);
   /** 当前选中会话（对话抽屉随之切换；null=未选/项目未建会话） */
   const [activeConvId, setActiveConvId] = useState<string | null>(null);
   const layout = useColumnLayout();
@@ -169,7 +179,24 @@ const AppShell: React.FC = () => {
       const created = await api.createProject(name.trim());
       await refreshProjects(created.id);
       setView("project");
-      showToast(`项目「${created.name}」已创建`);
+      openConversation(); // 建场景即弹对话框
+      setDrawerHint("【场景范围梳理中…】正在根据场景名起草定义，稍等片刻就好");
+      showToast(`项目「${created.name}」已创建，正在起草场景定义…`);
+      // v1.13：定义由系统起草、用户在对话里确认/修正——不再让用户手填大段描述
+      try {
+        const draft = await api.draftScenarioDefinition(created.id);
+        await refreshProjects(created.id);
+        setDrawerHint(null);
+        openConversation(draft.conversation_id);
+        showToast(
+          draft.description
+            ? "场景定义草稿已生成，直接在对话框里确认或修改"
+            : "起草暂不可用，请在对话里描述场景，我会整理成定义",
+        );
+      } catch {
+        setDrawerHint(null);
+        showToast("场景定义起草失败，可在场景锚条手动编辑");
+      }
     } catch (err: unknown) {
       showToast(`创建失败：${err instanceof Error ? err.message : String(err)}`);
     }
@@ -277,6 +304,7 @@ const AppShell: React.FC = () => {
             onProjectsChanged={() => void refreshProjects().catch(() => {})}
             onNewProject={() => void handleNewProject()}
             onDecisionSnapshot={live ? setDecisionSnapshot : undefined}
+            onOpenConversation={live ? openConversation : undefined}
           />
         )}
         {view === "project" && !activeProject && (
@@ -299,6 +327,8 @@ const AppShell: React.FC = () => {
           projectId={live ? activeProject?.id ?? null : null}
           conversationId={live ? activeConvId : null}
           onConversationCreated={live ? handleConversationCreated : undefined}
+          openSignal={drawerKick}
+          statusHint={drawerHint}
         />
       </main>
 

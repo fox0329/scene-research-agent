@@ -36,6 +36,7 @@ import {
 } from "@scene/domain";
 import type { GateCheckInput, GateCheckResult } from "@scene/domain";
 import { buildStagePrompt, getStageOutputContract } from "./stage-prompts.js";
+import { runScenarioClarify, clarifyAbortEvent } from "./scenario-clarify.js";
 
 // ─── 依赖注入接口 ──────────────────────────────────────────
 
@@ -100,11 +101,23 @@ async function* executeAdvanceStage(
     message: `开始阶段 ${stage} 分析`,
   });
 
+  // 场景预检（v1.12）：信息不足/含糊/含推断 → 对话提澄清问题并中止本次分析。
+  // 原则：需要向用户澄清的必须通过对话提出来，不能不管场景蒙头分析。
+  yield emit({ type: "progress", stage, message: "场景预检：检查场景信息是否足以支撑分析…" });
+  const clarify = await runScenarioClarify(db, dshClient, scenario);
+  if (clarify.needClarification) {
+    yield emit(clarifyAbortEvent(clarify.questions.length, stage));
+    return;
+  }
+
   // 2. 取上游数据（按阶段依赖）
   const upstreamData = collectUpstreamData(db, scenario, stage);
 
   // 3. 组 prompt
-  const stagePrompt = buildStagePrompt(stage, upstreamData);
+  const stagePrompt = buildStagePrompt(stage, upstreamData, {
+    name: scenario.name,
+    description: scenario.description,
+  });
   const outputContract = getStageOutputContract(stage);
 
   // 4. 创建 DSH session
@@ -261,36 +274,47 @@ function collectUpstreamData(
   stage: StageId,
 ): Record<string, unknown[]> {
   const data: Record<string, unknown[]> = {};
-  const plId = scenario.product_line_id;
+
+  // v1.10：资料来源 = 场景专属库 + 引用的通用库（引用不拷贝，分析时合并）
+  const linkedLineIds = db.scenarioLinkedLineRepo
+    .list({ where: "scenario_id = ?", params: [scenario.id] })
+    .map((l) => l.product_line_id);
+  const lineIds = [scenario.product_line_id, ...linkedLineIds];
+  const inLines = `(${lineIds.map(() => "?").join(",")})`;
+  // spec_param 无 product_line_id 列，经 product 反查多库
+  const specByLines = `product_id IN (SELECT id FROM product WHERE product_line_id IN ${inLines})`;
 
   // 所有阶段都需要基础材料
   if (stage >= 0) {
     const products = db.productRepo.list({
-      where: "product_line_id = ?",
-      params: [plId],
+      where: `product_line_id IN ${inLines}`,
+      params: lineIds,
     }) as Product[];
 
     data["M1_产品型号"] = products;
-    data["M2_规格参数"] = db.specParamRepo.list() as SpecParam[];
+    data["M2_规格参数"] = db.specParamRepo.list({
+      where: specByLines,
+      params: lineIds,
+    }) as SpecParam[];
     data["M3_能力清单"] = db.capabilityRepo.list({
-      where: "product_line_id = ?",
-      params: [plId],
+      where: `product_line_id IN ${inLines}`,
+      params: lineIds,
     }) as Capability[];
     data["M4_边界声明"] = db.boundaryRepo.list({
-      where: "product_line_id = ?",
-      params: [plId],
+      where: `product_line_id IN ${inLines}`,
+      params: lineIds,
     }) as Boundary[];
     data["M5_已知限制"] = db.limitationRepo.list({
-      where: "product_line_id = ?",
-      params: [plId],
+      where: `product_line_id IN ${inLines}`,
+      params: lineIds,
     }) as Limitation[];
     data["M6_成本单价"] = db.costRateRepo.list({
-      where: "product_line_id = ?",
-      params: [plId],
+      where: `product_line_id IN ${inLines}`,
+      params: lineIds,
     }) as CostRate[];
     data["O_可选材料"] = db.optionalMaterialRepo.list({
-      where: "product_line_id = ?",
-      params: [plId],
+      where: `product_line_id IN ${inLines}`,
+      params: lineIds,
     }) as OptionalMaterial[];
   }
 

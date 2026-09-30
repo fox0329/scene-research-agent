@@ -11,9 +11,11 @@ import type {
   Conversation,
   DshClient,
   FollowEvent,
+  Scenario,
   SessionHandle,
 } from "@scene/contract";
 import type { Repo, MessageRepo } from "@scene/infra";
+import { parseCommandBlock, executeAppCommand } from "./scenario-commands.js";
 import {
   validateSessionTitle,
   canArchive,
@@ -29,6 +31,8 @@ import {
 export interface ConverseDb {
   conversationRepo: Repo<Conversation>;
   messageRepo: MessageRepo;
+  /** 场景梳理（v1.13）：注入场景上下文 + 解析【场景定义 vN】回写描述 */
+  scenarioRepo: Repo<Scenario>;
 }
 
 /** 对话即导入：单个文件的导入结果 */
@@ -262,9 +266,25 @@ function removeConversation(
 
 // ─── sendMessage 流式实现 ──────────────────────────────────
 
-/** DSH 系统 prompt：对话助手 */
+/** DSH 系统 prompt：对话助手 + 场景梳理（v1.13） */
 const CONVERSE_SYSTEM_PROMPT = `你是场景通的对话助手。基于已有的产品资料和场景分析结果回答用户问题。
-保持专业、简洁，必要时引用数据来源。`;
+保持专业、简洁，必要时引用数据来源。
+
+应用与业务流（你必须知道的操作手册）：
+- 应用「场景通」：场景落地分析。9 阶段业务流：0 材料入库（资料解析成结构化表格）→ 1 门槛筛查（这场景能不能碰；产出场景定义+门槛）→ 2 认识场景 → 3 理解商业 → 4 匹配决策（产品在这里登场）→ 5 方案实现 → 6 价值验证 → 7 总结沉淀 → 8 交付物（双口径报告）。每阶段产出质量关建议，**用户拍板才推进**。
+- 你能替用户操作应用：输出命令块执行。
+【执行命令】{"command":"advance_stage","params":{"stage":1}}
+支持命令：advance_stage（跑指定/当前阶段分析，params.stage 可省）、export_deliverables（导出双口径交付物）、dedupe_products（产品去重）、clarify_scenario（发起场景澄清）。
+- 用户下达操作（如「开始下一阶段」「跑一下阶段1」「导出交付物」「去重」）时：先一句话回应确认（含业务流语境，如下一阶段是哪个、干什么），然后单独输出命令块（命令块后不得再有其他内容）。
+- 纯聊天/提问/场景梳理时不要输出命令块；用户问业务流程/怎么操作时，按上面的手册讲清并给出可执行的下一步。
+
+场景梳理职责：对话中包含当前场景的定义（分析锚）。当用户在确认或修正场景定义时：
+1. 先正常回应（说明采纳了哪些修改）；
+2. 然后在回复末尾单独输出一个更新块（三行反引号外的纯文本）：
+【场景定义 v2】
+（只写两段：场景长什么样、场景范围——整合用户本轮的全部修正。
+铁律：不出现任何具体产品/型号/厂商/技术方案；不写「要解决的问题」「目标」「痛点」——那都是后续阶段调研的内容。）
+输出更新块后不再输出其他内容。用户只是闲聊或提问时不要输出更新块。`;
 
 async function* sendMessage(
   db: ConverseDb,
@@ -324,9 +344,21 @@ async function* sendMessage(
   let hasError = false;
 
   try {
+    // 场景上下文（v1.13）：对话里始终带着当前场景定义，支撑场景梳理闭环
+    const scenarioCtx = (() => {
+      const sc = db.scenarioRepo.getById(conversation.scenario_id);
+      if (!sc) return "";
+      return [
+        "【当前场景】",
+        `场景名称：${sc.name}`,
+        `当前阶段：${sc.current_stage}（业务流位置，供「开始下一阶段」等操作定位）`,
+        `场景定义（分析锚）：${sc.description?.trim() || "（尚未定义——若用户在描述场景，请整理并输出【场景定义 v2】更新块）"}`,
+        "",
+      ].join("\n");
+    })();
     const stream = dshClient.prompt(session, {
       system: CONVERSE_SYSTEM_PROMPT,
-      user: importReport ? `${importReport}${content}` : content,
+      user: `${scenarioCtx}${importReport ? importReport : ""}${content}`,
       outputContract: {},
     });
 
@@ -347,8 +379,41 @@ async function* sendMessage(
     hasError = true;
   }
 
-  // 4. 将 AI 回复（含导入报告）写入系统消息（只在有实际内容时写入）
-  const persisted = importReport + fullReply;
+  // 3.5 应用命令块（v1.17）：解析【执行命令】→ 执行应用能力，结果随流回显并入消息
+  const { clean: replyWithoutCmd, command } = parseCommandBlock(fullReply);
+  let commandResult = "";
+  if (command) {
+    yield {
+      type: "text",
+      text: `\n\n⏳ 正在执行：${command.command}…\n`,
+    };
+    try {
+      const target = db.scenarioRepo.getById(conversation.scenario_id);
+      if (!target) throw new Error(`场景 ${conversation.scenario_id} 不存在`);
+      commandResult = `\n\n${await executeAppCommand(db as unknown as import("@scene/infra").DbInstance, dshClient, target, command)}`;
+    } catch (err: unknown) {
+      commandResult = `\n\n【执行结果】命令执行失败：${err instanceof Error ? err.message : String(err)}`;
+    }
+    yield { type: "text", text: commandResult };
+    fullReply = replyWithoutCmd;
+  }
+
+  // 4. 场景定义更新块（v1.13）：解析【场景定义 vN】→ 回写场景描述，剥离后存净文本
+  let cleanReply = fullReply;
+  const defMatch = fullReply.match(/【场景定义 v\d+】\n?([\s\S]+?)$/);
+  if (defMatch?.[1]?.trim()) {
+    const nextDef = defMatch[1].trim();
+    cleanReply = fullReply.slice(0, defMatch.index).trimEnd();
+    try {
+      db.scenarioRepo.update(conversation.scenario_id, { description: nextDef } as never);
+      cleanReply += "\n\n（场景定义已更新，后续分析将以新定义为准）";
+    } catch {
+      /* 回写失败不阻断消息持久化 */
+    }
+  }
+
+  // 5. 将 AI 回复（含导入报告）写入系统消息（只在有实际内容时写入）
+  const persisted = importReport + cleanReply + (commandResult ?? "");
   if (persisted.length > 0 && !hasError) {
     db.messageRepo.insert({
       conversation_id: conversationId,

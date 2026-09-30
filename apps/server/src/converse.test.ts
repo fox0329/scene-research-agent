@@ -150,7 +150,15 @@ function createDeps(
 ): { deps: ConverseDeps; db: ConverseDb } {
   const conversationRepo = createMockConversationRepo();
   const messageRepo = createMockMessageRepo();
-  const db: ConverseDb = { conversationRepo, messageRepo };
+  // scenarioRepo mock：getById 返回 undefined（无场景上下文，行为同旧）
+  const scenarioRepo = {
+    getById: vi.fn(() => undefined),
+    list: vi.fn(() => []),
+    insert: vi.fn(),
+    update: vi.fn(),
+    deleteById: vi.fn(() => false),
+  };
+  const db: ConverseDb = { conversationRepo, messageRepo, scenarioRepo } as unknown as ConverseDb;
   const client = dshClient ?? createMockDshClient();
 
   return {

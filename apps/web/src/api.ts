@@ -18,6 +18,8 @@ export type GateResultApi = "通过" | "不通过" | "未检";
 export interface ApiProject {
   id: string;
   name: string;
+  /** 场景描述（分析锚 v1.11）：客户/行业、问题、目标与边界 */
+  description?: string | null;
   product_line_id: string;
   status: ProjectStatusApi;
   current_stage: number;
@@ -74,7 +76,15 @@ export interface ApiStaleInfo {
 export interface ApiProductLine {
   id: string;
   name: string;
+  /** 归属场景 id：null=通用资料库，非空=该场景专属库（v1.10） */
+  scenario_id?: string | null;
   row_counts?: Record<string, number>;
+}
+
+/** 场景资料来源（v1.10：专属库 + 引用通用库） */
+export interface ApiMaterialSources {
+  own: ApiProductLine | null;
+  linked: ApiProductLine[];
 }
 
 /** 质量六维 + 完成度（领域层计算，契约 v1.4） */
@@ -207,9 +217,9 @@ export const api = {
   health: () => req<{ status: string }>("/health"),
 
   listProjects: () => req<ApiProject[]>("/projects"),
-  createProject: (name: string) =>
-    req<ApiProject>("/projects", { method: "POST", body: { name } }),
-  patchProject: (id: string, patch: { name?: string; status?: ProjectStatusApi }) =>
+  createProject: (name: string, description?: string) =>
+    req<ApiProject>("/projects", { method: "POST", body: { name, description } }),
+  patchProject: (id: string, patch: { name?: string; status?: ProjectStatusApi; description?: string }) =>
     req<ApiProject>(`/projects/${encodeURIComponent(id)}`, {
       method: "PATCH",
       body: patch,
@@ -287,6 +297,41 @@ export const api = {
       method: "POST",
       body: { product_line_id: productLineId, values },
     }),
+  /** 产品去重（M1）：同型号合并、规格参数归并、删重复产品行 */
+  dedupeProducts: (productLineId: string) =>
+    req<{ groups: number; products_removed: number; specs_moved: number; merged: { model: string; removed: number }[] }>(
+      `/library/product-lines/${encodeURIComponent(productLineId)}/dedupe-products`,
+      { method: "POST" },
+    ),
+  /** 产品线重命名（多资料库管理） */
+  renameProductLine: (productLineId: string, name: string) =>
+    req<ApiProductLine>(`/library/product-lines/${encodeURIComponent(productLineId)}`, {
+      method: "PATCH",
+      body: { name },
+    }),
+  /** 场景资料来源：专属库 + 引用的通用库（v1.10） */
+  /** 场景定义起草（v1.13）：系统基于资料起草定义发进「场景梳理」对话 */
+  draftScenarioDefinition: (projectId: string) =>
+    req<{ description: string; open_questions: string[]; conversation_id: string }>(
+      `/projects/${encodeURIComponent(projectId)}/draft-definition`,
+      { method: "POST" },
+    ),
+  /** 场景澄清（v1.12）：生成值得确认的问题发进对话 */
+  clarifyScenario: (projectId: string) =>
+    req<{
+      need_clarification: boolean;
+      questions: string[];
+      conversation_id?: string;
+      note?: string;
+    }>(`/projects/${encodeURIComponent(projectId)}/clarify-scenario`, { method: "POST" }),
+  materialSources: (projectId: string) =>
+    req<ApiMaterialSources>(`/projects/${encodeURIComponent(projectId)}/material-sources`),
+  /** 设置场景引用的通用库（只能引通用库；专属库不可被引用） */
+  linkMaterialSources: (projectId: string, linkedLineIds: string[]) =>
+    req<{ scenario_id: string; linked_line_ids: string[] }>(
+      `/projects/${encodeURIComponent(projectId)}/material-sources`,
+      { method: "PUT", body: { linked_line_ids: linkedLineIds } },
+    ),
   deleteLibraryRow: (code: string, rowId: string) =>
     req<{ deleted: boolean }>(
       `/library/rows/${encodeURIComponent(code)}/${encodeURIComponent(rowId)}`,

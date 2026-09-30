@@ -11,6 +11,7 @@ import type { FastifyInstance } from "fastify";
 import { mkdirSync, writeFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir, homedir } from "node:os";
+import { randomUUID } from "node:crypto";
 import type {
   Conversation,
   DshClient,
@@ -39,6 +40,8 @@ import {
 import type { ProviderModelEntry } from "@scene/infra";
 import type { SseHub } from "./sse-hub.js";
 import { createConverseCommand, type ChatImportOutcome } from "./converse.js";
+import { requestScenarioClarify } from "./scenario-clarify.js";
+import { draftScenarioDefinition } from "./scenario-draft.js";
 import { createIngestCommand } from "./ingest.js";
 import { parseStage, streamEvents } from "./sse-stream.js";
 import {
@@ -125,8 +128,12 @@ export function registerUiRoutes(app: FastifyInstance, deps: UiRoutesDeps): void
     dshClient,
     // 对话即导入：消息里的本地文件路径 → ingest 管线入库（默认第一条产品线）
     importFiles: async (paths) => {
-      const lines = db.productLineRepo.list({ orderBy: "created_at ASC" });
-      const line = lines[0];
+      // 优先通用库：场景专属库多了之后，对话导入默认落共享资料
+      const lines = db.productLineRepo.list({
+        where: "scenario_id IS NULL",
+        orderBy: "created_at ASC",
+      });
+      const line = lines[0] ?? db.productLineRepo.list({ orderBy: "created_at ASC" })[0];
       if (!line) {
         return paths.map((p) => ({
           path: p,
@@ -307,29 +314,113 @@ function registerProjectRoutes(app: FastifyInstance, deps: UiRoutesDeps) {
   });
 
   app.post("/api/v1/projects", async (request, reply) => {
-    const body = (request.body ?? {}) as { name?: unknown; product_line_id?: unknown };
+    const body = (request.body ?? {}) as {
+      name?: unknown;
+      product_line_id?: unknown;
+      description?: unknown;
+    };
     const name = String(body.name ?? "").trim();
     if (!name) return badRequest(reply, "项目名不能为空");
     if (name.length > 100) return badRequest(reply, "项目名不超过 100 字符");
+    // 场景描述（分析锚 v1.11）：客户/行业、问题、目标与边界
+    const description = String(body.description ?? "").trim().slice(0, 4000);
 
+    // v1.10：每个场景自动带一条专属资料库（场景内上传落这里，删除场景时资料保留）；
+    // 显式传 product_line_id 时沿用该库（高级用法，不标专属归属）
     let productLineId = String(body.product_line_id ?? "").trim();
-    if (!productLineId) {
-      productLineId = ensureDefaultProductLine(db);
+    const ownLine = !productLineId;
+    if (ownLine) {
+      productLineId = createOwnLineForScenario(db, name);
     } else if (!db.productLineRepo.getById(productLineId)) {
       return notFound(reply, `产品线 ${productLineId} 不存在`);
     }
-    return db.scenarioRepo.insert({
+    const scenario = db.scenarioRepo.insert({
       name,
+      description: description || null,
       product_line_id: productLineId,
       status: "进行中",
       current_stage: 0,
     });
+    if (ownLine) {
+      db.productLineRepo.update(productLineId, { scenario_id: scenario.id } as never);
+    }
+    return scenario;
+  });
+
+  /** 场景定义起草（v1.13）：基于场景名+资料库起草定义，存描述并发进「场景梳理」对话 */
+  app.post("/api/v1/projects/:id/draft-definition", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const scenario = db.scenarioRepo.getById(id);
+    if (!scenario) return notFound(reply, `场景 ${id} 不存在`);
+    const result = await draftScenarioDefinition(db, deps.dshClient, scenario);
+    return {
+      description: result.description,
+      open_questions: result.openQuestions,
+      conversation_id: result.conversationId,
+    };
+  });
+
+  /** 手动场景澄清（v1.12）：强制生成值得确认的问题，发进该场景的对话 */
+  app.post("/api/v1/projects/:id/clarify-scenario", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const scenario = db.scenarioRepo.getById(id);
+    if (!scenario) return notFound(reply, `场景 ${id} 不存在`);
+    const result = await requestScenarioClarify(db, deps.dshClient, scenario);
+    if (!result.needClarification) {
+      return { need_clarification: false, questions: [], note: "场景信息已充分，无需澄清" };
+    }
+    return {
+      need_clarification: true,
+      questions: result.questions,
+      conversation_id: result.conversationId,
+    };
+  });
+
+  // ── 场景资料来源（v1.10：专属库 + 引用通用库，分析时合并） ──
+
+  app.get("/api/v1/projects/:id/material-sources", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const scenario = db.scenarioRepo.getById(id);
+    if (!scenario) return notFound(reply, `场景 ${id} 不存在`);
+    const linked = db.scenarioLinkedLineRepo
+      .list({ where: "scenario_id = ?", params: [id], orderBy: "created_at ASC" })
+      .map((l) => db.productLineRepo.getById(l.product_line_id))
+      .filter((l): l is NonNullable<typeof l> => Boolean(l));
+    return { own: db.productLineRepo.getById(scenario.product_line_id), linked };
+  });
+
+  app.put("/api/v1/projects/:id/material-sources", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const scenario = db.scenarioRepo.getById(id);
+    if (!scenario) return notFound(reply, `场景 ${id} 不存在`);
+    const body = (request.body ?? {}) as { linked_line_ids?: unknown };
+    const rawIds = Array.isArray(body.linked_line_ids) ? body.linked_line_ids.map(String) : [];
+    const ids = [...new Set(rawIds)];
+    // 只允许引用通用库（scenario_id 为空）；专属库互引没有意义
+    const shared = new Set(
+      db.productLineRepo.list({ where: "scenario_id IS NULL" }).map((l) => l.id),
+    );
+    for (const lineId of ids) {
+      if (!shared.has(lineId)) {
+        return badRequest(reply, `产品线 ${lineId} 不是通用资料库（专属库不可被引用）`);
+      }
+    }
+    db.scenarioLinkedLineRepo
+      .list({ where: "scenario_id = ?", params: [id] })
+      .forEach((l) => db.scenarioLinkedLineRepo.deleteById(l.id));
+    for (const lineId of ids) {
+      db.scenarioLinkedLineRepo.insert({ scenario_id: id, product_line_id: lineId });
+    }
+    return { scenario_id: id, linked_line_ids: ids };
   });
 
   app.patch("/api/v1/projects/:id", async (request, reply) => {
     const { id } = request.params as { id: string };
-    const body = (request.body ?? {}) as { name?: unknown; status?: unknown };
+    const body = (request.body ?? {}) as { name?: unknown; status?: unknown; description?: unknown };
     const patch: Record<string, unknown> = {};
+    if (body.description !== undefined) {
+      patch["description"] = String(body.description).trim().slice(0, 4000) || null;
+    }
     if (body.name !== undefined) {
       const name = String(body.name).trim();
       if (!name || name.length > 100) return badRequest(reply, "项目名需为 1-100 字符");
@@ -422,15 +513,21 @@ function registerProjectRoutes(app: FastifyInstance, deps: UiRoutesDeps) {
   });
 }
 
-/** 无 product_line_id 建项目时兜底：取第一条产品线，没有则建「默认产品线」 */
-function ensureDefaultProductLine(db: UiRoutesDeps["db"]): string {
-  const existing = db.productLineRepo.list({ limit: 1 });
-  if (existing.length > 0) return existing[0]!.id;
-  return db.productLineRepo.insert({ name: "默认产品线" }).id;
+/** 为场景创建专属资料库（v1.10）；名称唯一，重名自动加短后缀 */
+function createOwnLineForScenario(db: UiRoutesDeps["db"], scenarioName: string): string {
+  let lineName = `${scenarioName}·专属资料`;
+  const taken = new Set(db.productLineRepo.list().map((l) => l.name));
+  if (taken.has(lineName)) {
+    lineName = `${lineName}-${randomUUID().slice(0, 4)}`;
+  }
+  return db.productLineRepo.insert({ name: lineName }).id;
 }
 
-/** 删场景：手动级联（无外键级联），知识库条目保留 */
+/** 删场景：手动级联（无外键级联），知识库条目保留；引用关联清理，专属库及其资料保留 */
 function deleteScenarioCascade(db: DbInstance, scenarioId: string) {
+  db.scenarioLinkedLineRepo
+    .list({ where: "scenario_id = ?", params: [scenarioId] })
+    .forEach((l) => db.scenarioLinkedLineRepo.deleteById(l.id));
   const conversations = db.conversationRepo.list({
     where: "scenario_id = ?",
     params: [scenarioId],
@@ -641,6 +738,69 @@ function registerLibraryRoutes(app: FastifyInstance, deps: UiRoutesDeps) {
     if (!ok) return notFound(reply, `${code} 表行 ${rowId} 不存在`);
     markDependentStale(db, code, rowId);
     return { deleted: true };
+  });
+
+  /**
+   * 产品去重（M1）：同一型号合并为一条——保留最早一条，缺位字段从重复条目补全，
+   * 规格参数（M2）归并到保留产品，删除重复产品行（F3 下游待重算照打）。
+   * 来源不丢失：保留行与归并行的来源标注原样在行上，可审计。
+   */
+  app.post("/api/v1/library/product-lines/:id/dedupe-products", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    if (!db.productLineRepo.getById(id)) return notFound(reply, "产品线不存在");
+    const products = db.productRepo.list({
+      where: "product_line_id = ?",
+      params: [id],
+      orderBy: "created_at ASC",
+    });
+    const groups = new Map<string, typeof products>();
+    for (const p of products) {
+      const key = p.model.trim().toLowerCase();
+      if (!key) continue;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(p);
+    }
+    const merged: { model: string; removed: number }[] = [];
+    let productsRemoved = 0;
+    let specsMoved = 0;
+    for (const [, list] of groups) {
+      if (list.length < 2) continue;
+      const [first, ...dupes] = list;
+      const keep = first!;
+      // 缺位字段（曾用名/定位描述）从重复条目补全到保留行
+      const patch: Record<string, unknown> = {};
+      if (!keep.former_name) {
+        const f = dupes.find((d) => d.former_name);
+        if (f) patch["former_name"] = f.former_name;
+      }
+      if (!keep.position_desc) {
+        const f = dupes.find((d) => d.position_desc);
+        if (f) patch["position_desc"] = f.position_desc;
+      }
+      if (Object.keys(patch).length) db.productRepo.update(keep.id, patch as never);
+      for (const d of dupes) {
+        for (const sp of db.specParamRepo.list({ where: "product_id = ?", params: [d.id] })) {
+          db.specParamRepo.update(sp.id, { product_id: keep.id } as never);
+          specsMoved++;
+        }
+        db.productRepo.deleteById(d.id);
+        markDependentStale(db, "M1", d.id);
+        productsRemoved++;
+      }
+      merged.push({ model: keep.model, removed: dupes.length });
+    }
+    return { groups: merged.length, products_removed: productsRemoved, specs_moved: specsMoved, merged };
+  });
+
+  /** 产品线重命名（多资料库管理：新建见 POST，此处改名） */
+  app.patch("/api/v1/library/product-lines/:id", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const body = (request.body ?? {}) as { name?: unknown };
+    const name = String(body.name ?? "").trim();
+    if (!name) return badRequest(reply, "名称不能为空");
+    const updated = db.productLineRepo.update(id, { name } as never);
+    if (!updated) return notFound(reply, "产品线不存在");
+    return updated;
   });
 
   // 六维总评 + 完成度（领域层计算）

@@ -119,6 +119,7 @@ function createMockDb() {
     scenarioRepo,
     stageDataRepo,
     qualityGateRepo,
+    scenarioLinkedLineRepo: createMockRepo(),
   } as unknown as DbInstance;
 
   return { db, scenarioRepo, conversationRepo, stageDataStore, messageStore };

@@ -23,7 +23,7 @@ const MIN_COL_WIDTH = 64;
 /** 量不到自然宽时的兜底列宽（px） */
 const FALLBACK_COL_WIDTH = 120;
 
-/** 列宽 px（各自独立：拖一列只动这一列，其余列纹丝不动） */
+/** 列宽 = 占表宽百分比（总和 100；拖分割线时两侧列交换，其余不动） */
 type Widths = Record<string, number>;
 
 /** 每列的自然宽（单行内容宽，px） */
@@ -52,9 +52,9 @@ function fitWidths(naturals: NaturalWidth[], container: number): number[] {
 }
 
 /**
- * 读留存列宽（px，绝对值）。键集与当前列不一致或垃圾值返回 null
- * （调用方按内容重新量宽）。v2 存储口径：px 绝对值、拖一列只动一列；
- * 与旧百分比口径不共用键名，避免误读。
+ * 读留存列宽并归一化到总和 100（百分比）。归一化对旧记录（px 绝对值）
+ * 同样成立——等比缩放即回百分比。键集与当前列不一致或垃圾值返回 null
+ * （调用方按内容重新量宽）。
  */
 function loadWidths(storageKey: string | undefined, colKeys: string[]): Widths | null {
   if (!storageKey) return null;
@@ -63,12 +63,17 @@ function loadWidths(storageKey: string | undefined, colKeys: string[]): Widths |
     const parsed: unknown = raw ? JSON.parse(raw) : null;
     if (typeof parsed !== "object" || parsed === null) return null;
     const out: Widths = {};
+    let sum = 0;
     for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
-      if (typeof v === "number" && v >= MIN_COL_WIDTH) out[k] = Math.round(v);
+      if (typeof v === "number" && v > 0) {
+        out[k] = v;
+        sum += v;
+      }
     }
-    if (Object.keys(out).length === 0) return null;
+    if (sum <= 0) return null;
     const storedKeys = Object.keys(out).sort().join(",");
     if (storedKeys !== [...colKeys].sort().join(",")) return null;
+    for (const k of colKeys) out[k] = (out[k]! / sum) * 100;
     return out;
   } catch {
     return null;
@@ -81,11 +86,10 @@ function loadWidths(storageKey: string | undefined, colKeys: string[]): Widths |
  *       列分割线、表头右缘热区拖拽调列宽。
  *
  * 列宽策略（用户定稿）：
- * - 默认态：按各列实际内容的自然宽适配容器宽（整体高度最紧凑），
- *   表宽 = 中栏内容宽；中栏拖宽时自动重新适配
- * - 手动拖拽后：各列绝对像素宽、各自独立——拖一列只动这一列；
- *   表宽 = 各列之和，超出容器时 .tw 横向滚动（内容始终可见）
- * - 宽度按 storageKey 本地留存
+ * - 表宽恒 = 中栏内容宽（width:100%）
+ * - 默认态：按各列实际内容的自然宽适配（整体高度最紧凑）；中栏拖宽时自动重新适配
+ * - 拖两列之间的分割线：只有这条线移动——左右两列交换宽度，其余分割线纹丝不动
+ * - 宽度按 storageKey 本地留存（留存后不再自动重排）
  */
 export function SceneTable<T extends Record<string, unknown>>({
   columns,
@@ -106,21 +110,29 @@ export function SceneTable<T extends Record<string, unknown>>({
   const naturalsRef = useRef<NaturalWidth[]>([]);
   /** 用户手动拖过（或读到留存值）后不再自动重排 */
   const manualRef = useRef(widths !== null);
-  /** 拖拽基线：起点 X、冻结的全表像素宽 */
-  const dragRef = useRef<{ key: string; startX: number; startPx: number; base: Widths } | null>(null);
+  /** 拖拽基线：起点 X、分割线两侧列的起点百分比、冻结的全表百分比 */
+  const dragRef = useRef<{
+    key: string;
+    nextKey: string;
+    startX: number;
+    startA: number;
+    startB: number;
+    base: Widths;
+  } | null>(null);
 
   /* 测量阶段（无留存宽度）：整表单行自然宽渲染，量完立即适配容器（绘制前完成，无闪烁） */
   const measuring = widths === null;
 
-  /** 默认态：按内容自然宽适配到当前容器宽 */
+  /** 默认态：按内容自然宽适配到当前容器宽（存百分比，表宽恒 100%） */
   const fitToContainer = useCallback(() => {
     const naturals = naturalsRef.current;
     const container = wrapRef.current?.clientWidth ?? 0;
     if (naturals.length === 0 || container <= 0) return;
     const fitted = fitWidths(naturals, container);
+    const sum = fitted.reduce((a, b) => a + b, 0) || 1;
     const next: Widths = {};
     naturals.forEach((n, i) => {
-      next[n.key] = Math.round(fitted[i] ?? FALLBACK_COL_WIDTH);
+      next[n.key] = ((fitted[i] ?? FALLBACK_COL_WIDTH) / sum) * 100;
     });
     setWidths(next);
   }, []);
@@ -170,21 +182,36 @@ export function SceneTable<T extends Record<string, unknown>>({
     [onCellChange],
   );
 
-  /** 开始拖某列：只改这一列的像素宽，其余列纹丝不动 */
+  /**
+   * 拖两列之间的分割线：只有这条线移动——左列与右列交换宽度，
+   * 其余列（分割线）纹丝不动；表宽恒 100%。
+   */
   const startResize = useCallback(
-    (key: string, e: React.MouseEvent) => {
+    (key: string, nextKey: string, e: React.MouseEvent) => {
       e.preventDefault();
+      const tableW = tableRef.current?.getBoundingClientRect().width || 1;
       const base = { ...(widths ?? {}) };
-      const startPx = base[key] ?? FALLBACK_COL_WIDTH;
-      dragRef.current = { key, startX: e.clientX, startPx, base };
+      const startA = base[key] ?? 50;
+      const startB = base[nextKey] ?? 50;
+      dragRef.current = { key, nextKey, startX: e.clientX, startA, startB, base };
       setIsResizing(true);
       manualRef.current = true;
 
       const onMove = (ev: MouseEvent) => {
         const drag = dragRef.current;
         if (!drag) return;
-        const next = Math.max(MIN_COL_WIDTH, drag.startPx + (ev.clientX - drag.startX));
-        setWidths({ ...drag.base, [drag.key]: next });
+        const dPct = ((ev.clientX - drag.startX) / tableW) * 100;
+        const minPct = (MIN_COL_WIDTH / tableW) * 100;
+        // 左右列交换：合计不变；两侧都不低于最小列宽
+        const a = Math.max(
+          minPct,
+          Math.min(drag.startA + dPct, drag.startA + drag.startB - minPct),
+        );
+        setWidths({
+          ...drag.base,
+          [drag.key]: a,
+          [drag.nextKey]: drag.startA + drag.startB - a,
+        });
       };
       const onUp = () => {
         dragRef.current = null;
@@ -198,20 +225,20 @@ export function SceneTable<T extends Record<string, unknown>>({
     [widths],
   );
 
-  /* 表宽 = 各列之和（绝对像素）：列各自独立，浏览器不做二次分配 */
-  const totalWidth = colKeys.reduce((sum, key) => sum + (widths?.[key] ?? FALLBACK_COL_WIDTH), 0);
-
   return (
     <div className={`tw${isResizing ? " is-resizing" : ""}`} ref={wrapRef}>
       <table
         ref={tableRef}
         className={measuring ? "measure" : undefined}
-        style={measuring ? undefined : { tableLayout: "fixed", width: `${totalWidth}px` }}
+        style={measuring ? undefined : { tableLayout: "fixed", width: "100%" }}
       >
         {!measuring && (
           <colgroup>
             {columns.map((col) => (
-              <col key={col.key} style={{ width: widths?.[col.key] ?? FALLBACK_COL_WIDTH }} />
+              <col
+                key={col.key}
+                style={{ width: `${widths?.[col.key] ?? 100 / Math.max(1, columns.length)}%` }}
+              />
             ))}
           </colgroup>
         )}
@@ -223,11 +250,11 @@ export function SceneTable<T extends Record<string, unknown>>({
                 {ci < columns.length - 1 ? (
                   <span
                     className="th-resize"
-                    title="拖拽调整列宽（只动本列）"
+                    title="拖拽调整列宽（只动这条分割线两侧列）"
                     role="separator"
                     aria-orientation="vertical"
-                    aria-label={`调整「${col.label}」列宽`}
-                    onMouseDown={(e) => startResize(col.key, e)}
+                    aria-label={`调整「${col.label}」与「${columns[ci + 1]!.label}」分隔线`}
+                    onMouseDown={(e) => startResize(col.key, columns[ci + 1]!.key, e)}
                   />
                 ) : null}
               </th>

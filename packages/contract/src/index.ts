@@ -101,6 +101,8 @@ export type TableCode =
 export interface ProductLine {
   id: string;
   name: string;
+  /** 归属场景 id：NULL=通用资料库（共享），非空=该场景的专属资料库（v1.10） */
+  scenario_id?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -207,9 +209,21 @@ export interface OptionalMaterial extends TraceableFields {
 export interface Scenario {
   id: string;
   name: string;
+  /** 场景描述（分析锚，v1.11）：客户/行业、要解决的问题、目标与边界——全部阶段提示词强制围绕它 */
+  description?: string | null;
+  /** 场景专属资料库（product_line，v1.10 起每个场景自动带一条；引用的通用库见 scenario_linked_line） */
   product_line_id: string;
   status: "进行中" | "已完成" | "已归档";
   current_stage: StageId;
+  created_at: string;
+  updated_at: string;
+}
+
+/** 场景引用的通用资料库（多对多；引用不拷贝，分析时与专属库合并） */
+export interface ScenarioLinkedLine {
+  id: string;
+  scenario_id: string;
+  product_line_id: string;
   created_at: string;
   updated_at: string;
 }

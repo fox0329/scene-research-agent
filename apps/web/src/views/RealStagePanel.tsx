@@ -8,6 +8,7 @@ import {
 } from "../api";
 import { useAsync } from "../hooks/useAsync";
 import { SceneTable, type ColumnDef } from "../components/SceneTable";
+import { stageFieldLabel } from "../stage-field-labels";
 import { AdviceCard } from "../components/AdviceCard";
 import { useToast } from "../components/Toast";
 import type { DecisionSnapshot } from "../components/decision-snapshot";
@@ -270,7 +271,7 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
       {/* 表格组：按 table_code 分组，动态列，逐格可编辑落库 */}
       {groups.map(([code, groupRows]) => {
         const columns: ColumnDef<Record<string, unknown>>[] = unionKeys(groupRows).map(
-          (key) => ({ key, label: key, editable: true }),
+          (key) => ({ key, label: stageFieldLabel(key), editable: true }),
         );
         return (
           <div className="pnl" key={code}>

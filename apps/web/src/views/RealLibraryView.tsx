@@ -1,13 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   api,
-  ingestStream,
   type ApiProductLine,
   type ApiQualitySummary,
 } from "../api";
 import { useAsync } from "../hooks/useAsync";
-import { pickSupportedFiles } from "../constants";
 import { SceneTable, type ColumnDef } from "../components/SceneTable";
+import { MaterialUpload } from "../components/MaterialUpload";
 import type { RowDetail } from "../components/RowDetailPanel";
 import { useToast } from "../components/Toast";
 
@@ -160,10 +159,27 @@ const TablePanel: React.FC<TablePanelProps> = ({
     [code, lineId, reloadTick],
   );
 
+  /* M2 规格书按产品出表（一个产品一张表）；产品来自 M1 */
+  const productRows = useAsync(
+    () => (code === "M2" ? api.libraryTable("M1", lineId) : Promise.resolve([])),
+    [code, lineId, reloadTick],
+  );
+  /** ""=默认首个产品；"__all__"=全部产品合表 */
+  const [productPick, setProductPick] = useState("");
+  const firstProductId = String((productRows.data?.[0] as Record<string, unknown> | undefined)?.__id ?? (productRows.data?.[0] as Record<string, unknown> | undefined)?.id ?? "");
+  const filterProductId = useMemo(() => {
+    if (code !== "M2") return "";
+    if (productPick === "__all__") return "";
+    return productPick || firstProductId;
+  }, [code, productPick, firstProductId]);
+
   /* O 表把 payload 展开为行字段；M 表原样；值统一转字符串便于编辑与展示 */
   const rows = useMemo(() => {
     if (!data) return [];
-    return data.map((r) => {
+    const src = filterProductId
+      ? data.filter((r) => String((r as Record<string, unknown>)["product_id"] ?? "") === filterProductId)
+      : data;
+    return src.map((r) => {
       if (optional) {
         const payload = (r.payload ?? {}) as Record<string, unknown>;
         const flat: Record<string, unknown> = { category: r.category, __id: r.id };
@@ -179,7 +195,7 @@ const TablePanel: React.FC<TablePanelProps> = ({
       }
       return flat;
     });
-  }, [data, optional]);
+  }, [data, optional, filterProductId]);
 
   const columns = useMemo(() => {
     const detailOnly = new Set(DETAIL_ONLY_KEYS[code] ?? []);
@@ -319,6 +335,25 @@ const TablePanel: React.FC<TablePanelProps> = ({
     [rows, code, label, optional, onRowSelect],
   );
 
+  /** 产品去重（M1）：同型号合并为一条，规格参数归并，删除重复行 */
+  const handleDedupe = useCallback(async () => {
+    if (
+      !window.confirm("同型号产品将合并为一条（规格参数归并、缺位字段补全、删除重复产品行）。继续？")
+    ) {
+      return;
+    }
+    try {
+      const r = await api.dedupeProducts(lineId);
+      showToast(
+        `已去重：合并 ${r.groups} 组，删除 ${r.products_removed} 条重复产品，归并 ${r.specs_moved} 行规格参数`,
+      );
+      reload();
+      onChanged?.();
+    } catch (err: unknown) {
+      showToast(`去重失败：${err instanceof Error ? err.message : String(err)}`);
+    }
+  }, [lineId, reload, onChanged, showToast]);
+
   if (status === "loading") {
     return (
       <div className="pnl">
@@ -347,9 +382,35 @@ const TablePanel: React.FC<TablePanelProps> = ({
           <h2>{label}</h2>
           <p>{rows.length} 行（单元格点击即改，自动保存并触发下游待重算标记）</p>
         </div>
+        {code === "M1" && (
+          <button className="btn" type="button" onClick={() => void handleDedupe()}>
+            产品去重
+          </button>
+        )}
         <button className="btn" type="button" onClick={() => void handleAdd()}>新增行</button>
       </div>
       <div className="pnl-b flush">
+        {code === "M2" && (productRows.data?.length ?? 0) > 0 && (
+          <div className="model-discover-row" style={{ marginBottom: "var(--s2)" }}>
+            <span className="provider-item-meta">按产品出表：</span>
+            <select
+              className="settings-select"
+              value={productPick || firstProductId}
+              onChange={(e) => setProductPick(e.target.value)}
+              aria-label="选择产品"
+            >
+              {(productRows.data ?? []).map((p) => {
+                const row = p as Record<string, unknown>;
+                return (
+                  <option key={String(row.id)} value={String(row.id)}>
+                    {String(row.model ?? row.id)}
+                  </option>
+                );
+              })}
+              <option value="__all__">全部产品（合表）</option>
+            </select>
+          </div>
+        )}
         {rows.length === 0 ? (
           <div className="empty-state">
             <div className="empty-state-title">本表暂无资料</div>
@@ -457,10 +518,6 @@ export const RealLibraryView: React.FC<{
   const [lineId, setLineId] = useState(lines[0]?.id ?? "");
   const [tab, setTab] = useState<TabKey>("quality");
   const [reloadTick, setReloadTick] = useState(0);
-  const [progress, setProgress] = useState<string[]>([]);
-  const [uploading, setUploading] = useState(false);
-  const fileRef = useRef<HTMLInputElement>(null);
-  const dirRef = useRef<HTMLInputElement>(null);
 
   /* 产品线列表变化时保证选中有效 */
   useEffect(() => {
@@ -478,81 +535,6 @@ export const RealLibraryView: React.FC<{
     [lineId],
   );
 
-  /** 批量上传（单文件/多选/文件夹展开共用）：逐个解析入库，最后汇总 */
-  const handleUploadFiles = useCallback(
-    async (files: File[]) => {
-      if (!lineId) {
-        showToast("请先创建产品线");
-        return;
-      }
-      if (files.length === 0) return;
-      setUploading(true);
-      setProgress([`共 ${files.length} 个文件，开始解析入库…`]);
-      let totalRows = 0;
-      let failed = 0;
-      const tableCounts: Record<string, number> = {};
-      try {
-        for (let i = 0; i < files.length; i++) {
-          const file = files[i]!;
-          setProgress((prev) =>
-            [...prev, `（${i + 1}/${files.length}）${file.name}`].slice(-8),
-          );
-          try {
-            for await (const ev of ingestStream(file, lineId)) {
-              if (ev.type === "progress") {
-                setProgress((prev) => [...prev, `　${String(ev.text ?? "处理中…")}`].slice(-8));
-              } else if (ev.type === "done") {
-                totalRows += Number(ev.rows_inserted ?? 0);
-                const counts = ev.table_counts as Record<string, number> | undefined;
-                for (const [t, n] of Object.entries(counts ?? {})) {
-                  tableCounts[t] = (tableCounts[t] ?? 0) + Number(n);
-                }
-              } else if (ev.type === "error") {
-                failed++;
-                setProgress((prev) =>
-                  [...prev, `【错误】${file.name}：${String(ev.message ?? "")}`].slice(-8),
-                );
-              }
-            }
-          } catch (err: unknown) {
-            failed++;
-            setProgress((prev) =>
-              [
-                ...prev,
-                `【错误】${file.name}：${err instanceof Error ? err.message : String(err)}`,
-              ].slice(-8),
-            );
-          }
-        }
-        const countsStr = Object.entries(tableCounts)
-          .map(([t, n]) => `${t}×${n}`)
-          .join("、");
-        setProgress((prev) =>
-          [
-            ...prev,
-            `【完成】${files.length} 个文件 · 共入库 ${totalRows} 行${countsStr ? `（${countsStr}）` : ""}${failed ? ` · 失败 ${failed} 个` : ""}`,
-          ].slice(-8),
-        );
-        showToast(`解析完成：入库 ${totalRows} 行${countsStr ? `（${countsStr}）` : ""}`);
-        setReloadTick((t) => t + 1);
-        summary.reload();
-        onChanged?.();
-      } finally {
-        setUploading(false);
-      }
-    },
-    [lineId, summary, onChanged, showToast],
-  );
-
-  /** 从选择结果取受支持类型的文件（跳过 .DS_Store 等系统/隐藏文件与其他格式） */
-  const pickSupported = (list: File[]): File[] => {
-    const { files, skipped } = pickSupportedFiles(list);
-    if (skipped > 0) {
-      showToast(`已跳过 ${skipped} 个不支持的文件（仅支持 PDF/Word/Excel/PPT）`);
-    }
-    return files;
-  };
-
   const handleNewLine = useCallback(async () => {
     const name = window.prompt("新建产品线 · 请输入名称");
     if (!name?.trim()) return;
@@ -565,6 +547,20 @@ export const RealLibraryView: React.FC<{
       showToast(`创建失败：${err instanceof Error ? err.message : String(err)}`);
     }
   }, [onChanged, showToast]);
+
+  /** 重命名产品线（资料库） */
+  const handleRenameLine = useCallback(async () => {
+    const cur = lines.find((l) => l.id === lineId);
+    const name = window.prompt("重命名产品资料库 · 请输入新名称", cur?.name ?? "");
+    if (!name?.trim() || name.trim() === cur?.name) return;
+    try {
+      await api.renameProductLine(lineId, name.trim());
+      onChanged?.();
+      showToast(`已重命名为「${name.trim()}」`);
+    } catch (err: unknown) {
+      showToast(`重命名失败：${err instanceof Error ? err.message : String(err)}`);
+    }
+  }, [lines, lineId, onChanged, showToast]);
 
   const renderBody = () => {
     if (!lineId) {
@@ -690,76 +686,40 @@ export const RealLibraryView: React.FC<{
         <div style={{ display: "flex", alignItems: "center", gap: "var(--s3)" }}>
           <div className="pgt">产品资料库</div>
           {lines.length > 0 ? (
-            <select
-              className="btn"
-              aria-label="选择产品线"
-              value={lineId}
-              onChange={(e) => setLineId(e.target.value)}
-            >
-              {lines.map((l) => (
-                <option key={l.id} value={l.id}>
-                  {l.name}
-                </option>
-              ))}
-            </select>
+            <>
+              <select
+                className="btn"
+                aria-label="选择产品线"
+                value={lineId}
+                onChange={(e) => setLineId(e.target.value)}
+              >
+                {lines.map((l) => (
+                  <option key={l.id} value={l.id}>
+                    {l.name}
+                    {l.scenario_id ? "（场景专属）" : ""}
+                  </option>
+                ))}
+              </select>
+              <button className="btn btn-sm" type="button" onClick={() => void handleRenameLine()}>
+                重命名
+              </button>
+            </>
           ) : (
             <span className="badge warning">无产品线</span>
           )}
           {activeLine && <span className="badge success">{totalRows} 行资料</span>}
         </div>
         <div className="pga">
-          {/* 单文件/多选文件入口 */}
-          <input
-            ref={fileRef}
-            type="file"
-            multiple
-            accept=".pdf,.docx,.xlsx,.pptx"
-            style={{ display: "none" }}
-            onChange={(e) => {
-              /* 先物化再清空 value：input.files 是活引用，清空后引用跟着变空 */
-              const files = Array.from(e.target.files ?? []);
-              e.target.value = "";
-              if (files.length) void handleUploadFiles(pickSupported(files));
+          <MaterialUpload
+            lineId={lineId}
+            onDone={() => {
+              setReloadTick((t) => t + 1);
+              summary.reload();
+              onChanged?.();
             }}
           />
-          {/* 整个文件夹入口（webkitdirectory：浏览器递归展开所有文件） */}
-          <input
-            ref={dirRef}
-            type="file"
-            multiple
-            style={{ display: "none" }}
-            {...({ webkitdirectory: "true", directory: "true" } as Record<string, string>)}
-            onChange={(e) => {
-              const files = Array.from(e.target.files ?? []);
-              e.target.value = "";
-              if (files.length) void handleUploadFiles(pickSupported(files));
-            }}
-          />
-          <button
-            className="btn"
-            type="button"
-            disabled={uploading}
-            onClick={() => fileRef.current?.click()}
-          >
-            上传文件
-          </button>
-          <button
-            className="btn"
-            type="button"
-            disabled={uploading}
-            onClick={() => dirRef.current?.click()}
-          >
-            {uploading ? "解析入库中…" : "上传文件夹"}
-          </button>
         </div>
       </div>
-
-      {progress.length > 0 && (
-        <div className="stale-banner" role="status">
-          <span className="badge primary">入库进度</span>
-          {progress[progress.length - 1]}
-        </div>
-      )}
 
       <div className="stabs">
         {TABS.map((t) => (

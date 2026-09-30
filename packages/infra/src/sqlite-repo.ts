@@ -24,6 +24,7 @@ import type {
   Message,
   Scenario,
   ScenarioMaterial,
+  ScenarioLinkedLine,
   StageData,
   QualityGate,
   Knowledge,
@@ -111,6 +112,15 @@ function runMigrations(db: Database.Database): void {
   const sqlPath = resolve(__dirname, "sql", "001_init.sql");
   const sql = readFileSync(sqlPath, "utf-8");
   db.exec(sql);
+  // 存量库增量升级：001 的 CREATE IF NOT EXISTS 不会给已存在的表补列，幂等 ALTER 兜底
+  const cols = db.pragma("table_info(product_line)") as { name: string }[];
+  if (!cols.some((c) => c.name === "scenario_id")) {
+    db.exec("ALTER TABLE product_line ADD COLUMN scenario_id TEXT");
+  }
+  const scCols = db.pragma("table_info(scenario)") as { name: string }[];
+  if (!scCols.some((c) => c.name === "description")) {
+    db.exec("ALTER TABLE scenario ADD COLUMN description TEXT");
+  }
 }
 
 // ─── 通用仓库工厂 ──────────────────────────────────────────
@@ -506,6 +516,7 @@ export interface DbInstance {
   stageDataRepo: StageDataRepo;
   qualityGateRepo: QualityGateRepo;
   scenarioMaterialRepo: Repo<ScenarioMaterial>;
+  scenarioLinkedLineRepo: Repo<ScenarioLinkedLine>;
   knowledgeRepo: KnowledgeRepo;
 }
 
@@ -542,6 +553,7 @@ export function createDb(dbPath?: string): DbInstance {
     stageDataRepo: createStageDataRepo(db),
     qualityGateRepo: createQualityGateRepo(db),
     scenarioMaterialRepo: createRepo<ScenarioMaterial>(db, "scenario_material"),
+    scenarioLinkedLineRepo: createRepo<ScenarioLinkedLine>(db, "scenario_linked_line"),
     knowledgeRepo: createKnowledgeRepo(db),
   };
 }

@@ -38,6 +38,10 @@ export type Project = {
   /** 当前所处阶段 0-8 */
   stage: number;
   productLine: string;
+  /** 场景描述（分析锚 v1.11） */
+  description?: string;
+  /** 场景专属资料库 id（联真模式 v1.10：场景内上传落这里） */
+  product_line_id?: string;
   conversations: Conversation[];
 }
 

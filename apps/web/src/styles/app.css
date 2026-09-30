@@ -1052,6 +1052,12 @@ td.ed {
 }
 
 /* 输入栏：实底白色（T2.3 需求，较 v9 半透明底改为实底） */
+/* 抽屉内状态提示（梳理中等瞬时状态） */
+.conv-status {
+  color: var(--ct2);
+  font-style: normal;
+}
+
 .conv-input {
   display: flex;
   gap: var(--s2);
@@ -1650,6 +1656,33 @@ td.ed {
   align-items: center;
   gap: var(--s2);
   flex-wrap: wrap;
+}
+
+/* 材料上传组件（资料库/项目工作台共用）：按钮组 + 提示条 */
+.material-upload {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--s2);
+}
+
+/* 场景资料来源条：专属库 + 引用通用库勾选 */
+.material-sources {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  flex-wrap: wrap;
+  padding: var(--s2) var(--s5);
+  border-bottom: 1px solid rgba(var(--cb-rgb), 0.5);
+  font-size: var(--txs);
+}
+
+.ms-check {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s1);
+  color: var(--ct);
+  cursor: pointer;
 }
 
 .model-pick-list {

@@ -2,7 +2,8 @@
  * @scene/infra — 文档解析器（doc-parser）
  *
  * 根据文件扩展名自动选择解析库：
- * - .pdf  → unpdf（纯文本，表格由 LLM 后处理）
+ * - .pdf  → unpdf（纯文本，表格由 LLM 后处理）；图片型（扫描）PDF
+ *           无文本层时自动走 macOS Vision 识别（scripts/setup-ocr.sh 安装）
  * - .docx → mammoth（HTML output → 正则提取 table）
  * - .xlsx → exceljs（直接映射行列）
  * - .pptx → jszip + XML（提取 slide 文本，表格 TODO）
@@ -10,8 +11,10 @@
  * @module doc-parser
  */
 
+import { spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
-import { extname } from "node:path";
+import { extname, join } from "node:path";
 
 /** 解析后的表格结构 */
 export interface ParsedTable {
@@ -60,7 +63,7 @@ export async function parseDocument(filePath: string): Promise<ParseResult> {
 
   switch (ext) {
     case ".pdf":
-      return parsePdf(buffer);
+      return parsePdf(buffer, filePath);
     case ".docx":
       return parseDocx(buffer);
     case ".xlsx":
@@ -73,9 +76,14 @@ export async function parseDocument(filePath: string): Promise<ParseResult> {
   }
 }
 
-// ── PDF：unpdf ─────────────────────────────────────────────
+// ── PDF：unpdf + 扫描件 macOS Vision 识别回退 ──────────────
 
-async function parsePdf(buffer: Buffer): Promise<ParseResult> {
+/** 扫描件判定阈值：去空白后文本不足此数视为无文本层（图片型 PDF） */
+const SCANNED_TEXT_THRESHOLD = 10;
+/** 单文件识别超时（ms）：40 页上限下足够，防卡死 */
+const OCR_TIMEOUT_MS = 180_000;
+
+async function parsePdf(buffer: Buffer, filePath: string): Promise<ParseResult> {
   const { extractText } = await import("unpdf");
   // unpdf 要求 Uint8Array，不接受 Buffer
   const uint8 = new Uint8Array(buffer);
@@ -85,14 +93,64 @@ async function parsePdf(buffer: Buffer): Promise<ParseResult> {
   const text = Array.isArray(result.text)
     ? result.text.join("\n")
     : String(result.text);
+  const pageCount = result.totalPages;
+
+  // 图片型（扫描）PDF 无文本层：走 macOS Vision 识别（用户拍板路线）
+  if (text.replace(/\s/g, "").length < SCANNED_TEXT_THRESHOLD && (pageCount ?? 0) > 0) {
+    return { text: ocrScannedPdf(filePath), tables: [], metadata: { pageCount } };
+  }
 
   return {
     text,
     tables: [], // PDF 无原生表格结构，由 LLM 后处理
     metadata: {
-      pageCount: result.totalPages,
+      pageCount,
     },
   };
+}
+
+/**
+ * 调用 macOS Vision 识别助手（scripts/ocr_pdf.py，系统「实况文本」引擎）。
+ *
+ * @param filePath - 扫描件 PDF 绝对路径
+ * @returns 逐页识别文本
+ * @throws 组件未安装或识别失败时抛出可执行的中文错误
+ */
+function ocrScannedPdf(filePath: string): string {
+  const root = process.cwd();
+  const python =
+    process.env["SCENE_OCR_PYTHON"] ?? join(root, "scripts", ".venv-ocr", "bin", "python");
+  const helper = join(root, "scripts", "ocr_pdf.py");
+  if (!existsSync(python) || !existsSync(helper)) {
+    throw new Error(
+      "图片型（扫描）PDF 需要文字识别组件（macOS Vision）：请先运行 scripts/setup-ocr.sh 后重试",
+    );
+  }
+  const r = spawnSync(python, [helper, filePath], {
+    encoding: "utf-8",
+    timeout: OCR_TIMEOUT_MS,
+    maxBuffer: 64 * 1024 * 1024,
+  });
+  if (r.status !== 0) {
+    throw new Error(
+      `图片型 PDF 识别失败：${(r.stderr || r.stdout || "未知原因").trim().slice(0, 200)}`,
+    );
+  }
+  try {
+    const out = JSON.parse(r.stdout) as Record<string, { text?: string; error?: string }>;
+    const entry = out[filePath];
+    if (entry?.error) throw new Error(entry.error);
+    const text = entry?.text ?? "";
+    if (!text.trim()) {
+      throw new Error("图片型 PDF 识别结果为空：可能为纯图形页或分辨率过低");
+    }
+    return text;
+  } catch (e) {
+    if (e instanceof Error && (e.message.startsWith("图片型") || e.message.includes("识别结果"))) {
+      throw e;
+    }
+    throw new Error(`图片型 PDF 识别输出无法解析：${e instanceof Error ? e.message : String(e)}`);
+  }
 }
 
 // ── Word：mammoth ──────────────────────────────────────────

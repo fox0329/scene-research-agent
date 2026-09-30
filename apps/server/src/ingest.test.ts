@@ -188,6 +188,7 @@ function createMockDb(): DbInstance {
     messageRepo: {} as DbInstance["messageRepo"],
     stageDataRepo: {} as DbInstance["stageDataRepo"],
     qualityGateRepo: {} as DbInstance["qualityGateRepo"],
+    scenarioLinkedLineRepo: { list: () => [], insert: vi.fn(), getById: vi.fn(), update: vi.fn(), deleteById: vi.fn() },
     scenarioMaterialRepo: createMockRepo(),
     knowledgeRepo: { list: () => [] } as unknown as DbInstance["knowledgeRepo"],
   };

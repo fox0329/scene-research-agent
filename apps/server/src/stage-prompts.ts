@@ -100,6 +100,7 @@ const STAGE1_SYSTEM = `你是场景落地分析助手，专注于门槛筛查（
 
 ### 表1-1 场景概述
 字段：scene_name(场景名称), customer_type(客户类型), use_case(核心用途), entry_point(切入点), value_proposition(价值主张)
+注意：场景要素以【场景锚】为唯一事实来源整理推导；材料仅作补充。没有依据的字段填「未提供」，禁止臆造客户、用途与价值主张。
 必填：scene_name, customer_type, use_case, entry_point, value_proposition
 
 ### 表1-2 角色与认证
@@ -514,38 +515,39 @@ export interface StagePrompt {
 export function buildStagePrompt(
   stage: StageId,
   upstreamData: Record<string, unknown>,
+  scenario?: { name: string; description?: string | null },
 ): StagePrompt {
   switch (stage) {
     case 0:
-      return buildStage0Prompt(upstreamData);
+      return buildStage0Prompt(upstreamData, scenario);
     case 1:
-      return buildStage1Prompt(upstreamData);
+      return buildStage1Prompt(upstreamData, scenario);
     case 2:
-      return buildStage2Prompt(upstreamData);
+      return buildStage2Prompt(upstreamData, scenario);
     case 3:
       return buildGenericStagePrompt(3, STAGE3_SYSTEM, STAGE3_OUTPUT_CONTRACT, upstreamData, [
         "阶段 0-2 全部产出（产品资料 M1-M6、表1-1 至 1-5、表2-1 至 2-8）",
-      ]);
+      ], scenario);
     case 4:
       return buildGenericStagePrompt(4, STAGE4_SYSTEM, STAGE4_OUTPUT_CONTRACT, upstreamData, [
         "阶段 0 的 M3/M4/M5 + 阶段 1-3 全部产出（重点：表3-8 缺口、表3-6 替代方案）",
-      ]);
+      ], scenario);
     case 5:
       return buildGenericStagePrompt(5, STAGE5_SYSTEM, STAGE5_OUTPUT_CONTRACT, upstreamData, [
         "阶段 0-4 全部产出（重点：表2-4/2-6 约束、表3-6 替代方案、表4-3 匹配矩阵、M6 费率基准）",
-      ]);
+      ], scenario);
     case 6:
       return buildGenericStagePrompt(6, STAGE6_SYSTEM, STAGE6_OUTPUT_CONTRACT, upstreamData, [
         "阶段 0-5 全部产出（重点：表5-5 成本估算、表5-6 价格对照、表4-3 匹配矩阵）",
-      ]);
+      ], scenario);
     case 7:
       return buildGenericStagePrompt(7, STAGE7_SYSTEM, STAGE7_OUTPUT_CONTRACT, upstreamData, [
         "阶段 0-6 全部产出（重点：表4-1 能力底账、表3-8 需求缺口、表6-6 双口径）",
-      ]);
+      ], scenario);
     case 8:
       return buildGenericStagePrompt(8, STAGE8_SYSTEM, STAGE8_OUTPUT_CONTRACT, upstreamData, [
         "阶段 0-7 全部产出（报告数字一律引用上游表结果，不重算）",
-      ]);
+      ], scenario);
     default:
       throw new Error(`阶段 ${stage} 的 prompt 模板尚未实现`);
   }
@@ -572,27 +574,27 @@ export function getStageOutputContract(stage: StageId): Record<string, unknown> 
 
 // ─── 内部构建函数 ──────────────────────────────────────────
 
-function buildStage0Prompt(upstreamData: Record<string, unknown>): StagePrompt {
+function buildStage0Prompt(upstreamData: Record<string, unknown>, scenario?: { name: string; description?: string | null }): StagePrompt {
   const user = buildUserPromptSection(0, upstreamData, [
     "M1 产品型号", "M2 规格参数", "M3 能力清单",
     "M4 边界声明", "M5 已知限制", "M6 成本单价",
     "O1-O6 可选材料",
-  ]);
+  ], scenario);
   return { system: STAGE0_SYSTEM, user, outputContract: STAGE0_OUTPUT_CONTRACT };
 }
 
-function buildStage1Prompt(upstreamData: Record<string, unknown>): StagePrompt {
+function buildStage1Prompt(upstreamData: Record<string, unknown>, scenario?: { name: string; description?: string | null }): StagePrompt {
   const user = buildUserPromptSection(1, upstreamData, [
     "M1 产品型号", "M2 规格参数", "M3 能力清单",
     "M4 边界声明", "M5 已知限制", "M6 成本单价",
-  ]);
+  ], scenario);
   return { system: STAGE1_SYSTEM, user, outputContract: STAGE1_OUTPUT_CONTRACT };
 }
 
-function buildStage2Prompt(upstreamData: Record<string, unknown>): StagePrompt {
+function buildStage2Prompt(upstreamData: Record<string, unknown>, scenario?: { name: string; description?: string | null }): StagePrompt {
   const user = buildUserPromptSection(2, upstreamData, [
     "M1-M6 产品资料", "表1-1 至 表1-5 阶段 1 门槛筛查结果",
-  ]);
+  ], scenario);
   return { system: STAGE2_SYSTEM, user, outputContract: STAGE2_OUTPUT_CONTRACT };
 }
 
@@ -603,8 +605,9 @@ function buildGenericStagePrompt(
   outputContract: Record<string, unknown>,
   upstreamData: Record<string, unknown>,
   sourceLabels: string[],
+  scenario?: { name: string; description?: string | null },
 ): StagePrompt {
-  const user = buildUserPromptSection(stage, upstreamData, sourceLabels);
+  const user = buildUserPromptSection(stage, upstreamData, sourceLabels, scenario);
   return { system, user, outputContract };
 }
 
@@ -616,8 +619,27 @@ function buildUserPromptSection(
   stage: StageId,
   upstreamData: Record<string, unknown>,
   sourceLabels: string[],
+  scenario?: { name: string; description?: string | null },
 ): string {
   const parts: string[] = [];
+
+  // 【场景锚】v1.11：全部产出必须围绕场景。此前提示词只喂数据不给场景本体，
+  // 模型无锚瞎写（用户反馈「整个阶段分析是乱的」）——此块为硬性分析锚。
+  parts.push("【场景锚 · 全部产出必须围绕本场景】");
+  parts.push(`场景名称：${scenario?.name?.trim() || "（未提供）"}`);
+  parts.push(
+    `场景描述（场景长什么样、范围）：${
+      scenario?.description?.trim()
+      || "（未提供——只允许基于材料中与场景名称直接相关的内容分析；禁止臆造客户、用途与价值主张；缺失字段如实标注「未提供」）"
+    }`,
+  );
+  parts.push("");
+  parts.push(`硬规则（逐条遵守）：
+1. 只分析与本场景直接相关的内容；材料中与场景无关的产品、参数、能力一律不引入（宁缺毋滥）。
+2. 材料覆盖不到的信息如实标注「未提供」，禁止编造或推测细节。
+3. 每条产出都要能回答「这对本场景意味着什么」；对不上的条目直接丢弃。
+4. 场景要素（场景名称/客户类型/核心用途/价值主张等）以【场景锚】为唯一事实来源整理推导，材料仅作补充。`);
+  parts.push("");
 
   parts.push(`以下是阶段 ${stage} 分析所需的上游数据摘要。`);
   parts.push(`数据来源：${sourceLabels.join("、")}`);

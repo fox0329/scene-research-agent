@@ -12,6 +12,8 @@ PRAGMA foreign_keys = ON;
 CREATE TABLE IF NOT EXISTS product_line (
   id          TEXT PRIMARY KEY,
   name        TEXT NOT NULL UNIQUE,
+  -- 归属场景：NULL=通用资料库（共享），非空=该场景专属资料库（v1.10）
+  scenario_id TEXT,
   created_at  TEXT NOT NULL,
   updated_at  TEXT NOT NULL
 );
@@ -137,9 +139,21 @@ CREATE INDEX IF NOT EXISTS idx_optional_material_line_category
 -- 第二层 · 场景分析项目（6 表）
 -- ═══════════════════════════════════════════════════════════════
 
+-- 场景引用的通用资料库（多对多；引用不拷贝，分析时与专属库合并，v1.10）
+CREATE TABLE IF NOT EXISTS scenario_linked_line (
+  id              TEXT PRIMARY KEY,
+  scenario_id     TEXT NOT NULL REFERENCES scenario(id),
+  product_line_id TEXT NOT NULL REFERENCES product_line(id),
+  created_at      TEXT NOT NULL,
+  updated_at      TEXT NOT NULL,
+  UNIQUE (scenario_id, product_line_id)
+);
+
 CREATE TABLE IF NOT EXISTS scenario (
   id               TEXT PRIMARY KEY,
   name             TEXT NOT NULL,
+  -- 场景描述（分析锚 v1.11）
+  description      TEXT,
   product_line_id  TEXT NOT NULL REFERENCES product_line(id),
   status           TEXT NOT NULL CHECK (status IN ('进行中','已完成','已归档')),
   current_stage    INTEGER NOT NULL CHECK (current_stage BETWEEN 0 AND 8),

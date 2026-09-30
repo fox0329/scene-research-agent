@@ -124,3 +124,26 @@ function buildStage7() {
 function buildStage8() {
   return buildStagePrompt(8, {});
 }
+
+describe("场景锚（v1.11）", () => {
+  it("user prompt 注入场景名称/描述与硬规则；无描述时给防臆造指引", () => {
+    const withDesc = buildStagePrompt(1, {}, {
+      name: "智慧水务-漏损监测",
+      description: "客户是城市自来水公司；目标是漏损实时监测预警。",
+    });
+    expect(withDesc.user).toContain("【场景锚");
+    expect(withDesc.user).toContain("智慧水务-漏损监测");
+    expect(withDesc.user).toContain("城市自来水公司");
+    expect(withDesc.user).toContain("只分析与本场景直接相关的内容");
+
+    const noDesc = buildStagePrompt(1, {}, { name: "X场景", description: "" });
+    expect(noDesc.user).toContain("（未提供——只允许基于材料中与场景名称直接相关的内容分析");
+    expect(noDesc.user).toContain("禁止臆造");
+  });
+
+  it("表1-1 场景要素以场景锚为准，禁止臆造", () => {
+    const p = buildStagePrompt(1, {}, { name: "S", description: "D" });
+    expect(p.system).toContain("以【场景锚】为唯一事实来源整理推导");
+    expect(p.system).toContain("禁止臆造客户、用途与价值主张");
+  });
+});

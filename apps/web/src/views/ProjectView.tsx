@@ -12,6 +12,8 @@ import { RealStagePanel } from "./RealStagePanel";
 import { api } from "../api";
 import { useAsync } from "../hooks/useAsync";
 import { useToast } from "../components/Toast";
+import { MaterialUpload } from "../components/MaterialUpload";
+import { MaterialSourcesBar } from "./MaterialSourcesBar";
 import type { DecisionSnapshot } from "../components/decision-snapshot";
 import {
   STAGES,
@@ -30,6 +32,8 @@ interface ProjectViewProps {
   onNewProject?: () => void;
   /** 右栏决策支撑快照（联真模式，T5.6） */
   onDecisionSnapshot?: (snap: DecisionSnapshot | null) => void;
+  /** 主动弹出对话抽屉（v1.14）：定义/澄清生成后让用户直接对话 */
+  onOpenConversation?: (convId?: string) => void;
 }
 
 /* ═══ 阶段 3-8：占位（仅演示模式） ═══ */
@@ -73,6 +77,7 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
   live,
   onProjectsChanged,
   onDecisionSnapshot,
+  onOpenConversation,
 }) => {
   const [activeStage, setActiveStage] = useState(project.stage);
   const { showToast } = useToast();
@@ -109,9 +114,41 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
     }
   }, [live, project.id, activeStage, showToast, onProjectsChanged]);
 
-  const handleUpload = useCallback(() => {
-    showToast(live ? "请前往左下「产品资料库」上传材料并解析入库" : "演示模式：上传入口仅为示意");
-  }, [live, showToast]);
+
+  /** 场景澄清（v1.12）：系统在对话里提出需要确认的问题——不许不管场景蒙头分析 */
+  const [clarifying, setClarifying] = useState(false);
+  const runClarify = useCallback(async () => {
+    setClarifying(true);
+    try {
+      const r = await api.clarifyScenario(project.id);
+      if (r.need_clarification) {
+        onOpenConversation?.(r.conversation_id);
+        showToast(`已在对话中提出 ${r.questions.length} 个场景澄清问题，请直接在对话里回答`);
+      } else {
+        showToast(r.note ?? "场景信息已充分，无需澄清");
+      }
+    } catch (err: unknown) {
+      showToast(`澄清失败：${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setClarifying(false);
+    }
+  }, [project.id, showToast, onOpenConversation]);
+
+  /** 编辑场景描述（分析锚）：改后即影响后续全部阶段分析 */
+  const editDescription = useCallback(async () => {
+    const next = window.prompt(
+      "场景描述（分析锚）· 客户/行业、要解决的问题、目标与边界",
+      project.description ?? "",
+    );
+    if (next === null) return;
+    try {
+      await api.patchProject(project.id, { description: next.trim() });
+      showToast("场景描述已保存，后续分析将围绕它展开");
+      onProjectsChanged?.();
+    } catch (err: unknown) {
+      showToast(`保存失败：${err instanceof Error ? err.message : String(err)}`);
+    }
+  }, [project.id, project.description, showToast, onProjectsChanged]);
 
   /** 交付物双口径导出（T5.6）：真实链路落服务端 exports/，toast 回显路径 */
   const [exporting, setExporting] = useState(false);
@@ -231,7 +268,20 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
           <span className={`badge ${badgeCls}`}>{badgeText}</span>
         </div>
         <div className="pga">
-          <button className="btn" type="button" onClick={handleUpload}>上传材料</button>
+          {live && project.product_line_id ? (
+            <MaterialUpload
+              lineId={project.product_line_id}
+              onDone={() => onProjectsChanged?.()}
+            />
+          ) : (
+            <button
+              className="btn"
+              type="button"
+              onClick={() => showToast("演示模式：上传入口仅为示意")}
+            >
+              上传材料
+            </button>
+          )}
           <button className="btn" type="button" onClick={() => void handleExport()} disabled={exporting}>
             {exporting ? "导出中…" : "导出交付物"}
           </button>
@@ -240,6 +290,36 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
           </button>
         </div>
       </div>
+
+      {/* 场景锚（v1.11）：分析的事实锚点——全部阶段产出围绕它 */}
+      {live && (
+        <div className="material-sources" role="group" aria-label="场景锚">
+          <span className="badge primary">场景锚</span>
+          <span className="provider-item-meta">
+            {(project.description || "").trim()
+              ? project.description
+              : "⚠ 场景描述未填——分析将缺少锚点，产出易发散（点右侧填写）"}
+          </span>
+          <button
+            className="btn btn-sm"
+            type="button"
+            onClick={() => void editDescription()}
+          >
+            编辑描述
+          </button>
+          <button
+            className="btn btn-sm"
+            type="button"
+            disabled={clarifying}
+            onClick={() => void runClarify()}
+          >
+            {clarifying ? "生成问题中…" : "场景澄清"}
+          </button>
+        </div>
+      )}
+
+      {/* 资料来源（v1.10）：专属库 + 引用通用库，分析时合并 */}
+      {live && <MaterialSourcesBar projectId={project.id} ownLineId={project.product_line_id} onChanged={onProjectsChanged} />}
 
       {/* 资料失效横幅（上游表被改动，本阶段结果需重算） */}
       {live && stale.status === "ok" && stale.data?.banner && (

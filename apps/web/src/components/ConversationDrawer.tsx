@@ -24,6 +24,10 @@ interface ConversationDrawerProps {
   conversationId?: string | null;
   /** 自动建会话成功回调：父级刷新列表并选中 */
   onConversationCreated?: (conv: { id: string; title: string }) => void;
+  /** 外部唤起信号（自增计数）：场景定义/澄清生成后主动弹出对话框让用户直接对话 */
+  openSignal?: number;
+  /** 弹出后立即显示的状态提示（如「场景范围梳理中…」），生成完成后由父级清除 */
+  statusHint?: string | null;
 }
 
 /** ISO 时间 → HH:MM（无效值给空串，气泡时间行留白） */
@@ -56,6 +60,8 @@ export const ConversationDrawer: React.FC<ConversationDrawerProps> = ({
   projectId = null,
   conversationId = null,
   onConversationCreated,
+  openSignal = 0,
+  statusHint = null,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [height, setHeight] = useState(DRAWER_DEFAULT_HEIGHT);
@@ -77,6 +83,15 @@ export const ConversationDrawer: React.FC<ConversationDrawerProps> = ({
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   const open = useCallback(() => setIsOpen(true), []);
+
+  /* 外部唤起（v1.14）：生成场景定义/澄清问题后主动弹出，用户直接开聊 */
+  useEffect(() => {
+    if (openSignal > 0) {
+      setIsOpen(true);
+      inputRef.current?.focus();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openSignal]);
 
   const close = useCallback(() => {
     setIsOpen(false);
@@ -285,7 +300,12 @@ export const ConversationDrawer: React.FC<ConversationDrawerProps> = ({
         style={{ height: isOpen ? height : 0 }}
       >
         <div className="conv-stream" ref={streamRef} role="log" aria-live="polite">
-          {live && allMessages.length === 0 ? (
+          {live && statusHint ? (
+            <div className="conv-hint conv-status" role="status">
+              {statusHint}
+            </div>
+          ) : null}
+          {live && !statusHint && allMessages.length === 0 ? (
             <div className="conv-hint">
               {projectId
                 ? "输入问题或指令，发送后自动建立会话并流式回复"
