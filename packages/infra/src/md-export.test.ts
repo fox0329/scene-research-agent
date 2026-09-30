@@ -1,581 +1,256 @@
 /**
- * @scene/infra — 交付物导出测试
+ * @scene/infra — 交付物导出测试（v1.4 装配式）
  *
  * 覆盖：
- * - 内部报告生成（完整数据 + 所有章节）
- * - 对外报告生成（不含敏感信息）
- * - 文件命名规则
- * - 空数据降级（骨架生成）
+ * - 内部报告 = 阶段总结装配 + 附录（来源索引、信息覆盖概览）
+ * - 对外材料 = 章节 ← 表映射，**只渲染中栏列**
+ * - **两份文档都不含建议与判断**（这是本次重写的核心约束）
+ * - 对外材料不含内部信息（竞品身份表、证据级标签、利润池）
+ * - 空数据降级、文件命名规则
  */
 
 import { describe, it, expect } from "vitest";
 import { exportDeliverables, exportFileName } from "./md-export.js";
-import type { ExportData } from "@scene/contract";
+import type { DeliverableInput, StageData } from "@scene/contract";
 
 // ─── 测试数据构造 ────────────────────────────────────────────
 
-function makeExportData(): ExportData {
+function row(
+  table_code: string,
+  fields: Record<string, unknown>,
+  extra: Partial<StageData> = {},
+): StageData {
+  return {
+    id: `sd-${table_code}-${Math.random().toString(36).slice(2, 8)}`,
+    scenario_id: "s1",
+    stage: 1 as StageData["stage"],
+    table_code: table_code as StageData["table_code"],
+    row: fields,
+    is_stale: false,
+    source: "《白皮书》p.3",
+    source_type: "AI提取",
+    created_at: "2026-09-01",
+    updated_at: "2026-09-01",
+    ...extra,
+  };
+}
+
+function makeInput(): DeliverableInput {
   return {
     scenario: {
       id: "s1",
-      name: "智慧会议室",
+      name: "智慧水务",
       product_line_id: "pl-iot",
       status: "进行中",
-      current_stage: 8,
+      current_stage: 6 as never,
       created_at: "2026-09-01",
       updated_at: "2026-09-15",
     },
-    libraryData: {
-      products: [
-        {
-          id: "p1",
-          product_line_id: "pl-iot",
-          model: "IOT-3000",
-          name: "物联网关",
-          status: "在售",
-          launch_date: "2025-06",
-          position_desc: "面向智慧建筑场景的边缘网关",
-          created_at: "",
-          updated_at: "",
-        },
-      ],
-      capabilities: [
-        {
-          id: "c1",
-          product_line_id: "pl-iot",
-          domain: "数据采集",
-          name: "温湿度采集",
-          description: "实时采集环境温湿度数据",
-          maturity: "已交付",
-          dependency: "传感器",
-          created_at: "",
-          updated_at: "",
-        },
-        {
-          id: "c2",
-          product_line_id: "pl-iot",
-          domain: "设备管理",
-          name: "设备接入",
-          description: "支持多协议设备接入",
-          maturity: "组件具备",
-          dependency: "MQTT",
-          created_at: "",
-          updated_at: "",
-        },
-        {
-          id: "c3",
-          product_line_id: "pl-iot",
-          domain: "数据分析",
-          name: "能耗分析",
-          description: "能耗数据统计分析",
-          maturity: "在研",
-          dependency: "数据仓库",
-          created_at: "",
-          updated_at: "",
-        },
-      ],
-      boundaries: [
-        {
-          id: "b1",
-          product_line_id: "pl-iot",
-          description: "不承担安防监控",
-          reason: "无安防资质",
-          has_plan: "无",
-          response: "建议客户独立采购",
-          owner: "产品部",
-          created_at: "",
-          updated_at: "",
-        },
-      ],
-      limitations: [
-        {
-          id: "l1",
-          product_line_id: "pl-iot",
-          product_name: "IOT-3000",
-          description: "高温环境下精度下降",
-          impact: "低",
-          fix_status: "硬件限制",
-          external_visible: "不可提",
-          owner: "产品部",
-          created_at: "",
-          updated_at: "",
-        },
-      ],
-      costRates: [
-        {
-          id: "cr1",
-          product_line_id: "pl-iot",
-          category: "实施",
-          item: "安装部署",
-          rate: 800,
-          unit: "元/人天",
-          standard_hours: 8,
-          data_source: "历史项目",
-          created_at: "",
-          updated_at: "",
-        },
-        {
-          id: "cr2",
-          product_line_id: "pl-iot",
-          category: "实施",
-          item: "现场调试",
-          rate: 1200,
-          unit: "元/人天",
-          standard_hours: 4,
-          data_source: "历史项目",
-          created_at: "",
-          updated_at: "",
-        },
-      ],
-    },
-    stageData: [
-      // 阶段 1 — 门槛筛查
+    stageSummaries: [
       {
-        id: "sd1",
-        scenario_id: "s1",
+        stage: 0,
+        title: "材料解析与入库",
+        markdown: "# 阶段 0 · 材料解析与入库 — 总结\n\n## 一、信息摘要\n\n共获得 7 张表 / 12 行信息。",
+      },
+      {
         stage: 1,
-        table_code: "表1-3",
-        row: {
-          barrier: "协议兼容",
-          currentStatus: "主流协议已支持",
-          solution: "协议适配层",
-        },
-        is_stale: false,
-        source_type: "AI提取",
-        created_at: "",
-        updated_at: "",
-      },
-      // 阶段 2 — 认识场景
-      {
-        id: "sd2",
-        scenario_id: "s1",
-        stage: 2,
-        table_code: "表2-1",
-        row: {
-          indicator: "国内智慧建筑市场规模",
-          value: "5000 亿元（2025）",
-          source: "行业报告",
-        },
-        source_type: "AI提取",
-        is_stale: false,
-        created_at: "",
-        updated_at: "",
-      },
-      {
-        id: "sd3",
-        scenario_id: "s1",
-        stage: 2,
-        table_code: "表2-4",
-        row: {
-          role: "设备商",
-          margin: "20-30%",
-          representative: "主流厂商",
-        },
-        source_type: "AI推断",
-        is_stale: false,
-        created_at: "",
-        updated_at: "",
-      },
-      {
-        id: "sd4",
-        scenario_id: "s1",
-        stage: 2,
-        table_code: "表2-5",
-        row: {
-          form: "软硬一体",
-          status: "主流方案",
-          position: "边缘网关",
-        },
-        source_type: "AI提取",
-        is_stale: false,
-        created_at: "",
-        updated_at: "",
-      },
-      {
-        id: "sd5",
-        scenario_id: "s1",
-        stage: 2,
-        table_code: "表2-6",
-        row: {
-          name: "传统方案",
-          cost: "高",
-          benefit: "基础功能",
-          advantage: "我方更灵活",
-        },
-        source_type: "AI推断",
-        is_stale: false,
-        created_at: "",
-        updated_at: "",
-      },
-      // 阶段 3 — 理解商业
-      {
-        id: "sd6",
-        scenario_id: "s1",
-        stage: 3,
-        table_code: "表3-1",
-        row: {
-          scenario: "大型会议",
-          customer: "企业总部",
-          value: "效率提升 40%",
-        },
-        source_type: "用户确认",
-        is_stale: false,
-        created_at: "",
-        updated_at: "",
-      },
-      // 阶段 4 — 匹配与决策
-      {
-        id: "sd7",
-        scenario_id: "s1",
-        stage: 4,
-        table_code: "表4-5",
-        row: {
-          risk: "交付周期长",
-          impact: "中",
-          response: "标准化流程",
-        },
-        source_type: "AI推断",
-        is_stale: false,
-        created_at: "",
-        updated_at: "",
-      },
-      // 阶段 5 — 方案与实现
-      {
-        id: "sd8",
-        scenario_id: "s1",
-        stage: 5,
-        table_code: "表5-5",
-        row: {
-          item: "硬件成本",
-          amount: "5000 元/间",
-        },
-        source_type: "AI提取",
-        is_stale: false,
-        created_at: "",
-        updated_at: "",
-      },
-      // 阶段 6 — 价值与验证
-      {
-        id: "sd9",
-        scenario_id: "s1",
-        stage: 6,
-        table_code: "表6-3",
-        row: {
-          item: "年节省人工",
-          value: "12 万元",
-        },
-        source_type: "用户确认",
-        is_stale: false,
-        created_at: "",
-        updated_at: "",
-      },
-      // 阶段 7 — 总结沉淀
-      {
-        id: "sd10",
-        scenario_id: "s1",
-        stage: 7,
-        table_code: "表7-1",
-        row: {
-          task: "试点方案评审",
-          owner: "解决方案部",
-          time: "2 周内",
-        },
-        source_type: "用户确认",
-        is_stale: false,
-        created_at: "",
-        updated_at: "",
+        title: "认识场景（含门槛与合规）",
+        markdown: "# 阶段 1 · 认识场景（含门槛与合规） — 总结\n\n## 五、信息缺口与待补充\n\n- 表1-2 尚无数据",
       },
     ],
-    qualityGates: [
-      {
-        id: "qg1",
-        scenario_id: "s1",
-        stage: 2,
-        item_no: "1",
-        title: "来源抽查≥3条",
-        result: "通过",
-        detail: "抽查 5 条来源，内容一致",
-        evidence_refs: {},
-        checked_at: "2026-09-15",
-      },
-      {
-        id: "qg2",
-        scenario_id: "s1",
-        stage: 4,
-        item_no: "2",
-        title: "能力匹配矩阵完整",
-        result: "不通过",
-        detail: "需补充能耗分析验证数据",
-        evidence_refs: {},
-        checked_at: "2026-09-15",
-      },
+    stageData: [
+      row("表1-1", { item: "场景名称", content: "智慧水务" }),
+      row("表1-1", { item: "客户类型/行业", content: "市政水务集团" }),
+      row("表1-1", { item: "覆盖什么", content: "制水到输配" }),
+      row("表1-2", {
+        link: "制水",
+        is_digital: "可以联网采集",
+        can_touch: "可以碰",
+        our_role: "辅助",
+        description: "加药与过滤",
+      }),
+      row("表1-3", {
+        barrier_type: "技术",
+        barrier_name: "等保三级",
+        veto_holder: "",
+        criteria: "GB/T 22239",
+        current_status: "过得了",
+        judgment: "过得了",
+      }),
+      // 对外材料必须排除的表
+      row("表3-1", { link: "视频监控", gross_margin: "35%", representative: "海康/大华" }),
+      row("表3-4", {
+        dimension: "算法准确率",
+        our: "95%",
+        competitor_a: "海康",
+        competitor_b: "大华",
+        competitor_c: "",
+      }),
+      row("表5-1", {
+        layer: "边缘层",
+        components: "边缘网关",
+        interface: "Modbus",
+        integration: "协议转换",
+        boundary: "不承担安全责任",
+        interface_name: "",
+        type: "",
+        protocol: "",
+        effort: "",
+      }),
+      row("表6-1", {
+        benefit: "降低漏损",
+        metric: "漏损率",
+        baseline: "18%",
+        expected: "12%",
+        how_to_measure: "分区计量",
+        user_feeling: "水费下降",
+        evidence_level: "C",
+      }),
     ],
-    knowledge: [
-      {
-        id: "k1",
-        product_line_id: "pl-iot",
-        category: "竞品",
-        content: "竞品 A 在华东市场份额约 15%，主打低端方案",
-        source: "行业报告",
-        source_authority: "T2",
-        from_scenario_id: "s1",
-        created_at: "",
-      },
-      {
-        id: "k2",
-        product_line_id: "pl-iot",
-        category: "趋势",
-        content: "智慧建筑市场预计年增长率 12%",
-        source: "市场研究机构",
-        source_authority: "T2",
-        from_scenario_id: "s1",
-        created_at: "",
-      },
-    ],
+    generatedAt: "2026-09-25",
   };
 }
-
-function makeEmptyExportData(): ExportData {
-  return {
-    scenario: {
-      id: "s-empty",
-      name: "空场景",
-      product_line_id: "pl-empty",
-      status: "进行中",
-      current_stage: 1,
-      created_at: "",
-      updated_at: "",
-    },
-    libraryData: {
-      products: [],
-      capabilities: [],
-      boundaries: [],
-      limitations: [],
-      costRates: [],
-    },
-    stageData: [],
-    qualityGates: [],
-    knowledge: [],
-  };
-}
-
-// ─── 内部调研报告测试 ────────────────────────────────────────
-
-describe("exportDeliverables — 内部调研报告", () => {
-  it("应生成完整内部报告（含所有章节标题）", async () => {
-    const data = makeExportData();
-    const result = await exportDeliverables(data);
-
-    expect(result.internal_report).toContain("一、结论");
-    expect(result.internal_report).toContain("二、市场概况");
-    expect(result.internal_report).toContain("三、竞争格局");
-    expect(result.internal_report).toContain("四、我方能力匹配");
-    expect(result.internal_report).toContain("五、方案概要");
-    expect(result.internal_report).toContain("六、风险与前提条件");
-    expect(result.internal_report).toContain("七、下一步");
-    expect(result.internal_report).toContain("附录：证据链索引");
-  });
-
-  it("应包含标题与元数据", async () => {
-    const data = makeExportData();
-    const result = await exportDeliverables(data);
-
-    expect(result.internal_report).toContain("智慧会议室");
-    expect(result.internal_report).toContain("内部调研报告");
-    expect(result.internal_report).toContain("pl-iot");
-  });
-
-  it("应包含产品与能力数据", async () => {
-    const data = makeExportData();
-    const result = await exportDeliverables(data);
-
-    expect(result.internal_report).toContain("温湿度采集");
-    expect(result.internal_report).toContain("设备接入");
-    expect(result.internal_report).toContain("能耗分析");
-    expect(result.internal_report).toContain("竞争力评分");
-  });
-
-  it("应包含成本数据与风险", async () => {
-    const data = makeExportData();
-    const result = await exportDeliverables(data);
-
-    expect(result.internal_report).toContain("安装部署");
-    expect(result.internal_report).toContain("800");
-    expect(result.internal_report).toContain("交付周期长");
-    expect(result.internal_report).toContain("需补充能耗分析验证数据");
-  });
-
-  it("应包含证据链索引", async () => {
-    const data = makeExportData();
-    const result = await exportDeliverables(data);
-
-    expect(result.internal_report).toContain("证据链索引");
-    expect(result.internal_report).toContain("阶段数据");
-    expect(result.internal_report).toContain("知识库引用");
-    expect(result.internal_report).toContain("竞品");
-  });
-
-  it("应包含市场与竞争格局数据", async () => {
-    const data = makeExportData();
-    const result = await exportDeliverables(data);
-
-    expect(result.internal_report).toContain("5000 亿元");
-    expect(result.internal_report).toContain("设备商");
-    expect(result.internal_report).toContain("软硬一体");
-    expect(result.internal_report).toContain("传统方案");
-  });
-});
-
-// ─── 对外汇报材料测试 ────────────────────────────────────────
-
-describe("exportDeliverables — 对外汇报材料", () => {
-  it("应生成完整对外报告（含所有章节标题）", async () => {
-    const data = makeExportData();
-    const result = await exportDeliverables(data);
-
-    expect(result.external_report).toContain("一句话定位");
-    expect(result.external_report).toContain("解决什么问题");
-    expect(result.external_report).toContain("方案亮点");
-    expect(result.external_report).toContain("适用场景");
-    expect(result.external_report).toContain("投入与回报");
-    expect(result.external_report).toContain("为什么是我们");
-    expect(result.external_report).toContain("下一步");
-  });
-
-  it("不应包含证据级标签（A/B/C/D）", async () => {
-    const data = makeExportData();
-    const result = await exportDeliverables(data);
-
-    // 检查不在表格内容中出现证据级标签
-    // （注：章节标题本身不包含这些标签）
-    expect(result.external_report).not.toMatch(/\|.*[ABCD]级/);
-    expect(result.external_report).not.toContain("证据级");
-    expect(result.external_report).not.toContain("source_authority");
-  });
-
-  it("不应包含竞品名称", async () => {
-    const data = makeExportData();
-    const result = await exportDeliverables(data);
-
-    expect(result.external_report).not.toContain("竞品 A");
-    expect(result.external_report).not.toContain("竞品");
-  });
-
-  it("不应包含内部假设与风险", async () => {
-    const data = makeExportData();
-    const result = await exportDeliverables(data);
-
-    expect(result.external_report).not.toContain("C 级");
-    expect(result.external_report).not.toContain("假设");
-    expect(result.external_report).not.toContain("风险");
-    expect(result.external_report).not.toContain("不满足");
-    expect(result.external_report).not.toContain("证据链");
-  });
-
-  it("不应包含售价与成本细节", async () => {
-    const data = makeExportData();
-    const result = await exportDeliverables(data);
-
-    // 不应包含具体的单价数据（如 800 元/人天）
-    expect(result.external_report).not.toContain("800 元");
-    // 不应包含成本表内部细节
-    expect(result.external_report).not.toContain("安装部署");
-  });
-
-  it("应包含场景名称与定位", async () => {
-    const data = makeExportData();
-    const result = await exportDeliverables(data);
-
-    expect(result.external_report).toContain("智慧会议室");
-    expect(result.external_report).toContain("对外汇报材料");
-    expect(result.external_report).toContain("物联网关");
-    expect(result.external_report).toContain("面向智慧建筑");
-  });
-
-  it("应包含联系人占位", async () => {
-    const data = makeExportData();
-    const result = await exportDeliverables(data);
-
-    expect(result.external_report).toContain("联系人");
-    expect(result.external_report).toContain("待填写");
-  });
-});
-
-// ─── 文件命名规则测试 ────────────────────────────────────────
 
 describe("exportFileName", () => {
   it("内部报告文件名", () => {
-    expect(exportFileName("智慧会议室", "internal")).toBe("交付物-内部调研报告.md");
+    expect(exportFileName("智慧水务", "internal")).toBe("内部调研报告.md");
   });
 
   it("对外材料文件名", () => {
-    expect(exportFileName("智慧会议室", "external")).toBe("交付物-对外汇报材料.md");
+    expect(exportFileName("智慧水务", "external")).toBe("对外汇报材料.md");
   });
 
   it("不同场景名不影响文件名（命名规则固定）", () => {
-    expect(exportFileName("任意场景", "internal")).toBe("交付物-内部调研报告.md");
-    expect(exportFileName("任意场景", "external")).toBe("交付物-对外汇报材料.md");
+    expect(exportFileName("A", "internal")).toBe(exportFileName("B", "internal"));
   });
 });
 
-// ─── 空数据降级测试 ──────────────────────────────────────────
-
-describe("空数据降级", () => {
-  it("无阶段数据时仍生成完整内部报告骨架", async () => {
-    const data = makeEmptyExportData();
-    const result = await exportDeliverables(data);
-
-    expect(result.internal_report).toContain("一、结论");
-    expect(result.internal_report).toContain("二、市场概况");
-    expect(result.internal_report).toContain("三、竞争格局");
-    expect(result.internal_report).toContain("四、我方能力匹配");
-    expect(result.internal_report).toContain("五、方案概要");
-    expect(result.internal_report).toContain("六、风险与前提条件");
-    expect(result.internal_report).toContain("七、下一步");
-    expect(result.internal_report).toContain("附录：证据链索引");
+describe("exportDeliverables — 内部调研报告", () => {
+  it("头部含场景、日期与「不含任何建议或判断」声明", async () => {
+    const { internal_report } = await exportDeliverables(makeInput());
+    expect(internal_report).toContain("# 智慧水务 场景调研 — 内部调研报告");
+    expect(internal_report).toContain("**生成日期**：2026-09-25");
+    expect(internal_report).toContain("不含任何建议或判断");
+    // 场景锚派生副标题
+    expect(internal_report).toContain("市政水务集团 ｜ 制水到输配");
   });
 
-  it("无阶段数据时市场概况显示待补充", async () => {
-    const data = makeEmptyExportData();
-    const result = await exportDeliverables(data);
-
-    expect(result.internal_report).toContain("待补充");
+  it("正文由阶段总结装配（逐阶段标题 + 总结内容）", async () => {
+    const { internal_report } = await exportDeliverables(makeInput());
+    expect(internal_report).toContain("# 第 0 部分 · 材料解析与入库");
+    expect(internal_report).toContain("# 第 1 部分 · 认识场景（含门槛与合规）");
+    expect(internal_report).toContain("共获得 7 张表 / 12 行信息。");
+    expect(internal_report).toContain("表1-2 尚无数据");
   });
 
-  it("无阶段数据时仍生成完整对外报告骨架", async () => {
-    const data = makeEmptyExportData();
-    const result = await exportDeliverables(data);
-
-    expect(result.external_report).toContain("一句话定位");
-    expect(result.external_report).toContain("解决什么问题");
-    expect(result.external_report).toContain("方案亮点");
-    expect(result.external_report).toContain("适用场景");
-    expect(result.external_report).toContain("投入与回报");
-    expect(result.external_report).toContain("为什么是我们");
-    expect(result.external_report).toContain("下一步");
+  it("附录 A 来源索引按表汇总来源", async () => {
+    const { internal_report } = await exportDeliverables(makeInput());
+    expect(internal_report).toContain("## 附录 A、来源索引");
+    expect(internal_report).toContain("### 表1-2 场景环节地图");
+    expect(internal_report).toContain("《白皮书》p.3（1 条）");
   });
 
-  it("无能力数据时能力匹配显示待评估", async () => {
-    const data = makeEmptyExportData();
-    const result = await exportDeliverables(data);
-
-    expect(result.internal_report).toContain("待评估");
+  it("附录 B 信息覆盖概览给出行数与有来源行数", async () => {
+    const { internal_report } = await exportDeliverables(makeInput());
+    expect(internal_report).toContain("## 附录 B、信息覆盖概览");
+    expect(internal_report).toContain("| 表号 | 表名 | 行数 | 有来源行数 |");
+    expect(internal_report).toMatch(/\| 表1-1 \| 场景概述 \| 3 \| 3 \|/);
   });
 
-  it("无知识库时证据链不报错", async () => {
-    const data = makeEmptyExportData();
-    const result = await exportDeliverables(data);
+  it("无阶段总结时给出降级提示而不是空文档", async () => {
+    const { internal_report } = await exportDeliverables({ ...makeInput(), stageSummaries: [] });
+    expect(internal_report).toContain("尚无阶段总结");
+  });
+});
 
-    expect(result.internal_report).toContain("无阶段数据");
-    expect(result.internal_report).toContain("无知识库条目");
+describe("exportDeliverables — 对外汇报材料", () => {
+  it("含客户视角章节且不含结论性建议", async () => {
+    const { external_report } = await exportDeliverables(makeInput());
+    expect(external_report).toContain("# 智慧水务 场景方案 — 汇报材料");
+    for (const t of ["一、场景概况", "二、场景范围与业务环节", "三、门槛与合规要求", "四、方案架构", "六、价值与验证口径"]) {
+      expect(external_report, t).toContain(t);
+    }
+    expect(external_report).toContain("不含结论性建议");
   });
 
-  it("空数据的对外报告不含敏感信息", async () => {
-    const data = makeEmptyExportData();
-    const result = await exportDeliverables(data);
+  it("只渲染中栏列：不出现来源、证据级、权威性", async () => {
+    const { external_report } = await exportDeliverables(makeInput());
+    expect(external_report).not.toContain("《白皮书》p.3");
+    expect(external_report).not.toContain("证据等级");
+    expect(external_report).not.toContain("来源权威性");
+    // 表6-1 的 evidence_level 是中栏列已改为右栏，故导出里不应出现其取值
+    expect(external_report).not.toContain("| 证据级 |");
+  });
 
-    expect(result.external_report).not.toContain("竞品");
-    expect(result.external_report).not.toContain("风险");
-    expect(result.external_report).not.toContain("证据");
+  it("不渲染竞品身份表与利润池表", async () => {
+    const { external_report } = await exportDeliverables(makeInput());
+    expect(external_report).not.toContain("海康");
+    expect(external_report).not.toContain("大华");
+    expect(external_report).not.toContain("表3-1");
+    expect(external_report).not.toContain("表3-4");
+    expect(external_report).not.toContain("利润池");
+  });
+
+  it("渲染表1-1（项 / 内容 两列）与表5-1（架构）", async () => {
+    const { external_report } = await exportDeliverables(makeInput());
+    expect(external_report).toContain("**表1-1 场景概述**");
+    expect(external_report).toContain("| 项 | 内容 |");
+    expect(external_report).toContain("市政水务集团");
+    expect(external_report).toContain("**表5-1 方案架构与接口（架构块）**");
+    // 接口块没有数据 → 不应渲染一张全空的块表
+    expect(external_report).not.toContain("（接口块）");
+  });
+
+  it("本节无数据时给出待补充提示", async () => {
+    const input = makeInput();
+    const { external_report } = await exportDeliverables({
+      ...input,
+      stageData: input.stageData.filter((r) => r.table_code !== "表6-1"),
+    });
+    expect(external_report).toContain("（本节信息待补充）");
+  });
+});
+
+describe("exportDeliverables — 不产出判断（核心约束）", () => {
+  it("两份文档都不含建议档位与结论性措辞", async () => {
+    const { internal_report, external_report } = await exportDeliverables(makeInput());
+    const forbidden = [
+      "建议通过",
+      "建议有条件通过",
+      "建议不通过",
+      "建议进",
+      "不建议进",
+      "结论：",
+      "具备落地条件",
+      "经评估",
+      "红线",
+    ];
+    for (const bad of forbidden) {
+      expect(internal_report, `内部报告含「${bad}」`).not.toContain(bad);
+      expect(external_report, `对外材料含「${bad}」`).not.toContain(bad);
+    }
+  });
+});
+
+describe("exportDeliverables — 空数据", () => {
+  it("无任何阶段数据也能生成两份文档骨架", async () => {
+    const { internal_report, external_report } = await exportDeliverables({
+      scenario: {
+        id: "s2",
+        name: "空场景",
+        product_line_id: "pl",
+        status: "进行中",
+        current_stage: 0 as never,
+        created_at: "2026-09-01",
+        updated_at: "2026-09-01",
+      },
+      stageSummaries: [],
+      stageData: [],
+      generatedAt: "2026-09-25",
+    });
+    expect(internal_report).toContain("# 空场景 场景调研 — 内部调研报告");
+    expect(internal_report).toContain("（暂无带来源的信息）");
+    expect(external_report).toContain("# 空场景 场景方案 — 汇报材料");
+    expect(external_report).toContain("（本节信息待补充）");
   });
 });

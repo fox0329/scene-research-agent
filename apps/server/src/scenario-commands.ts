@@ -15,9 +15,10 @@
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { DshClient, Product, Scenario } from "@scene/contract";
+import type { DshClient, Scenario } from "@scene/contract";
 import type { DbInstance } from "@scene/infra";
 import { exportDeliverables, exportFileName } from "@scene/infra";
+import { collectStageSummaries } from "./stage-summary-service.js";
 import { createAdvanceStageCommand } from "./advance-stage.js";
 import { requestScenarioClarify } from "./scenario-clarify.js";
 
@@ -114,37 +115,24 @@ export async function executeAppCommand(
       }
       const advance = createAdvanceStageCommand({ db, dshClient });
       let rowsWritten = 0;
-      let advice = "";
       let errored = "";
       for await (const ev of advance.execute({ scenarioId: scenario.id, stage: stage as never })) {
         if (ev.type === "done") {
           rowsWritten = Number((ev as { rowsWritten?: unknown }).rowsWritten ?? 0);
-          const a = (ev as { advice?: { summary?: unknown } }).advice;
-          advice = typeof a?.summary === "string" ? a.summary : "";
         }
         if (ev.type === "error") errored = String((ev as { message?: unknown }).message ?? "");
       }
       if (errored) return `【执行结果】阶段 ${stage} 分析未完成：${errored}`;
-      return `【执行结果】阶段 ${stage} 分析完成：共 ${rowsWritten} 行产出${advice ? `。质量关建议：${advice}` : ""}。可在阶段面板逐表审阅，确认后说「继续」推进下一阶段。`;
+      return `【执行结果】阶段 ${stage} 分析完成：共 ${rowsWritten} 行产出。可在阶段面板逐表审阅，右栏已生成阶段总结。`;
     }
 
     case "export_deliverables": {
       const stageRows = db.stageDataRepo.list({ where: "scenario_id = ?", params: [scenario.id] });
-      const gates = db.qualityGateRepo.list({ where: "scenario_id = ?", params: [scenario.id] });
-      const knowledge = db.knowledgeRepo.list({ where: "product_line_id = ?", params: [scenario.product_line_id] });
-      const products = db.productRepo.list({ where: "product_line_id = ?", params: [scenario.product_line_id] }) as Product[];
+      // v1.4：交付物由阶段总结文档装配（内部报告正文）+ 表数据（对外材料章节 ← 表映射）
       const result = await exportDeliverables({
         scenario,
-        libraryData: {
-          products,
-          capabilities: db.capabilityRepo.list() as never,
-          boundaries: db.boundaryRepo.list() as never,
-          limitations: db.limitationRepo.list() as never,
-          costRates: db.costRateRepo.list() as never,
-        },
+        stageSummaries: collectStageSummaries(db, scenario),
         stageData: stageRows,
-        qualityGates: gates,
-        knowledge: knowledge as never,
       });
       const outDir = process.env["EXPORT_DIR"] ?? join(process.cwd(), "exports");
       mkdirSync(outDir, { recursive: true });

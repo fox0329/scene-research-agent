@@ -10,6 +10,7 @@
  */
 
 import {
+  STAGE_DEFS,
   tablesOfStage,
   type InfoStageId,
   type Scenario,
@@ -119,4 +120,22 @@ export function stageCompletenessOf(
     rowsByTable,
     pendingConfirmations: pendingConfirmationCount(rowsByTable),
   });
+}
+
+/**
+ * 收集交付物所需的阶段总结（阶段 0-6）
+ *
+ * 交付物的内部报告正文就是这些总结的装配——不再有手写章节与结论。
+ */
+export function collectStageSummaries(
+  db: DbInstance,
+  scenario: Scenario,
+): { stage: number; title: string; markdown: string }[] {
+  const out: { stage: number; title: string; markdown: string }[] = [];
+  for (const def of STAGE_DEFS) {
+    if (def.id === 7) continue; // 阶段 7 是交付物本身
+    const r = generateStageSummary(db, scenario, def.id);
+    out.push({ stage: def.id, title: def.name, markdown: r.markdown });
+  }
+  return out;
 }

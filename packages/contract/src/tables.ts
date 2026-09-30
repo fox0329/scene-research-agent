@@ -1358,3 +1358,59 @@ export function registryIssues(): readonly string[] {
   return issues;
 }
 
+
+// ─── 交付物：章节 ← 表映射 ──────────────────────────────────
+//
+// 交付物不再是 8 个手写章节（旧 md-export 里满是"结论：建议通过"这类判断），
+// 而是：**内部报告 = 阶段总结装配**，**对外材料 = 指定表的中栏列渲染**。
+// 对外材料只渲染中栏列 → 天然不含来源 / 证据级 / 权威性（元信息在右栏补充）。
+
+export interface DeliverableSection {
+  key: string;
+  title: string;
+  /** 本节引用的表号（按顺序渲染） */
+  tables: readonly string[];
+  /** 给读者的口径说明（不含判断） */
+  note?: string;
+}
+
+/** 内部调研报告：附录部分（正文是阶段总结文档） */
+export const INTERNAL_REPORT_SECTIONS: readonly DeliverableSection[] = [
+  {
+    key: "sources",
+    title: "附录 A、来源索引",
+    tables: [],
+    note: "按表汇总本场景用到的全部来源；T1 权威 / T2 较权威 / T3 参考 / T4 待验证（G-R1）。",
+  },
+  {
+    key: "coverage",
+    title: "附录 B、信息覆盖概览",
+    tables: [],
+    note: "逐表记录行数与是否有来源，作为「信息够不够」的客观依据（不构成判定）。",
+  },
+];
+
+/** 对外汇报材料：只放客户视角的章节，且只渲染中栏列 */
+export const EXTERNAL_REPORT_SECTIONS: readonly DeliverableSection[] = [
+  { key: "scene", title: "一、场景概况", tables: ["表1-1"] },
+  { key: "scope", title: "二、场景范围与业务环节", tables: ["表1-2"] },
+  {
+    key: "barriers",
+    title: "三、门槛与合规要求",
+    tables: ["表1-3"],
+    note: "仅列要求与现状，不含我方处置建议。",
+  },
+  { key: "solution", title: "四、方案架构", tables: ["表5-1"] },
+  { key: "impl", title: "五、实施与交付安排", tables: ["表5-3", "表5-4"] },
+  {
+    key: "value",
+    title: "六、价值与验证口径",
+    tables: ["表6-1"],
+    note: "数值为按材料口径的测算，验证方式见「怎么测」列。",
+  },
+];
+
+/** 交付物章节（按 kind 取） */
+export function deliverableSections(kind: "internal" | "external"): readonly DeliverableSection[] {
+  return kind === "internal" ? INTERNAL_REPORT_SECTIONS : EXTERNAL_REPORT_SECTIONS;
+}

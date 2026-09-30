@@ -41,6 +41,7 @@ import type { SseHub } from "./sse-hub.js";
 import { createConverseCommand, type ChatImportOutcome } from "./converse.js";
 import { requestScenarioClarify } from "./scenario-clarify.js";
 import {
+  collectStageSummaries,
   generateStageSummary,
   getOrGenerateStageSummary,
   stageCompletenessOf,
@@ -248,27 +249,10 @@ export function registerUiRoutes(app: FastifyInstance, deps: UiRoutesDeps): void
       where: "scenario_id = ?",
       params: [id],
     });
-    const knowledge = db.knowledgeRepo.list({
-      where: "product_line_id = ?",
-      params: [scenario.product_line_id],
-    });
-    const products = db.productRepo.list({
-      where: "product_line_id = ?",
-      params: [scenario.product_line_id],
-    }) as Product[];
-
     const result = await exportDeliverables({
       scenario,
-      libraryData: {
-        products,
-        capabilities: db.capabilityRepo.list() as never,
-        boundaries: db.boundaryRepo.list() as never,
-        limitations: db.limitationRepo.list() as never,
-        costRates: db.costRateRepo.list() as never,
-      },
+      stageSummaries: collectStageSummaries(db, scenario),
       stageData: stageRows,
-      qualityGates: [],
-      knowledge: knowledge as never,
     });
 
     const outDir = process.env.EXPORT_DIR ?? join(process.cwd(), "exports");

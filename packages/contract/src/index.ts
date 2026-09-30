@@ -407,20 +407,20 @@ export interface ModelConfig {
   analysis_model: string;
 }
 
-/** 导出数据输入（md-export 使用） */
-export interface ExportData {
+/**
+ * 交付物生成输入（md-export 使用）
+ *
+ * v1.4 起：交付物由**阶段总结文档 + 表数据**装配，不再有手写章节与「结论」。
+ * 旧 `ExportData`（含 libraryData / qualityGates）已废弃——判断类产出整体移除。
+ */
+export interface DeliverableInput {
   scenario: Scenario;
-  libraryData: {
-    products: Product[];
-    capabilities: Capability[];
-    boundaries: Boundary[];
-    limitations: Limitation[];
-    costRates: CostRate[];
-  };
-  /** 阶段 1-8 的分析数据 */
+  /** 各阶段总结文档（内部报告正文；阶段 0-6） */
+  stageSummaries: readonly { stage: number; title: string; markdown: string }[];
+  /** 全部阶段数据行（内部报告附录 + 对外材料章节 ← 表映射） */
   stageData: StageData[];
-  qualityGates: QualityGate[];
-  knowledge: Knowledge[];
+  /** 生成日期（可注入，便于测试） */
+  generatedAt?: string;
 }
 
 /** 导出响应 */
