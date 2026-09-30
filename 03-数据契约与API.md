@@ -117,6 +117,12 @@
 | POST | `/system/providers/test` | 连接质量检查（v1.6）：草稿 `{ base_url, api_key, model? }` 或已存 `{ name, model? }`（密钥服务端自取）；两段式 `/models` 探活鉴权 → 指定模型时 `chat/completions` 最小生成；返回 `{ ok, stage, models_latency_ms, chat_latency_ms, models_seen, error }`；v1.7 起候选端点探测（裸域名自动试 `/v1/models`/`/models`），chat 段用命中后 base |
 | POST | `/system/providers/models` | 模型列表发现（v1.7，仿 CC Switch）：`{ name?, base_url?, api_key? }`（同 test 取密钥规则）；候选端点探测 + 多格式解析（OpenAI/智谱目录），返回 `{ ok, models, resolved_base_url, latency_ms, error }`，`resolved_base_url` 供表单回填修正 |
 
+| PATCH | `/library/product-lines/{id}` | 产品线（资料库）重命名（v1.9）：`{ name }`；名称空 400、未知名 404 |
+| POST | `/library/product-lines/{id}/dedupe-products` | 产品去重（v1.9）：同型号产品合并（保留最早一条，缺位字段补全），M2 规格参数归并到保留产品，删重复行（F3 照打）；返回 `{ groups, products_removed, specs_moved, merged }` |
+
+| GET | `/projects/{id}/material-sources` | 场景资料来源（v1.10）：`{ own, linked }`——专属库 + 引用的通用库 |
+| PUT | `/projects/{id}/material-sources` | 设置引用的通用库（v1.10）：`{ linked_line_ids }`；专属库不可被引用 400 |
+
 ### 联真实现口径（v1.4 登记，M5-T5.1）
 
 §三 端点自 M0 冻结，本节登记 M5 接真时的实现收口口径，不改变端点语义：
@@ -168,3 +174,12 @@ interface DshClient {
 | v1.6 | 2026-09-23 | 模型配置应用自持（试用反馈 #47）：新增 `/system/providers` 五端点（列表/登记更新/删除/默认模型/测试连接，两段式链接质量检查），`/system/status` 改为 `{ db, model_configured, provider_count, default_model }` 配置快照，移除 `GET/PUT /system/settings*`；配置落 `data/providers.local.json`（0600，`SCENE_PROVIDERS_FILE` 可覆盖），密钥不回显、环境变量与 `.dsh/settings.yaml` 通道退役；变更表 #16 |
 | v1.7 | 2026-09-23 | 模型列表发现（仿 CC Switch）：新增 `POST /system/providers/models`（候选端点探测 + 多格式解析，返回 `resolved_base_url` 供表单回填）；`providers/test` 与发现同走候选探测，chat 段用命中后 base；`providers` 登记自动补 `/v1`（含裸域名）；变更表 #17 |
 | v1.8 | 2026-09-23 | 上传入库增强与"对话即导入"：ingest 上传 `product_line_id` 支持 URL query 兜底（multipart 字段顺序无关，修复 `file()` 只收 file 部件之前字段的 400）；ingest done 事件新增 `table_counts`（每表入库行数）；`POST /conversations/{id}/messages` 消息流新增对话即导入——消息内本地文件路径自动解析入库，导入报告以 text 事件随流回显并附给模型；变更表 #18 |
+| v1.9 | 2026-09-24 | 资料库三连（用户三问题）：新增产品去重端点与产品线重命名端点，M2 规格书支持按产品出表；变更表 #21 |
+| v1.10 | 2026-09-24 | 场景专属资料 + 链接通用库：product_line 增 scenario_id 归属列（存量库幂等 ALTER）、新表 scenario_linked_line；建场景自动建专属库、场景内上传落专属库、可引用通用库（GET/PUT material-sources 两端点），阶段分析合并两路资料；变更表 #22 |
+| v1.11 | 2026-09-24 | 阶段分析锚定场景：scenario 增 description（分析锚），全部阶段提示词注入【场景锚】+硬规则，表1-1 场景要素以锚为准禁臆造；变更表 #23 |
+| v1.12 | 2026-09-24 | 场景澄清：分析前置预检（描述缺失/含糊/含推断→澄清问题进对话并中止分析）、手动触发端点 POST /projects/{id}/clarify-scenario、场景锚条「场景澄清」按钮；变更表 #24 |
+| v1.13 | 2026-09-24 | 场景定义对话式梳理：建场景只输名字→系统起草定义（POST /projects/{id}/draft-definition）发进「场景梳理」对话；对话确认/修正经【场景定义 vN】块自动回写描述；变更表 #26 |
+| v1.14 | 2026-09-24 | 场景定义口径对齐（场景本位禁产品/问题后置调研）+ 生成定义后自动弹出对话抽屉；变更表 #27 |
+| v1.15 | 2026-09-24 | 场景定义精简为两段式（场景长什么样+范围，问题/目标移出定义期）+ 建场景即弹对话抽屉；变更表 #28 |
+| v1.16 | 2026-09-24 | 对话抽屉弹出即显状态提示（场景范围梳理中…），生成完成自动清除；变更表 #29 |
+| v1.17 | 2026-09-24 | 对话即操作：converse 注入业务流操作手册 + 【执行命令】分发（advance_stage/export_deliverables/dedupe_products/clarify_scenario），结果回写对话；变更表 #30 |
