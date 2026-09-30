@@ -1,3 +1,5 @@
+import { STAGE_DEFS } from "@scene/contract";
+
 /**
  * Mock 数据 — 项目工作台（T2.3）
  * 首版硬编码，后续按 03-数据契约与API.md 接真实 API
@@ -10,17 +12,10 @@ export type StageDef = {
   label: string;
 }
 
-export const STAGES: StageDef[] = [
-  { index: 0, label: "材料入库" },
-  { index: 1, label: "门槛筛查" },
-  { index: 2, label: "认识场景" },
-  { index: 3, label: "理解商业" },
-  { index: 4, label: "匹配决策" },
-  { index: 5, label: "方案实现" },
-  { index: 6, label: "价值验证" },
-  { index: 7, label: "总结沉淀" },
-  { index: 8, label: "交付物" },
-];
+export const STAGES: StageDef[] = STAGE_DEFS.map((s) => ({
+  index: s.id,
+  label: s.name,
+}));
 
 /* ═══ 项目与会话 ═══ */
 

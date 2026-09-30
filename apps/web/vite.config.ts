@@ -27,8 +27,8 @@ export default defineConfig({
       // v1.4：前端需要**运行时的表定义**（34 张表的列/枚举/固定行），
       // 因此 @scene/contract 指向真实源码；表定义只有注册表这一个事实源。
       "@scene/contract": resolve(here, "../../packages/contract/src/index.ts"),
-      // 领域层前端不需要（完整度/总结由服务端算好返回），仍走空 stub
-      "@scene/domain": "/src/__stub__/domain.ts",
+      // 确认清单等纯逻辑也只在领域层写一份（可单测），前端复用而不是重写
+      "@scene/domain": resolve(here, "../../packages/domain/src/index.ts"),
     },
   },
 });

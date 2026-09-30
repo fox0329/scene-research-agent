@@ -289,6 +289,7 @@ export function SceneTable<T extends Record<string, unknown>>({
                       className="ed"
                       contentEditable
                       suppressContentEditableWarning
+                      title={String(value ?? "")}
                       onBlur={(e) =>
                         handleBlur(ri, col.key, e.currentTarget)
                       }

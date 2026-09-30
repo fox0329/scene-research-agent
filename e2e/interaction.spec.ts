@@ -144,28 +144,51 @@ test("项目与会话均有 ⋯ 菜单（重命名/归档/删除）", async ({ p
   await expect(menu).toContainText("重命名");
 });
 
-/* ───────────────────── §4.2 阶段推进 + §11.3 建议权规则 ───────────────────── */
+/* ────────────── §4.2 信息版：完整度提示 + 双 Tab（替代旧建议卡） ────────────── */
 
-test("阶段建议卡：三档徽标 + 三个决定按钮，用户有决定权", async ({ page }) => {
-  const rec = page.locator(".rec");
-  await expect(rec).toBeVisible();
-  await expect(rec.locator(".rec-badge")).toContainText(/建议(通过|有条件通过|不通过)/);
-  for (const label of ["进入下一阶段", "补充材料", "停止分析"]) {
-    const btn = rec.getByRole("button", { name: label });
-    await expect(btn).toBeVisible();
-    await expect(btn).toBeEnabled(); // 决定权在用户：按钮不被质量关禁用
-  }
+test("信息完整度状态行：只说明缺口，不出现建议档位与判定", async ({ page }) => {
+  const bar = page.locator(".ws .completeness-bar").first();
+  await expect(bar).toBeVisible();
+  await expect(bar).toContainText(/信息完整度 \d+\/\d+ 张表/);
+  // 产品不产出判断：整页不应出现建议档位或"通过/不通过"
+  const body = await page.locator(".ws").innerText();
+  expect(body).not.toMatch(/建议(通过|有条件通过|不通过|进)/);
+  expect(body).not.toContain("质量关");
 });
 
-test("阶段 0 不阻断：材料入库面板含建议卡与可用推进按钮", async ({ page }) => {
-  await page.getByRole("tab", { name: /材料/ }).click();
-  await expect(page.locator(".rec")).toBeVisible();
-  await expect(page.getByRole("button", { name: "进入下一阶段" })).toBeEnabled();
+test("右栏双 Tab：补充说明（含确认清单）/ 阶段总结", async ({ page }) => {
+  const tabs = page.locator(".det .det-tab");
+  await expect(tabs).toHaveCount(2);
+  await expect(tabs.nth(0)).toContainText("补充说明");
+  await expect(tabs.nth(1)).toContainText("阶段总结");
+
+  // Tab ①：确认清单（L1 场景本体必确认）
+  await tabs.nth(0).click();
+  await expect(page.locator(".det .confirm-list")).toBeVisible();
+  await expect(page.locator(".det .layer-L1").first()).toBeVisible();
+  const l1Count = await page.locator(".det .layer-L1").count();
+  expect(l1Count).toBeGreaterThanOrEqual(6); // 表1-1 的 6 项必确认
+
+  // Tab ②：阶段总结六段骨架
+  await tabs.nth(1).click();
+  const md = page.locator(".det .md-body");
+  await expect(md).toBeVisible();
+  await expect(md).toContainText("信息摘要");
+  await expect(md).toContainText("信息缺口与待补充");
+});
+
+test("表1-1 场景锚常驻且带必确认标记", async ({ page }) => {
+  const anchor = page.locator(".ws .schema-table--anchor").first();
+  await expect(anchor).toBeVisible();
+  await expect(anchor.locator("th").first()).toHaveText("项");
+  // 6 项 L1 必确认带 ✓ 标记
+  const confirmDots = await anchor.locator(".confirm-dot").count();
+  expect(confirmDots).toBeGreaterThanOrEqual(6);
 });
 
 test("随时回看任意阶段：阶段 Tab 切换（断点续做的 UI 侧）", async ({ page }) => {
-  const tabs = page.getByRole("tab");
-  await expect(tabs).toHaveCount(9);
+  const tabs = page.locator(".stabs").getByRole("tab");
+  await expect(tabs).toHaveCount(8);
   await page.getByRole("tab", { name: /门槛/ }).click();
   await expect(page.getByRole("tab", { name: /门槛/ })).toHaveAttribute("aria-selected", "true");
   await expect(page.locator(".ws .pnl").first()).toBeVisible();

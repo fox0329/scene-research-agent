@@ -1,9 +1,9 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { Sidebar } from "./components/Sidebar";
 import { ConversationDrawer } from "./components/ConversationDrawer";
-import { DecisionPanel } from "./components/DecisionPanel";
+import { StageRightPanel } from "./components/StageRightPanel";
 import { RowDetailPanel, type RowDetail } from "./components/RowDetailPanel";
-import type { DecisionSnapshot } from "./components/decision-snapshot";
+import type { StageSnapshot } from "./components/stage-snapshot";
 import { ToastProvider, useToast } from "./components/Toast";
 import { LibraryView } from "./views/LibraryView";
 import { ProjectView } from "./views/ProjectView";
@@ -77,7 +77,7 @@ const AppShell: React.FC = () => {
   const [lines, setLines] = useState<ApiProductLine[]>([]);
   const [activeProjectId, setActiveProjectId] = useState(projects[0].id);
   /** 右栏决策支撑快照（联真模式，来自当前阶段真实数据；T5.6） */
-  const [decisionSnapshot, setDecisionSnapshot] = useState<DecisionSnapshot | null>(null);
+  const [stageSnapshot, setStageSnapshot] = useState<StageSnapshot | null>(null);
   /** 资料库行详情（右栏备注区，变更表 #19） */
   const [rowDetail, setRowDetail] = useState<RowDetail | null>(null);
   /** 对话抽屉唤起信号（v1.14：定义/澄清生成后主动弹出） */
@@ -303,7 +303,7 @@ const AppShell: React.FC = () => {
             hasProjects={shownProjects.length > 0}
             onProjectsChanged={() => void refreshProjects().catch(() => {})}
             onNewProject={() => void handleNewProject()}
-            onDecisionSnapshot={live ? setDecisionSnapshot : undefined}
+            onStageSnapshot={setStageSnapshot}
             onOpenConversation={live ? openConversation : undefined}
           />
         )}
@@ -335,7 +335,7 @@ const AppShell: React.FC = () => {
       {/* 右栏：决策支撑（项目工作台）/ 行详情备注（资料库选中行，变更表 #19）/ 预留 */}
       <aside className="det">
         {view === "project" ? (
-          <DecisionPanel snapshot={live ? decisionSnapshot : null} live={live} />
+          <StageRightPanel snapshot={stageSnapshot} live={live} />
         ) : view === "library" && live && rowDetail ? (
           <RowDetailPanel detail={rowDetail} onClose={() => setRowDetail(null)} />
         ) : (

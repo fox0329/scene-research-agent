@@ -1,20 +1,12 @@
 import React, { useCallback, useState } from "react";
-import { Stage0Panel } from "./stages/Stage0Panel";
-import { Stage1Panel } from "./stages/Stage1Panel";
-import { Stage2Panel } from "./stages/Stage2Panel";
-import { Stage3Panel } from "./stages/Stage3Panel";
-import { Stage4Panel } from "./stages/Stage4Panel";
-import { Stage5Panel } from "./stages/Stage5Panel";
-import { Stage6Panel } from "./stages/Stage6Panel";
-import { Stage7Panel } from "./stages/Stage7Panel";
-import { Stage8Panel } from "./stages/Stage8Panel";
 import { RealStagePanel } from "./RealStagePanel";
+import { DemoStagePanel } from "./DemoStagePanel";
 import { api } from "../api";
 import { useAsync } from "../hooks/useAsync";
 import { useToast } from "../components/Toast";
 import { MaterialUpload } from "../components/MaterialUpload";
 import { MaterialSourcesBar } from "./MaterialSourcesBar";
-import type { DecisionSnapshot } from "../components/decision-snapshot";
+import type { StageSnapshot } from "../components/stage-snapshot";
 import {
   STAGES,
   type Project,
@@ -30,8 +22,8 @@ interface ProjectViewProps {
   onProjectsChanged?: () => void;
   /** 空项目引导新建（联真模式） */
   onNewProject?: () => void;
-  /** 右栏决策支撑快照（联真模式，T5.6） */
-  onDecisionSnapshot?: (snap: DecisionSnapshot | null) => void;
+  /** 右栏阶段快照（联真模式）：补充说明 + 确认清单 + 阶段总结 */
+  onStageSnapshot?: (snap: StageSnapshot | null) => void;
   /** 主动弹出对话抽屉（v1.14）：定义/澄清生成后让用户直接对话 */
   onOpenConversation?: (convId?: string) => void;
 }
@@ -76,7 +68,7 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
   project,
   live,
   onProjectsChanged,
-  onDecisionSnapshot,
+  onStageSnapshot,
   onOpenConversation,
 }) => {
   const [activeStage, setActiveStage] = useState(project.stage);
@@ -177,81 +169,12 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
           stage={activeStage}
           stageLabel={STAGES[activeStage]!.label}
           onChanged={onProjectsChanged}
-          onDecisionSnapshot={onDecisionSnapshot}
+          onStageSnapshot={onStageSnapshot}
         />
       );
     }
-    switch (activeStage) {
-      case 0:
-        return <Stage0Panel project={project} onNext={handleNext} />;
-      case 1:
-        return (
-          <Stage1Panel
-            onNext={handleNext}
-            onSupplement={() => {}}
-            onStop={() => {}}
-          />
-        );
-      case 2:
-        return (
-          <Stage2Panel
-            project={project}
-            onNext={handleNext}
-            onSupplement={() => {}}
-            onStop={() => {}}
-          />
-        );
-      case 3:
-        return (
-          <Stage3Panel
-            onNext={handleNext}
-            onSupplement={() => {}}
-            onStop={() => {}}
-          />
-        );
-      case 4:
-        return (
-          <Stage4Panel
-            onNext={handleNext}
-            onSupplement={() => {}}
-            onStop={() => {}}
-          />
-        );
-      case 5:
-        return (
-          <Stage5Panel
-            onNext={handleNext}
-            onSupplement={() => {}}
-            onStop={() => {}}
-          />
-        );
-      case 6:
-        return (
-          <Stage6Panel
-            onNext={handleNext}
-            onSupplement={() => {}}
-            onStop={() => {}}
-          />
-        );
-      case 7:
-        return (
-          <Stage7Panel
-            onNext={handleNext}
-            onSupplement={() => {}}
-            onStop={() => {}}
-          />
-        );
-      case 8:
-        return (
-          <Stage8Panel
-            onNext={handleNext}
-            onSupplement={() => {}}
-            onStop={() => {}}
-          />
-        );
-      default:
-        return <StagePlaceholder stage={STAGES[activeStage]!} />;
-    }
+    // 演示模式：同一套 schema 与领域逻辑（列/固定行/完整度/总结都来自注册表）
+    return <DemoStagePanel stage={activeStage} onStageSnapshot={onStageSnapshot} />;
   };
 
   return (

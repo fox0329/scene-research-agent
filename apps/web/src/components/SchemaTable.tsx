@@ -50,31 +50,17 @@ export function cellText(value: unknown): string {
   return String(value);
 }
 
-/** 长文本截断（按注册表的 truncate 字数），全文放 title */
-function truncateCell(c: TableColumn): (value: unknown) => React.ReactNode {
-  const limit = c.truncate ?? 20;
-  return (value: unknown) => {
-    const text = cellText(value);
-    if (text === "") return "";
-    const short = text.length > limit ? `${text.slice(0, limit)}…` : text;
-    return (
-      <span className="cell-truncate" title={text}>
-        {short}
-      </span>
-    );
-  };
-}
-
-/** 由注册表列定义生成 SceneTable 的 ColumnDef */
+/**
+ * 由注册表列定义生成 SceneTable 的 ColumnDef
+ *
+ * 注意：**不能给可编辑列设 `render`**——`SceneTable` 里 render 分支优先于 editable，
+ * 设了 render 单元格就不再可编辑（踩过一次）。单行省略改由样式 + `title` 承担。
+ */
 function toColumnDefs(cols: readonly TableColumn[]): ColumnDef<Record<string, unknown>>[] {
   return cols.map((c) => ({
     key: c.key,
     label: c.label,
     editable: true,
-    render:
-      c.type === "longText" || c.type === "text"
-        ? truncateCell(c)
-        : (value: unknown) => <span title={cellText(value)}>{cellText(value)}</span>,
   }));
 }
 

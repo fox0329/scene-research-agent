@@ -20,7 +20,10 @@ export default defineConfig({
   },
   webServer: [
     {
-      command: "pnpm --filter @scene/web exec vite preview --port 4180 --strictPort",
+      // 必须显式绑 127.0.0.1：vite preview 默认绑 [::1]（仅 IPv6），
+      // 而本配置的探活 URL 是 127.0.0.1 → 会一直等不到就绪而 30s 超时。
+      command:
+        "pnpm --filter @scene/web exec vite preview --host 127.0.0.1 --port 4180 --strictPort",
       url: "http://127.0.0.1:4180",
       reuseExistingServer: true,
       timeout: 30_000,

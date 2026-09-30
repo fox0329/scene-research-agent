@@ -436,8 +436,13 @@ tr:hover {
 }
 
 /* ── 可编辑单元格 ── */
+/* 单行省略：表格已是 table-layout: fixed，配合 nowrap + ellipsis 即可在
+   不横向滚动的前提下压住行高；全文靠 title 悬浮查看 */
 td.ed {
   cursor: text;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .ed:hover {
@@ -1893,3 +1898,95 @@ td.ed {
 .state-badge--muted { color: var(--ct3); background: transparent; }
 
 .empty-hint { margin: 0; padding: var(--s4); font-size: var(--ts); color: var(--ct3); }
+
+/* ─────────────────────────────────────────────────────────────
+   右栏双 Tab（v1.4）：补充说明 / 阶段总结
+   铁律：不出现建议档位与"通过/不通过"，只呈现信息与缺口。
+   ───────────────────────────────────────────────────────────── */
+
+.completeness-bar {
+  display: flex; align-items: center; gap: var(--s3); flex-wrap: wrap;
+  padding: var(--s2) var(--s4); font-size: var(--ts); color: var(--ct2);
+  border-bottom: 1px solid var(--cb);
+}
+.completeness-bar .gap-count { color: var(--ct); }
+.completeness-bar .gap-none { color: var(--cs-h); }
+
+.det-tabs { display: flex; gap: var(--s1); padding: var(--s2) var(--s3) 0; border-bottom: 1px solid var(--cb); }
+.det-tab {
+  display: inline-flex; align-items: center; gap: var(--s1);
+  padding: var(--s2) var(--s3); font-size: var(--ts); color: var(--ct2);
+  background: transparent; border: none; border-bottom: 2px solid transparent; cursor: pointer;
+}
+.det-tab:hover { color: var(--ct); }
+.det-tab.active { color: var(--cp); border-bottom-color: var(--cp); font-weight: var(--fm2); }
+.det-tab .tab-count {
+  min-width: 16px; padding: 0 var(--s1); font-size: var(--txs);
+  color: #fff; background: var(--cp); border-radius: var(--r8); text-align: center;
+}
+
+.det-sec { padding: var(--s3) var(--s4); border-bottom: 1px solid var(--cb); }
+.det-sec h4 { margin: 0 0 var(--s2); font-size: var(--ts); color: var(--ct); display: flex; gap: var(--s2); align-items: baseline; }
+.det-sec-sub { font-size: var(--txs); color: var(--ct3); font-weight: normal; }
+
+.confirm-list, .gap-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: var(--s2); }
+.confirm-item { display: flex; flex-direction: column; gap: var(--s1); font-size: var(--ts); }
+.confirm-main { display: flex; align-items: center; gap: var(--s2); }
+.confirm-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.confirm-actions { display: flex; align-items: center; gap: var(--s1); }
+.confirm-content {
+  flex: 1; min-width: 0; font-size: var(--txs); color: var(--ct2);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+.layer-tag {
+  display: inline-block; min-width: 20px; text-align: center;
+  font-size: var(--txs); border-radius: var(--r4); border: 1px solid var(--cb); color: var(--ct2);
+}
+.layer-L1 { color: var(--cp); border-color: var(--cp); }
+
+.gap-list li { font-size: var(--txs); color: var(--ct2); line-height: 1.6; }
+.gap-kind {
+  display: inline-block; margin-right: var(--s1); padding: 0 var(--s1);
+  color: var(--ct2); background: var(--cb); border-radius: var(--r4); font-size: var(--txs);
+}
+
+.btn-mini {
+  padding: 0 var(--s2); font-size: var(--txs); color: var(--ct2);
+  background: transparent; border: 1px solid var(--cb); border-radius: var(--r4); cursor: pointer;
+}
+.btn-mini:hover:not(:disabled) { color: var(--cp); border-color: var(--cp); }
+.btn-mini:disabled { opacity: 0.5; cursor: default; }
+
+.summary-head { display: flex; align-items: center; justify-content: space-between; }
+.summary-actions { display: flex; gap: var(--s1); }
+
+.md-body { font-size: var(--ts); color: var(--ct); line-height: 1.7; }
+.md-body h2 { margin: var(--s3) 0 var(--s2); font-size: var(--tb); }
+.md-body h3 { margin: var(--s3) 0 var(--s2); font-size: var(--ts); color: var(--ct); }
+.md-body h4 { margin: var(--s2) 0 var(--s1); font-size: var(--ts); color: var(--ct2); }
+.md-body p { margin: 0 0 var(--s2); }
+.md-body blockquote {
+  margin: 0 0 var(--s2); padding-left: var(--s3);
+  border-left: 2px solid var(--cb); color: var(--ct2); font-size: var(--txs);
+}
+.md-ul { margin: 0 0 var(--s2); padding-left: var(--s4); }
+.md-table { margin: var(--s2) 0; font-size: var(--txs); }
+
+.det-foot { padding: var(--s2) var(--s4); border-top: 1px solid var(--cb); }
+.foot-hint { font-size: var(--txs); color: var(--ct3); }
+
+/* 阶段表切换 chips */
+.table-chips { display: flex; flex-wrap: wrap; gap: var(--s1); margin-bottom: var(--s3); }
+.table-chips.sub { margin-top: calc(-1 * var(--s2)); }
+.chip {
+  display: inline-flex; align-items: center; gap: var(--s1);
+  padding: var(--s1) var(--s2); font-size: var(--txs); color: var(--ct2);
+  background: transparent; border: 1px solid var(--cb); border-radius: var(--r4); cursor: pointer;
+}
+.chip:hover { color: var(--ct); border-color: var(--ct3); }
+.chip.active { color: var(--cp); border-color: var(--cp); background: var(--cp-s); }
+.chip-n { color: var(--ct3); }
+.chip.active .chip-n { color: var(--cp); }
+
+.supplement-table .cell-input { font-size: var(--txs); }
