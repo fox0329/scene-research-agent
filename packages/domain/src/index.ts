@@ -222,3 +222,17 @@ export type {
   Alignment,
   AlignmentItem,
 } from "./confirmation.js";
+
+// ─── 场景锚（表1-1）纯逻辑（见 04 §3.0.4） ────────────────────
+export {
+  anchorFixedRows,
+  anchorRequiredRows,
+  anchorConfirmRows,
+  buildAnchorSkeleton,
+  anchorFromBrief,
+  briefDraftHints,
+  descriptionFromAnchor,
+  anchorCompletion,
+  mergeAnchorRows,
+} from "./anchor.js";
+export type { AnchorCompletion } from "./anchor.js";

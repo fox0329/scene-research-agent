@@ -17,6 +17,7 @@ export type {
   CreateQualityGateInput,
   StageDataRepo,
   CreateStageDataInput,
+  ScenarioBriefRepo,
 } from "./sqlite-repo.js";
 
 export { parseDocument } from "./doc-parser.js";

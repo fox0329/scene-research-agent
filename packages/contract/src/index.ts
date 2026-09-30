@@ -425,3 +425,54 @@ export interface ExportResult {
 // 依据 04-业务过程重定义.md v1.4 + 05-表格定义总表.md v0.7
 // 旧常量（StageId / STAGE*_TABLES / TableCode / AdviceLevel 等）标记为待迁移，见 06 §十六
 export * from "./tables.js";
+
+// ─── 场景诉求（第一输入）与场景锚（表1-1） ────────────────────
+// 依据 04-业务过程重定义.md v1.4：§3.0 输入：场景诉求；§3.0.4 场景锚最终是一个表格
+
+/**
+ * 场景诉求（项目元信息，不属于 34 张信息表）
+ *
+ * 它是**本产品的第一输入**，也是确认机制的**对照基准**：
+ * 系统理解的场景（表1-1）必须与它对齐；`raw_text` 保留用户原始输入，
+ * **系统不得改写**（改了就失去基准意义）。
+ */
+export interface ScenarioBrief {
+  scenario_id: string;
+  /** 场景名称 */
+  scene_name: string;
+  /** 一句话：你想搞清楚什么（必填，用户诉求的最小完整表达） */
+  intent: string;
+  /** 客户/行业线索 */
+  customer_hint?: string | null;
+  /** 地域/客户名线索 */
+  region_hint?: string | null;
+  /** 想覆盖的范围线索 */
+  scope_hint?: string | null;
+  /** 用途：自研判断 / 给领导看 / 给客户看 */
+  audience?: string | null;
+  /** 时间要求 */
+  deadline?: string | null;
+  /** 用户原始输入原文（对照基准，不可改写） */
+  raw_text: string;
+  created_at: string;
+  updated_at: string;
+}
+
+/** 场景锚（表1-1）的行形态：项 / 内容 */
+export interface AnchorRow {
+  /** 项名（与表1-1 固定行的 label 对应） */
+  item: string;
+  /** 内容 */
+  content: string;
+  /** 来源 */
+  source?: string | null;
+  /** 数据来源标记（AI提取 / AI推断 / 用户确认 / 用户补充） */
+  source_type?: SourceType | null;
+  /** 确认状态（显式覆盖时使用） */
+  confirm_state?: string | null;
+}
+
+/** 场景锚的表号 */
+export const ANCHOR_TABLE_CODE = "表1-1";
+/** 场景锚所属阶段 */
+export const ANCHOR_STAGE: StageId = 1;

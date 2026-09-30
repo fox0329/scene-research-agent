@@ -161,6 +161,21 @@ CREATE TABLE IF NOT EXISTS scenario (
   updated_at       TEXT NOT NULL
 );
 
+-- 场景诉求（第一输入，v1.4 §3.0）：一场景一行；raw_text 保留用户原文作对照基准
+CREATE TABLE IF NOT EXISTS scenario_brief (
+  scenario_id    TEXT PRIMARY KEY REFERENCES scenario(id),
+  scene_name     TEXT NOT NULL,
+  intent         TEXT NOT NULL,
+  customer_hint  TEXT,
+  region_hint    TEXT,
+  scope_hint     TEXT,
+  audience       TEXT,
+  deadline       TEXT,
+  raw_text       TEXT NOT NULL,
+  created_at     TEXT NOT NULL,
+  updated_at     TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS scenario_material (
   id               TEXT PRIMARY KEY,
   scenario_id      TEXT NOT NULL REFERENCES scenario(id),

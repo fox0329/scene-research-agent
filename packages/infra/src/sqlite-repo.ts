@@ -23,6 +23,7 @@ import type {
   Conversation,
   Message,
   Scenario,
+  ScenarioBrief,
   ScenarioMaterial,
   ScenarioLinkedLine,
   StageData,
@@ -206,6 +207,59 @@ function createRepo<T extends BaseRow>(
   };
 
   return { list, getById, insert, update, deleteById };
+}
+
+// ─── 场景诉求仓库（主键为 scenario_id，故不用通用 createRepo） ──
+
+/** 场景诉求仓储：一场景一行 */
+export interface ScenarioBriefRepo {
+  get(scenarioId: string): ScenarioBrief | undefined;
+  /** 存在则更新、不存在则插入（返回最新行） */
+  upsert(scenarioId: string, patch: Omit<ScenarioBrief, "scenario_id" | "created_at" | "updated_at">): ScenarioBrief;
+  remove(scenarioId: string): boolean;
+}
+
+function createScenarioBriefRepo(db: Database.Database): ScenarioBriefRepo {
+  const get = (scenarioId: string): ScenarioBrief | undefined =>
+    db.prepare("SELECT * FROM scenario_brief WHERE scenario_id = ?").get(scenarioId) as
+      | ScenarioBrief
+      | undefined;
+
+  const upsert = (
+    scenarioId: string,
+    patch: Omit<ScenarioBrief, "scenario_id" | "created_at" | "updated_at">,
+  ): ScenarioBrief => {
+    const existing = get(scenarioId);
+    const timestamp = now();
+    if (!existing) {
+      const row: ScenarioBrief = {
+        ...patch,
+        scenario_id: scenarioId,
+        created_at: timestamp,
+        updated_at: timestamp,
+      };
+      const columns = Object.keys(row);
+      db.prepare(
+        `INSERT INTO scenario_brief (${columns.join(", ")}) VALUES (${columns.map(() => "?").join(", ")})`,
+      ).run(...Object.values(row));
+      return row;
+    }
+    const entries = Object.entries(patch).filter(([, v]) => v !== undefined);
+    if (entries.length > 0) {
+      const sets = entries.map(([k]) => `${k} = ?`).join(", ");
+      db.prepare(`UPDATE scenario_brief SET ${sets}, updated_at = ? WHERE scenario_id = ?`).run(
+        ...entries.map(([, v]) => v),
+        timestamp,
+        scenarioId,
+      );
+    }
+    return get(scenarioId)!;
+  };
+
+  const remove = (scenarioId: string): boolean =>
+    db.prepare("DELETE FROM scenario_brief WHERE scenario_id = ?").run(scenarioId).changes > 0;
+
+  return { get, upsert, remove };
 }
 
 // ─── 消息仓库工厂 ──────────────────────────────────────────
@@ -513,6 +567,7 @@ export interface DbInstance {
   conversationRepo: Repo<Conversation>;
   messageRepo: MessageRepo;
   scenarioRepo: Repo<Scenario>;
+  scenarioBriefRepo: ScenarioBriefRepo;
   stageDataRepo: StageDataRepo;
   qualityGateRepo: QualityGateRepo;
   scenarioMaterialRepo: Repo<ScenarioMaterial>;
@@ -550,6 +605,7 @@ export function createDb(dbPath?: string): DbInstance {
     conversationRepo: createRepo<Conversation>(db, "conversation"),
     messageRepo: createMessageRepo(db),
     scenarioRepo: createRepo<Scenario>(db, "scenario"),
+    scenarioBriefRepo: createScenarioBriefRepo(db),
     stageDataRepo: createStageDataRepo(db),
     qualityGateRepo: createQualityGateRepo(db),
     scenarioMaterialRepo: createRepo<ScenarioMaterial>(db, "scenario_material"),

@@ -507,7 +507,7 @@ const TABLES_STAGE_1: readonly TableDef[] = [
       { key: "entry_point", label: "切入点", required: true, confirmRequired: true },
       { key: "value_proposition", label: "价值主张", required: true, confirmRequired: true },
     ],
-    completeness: ["8 个必填行非空", "『未提供』≥2 行则退回场景梳理", "L1 六项须用户确认"],
+    completeness: ["9 个必填行非空", "『未提供』≥2 行则退回场景梳理", "L1 六项须用户确认"],
     consumedBy: [2, 3, 4, 5, 6, 7],
   },
   {

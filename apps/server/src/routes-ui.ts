@@ -41,7 +41,15 @@ import type { ProviderModelEntry } from "@scene/infra";
 import type { SseHub } from "./sse-hub.js";
 import { createConverseCommand, type ChatImportOutcome } from "./converse.js";
 import { requestScenarioClarify } from "./scenario-clarify.js";
-import { draftScenarioDefinition } from "./scenario-draft.js";
+import {
+  draftAnchor,
+  ensureAnchorRows,
+  readAnchorRows,
+  readBrief,
+  syncDerivedDescription,
+  upsertBrief,
+  writeAnchorRows,
+} from "./scenario-anchor.js";
 import { createIngestCommand } from "./ingest.js";
 import { parseStage, streamEvents } from "./sse-stream.js";
 import {
@@ -318,6 +326,13 @@ function registerProjectRoutes(app: FastifyInstance, deps: UiRoutesDeps) {
       name?: unknown;
       product_line_id?: unknown;
       description?: unknown;
+      /** 场景诉求（第一输入，v1.4 §3.0）：一句话想搞清楚什么 */
+      intent?: unknown;
+      customer_hint?: unknown;
+      region_hint?: unknown;
+      scope_hint?: unknown;
+      audience?: unknown;
+      deadline?: unknown;
     };
     const name = String(body.name ?? "").trim();
     if (!name) return badRequest(reply, "项目名不能为空");
@@ -344,19 +359,108 @@ function registerProjectRoutes(app: FastifyInstance, deps: UiRoutesDeps) {
     if (ownLine) {
       db.productLineRepo.update(productLineId, { scenario_id: scenario.id } as never);
     }
+
+    // 场景诉求（第一输入）：有诉求才落库；同时建表1-1 锚骨架，用户进阶段 1 即可逐格确认
+    const intent = String(body.intent ?? "").trim();
+    if (intent || body.customer_hint || body.scope_hint) {
+      upsertBrief(db, scenario.id, {
+        scene_name: name,
+        intent,
+        customer_hint: body.customer_hint as string,
+        region_hint: body.region_hint as string,
+        scope_hint: body.scope_hint as string,
+        audience: body.audience as string,
+        deadline: body.deadline as string,
+      });
+    }
+    ensureAnchorRows(db, scenario.id, name);
     return scenario;
   });
 
-  /** 场景定义起草（v1.13）：基于场景名+资料库起草定义，存描述并发进「场景梳理」对话 */
+  // ─── 场景诉求（第一输入） ──────────────────────────────
+
+  /** 读场景诉求；顺带保证锚骨架存在（幂等） */
+  app.get("/api/v1/projects/:id/brief", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const scenario = db.scenarioRepo.getById(id);
+    if (!scenario) return notFound(reply, `场景 ${id} 不存在`);
+    ensureAnchorRows(db, id, scenario.name);
+    return { brief: readBrief(db, id) ?? null, anchor: readAnchorRows(db, id) };
+  });
+
+  /** 写场景诉求（upsert；`raw_text` 首次写入后不再改写，它是确认基准） */
+  app.put("/api/v1/projects/:id/brief", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    if (!db.scenarioRepo.getById(id)) return notFound(reply, `场景 ${id} 不存在`);
+    const body = (request.body ?? {}) as Record<string, unknown>;
+    const intent = String(body.intent ?? "").trim();
+    if (!intent) return badRequest(reply, "「想搞清楚什么」不能为空（它是本产品的第一输入）");
+    if (intent.length > 500) return badRequest(reply, "「想搞清楚什么」不超过 500 字符");
+    const brief = upsertBrief(db, id, {
+      scene_name: String(body.scene_name ?? "").trim() || undefined,
+      intent,
+      customer_hint: body.customer_hint as string,
+      region_hint: body.region_hint as string,
+      scope_hint: body.scope_hint as string,
+      audience: body.audience as string,
+      deadline: body.deadline as string,
+    });
+    return { brief, anchor: readAnchorRows(db, id) };
+  });
+
+  /** 起草场景锚（表1-1）：诉求 + 资料库 → 12 项内容；用户确认过的行不被覆盖 */
+  app.post("/api/v1/projects/:id/brief/draft", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const scenario = db.scenarioRepo.getById(id);
+    if (!scenario) return notFound(reply, `场景 ${id} 不存在`);
+    const brief = readBrief(db, id);
+    if (!brief) return badRequest(reply, "请先填写场景诉求（场景名称 + 想搞清楚什么）");
+    const outcome = await draftAnchor(db, deps.dshClient, scenario, brief);
+    return {
+      rows: outcome.rows,
+      open_questions: outcome.openQuestions,
+      conversation_id: outcome.conversationId,
+      used_llm: outcome.usedLlm,
+    };
+  });
+
+  /** 锚行批量写入（表1-1 逐格确认/编辑；也可只传部分行） */
+  app.put("/api/v1/projects/:id/anchor", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    if (!db.scenarioRepo.getById(id)) return notFound(reply, `场景 ${id} 不存在`);
+    const body = (request.body ?? {}) as { rows?: unknown };
+    if (!Array.isArray(body.rows)) return badRequest(reply, "rows 必须是数组");
+    const rows = (body.rows as Record<string, unknown>[]).map((r) => ({
+      item: String(r["item"] ?? "").trim(),
+      content: String(r["content"] ?? ""),
+      source: (r["source"] as string | undefined) ?? null,
+      source_type: (r["source_type"] as never) ?? null,
+      confirm_state: (r["confirm_state"] as string | undefined) ?? null,
+    }));
+    const written = writeAnchorRows(db, id, rows);
+    syncDerivedDescription(db, id);
+    return { rows: written, description: db.scenarioRepo.getById(id)?.description ?? "" };
+  });
+
+  /**
+   * 场景定义起草（v1.13 起；**v1.4 起内部改走场景锚**）
+   *
+   * 数据落点已从「写 description 文本」改为「写表1-1 锚行 + 由锚行派生 description」——
+   * 响应形状保持兼容（description / open_questions / conversation_id）。
+   */
   app.post("/api/v1/projects/:id/draft-definition", async (request, reply) => {
     const { id } = request.params as { id: string };
     const scenario = db.scenarioRepo.getById(id);
     if (!scenario) return notFound(reply, `场景 ${id} 不存在`);
-    const result = await draftScenarioDefinition(db, deps.dshClient, scenario);
+    const brief =
+      readBrief(db, id) ??
+      upsertBrief(db, id, { scene_name: scenario.name, intent: "" });
+    const outcome = await draftAnchor(db, deps.dshClient, scenario, brief);
+    const derived = db.scenarioRepo.getById(id)?.description ?? "";
     return {
-      description: result.description,
-      open_questions: result.openQuestions,
-      conversation_id: result.conversationId,
+      description: derived,
+      open_questions: outcome.openQuestions,
+      conversation_id: outcome.conversationId,
     };
   });
 
