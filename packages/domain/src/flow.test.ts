@@ -151,7 +151,7 @@ describe("flow — 导航与回退", () => {
   });
 
   it("flowBrief 给左栏与进度轴用的一句话", () => {
-    expect(flowBrief(buildFlowStatus({ completed: [] }))).toBe("第 1/9 步 · 场景诉求");
+    expect(flowBrief(buildFlowStatus({ completed: [] }))).toBe("第 1/9 步 · 场景定义");
     expect(flowBrief(buildFlowStatus({ completed: [1] }))).toBe("第 2/9 步 · 场景定义与边界");
     expect(
       flowBrief(buildFlowStatus({ completed: [1, 2, 3, 4, 5, 6, 7, 8, 9] })),

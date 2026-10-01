@@ -28,7 +28,7 @@ import {
   type FlowReadiness,
   type FlowStatus,
 } from "@scene/domain";
-import { readAnchorRows, readBrief } from "./scenario-anchor.js";
+import { readAnchorRows } from "./scenario-anchor.js";
 import { readStageRowsByTable } from "./stage-summary-service.js";
 
 /** 步骤就绪判定的统一形态 */
@@ -64,7 +64,6 @@ function tableProgress(
  */
 export function getFlowState(db: DbInstance, scenario: Scenario): FlowStatus {
   const completed = db.scenarioStepRepo.completedSteps(scenario.id);
-  const brief = readBrief(db, scenario.id);
   const anchor = readAnchorRows(db, scenario.id);
   const byItem = new Map(anchor.map((a) => [a.item, a]));
   const readiness: Record<number, FlowReadiness> = {};
@@ -72,10 +71,17 @@ export function getFlowState(db: DbInstance, scenario: Scenario): FlowStatus {
   for (const step of FLOW_STEPS) {
     switch (step.kind) {
       case "输入": {
-        const ok = Boolean(brief && brief.intent.trim() !== "");
+        // v1.5 对话式定义：就绪 = **定义已整理过**（表1-1 至少一项有内容），
+        // 不再是"用户填了必填字段"——用户只需在对话里把场景聊清楚
+        const filled = anchor.filter(
+          (r) => String(r.content).trim() !== "" && r.content !== "未提供",
+        ).length;
+        const ok = filled > 0;
         readiness[step.id] = readinessOf(
           ok,
-          ok ? "诉求已填写" : "请先填写「你想搞清楚什么」",
+          ok
+            ? `定义已整理（表1-1 已填 ${filled} 项）`
+            : "先点「开始场景定义对话」，聊清楚后点「整理成定义」",
         );
         break;
       }

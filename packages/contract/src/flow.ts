@@ -64,12 +64,12 @@ function stage1Tables(): readonly string[] {
 export const FLOW_STEPS: readonly FlowStep[] = [
   {
     id: 1,
-    key: "brief",
-    title: "场景诉求",
-    goal: "说清要梳理什么场景、想搞清楚什么",
+    key: "definition",
+    title: "场景定义",
+    goal: "在对话里把场景聊清楚（模型先给理解再提问），然后整理成表1-1",
     kind: "输入",
     tables: [],
-    stage: null, // 诉求落 scenario_brief，不进 stage_data
+    stage: null, // 定义落表1-1 与 scenario_brief，不进 stage_data
   },
   {
     id: 2,

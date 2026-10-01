@@ -134,8 +134,14 @@ export function createConverseCommand(deps: ConverseDeps) {
     sendMessage: (
       conversationId: string,
       content: string,
+      /**
+       * 覆盖项（v1.5 场景定义对话复用本管道）：
+       * - `system`：替换默认对话系统提示词
+       * - `contextPrefix`：追加在用户消息前的场景上下文
+       */
+      override?: { system?: string; contextPrefix?: string },
     ): AsyncIterable<FollowEvent> =>
-      sendMessage(db, dshClient, conversationId, content, importFiles),
+      sendMessage(db, dshClient, conversationId, content, importFiles, override),
   };
 }
 
@@ -291,7 +297,8 @@ async function* sendMessage(
   dshClient: DshClient,
   conversationId: string,
   content: string,
-  importFiles?: ConverseDeps["importFiles"],
+  importFiles?: (paths: string[]) => Promise<ChatImportOutcome[]>,
+  override?: { system?: string; contextPrefix?: string },
 ): AsyncIterable<FollowEvent> {
   // 1. 校验会话存在且活跃
   const conversation = db.conversationRepo.getById(conversationId);
@@ -357,8 +364,9 @@ async function* sendMessage(
       ].join("\n");
     })();
     const stream = dshClient.prompt(session, {
-      system: CONVERSE_SYSTEM_PROMPT,
-      user: `${scenarioCtx}${importReport ? importReport : ""}${content}`,
+      // v1.5：场景定义对话复用本管道，用覆盖项换掉系统提示词与上下文
+      system: override?.system ?? CONVERSE_SYSTEM_PROMPT,
+      user: `${override?.contextPrefix ?? ""}${scenarioCtx}${importReport ? importReport : ""}${content}`,
       outputContract: {},
     });
 

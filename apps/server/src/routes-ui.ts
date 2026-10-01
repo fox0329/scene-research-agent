@@ -24,7 +24,7 @@ import type {
   StageData,
 } from "@scene/contract";
 import { FLOW_LAST_STEP } from "@scene/contract";
-import { buildFlowStatus } from "@scene/domain";
+import { alignmentWithBrief, buildFlowStatus } from "@scene/domain";
 import type { DbInstance } from "@scene/infra";
 import {
   parseDocument,
@@ -57,6 +57,13 @@ import {
   upsertBrief,
   writeAnchorRows,
 } from "./scenario-anchor.js";
+import { DEFINITION_SYSTEM } from "./scenario-definition.js";
+import {
+  buildDefinitionContext,
+  consolidateDefinition,
+  definitionMessages,
+  ensureDefinitionConversation,
+} from "./scenario-definition.js";
 import {
   completeFlowStep,
   getFlowState,
@@ -756,6 +763,8 @@ function registerConversationRoutes(
 ) {
   const { db, hub } = deps;
   let convSeq = 0;
+  /** 场景定义对话的 SSE 流序号（与普通会话互不干扰） */
+  let defSeq = 0;
   /** 会话 → 最新回复流 runId（进程存续期内 Last-Event-ID 续传用，契约 v1.5） */
   const latestConvRuns = new Map<string, string>();
 
@@ -804,6 +813,71 @@ function registerConversationRoutes(
       return commandError(reply, err);
     }
   });
+
+  // ─── 场景定义（v1.5 对话式；流程第 1 步） ────────────────
+  //
+  // 用户定调："场景定义不该让用户一项一项填空"——因此第 1 步是**对话**：
+  // 模型先给理解再提问，聊清楚后由用户点「整理成定义」落成表1-1。
+
+  /** 定义对话状态：会话（幂等创建）+ 消息 + 当前表1-1 */
+  app.get("/api/v1/projects/:id/definition", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const scenario = db.scenarioRepo.getById(id);
+    if (!scenario) return notFound(reply, `场景 ${id} 不存在`);
+    const conversationId = await ensureDefinitionConversation(db, deps.dshClient, scenario);
+    ensureAnchorRows(db, id, scenario.name); // 幂等：与 GET /brief 一致，先保证 12 行锚骨架在
+    return {
+      conversation_id: conversationId,
+      messages: definitionMessages(db, conversationId),
+      anchor: readAnchorRows(db, id),
+      brief: readBrief(db, id) ?? null,
+    };
+  });
+
+  /** 发一条消息（SSE 流式）；系统提示词换成「场景定义助手」 */
+  app.post("/api/v1/projects/:id/definition/messages", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const scenario = db.scenarioRepo.getById(id);
+    if (!scenario) return notFound(reply, `场景 ${id} 不存在`);
+    const body = (request.body ?? {}) as { content?: unknown };
+    const content = String(body.content ?? "").trim();
+    if (!content) return badRequest(reply, "消息内容不能为空");
+    const conversationId = await ensureDefinitionConversation(db, deps.dshClient, scenario);
+    const runId = `${id}:definition#${++defSeq}`;
+    hub.start(
+      runId,
+      converseCmd.sendMessage(conversationId, content, {
+        system: DEFINITION_SYSTEM,
+        contextPrefix: `${buildDefinitionContext(db, scenario)}\n`,
+      }),
+    );
+    await streamEvents(hub, runId, request, reply);
+  });
+
+  /** 「整理成定义」：把对话整理成表1-1（保留用户已确认行） */
+  app.post("/api/v1/projects/:id/definition/consolidate", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const scenario = db.scenarioRepo.getById(id);
+    if (!scenario) return notFound(reply, `场景 ${id} 不存在`);
+    const conversationId = await ensureDefinitionConversation(db, deps.dshClient, scenario);
+    const out = await consolidateDefinition(db, deps.dshClient, scenario, conversationId);
+    const alignment = alignmentWithBrief(
+      out.rows.map((r) => ({
+        item: r.item,
+        content: r.content,
+        source_type: r.source_type ?? undefined,
+      })),
+    );
+    return {
+      rows: out.rows,
+      alignment,
+      updated: out.updated,
+      skipped: out.skipped,
+      open_questions: out.openQuestions,
+      used_llm: out.usedLlm,
+    };
+  });
+
 
   app.get("/api/v1/conversations/:id/messages", async (request, reply) => {
     const { id } = request.params as { id: string };

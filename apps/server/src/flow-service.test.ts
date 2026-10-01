@@ -15,7 +15,7 @@ import type { DbInstance } from "@scene/infra";
 import { createApp } from "./app.js";
 import { createSseHub } from "./sse-hub.js";
 import { getFlowState, completeFlowStep, reopenFlowStep, unlockAllFlowSteps } from "./flow-service.js";
-import { upsertBrief, ensureAnchorRows, writeAnchorRows } from "./scenario-anchor.js";
+import { ensureAnchorRows, writeAnchorRows } from "./scenario-anchor.js";
 
 function mockDsh(): DshClient {
   return {
@@ -61,21 +61,25 @@ const state = (db: DbInstance, scenarioId: string, step: number) =>
   getFlowState(db, db.scenarioRepo.getById(scenarioId)!).steps.find((s) => s.id === step)!;
 
 describe("flow-service — 锁步与就绪", () => {
-  it("全新场景：第 1 步当前且未就绪（诉求还没填），其余全锁", () => {
+  it("全新场景：第 1 步当前且未就绪（定义还没整理），其余全锁", () => {
     const { db, scenarioId } = setup();
     const flow = getFlowState(db, db.scenarioRepo.getById(scenarioId)!);
     expect(flow.currentStep).toBe(1);
     expect(flow.completedCount).toBe(0);
     expect(flow.steps[0]!.state).toBe("当前");
     expect(flow.steps[0]!.ready).toBe(false);
-    expect(flow.steps[0]!.readyHint).toContain("想搞清楚什么");
+    expect(flow.steps[0]!.readyHint).toContain("场景定义对话");
     expect(flow.steps.slice(1).every((s) => s.state === "未解锁")).toBe(true);
   });
 
-  it("填诉求后第 1 步就绪；完成后第 2 步变当前", () => {
+  it("整理成定义（表1-1 有内容）后第 1 步就绪；完成后第 2 步变当前", () => {
     const { db, scenarioId } = setup();
     expect(state(db, scenarioId, 1).ready).toBe(false);
-    upsertBrief(db, scenarioId, { scene_name: "智慧水务", intent: "值不值得进" });
+    // v1.5 对话式：就绪看的是「定义已整理」（表1-1 有内容），而不是诉求字段
+    ensureAnchorRows(db, scenarioId, "智慧水务");
+    writeAnchorRows(db, scenarioId, [
+      { item: "客户类型/行业", content: "市政水务集团", source_type: "用户补充" },
+    ]);
     expect(state(db, scenarioId, 1).ready).toBe(true);
 
     const flow = completeFlowStep(db, db.scenarioRepo.getById(scenarioId)!, 1);
