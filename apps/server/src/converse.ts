@@ -276,6 +276,10 @@ function removeConversation(
 export const CONVERSE_SYSTEM_PROMPT = `你是场景通的对话助手。基于已有的产品资料和场景分析结果回答用户问题。
 保持专业、简洁，必要时引用数据来源。
 
+**关于记忆**：本轮消息前若带「【对话历史】」块，那是**本会话之前的往来**（必要时会标注"更早的 N 条已省略"）——
+请把它当作你自己的记忆：用户追问之前提过的信息（客户、范围、代号、结论等）时，**要据此回答**，
+不要说"看不到/你没说过"。只有历史里确实没有、且本轮也没提时，才说明"这块我还不确定"。
+
 应用与业务流（你必须知道的操作手册）：
 - 应用「场景通」：场景落地分析。**8 个阶段（0-7）**：0 材料解析与入库（= 常驻的产品资料库/知识库，不是用户要走的步）→ 1 认识场景（含门槛与合规）→ 2 理解商业 → 3 能力匹配 → 4 方案与实现 → 5 价值与验证 → 6 总结沉淀 → 7 最终交付物。
 - 用户界面按**流程逐页推进，共 8 步**（与阶段**数量对齐但编号不等**：第 1、2 步同属阶段 1——第 1 步确认定义与边界，第 2 步做认识场景分析；第 3-8 步依次对应阶段 2-7）：1 场景定义与边界 → 2 认识场景 → 3 理解商业 → 4 能力匹配 → 5 方案与实现 → 6 价值与验证 → 7 总结沉淀 → 8 交付物。
@@ -292,6 +296,47 @@ export const CONVERSE_SYSTEM_PROMPT = `你是场景通的对话助手。基于�
 **不要输出任何"定义更新块"、也不要声称已改写定义**——定义只以表1-1 为准。用户想定稿时，
 告诉他打开「场景定义」对话（聊清楚后点「整理成定义」），或直接在第 1 步的表格里逐项确认/编辑。`;
 
+// ─── 对话上下文（v1.7 接上） ────────────────────────────────
+//
+// **为什么上下文要项目侧自己管**：
+// 本项目按 spike 结论**直连供应商的 `/chat/completions`**（见 packages/infra/dsh-client.ts），
+// 每次 `prompt` 只发 `system` + 一条 `user`——DSH 侧的会话状态不参与推理。
+// 于是"多轮记忆"只能由我们显式注入；好在 `messageRepo` 里本来就存着本会话的完整往来。
+//
+// 历史（2026-09-25 前）完全没带：用户第二轮问"我刚才说的客户是谁"，模型只能答"看不到"。
+// 现在按预算带最近若干条，超出部分丢弃并**显式标注省略**，避免撑爆上下文窗口。
+
+/** 注入的历史消息条数上限 */
+export const HISTORY_MAX_MESSAGES = 12;
+/** 注入的历史字符上限（按字符近似，中文为主） */
+export const HISTORY_MAX_CHARS = 6000;
+
+/**
+ * 把会话历史拼成「对话历史」块（从最近往前取，超出预算截断）
+ *
+ * @param messages 该会话**在本轮之前**的消息（调用方需在写入本轮用户消息前取好）
+ * @returns 无历史时返回空串（不产生空块）
+ */
+export function buildHistoryBlock(
+  messages: readonly { role: string; content: string }[],
+): string {
+  const usable = messages.filter((m) => String(m.content ?? "").trim() !== "");
+  if (usable.length === 0) return "";
+
+  const picked: string[] = [];
+  let chars = 0;
+  for (let i = usable.length - 1; i >= 0; i--) {
+    const m = usable[i]!;
+    const line = `${m.role === "用户" ? "用户" : "助手"}：${m.content.trim()}`;
+    if (picked.length >= HISTORY_MAX_MESSAGES || chars + line.length > HISTORY_MAX_CHARS) break;
+    picked.unshift(line);
+    chars += line.length;
+  }
+  const omitted = usable.length - picked.length;
+  const note = omitted > 0 ? `（更早的 ${omitted} 条已省略）` : "";
+  return `【对话历史】${note}\n${picked.join("\n")}\n\n`;
+}
+
 async function* sendMessage(
   db: ConverseDb,
   dshClient: DshClient,
@@ -306,6 +351,9 @@ async function* sendMessage(
     yield { type: "error", message: `会话 ${conversationId} 不存在` };
     return;
   }
+
+  // 1.5 取本轮之前的历史（必须在写入本轮消息之前取，否则会把本轮算进历史）
+  const historyBlock = buildHistoryBlock(db.messageRepo.listByConversation(conversationId));
 
   // 2. 写入用户消息
   db.messageRepo.insert({
@@ -336,11 +384,22 @@ async function* sendMessage(
   }
 
   // 3. 创建 DSH session 并流式获取回复
+  //
+  // 注意：本项目的 DshClient 是**直连供应商**的实现，`prompt` 每次只发 system + user，
+  // **DSH 会话本身不保存对话状态**（它只承载 provider/model/abort）。因此这里的 session
+  // 是"每次调用的一次性载体"，**多轮记忆由上面的 `historyBlock` 负责**。
+  // 仍然把 sessionId 回写会话行，是为了让 `dsh_session_id` 反映**实际用过**的会话
+  // （历史实现写成"创建时的会话"，但那条会话从未被使用，读代码容易误以为可以续接）。
   let session: SessionHandle;
   try {
     session = await dshClient.createSession({
       title: conversation.title,
     });
+    try {
+      db.conversationRepo.update(conversationId, { dsh_session_id: session.sessionId });
+    } catch {
+      /* 回写失败不阻断对话（字段仅作追溯） */
+    }
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     yield { type: "error", message: `DSH 会话创建失败：${msg}` };
@@ -368,7 +427,8 @@ async function* sendMessage(
     const stream = dshClient.prompt(session, {
       // v1.5：场景定义对话复用本管道，用覆盖项换掉系统提示词与上下文
       system: override?.system ?? CONVERSE_SYSTEM_PROMPT,
-      user: `${override?.contextPrefix ?? ""}${scenarioCtx}${importReport ? importReport : ""}${content}`,
+      // 顺序：对话历史（多轮记忆）→ 调用方上下文（如定义对话的表1-1 现状）→ 场景上下文 → 导入报告 → 本轮消息
+      user: `${historyBlock}${override?.contextPrefix ?? ""}${scenarioCtx}${importReport ? importReport : ""}${content}`,
       outputContract: {},
     });
 

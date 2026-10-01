@@ -14,7 +14,12 @@ import type {
 } from "@scene/contract";
 import type { Repo, MessageRepo } from "@scene/infra";
 
-import { createConverseCommand } from "./converse.js";
+import {
+  buildHistoryBlock,
+  createConverseCommand,
+  HISTORY_MAX_CHARS,
+  HISTORY_MAX_MESSAGES,
+} from "./converse.js";
 import type { ConverseDeps, ConverseDb } from "./converse.js";
 
 // ─── Mock 工厂 ─────────────────────────────────────────────
@@ -669,5 +674,108 @@ describe("对话即导入", () => {
       .map((e) => (e as { type: "text"; text: string }).text)
       .join("");
     expect(text).toContain("❌ /nope/ghost.pdf：文件不存在，请检查路径");
+  });
+});
+
+describe("对话上下文（多轮记忆，v1.7 接上）", () => {
+  it("buildHistoryBlock：无历史时返回空串（不产生空块）", () => {
+    expect(buildHistoryBlock([])).toBe("");
+    expect(buildHistoryBlock([{ role: "用户", content: "   " }])).toBe("");
+  });
+
+  it("buildHistoryBlock：标注用户/助手角色，保留时间顺序", () => {
+    const block = buildHistoryBlock([
+      { role: "用户", content: "客户是杭州水务集团" },
+      { role: "系统", content: "收到" },
+    ]);
+    expect(block).toContain("【对话历史】");
+    expect(block).toContain("用户：客户是杭州水务集团");
+    expect(block).toContain("助手：收到");
+    expect(block.indexOf("用户：")).toBeLessThan(block.indexOf("助手："));
+  });
+
+  it("buildHistoryBlock：超条数上限时从最早处丢弃并标注省略", () => {
+    const many = Array.from({ length: HISTORY_MAX_MESSAGES + 5 }, (_, i) => ({
+      role: i % 2 === 0 ? "用户" : "系统",
+      content: `第${i}条`,
+    }));
+    const block = buildHistoryBlock(many);
+    expect(block).toContain("（更早的 5 条已省略）");
+    expect(block).not.toContain("第0条");
+    expect(block).toContain(`第${HISTORY_MAX_MESSAGES + 4}条`);
+  });
+
+  it("buildHistoryBlock：超字符上限时同样截断", () => {
+    const big = "水".repeat(HISTORY_MAX_CHARS);
+    const block = buildHistoryBlock([
+      { role: "用户", content: big },
+      { role: "用户", content: "最近这条要留住" },
+    ]);
+    expect(block).toContain("最近这条要留住");
+    expect(block).toContain("（更早的 1 条已省略）");
+  });
+
+  it("第二轮会把上一轮的用户话与助手回复带进 prompt（关键回归）", async () => {
+    const client = createMockDshClient();
+    const { deps } = createDeps(client);
+    const cmd = createConverseCommand(deps);
+    const conv = await cmd.create({ scenario_id: "s1", title: "上下文" });
+
+    for await (const _ of cmd.sendMessage(conv.id, "项目代号是「麒麟-7」，客户是杭州水务集团")) {
+      /* 消费 */
+    }
+    for await (const _ of cmd.sendMessage(conv.id, "我刚才说的项目代号和客户是什么？")) {
+      /* 消费 */
+    }
+
+    const calls = (client.prompt as unknown as { mock: { calls: unknown[][] } }).mock.calls;
+    expect(calls).toHaveLength(2);
+    const firstUser = (calls[0]![1] as { user: string }).user;
+    const secondUser = (calls[1]![1] as { user: string }).user;
+
+    // 首轮没有历史块；第二轮必须有，且**含上一轮的原话与助手回复**
+    expect(firstUser).not.toContain("【对话历史】");
+    expect(secondUser).toContain("【对话历史】");
+    expect(secondUser).toContain("麒麟-7");
+    expect(secondUser).toContain("这是 AI 的回复。");
+    // 本轮消息仍在最后（历史不能把它顶掉）
+    expect(secondUser.trimEnd().endsWith("我刚才说的项目代号和客户是什么？")).toBe(true);
+  });
+
+  it("场景定义对话（override）同样带历史，且保留调用方上下文", async () => {
+    const client = createMockDshClient();
+    const { deps } = createDeps(client);
+    const cmd = createConverseCommand(deps);
+    const conv = await cmd.create({ scenario_id: "s1", title: "场景定义" });
+
+    for await (const _ of cmd.sendMessage(conv.id, "客户是市政水务集团")) {
+      /* 消费 */
+    }
+    for await (const _ of cmd.sendMessage(conv.id, "覆盖什么来着？", {
+      system: "定义助手",
+      contextPrefix: "【表1-1 现状】\n",
+    })) {
+      /* 消费 */
+    }
+
+    const calls = (client.prompt as unknown as { mock: { calls: unknown[][] } }).mock.calls;
+    const second = calls[1]![1] as { system: string; user: string };
+    expect(second.system).toBe("定义助手");
+    expect(second.user).toContain("【对话历史】");
+    expect(second.user).toContain("市政水务集团");
+    expect(second.user).toContain("【表1-1 现状】");
+  });
+
+  it("dsh_session_id 回写为**实际使用**的会话（历史实现写的是从未使用的那个）", async () => {
+    const client = createMockDshClient();
+    const { deps, db } = createDeps(client);
+    const cmd = createConverseCommand(deps);
+    const conv = await cmd.create({ scenario_id: "s1", title: "写回" });
+
+    for await (const _ of cmd.sendMessage(conv.id, "第一句")) {
+      /* 消费 */
+    }
+    const update = db.conversationRepo.update as unknown as { mock: { calls: unknown[][] } };
+    expect(update.mock.calls.some((c) => (c[1] as { dsh_session_id?: string }).dsh_session_id === "dsh-session-1")).toBe(true);
   });
 });
