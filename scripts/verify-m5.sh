@@ -215,23 +215,33 @@ wait "$SRV2" 2>/dev/null || true
 rm -rf "$SDIR2"
 
 # E2E 用固定端口 4180/4181：上一次失败可能留下服务，先把端口清干净再跑，
-# 否则 playwright 会以「4181 already used」直接失败（而不是测试失败，容易误判）
-for P in 4180 4181; do
-  STALE=$(lsof -nP -iTCP:"$P" -sTCP:LISTEN -t 2>/dev/null | sort -u)
-  if [ -n "$STALE" ]; then
-    echo "· 清理上一次遗留的 :$P 服务（PID ${STALE}）"
-    kill $STALE 2>/dev/null || true
-    sleep 1
-  fi
-done
+# 否则 playwright 会以「4181 already used」直接失败（而不是测试失败，容易误判）。
+#
+# 安全约束（重要）：**只杀白名单命令的进程**。本脚本的父进程是 DSH 桌面宿主，
+# 按端口取到的裸 PID 若不校验命令就 kill，一旦取到宿主进程会直接杀掉用户会话。
+kill_our_server_on_port() {
+  local port="$1" pid cmd
+  for pid in $(lsof -nP -iTCP:"$port" -sTCP:LISTEN -t 2>/dev/null | sort -u); do
+    cmd=$(ps -o command= -p "$pid" 2>/dev/null || true)
+    case "$cmd" in
+      *"vite preview"*|*"apps/server/dist/index.js"*)
+        echo "· 清理上一次遗留的 :$port 服务（PID $pid）"
+        kill "$pid" 2>/dev/null || true
+        ;;
+      "")
+        ;;
+      *)
+        echo "· 注意：:$port 被非本项目进程占用（PID $pid），跳过：$(printf '%s' "$cmd" | cut -c1-70)"
+        ;;
+    esac
+  done
+}
+for P in 4180 4181; do kill_our_server_on_port "$P"; sleep 1; done
 
 E2E_OUT=$(npm run test:e2e 2>&1) && E2E_OK=1 || E2E_OK=0
 
-# 收尾：无论成败都清掉 E2E 起的服务，避免污染后续手工验证
-for P in 4180 4181; do
-  STALE=$(lsof -nP -iTCP:"$P" -sTCP:LISTEN -t 2>/dev/null | sort -u)
-  [ -n "$STALE" ] && kill $STALE 2>/dev/null || true
-done
+# 收尾：无论成败都清掉 E2E 起的服务，避免污染后续手工验证（同样只杀白名单）
+for P in 4180 4181; do kill_our_server_on_port "$P"; done
 if [ "$E2E_OK" = "1" ]; then
   EN=$(printf '%s' "$E2E_OUT" | grep -Eo "[0-9]+ passed" | tail -1 || echo "?")
   echo "✅ 演示模式 E2E 通过（${EN}）"
