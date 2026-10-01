@@ -228,7 +228,10 @@ kill_our_server_on_port() {
   for pid in $(lsof -nP -iTCP:"$port" -sTCP:LISTEN -t 2>/dev/null | sort -u); do
     cmd=$(ps -o command= -p "$pid" 2>/dev/null || true)
     case "$cmd" in
-      *"vite preview"*|*"apps/server/dist/index.js"*)
+      # 注意：vite preview 的真实命令行是 `node .../vite.js preview --port 4180`，
+      # 用 *"vite preview"* 匹配不上（中间隔着 vite.js）——曾导致残留服务没被清掉，
+      # 下一次 E2E 直接因「4180 already in use」起不来（而不是测试失败，极易误判）
+      *vite*preview*|*apps/server/dist/index.js*)
         echo "· 清理上一次遗留的 :$port 服务（PID ${pid}）"
         kill "$pid" 2>/dev/null || true
         ;;
