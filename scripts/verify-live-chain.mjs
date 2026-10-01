@@ -219,6 +219,12 @@ const tabCount = await detTabs.count();
 await detTabs.nth(0).click();
 const l1Count = await page.locator(".det .layer-L1").count();
 await detTabs.nth(1).click();
+// 阶段总结默认**折叠**（页面瘦身）：先展开全文再断言六段骨架
+const expandBtn = page.locator(".det button.fold-toggle", { hasText: /展开全文/ });
+if (await expandBtn.count()) {
+  await expandBtn.first().click();
+  await page.waitForTimeout(300);
+}
 const mdText = (await page.locator(".det .md-body").innerText().catch(() => "")) || "";
 const hasSix = /信息摘要/.test(mdText) && /信息缺口与待补充/.test(mdText);
 /* 产品不产出判断：整页不得出现建议档位措辞 */
