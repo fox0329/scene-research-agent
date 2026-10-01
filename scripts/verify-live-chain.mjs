@@ -172,17 +172,19 @@ ok("6b 交付物为装配式（内部含阶段总结+附录；对外不含内部
   internalOk && externalClean, `${newest} ${content.length}B · 内部 ${internalOk} / 对外 ${externalClean}`);
 
 /* 7. 流程推进（导航动作，不是判断，信息不齐备也不阻断）
-   v1.5 逐页推进后按钮文案为「完成本步，进入下一步」；兼容旧的「进入下一阶段」 */
+   断言改成**语义断言**：只看流程是否真的前移（比比对 toast 文案稳） */
+const doneBefore = await page.locator(".flow-rail .flow-node--done").count();
 const advanceBtn = page
   .locator("button:has-text('完成本步'), button:has-text('进入下一阶段')")
   .first();
 await advanceBtn.click();
 await page.waitForFunction(
-  () => /已进入阶段/.test(document.body.innerText),
-  null,
-  { timeout: 15_000 },
+  (n) => document.querySelectorAll(".flow-rail .flow-node--done").length > n,
+  doneBefore,
+  { timeout: 20_000 },
 );
-ok("7 「进入下一阶段」真实推进（导航动作，缺口不阻断）", true);
+const doneAfter = await page.locator(".flow-rail .flow-node--done").count();
+ok("7 「完成本步」真实推进流程（导航动作，缺口不阻断）", doneAfter > doneBefore, `已完成步 ${doneBefore} → ${doneAfter}`);
 
 /* 8. 对话 converse 闭环存在性（细节覆盖见 M5-T5.5 验收） */
 await page.click(".conv-ta");

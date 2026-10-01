@@ -118,6 +118,28 @@ export const BriefStepPanel: React.FC<BriefStepPanelProps> = ({
   }, [saveBrief, projectId, showToast, onChanged, onFlowChanged]);
 
   /* 右栏数据面：确认清单（L1 来自表1-1 必确认行）+ 场景锚内容 */
+  /* 右栏 Tab ② 的阶段总结：**每一步都要有**（用户定调"每阶段一份总结文档供参考，这才是价值"），
+     因此第 1、2 步也加载（阶段 1 的总结由服务端确定性生成，内容以缺口清单为主） */
+  const [summary, setSummary] = useState<string | null>(null);
+  const [summaryLoading, setSummaryLoading] = useState(false);
+  const loadSummary = useCallback(
+    async (refresh = false) => {
+      setSummaryLoading(true);
+      try {
+        const r = await api.stageSummary(projectId, 1, refresh);
+        setSummary(r.markdown);
+      } catch {
+        setSummary(null);
+      } finally {
+        setSummaryLoading(false);
+      }
+    },
+    [projectId],
+  );
+  useEffect(() => {
+    void loadSummary(false);
+  }, [loadSummary]);
+
   const snapshot = useMemo<StageSnapshot | null>(() => {
     const checklist = buildChecklist({
       anchorRows: anchor.map((a) => ({
@@ -132,8 +154,8 @@ export const BriefStepPanel: React.FC<BriefStepPanelProps> = ({
       title: `第 1/${FLOW_TOTAL} 步 · ${step.title}`,
       rows: [],
       completeness: null,
-      summary: null,
-      summaryLoading: false,
+      summary,
+      summaryLoading,
       activeTable: "表1-1",
       supplements: [],
       checklist: checklist.items.map((i) => ({
@@ -144,11 +166,11 @@ export const BriefStepPanel: React.FC<BriefStepPanelProps> = ({
         state: i.state,
       })),
       anchor,
-      onRefreshSummary: () => undefined,
+      onRefreshSummary: () => void loadSummary(true),
       onSupplementChange: () => undefined,
       onAnchorAction: () => undefined,
     };
-  }, [anchor, step.title]);
+  }, [anchor, step.title, summary, summaryLoading, loadSummary]);
 
   useEffect(() => {
     onStageSnapshot?.(snapshot);

@@ -132,6 +132,27 @@ export const AnchorStepPanel: React.FC<AnchorStepPanelProps> = ({
   );
   const l1Total = l1Rows().length;
 
+  /* 右栏 Tab ② 的阶段总结：每一步都要有（用户定调"每阶段一份总结文档供参考"） */
+  const [summary, setSummary] = useState<string | null>(null);
+  const [summaryLoading, setSummaryLoading] = useState(false);
+  const loadSummary = useCallback(
+    async (refresh = false) => {
+      setSummaryLoading(true);
+      try {
+        const r = await api.stageSummary(projectId, 1, refresh);
+        setSummary(r.markdown);
+      } catch {
+        setSummary(null);
+      } finally {
+        setSummaryLoading(false);
+      }
+    },
+    [projectId],
+  );
+  useEffect(() => {
+    void loadSummary(false);
+  }, [loadSummary]);
+
   const snapshot = useMemo<StageSnapshot | null>(() => {
     const checklist = buildChecklist({
       anchorRows: anchor.map((a) => ({
@@ -146,8 +167,8 @@ export const AnchorStepPanel: React.FC<AnchorStepPanelProps> = ({
       title: `第 2/${FLOW_TOTAL} 步 · ${step.title}`,
       rows: [],
       completeness: null,
-      summary: null,
-      summaryLoading: false,
+      summary,
+      summaryLoading,
       activeTable: "表1-1",
       supplements: [],
       checklist: checklist.items.map((i) => ({
@@ -158,11 +179,11 @@ export const AnchorStepPanel: React.FC<AnchorStepPanelProps> = ({
         state: i.state,
       })),
       anchor,
-      onRefreshSummary: () => undefined,
+      onRefreshSummary: () => void loadSummary(true),
       onSupplementChange: () => undefined,
       onAnchorAction: handleAnchorAction,
     };
-  }, [anchor, step.title, handleAnchorAction]);
+  }, [anchor, step.title, handleAnchorAction, summary, summaryLoading, loadSummary]);
 
   useEffect(() => {
     onStageSnapshot?.(snapshot);
