@@ -41,9 +41,9 @@ ok(
     (await page.getByRole("button", { name: "知识库" }).count()) > 0,
 );
 
-// 2. 场景列表显示流程进度「第 n/9 步」
+// 2. 场景列表显示流程进度「第 n/8 步」
 const listText = await page.locator(".side").innerText();
-ok("2 场景列表显示「第 n/9 步」", /第 \d+\/9 步/.test(listText), (listText.match(/第 \d+\/9 步/) ?? [""])[0]);
+ok("2 场景列表显示「第 n/8 步」", /第 \d+\/8 步/.test(listText), (listText.match(/第 \d+\/8 步/) ?? [""])[0]);
 
 // 3. 进入一个场景 → 顶部是流程进度轴（不再是 8 个阶段 tab）
 const rail = page.locator(".flow-rail");
@@ -56,7 +56,7 @@ if (!(await rail.isVisible().catch(() => false))) {
 }
 await rail.waitFor({ timeout: 15_000 });
 const nodes = await rail.locator(".flow-node").count();
-ok("3 进入场景后是流程进度轴（9 步），不再是阶段 tab", nodes === 9, `${nodes} 个节点`);
+ok("3 进入场景后是流程进度轴（8 步），不再是阶段 tab", nodes === 8, `${nodes} 个节点`);
 ok("3b 旧的 8 阶段 tab 已移除", (await page.locator(".stabs").count()) === 0);
 
 // 4. 三态与推进按钮
@@ -64,11 +64,11 @@ const done = await rail.locator(".flow-node--done").count();
 const current = await rail.locator(".flow-node--current").count();
 const locked = await rail.locator(".flow-node--locked").count();
 const ready = await rail.locator(".flow-node--ready").count();
-// 锁步：可推进只在「解锁全部」后出现；四态之和恒为 9
+// 锁步：可推进只在「解锁全部」后出现；四态之和恒等于节点数
 ok(
   "4 流程轴四态渲染（已完成/当前/可推进/未解锁）",
-  current === 1 && done + current + locked + ready === 9,
-  `done=${done} current=${current} ready=${ready} locked=${locked}`,
+  current === 1 && done + current + locked + ready === nodes,
+  `done=${done} current=${current} ready=${ready} locked=${locked}（共 ${nodes} 节点）`,
 );
 // 解锁全部后未解锁数应为 0，且按钮显示已解锁
 const unlockedAll = (await rail.getByRole("button", { name: "已解锁全部步骤" }).count()) === 1;
