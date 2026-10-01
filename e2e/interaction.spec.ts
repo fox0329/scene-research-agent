@@ -195,7 +195,7 @@ test("流程轴：9 个节点、当前步高亮、未解锁不可点（v1.5 取�
   // 当前步唯一且高亮；初始 0 步完成 → 第 1 步是当前步，其余锁着
   await expect(rail.locator(".flow-node--current")).toHaveCount(1);
   await expect(rail.locator(".flow-node--current")).toHaveAttribute("aria-selected", "true");
-  await expect(rail.locator(".flow-node--current")).toContainText("场景诉求");
+  await expect(rail.locator(".flow-node--current")).toContainText("场景定义");
   await expect(rail.locator(".flow-node--done")).toHaveCount(0);
   await expect(rail.locator(".flow-node--locked")).toHaveCount(8);
   await expect(nodes.nth(1)).toBeDisabled();
@@ -203,7 +203,7 @@ test("流程轴：9 个节点、当前步高亮、未解锁不可点（v1.5 取�
 
   // 当前步的 readyHint 直接显示在轴上
   await expect(rail.locator(".flow-hint")).toContainText("第 1/9 步");
-  await expect(rail.locator(".flow-hint")).toContainText("演示数据已预填诉求");
+  await expect(rail.locator(".flow-hint")).toContainText("场景定义已有 5 项内容");
   await expect(page.locator(".ws .pnl").first()).toBeVisible();
 });
 
@@ -213,7 +213,7 @@ test("流程推进：完成本步 → 当前步前移；已完成步可回看重
   await completeBtn.click();
 
   await expect(rail.locator(".flow-node--done")).toHaveCount(1);
-  await expect(rail.locator(".flow-node--done")).toContainText("场景诉求");
+  await expect(rail.locator(".flow-node--done")).toContainText("场景定义");
   await expect(rail.locator(".flow-node--current")).toContainText("场景定义与边界");
   await expect(rail.locator(".flow-node--locked")).toHaveCount(7);
   // 第 2 步未就绪（L1 还有 4 项未确认）→ 数据判定为不可点，title 直接说明缺什么
@@ -225,11 +225,11 @@ test("流程推进：完成本步 → 当前步前移；已完成步可回看重
   await expect(page.locator(".ws .completeness-bar")).toBeVisible();
 
   // 点已完成节点回看：显示该步内容 + 「回到这一步重跑」
-  await rail.getByRole("tab", { name: /场景诉求/ }).click();
+  await rail.getByRole("tab", { name: /^第 1 步 · 场景定义（/ }).click();
   await expect(rail.locator(".flow-hint")).toContainText("正在回看第 1 步");
   await expect(page.locator(".flow-reopen")).toBeVisible();
   await page.getByRole("button", { name: "回到这一步重跑" }).click();
-  await expect(rail.locator(".flow-node--current")).toContainText("场景诉求");
+  await expect(rail.locator(".flow-node--current")).toContainText("场景定义");
   await expect(rail.locator(".flow-node--done")).toHaveCount(0);
   await expect(rail.locator(".flow-node--locked")).toHaveCount(8);
 });
@@ -242,7 +242,7 @@ test("解锁全部步骤：未解锁节点可点，可直接跳到任一步", as
 
   // 不按顺序直接跳到第 4 步；当前步仍是第 1 步，轴给出回到当前步的入口
   await rail.getByRole("tab", { name: /理解商业/ }).click();
-  await expect(rail.locator(".flow-node--current")).toContainText("场景诉求");
+  await expect(rail.locator(".flow-node--current")).toContainText("场景定义");
   await expect(rail.getByRole("button", { name: /回到当前步/ })).toBeVisible();
   await expect(page.locator(".ws .completeness-bar")).toBeVisible();
 
@@ -255,12 +255,53 @@ test("解锁全部步骤：未解锁节点可点，可直接跳到任一步", as
   await expect(page.locator(".det .md-body")).toContainText("交付物说明");
 });
 
-test("第 1 步内嵌面板：起草场景锚后就地显示对照式确认表（复用对话框子组件）", async ({ page }) => {
-  await page.locator(".ws").getByRole("button", { name: "起草场景锚" }).click();
-  await expect(page.locator(".ws .align-table")).toBeVisible();
-  await expect(page.locator(".ws .align-table tbody tr")).toHaveCount(6); // L1 六项
-  await expect(page.locator(".ws .align-badge").first()).toBeVisible();
-  await expect(page.locator(".ws .align-questions li").first()).toBeVisible();
+/* ────────────── 第 1 步「场景定义」：独立对话弹窗（v1.17） ────────────── */
+
+test("第 1 步：定义状态卡 + 独立「场景定义」对话弹窗，整理成定义给出对照结论", async ({ page }) => {
+  const ws = page.locator(".ws");
+  // 状态卡：表1-1 内容摘要（几项已填 / 几项待确认）+ 常驻入口
+  await expect(ws.locator(".definition-status")).toBeVisible();
+  await expect(ws.locator(".definition-stat").first()).toContainText("项已有内容");
+  const entry = ws.getByRole("button", { name: /场景定义对话/ });
+  await expect(entry).toBeVisible();
+  await expect(entry).toHaveText(/继续场景定义对话/); // 演示态已有预置对话
+  // 这一段不是表单：三段式字段已删除
+  await expect(ws.locator(".brief-input")).toHaveCount(0);
+
+  // 打开独立弹窗（不是中栏、不是右下角抽屉）
+  await entry.click();
+  const dlg = page.getByRole("dialog", { name: "场景定义" });
+  await expect(dlg).toBeVisible();
+  await expect(dlg).toHaveAttribute("aria-modal", "true");
+  await expect(dlg.locator(".definition-ta")).toBeVisible();
+  await expect(dlg.getByRole("button", { name: "整理成定义" })).toBeVisible();
+  // 对话流：模型先给理解再提问（左）+ 用户消息（右）
+  await expect(dlg.locator(".msg.ai .bub").first()).toBeVisible();
+  await expect(dlg.locator(".msg.u .bub").first()).toBeVisible();
+
+  // 整理成定义：写表统计 + 六项对照结论 + 待回答问题
+  await dlg.getByRole("button", { name: "整理成定义" }).click();
+  await expect(dlg.locator(".definition-summary")).toContainText("更新");
+  await expect(dlg.locator(".align-table tbody tr")).toHaveCount(6); // L1 六项
+  await expect(dlg.locator(".align-badge").first()).toBeVisible();
+  await expect(dlg.locator(".align-questions li").first()).toBeVisible();
+
+  // 「完成，去确认表格」关闭弹窗；关闭后第 1 步可完成，且入口变为「继续」
+  await dlg.getByRole("button", { name: "完成，去确认表格" }).click();
+  await expect(dlg).toBeHidden();
+  await expect(ws.getByRole("button", { name: "继续场景定义对话" })).toBeVisible();
+  await expect(
+    page.locator(".flow-rail").getByRole("button", { name: "完成本步，进入下一步" }),
+  ).toBeEnabled();
+});
+
+test("场景定义弹窗：Esc 关闭，且关闭后第 1 步仍是定义状态卡", async ({ page }) => {
+  await page.locator(".ws").getByRole("button", { name: /场景定义对话/ }).click();
+  const dlg = page.getByRole("dialog", { name: "场景定义" });
+  await expect(dlg).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(dlg).toHaveCount(0);
+  await expect(page.locator(".ws .definition-status")).toBeVisible();
 });
 
 test("随时回编辑：关键表格单元格可逐格编辑，失焦后值保留", async ({ page }) => {

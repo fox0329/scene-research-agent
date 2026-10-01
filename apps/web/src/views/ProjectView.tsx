@@ -2,10 +2,10 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { FLOW_TOTAL, STAGE_DEFS, flowStep, type InfoStageId } from "@scene/contract";
 import { RealStagePanel } from "./RealStagePanel";
 import { DemoStagePanel } from "./DemoStagePanel";
-import { BriefStepPanel } from "./BriefStepPanel";
+import { DefinitionStepPanel } from "./DefinitionStepPanel";
 import { AnchorStepPanel } from "./AnchorStepPanel";
 import { DeliveryPanel } from "./DeliveryPanel";
-import { DemoAnchorStep, DemoBriefStep } from "./DemoFlowPanels";
+import { DemoAnchorStep, DemoDefinitionStep } from "./DemoFlowPanels";
 import { FlowRail } from "../components/FlowRail";
 import { api, type ApiAnchorRow, type ApiFlowStatus } from "../api";
 import { useAsync } from "../hooks/useAsync";
@@ -29,6 +29,12 @@ interface ProjectViewProps {
   onStageSnapshot?: (snap: StageSnapshot | null) => void;
   /** 主动弹出对话抽屉（v1.14）：定义/澄清生成后让用户直接对话 */
   onOpenConversation?: (convId?: string) => void;
+  /**
+   * 定义对话在 App 层发生变化（新建场景后直接开聊）的信号（自增计数）
+   *
+   * 第 1 步面板据此重取定义状态——否则面板停在"还没聊过"的旧快照上。
+   */
+  definitionRefresh?: number;
 }
 
 /** 组装步（第 9 步）对应的落库阶段 */
@@ -51,6 +57,7 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
   onProjectsChanged,
   onStageSnapshot,
   onOpenConversation,
+  definitionRefresh = 0,
 }) => {
   const { showToast } = useToast();
 
@@ -207,6 +214,11 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
     );
   }, []);
 
+  /** 演示态：对话「整理成定义」结果落到本地表1-1 */
+  const handleDemoAnchorConsolidated = useCallback((rows: ApiAnchorRow[]) => {
+    setDemoAnchor(rows.map((r) => ({ ...r })));
+  }, []);
+
   /** 交付物双口径导出（T5.6）：真实链路落服务端 exports/，toast 回显路径 */
   const [exporting, setExporting] = useState(false);
   const handleExport = useCallback(async () => {
@@ -231,12 +243,15 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
     if (live) {
       if (step === 1) {
         return (
-          <BriefStepPanel
+          <DefinitionStepPanel
             projectId={project.id}
+            scenarioName={project.name}
             flow={flow}
             onChanged={onProjectsChanged}
             onFlowChanged={() => void reloadFlow()}
             onStageSnapshot={onStageSnapshot}
+            onGoToAnchorStep={() => setActiveStep(2)}
+            refreshToken={definitionRefresh}
           />
         );
       }
@@ -287,7 +302,16 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
 
     // ── 演示模式：同一套结构与领域逻辑，数据来自本地内存 ──
     if (step === 1) {
-      return <DemoBriefStep flow={flow} anchor={demoAnchor} onStageSnapshot={onStageSnapshot} />;
+      return (
+        <DemoDefinitionStep
+          flow={flow}
+          anchor={demoAnchor}
+          scenarioName={project.name}
+          onConsolidated={handleDemoAnchorConsolidated}
+          onGoToAnchorStep={() => setActiveStep(2)}
+          onStageSnapshot={onStageSnapshot}
+        />
+      );
     }
     if (step === 2) {
       return (

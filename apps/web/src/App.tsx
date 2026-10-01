@@ -2,7 +2,8 @@ import React, { useCallback, useEffect, useState } from "react";
 import { Sidebar } from "./components/Sidebar";
 import { ConversationDrawer } from "./components/ConversationDrawer";
 import { StageRightPanel } from "./components/StageRightPanel";
-import { ScenarioBriefDialog } from "./components/ScenarioBriefDialog";
+import { ScenarioDefinitionDialog } from "./components/ScenarioDefinitionDialog";
+import { NewScenarioDialog } from "./components/NewScenarioDialog";
 import { RowDetailPanel, type RowDetail } from "./components/RowDetailPanel";
 import type { StageSnapshot } from "./components/stage-snapshot";
 import { ToastProvider, useToast } from "./components/Toast";
@@ -81,8 +82,17 @@ const AppShell: React.FC = () => {
   const [activeProjectId, setActiveProjectId] = useState(projects[0].id);
   /** 右栏决策支撑快照（联真模式，来自当前阶段真实数据；T5.6） */
   const [stageSnapshot, setStageSnapshot] = useState<StageSnapshot | null>(null);
-  /** 场景诉求对话框（第一输入）：新建项目 / 修改诉求都用它 */
-  const [briefOpen, setBriefOpen] = useState(false);
+  /** 新建场景只问名称（场景本体在「场景定义」对话里聊清楚） */
+  const [newScenarioOpen, setNewScenarioOpen] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
+  /** 项目刚建好、待打开定义对话的目标（null = 不显示定义对话） */
+  const [definitionTarget, setDefinitionTarget] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
+  /** 定义对话在 App 层发生变化的信号：通知第 1 步面板重取定义状态 */
+  const [definitionRefresh, setDefinitionRefresh] = useState(0);
   /** 资料库行详情（右栏备注区，变更表 #19） */
   const [rowDetail, setRowDetail] = useState<RowDetail | null>(null);
   /** 对话抽屉唤起信号（v1.14：定义/澄清生成后主动弹出） */
@@ -175,24 +185,49 @@ const AppShell: React.FC = () => {
     }
   }, []);
 
-  /** 新建项目（仅联真模式；演示模式保持占位入口） */
+  /** 新建项目：只问名称（演示模式保持占位入口） */
   const handleNewProject = useCallback(async () => {
     if (!live) return;
-    // v1.4：先问「想梳理什么场景」（三段式），再起草场景锚——
-    // 不再让用户手填大段描述，也不再只凭一个名字就让系统猜。
-    setBriefOpen(true);
+    setCreateError(null);
+    setNewScenarioOpen(true);
   }, [live]);
 
-  const handleBriefDone = useCallback(
-    async (projectId: string) => {
-      setBriefOpen(false);
-      await refreshProjects(projectId);
-      setView("project");
-      showToast("场景诉求已保存，场景锚已起草——第 1 步点「完成本步」后到第 2 步逐项确认");
+  /**
+   * 提交名称 → 建项目 → 直接打开独立的「场景定义」对话页
+   *
+   * 产品口径：新建只输名称，场景本体在对话里聊清楚；不再让用户填三段式表单。
+   */
+  const handleCreateProject = useCallback(
+    async (name: string) => {
+      setCreating(true);
+      setCreateError(null);
+      try {
+        const created = await api.createProject(name);
+        setNewScenarioOpen(false);
+        await refreshProjects(created.id);
+        setView("project");
+        setDefinitionTarget({ id: created.id, name: created.name });
+      } catch (err: unknown) {
+        setCreateError(err instanceof Error ? err.message : String(err));
+      } finally {
+        setCreating(false);
+      }
     },
-    [refreshProjects, showToast],
+    [refreshProjects],
   );
 
+  /** 定义对话整理完成：刷新列表（流程第 1 步是否可完成由服务端判定） */
+  const handleDefinitionConsolidated = useCallback(async () => {
+    setDefinitionRefresh((n) => n + 1);
+    await refreshProjects().catch(() => {});
+    showToast("场景定义已整理成表1-1——关闭对话后点「完成本步」进入第 2 步逐项确认");
+  }, [refreshProjects, showToast]);
+
+  /** 关闭 App 层的定义对话：让第 1 步面板重取对话条数与表1-1 */
+  const handleDefinitionClosed = useCallback(() => {
+    setDefinitionTarget(null);
+    setDefinitionRefresh((n) => n + 1);
+  }, []);
 
   /** 项目 ⋯ 菜单动作（仅联真模式落地） */
   const handleProjectAction = useCallback(
@@ -297,6 +332,7 @@ const AppShell: React.FC = () => {
             onNewProject={() => void handleNewProject()}
             onStageSnapshot={setStageSnapshot}
             onOpenConversation={live ? openConversation : undefined}
+            definitionRefresh={definitionRefresh}
           />
         )}
         {view === "project" && !activeProject && (
@@ -356,11 +392,21 @@ const AppShell: React.FC = () => {
         )}
       </aside>
 
-      <ScenarioBriefDialog
-        open={briefOpen}
-        projectId={null}
-        onClose={() => setBriefOpen(false)}
-        onDone={(id) => void handleBriefDone(id)}
+      <NewScenarioDialog
+        open={newScenarioOpen}
+        busy={creating}
+        error={createError}
+        onSubmit={(name) => void handleCreateProject(name)}
+        onClose={() => setNewScenarioOpen(false)}
+      />
+
+      {/* 新建后直接进入的「场景定义」对话（独立页面级弹窗，不是中栏/抽屉） */}
+      <ScenarioDefinitionDialog
+        open={definitionTarget !== null}
+        projectId={definitionTarget?.id ?? ""}
+        scenarioName={definitionTarget?.name ?? ""}
+        onClose={handleDefinitionClosed}
+        onConsolidated={() => void handleDefinitionConsolidated()}
       />
 
       {/* 列宽热区（骑在分割线上，不画第二根线）+ 缘收起胶囊柄 */}
@@ -412,7 +458,7 @@ const NoProjectsPanel: React.FC<{ onNew: () => void }> = ({ onNew }) => (
             </svg>
             <div className="empty-state-title">还没有项目</div>
             <div className="empty-state-desc">
-              新建一个场景分析项目，上传产品资料后从第 1 步「场景诉求」开始推进
+              新建一个场景分析项目，上传产品资料后从第 1 步「场景定义」开始推进
             </div>
             <button className="btn primary" type="button" onClick={onNew}>
               新建项目

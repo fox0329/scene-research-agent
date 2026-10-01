@@ -20,7 +20,13 @@ import {
   type InfoRow,
 } from "@scene/domain";
 import { asSourceType, type ChecklistViewItem } from "../components/stage-snapshot";
-import type { ApiAnchorRow, ApiFlowStatus } from "../api";
+import type {
+  ApiAnchorRow,
+  ApiDefinitionAlignment,
+  ApiDefinitionConsolidation,
+  ApiDefinitionMessage,
+  ApiFlowStatus,
+} from "../api";
 
 /** 演示用的场景锚（表1-1） */
 export const DEMO_ANCHOR: ApiAnchorRow[] = [
@@ -30,6 +36,119 @@ export const DEMO_ANCHOR: ApiAnchorRow[] = [
   { item: "核心用途", content: "想搞清楚这个场景值不值得进", source_type: "用户确认" },
   { item: "切入点", content: "存量泵站改造", source_type: "AI推断" },
 ];
+
+// ─── 场景定义对话（演示态：本地预置对话与本地「整理成定义」结果） ──
+
+/**
+ * 演示态定义对话（预置到"模型已经给过理解、问过问题、用户答过一轮"）
+ *
+ * 与联真同结构：role 只有 用户 / 系统，模型先给理解再提 ≤3 个场景本体问题。
+ */
+export const DEMO_DEFINITION_MESSAGES: ApiDefinitionMessage[] = [
+  {
+    id: "demo-def-1",
+    role: "系统",
+    content:
+      "我的理解：你想判断「智慧水务」这个场景值不值得进、怎么进。范围看起来是制水厂到管网末端这一段，客户是市政水务集团。\n\n想先确认三件事：\n1. 原水取水和二次供水算不算在这个场景里？\n2. 你的角色是替代现有系统，还是补一块它没有的能力？\n3. 这次是想先做判断，还是要直接出给客户看的材料？",
+    created_at: "2026-09-25T09:30:00.000Z",
+  },
+  {
+    id: "demo-def-2",
+    role: "用户",
+    content:
+      "原水和二次供水先不算，只看制水厂到管网。我们做的是存量泵站改造，补调度和漏损这块能力，先做内部判断。",
+    created_at: "2026-09-25T09:32:00.000Z",
+  },
+  {
+    id: "demo-def-3",
+    role: "系统",
+    content:
+      "收到，场景边界记下了：制水厂到管网末端，不含原水取水与二次供水；切入点是存量泵站改造，目的是内部判断值不值得进。你点「整理成定义」，我把它整理成表1-1 给你逐项确认。",
+    created_at: "2026-09-25T09:33:00.000Z",
+  },
+];
+
+/** 演示态用户再发一条时的本地回复（不发请求） */
+export const DEMO_DEFINITION_REPLY =
+  "记下了。演示模式不再请求真实模型——你随时可以点「整理成定义」，我把这段对话整理成表1-1。";
+
+/** 演示态仍需用户回答的场景本体问题（整理结果里的 open_questions） */
+const DEMO_DEFINITION_OPEN_QUESTIONS = [
+  "「只看出厂到管网」——原水取水与二次供水算不算在内？",
+  "切入点写的是「存量泵站改造」，是新建项目还是替换既有设备？",
+];
+
+/** 演示态「整理成定义」补齐的表1-1 行（在预置锚上补两条推断行） */
+const DEMO_DEFINITION_EXTRA_ROWS: ApiAnchorRow[] = [
+  { item: "明确不含什么", content: "原水取水与二次供水", source_type: "AI推断" },
+  { item: "价值主张", content: "用漏损率下降换运维成本", source_type: "AI推断" },
+];
+
+/** 六项对照结论的内容与四态（按 label 索引，rowKey 从注册表取，不重抄） */
+const DEMO_ALIGNMENT_BY_LABEL: Record<
+  string,
+  { content: string; alignment: ApiDefinitionAlignment["alignment"]; note?: string }
+> = {
+  "客户类型/行业": { content: "市政水务集团", alignment: "一致" },
+  "覆盖什么": {
+    content: "制水厂到管网末端",
+    alignment: "系统补充",
+    note: "来源：DEMO 水务场景资料",
+  },
+  "明确不含什么": {
+    content: "原水取水与二次供水",
+    alignment: "推断",
+    note: "系统推断，需用户确认",
+  },
+  "核心用途": { content: "判断这个场景值不值得进", alignment: "一致" },
+  "切入点": {
+    content: "存量泵站改造",
+    alignment: "推断",
+    note: "系统推断，需用户确认",
+  },
+  "价值主张": {
+    content: "用漏损率下降换运维成本",
+    alignment: "推断",
+    note: "系统推断，需用户确认",
+  },
+};
+
+/** 演示态整理结果（与联真 `ApiDefinitionConsolidation` 同形状） */
+export function demoDefinitionConsolidation(): ApiDefinitionConsolidation {
+  return {
+    rows: [...DEMO_ANCHOR, ...DEMO_DEFINITION_EXTRA_ROWS],
+    alignment: l1Rows().map((fixed) => {
+      const hit = DEMO_ALIGNMENT_BY_LABEL[fixed.label];
+      return {
+        rowKey: fixed.key,
+        label: fixed.label,
+        content: hit?.content ?? "",
+        alignment: hit?.alignment ?? ("待补充" as const),
+        ...(hit?.note ? { note: hit.note } : {}),
+      };
+    }),
+    updated: 6,
+    skipped: 0,
+    open_questions: [...DEMO_DEFINITION_OPEN_QUESTIONS],
+  };
+}
+
+/**
+ * 演示态第 1 步就绪口径（与联真同义：表1-1 有内容 = 场景定义已成形）
+ *
+ * 联真的就绪由服务端算，这里用本地锚数据按同一语义推导。
+ */
+export function demoDefinitionReadiness(anchor: readonly ApiAnchorRow[]): FlowReadiness {
+  const filled = anchor.filter((a) => String(a.content ?? "").trim() !== "").length;
+  return {
+    ready: filled > 0,
+    readyHint:
+      filled > 0
+        ? `场景定义已有 ${filled} 项内容（演示数据已预填）`
+        : "还没有场景定义：先对话，再点「整理成定义」",
+    progress: { tablesWithData: filled > 0 ? 1 : 0, expectedTables: 1, rows: anchor.length },
+  };
+}
 
 /** 演示行：键必须存在于该表定义中（否则会被渲染成空列） */
 export const DEMO_ROWS: Record<string, InfoRow[]> = {
@@ -163,8 +282,9 @@ export function buildDemoFlowStatus(input: {
 }): ApiFlowStatus {
   const readiness: Record<number, FlowReadiness> = {};
   for (const step of FLOW_STEPS) {
-    if (step.kind === "输入") {
-      readiness[step.id] = { ready: true, readyHint: "演示数据已预填诉求" };
+    if (step.id === 1) {
+      /* 第 1 步 = 场景定义（对话完成）：就绪看表1-1 是否已有内容 */
+      readiness[step.id] = demoDefinitionReadiness(input.anchor);
     } else if (step.kind === "确认") {
       readiness[step.id] = demoAnchorReadiness(input.anchor);
     } else if (step.kind === "分析") {

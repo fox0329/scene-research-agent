@@ -2048,6 +2048,68 @@ td.ed {
 .align-questions h4 { margin: 0 0 var(--s1); font-size: var(--ts); }
 .align-questions ul { margin: 0; padding-left: var(--s4); font-size: var(--ts); color: var(--ct2); }
 
+/* ─────────────────────────────────────────────────────────────
+   场景定义对话（v1.17：独立页面级弹窗，第 1 步由对话完成）
+   ───────────────────────────────────────────────────────────── */
+
+.definition-dialog {
+  /* 页面级弹窗：占据大部分视口（宽高是容器尺寸，与 .modal 同口径） */
+  width: min(1040px, 92vw);
+  height: min(760px, 88vh);
+  display: flex;
+  flex-direction: column;
+  background: var(--csr);
+  border-radius: var(--r8);
+  box-shadow: var(--sh-pop);
+}
+.definition-h {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--s3);
+  padding: var(--s4) var(--s5) var(--s3);
+  border-bottom: 1px solid var(--cb);
+}
+.definition-h h2 { margin: 0 0 var(--s1); font-size: var(--tb); }
+.definition-h p { margin: 0; font-size: var(--txs); color: var(--ct2); }
+.definition-b { flex: 1; min-height: 0; overflow: auto; padding: var(--s4) var(--s5); }
+.definition-stream { display: flex; flex-direction: column; gap: var(--s3); }
+.definition-status-line { margin: 0; font-size: var(--txs); color: var(--ct2); }
+.definition-result { display: flex; flex-direction: column; gap: var(--s3); }
+.definition-summary { margin: 0; font-size: var(--ts); color: var(--ct); }
+.definition-f {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--s2);
+  padding: var(--s3) var(--s5) var(--s4);
+  border-top: 1px solid var(--cb);
+}
+.definition-spacer { flex: 1; }
+.definition-ta {
+  flex: 1;
+  min-height: var(--size-52);
+  max-height: var(--size-100);
+  padding: var(--s2) var(--s3);
+  font-family: inherit;
+  font-size: var(--txs);
+  line-height: 1.5;
+  color: var(--ct);
+  background: var(--csr);
+  border: 1px solid var(--cb);
+  border-radius: var(--r8);
+  resize: none;
+  outline: none;
+}
+.definition-ta:focus { border-color: var(--cp); box-shadow: 0 0 0 2px var(--cp-s); }
+.definition-ta::placeholder { color: var(--ct3); }
+
+/* 第 1 步定义状态卡（联真/演示同一套结构与类名） */
+.definition-status { display: flex; gap: var(--s5); margin-bottom: var(--s3); }
+.definition-stat { display: flex; flex-direction: column; gap: var(--s05); }
+.definition-stat-n { font-size: var(--tl); font-weight: var(--fb); color: var(--ct); }
+.definition-stat-l { font-size: var(--txs); color: var(--ct3); }
+.definition-done { display: flex; align-items: center; gap: var(--s2); margin: var(--s3) 0 0; }
+
 /* 阶段头右侧动作组（分析 / 进入下一阶段） */
 .pnl-actions { display: flex; align-items: center; gap: var(--s2); }
 

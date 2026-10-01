@@ -138,47 +138,67 @@ test.describe("上传入库（联真）", () => {
   });
 });
 
-/* ─── 场景诉求（第一输入）三段式 → 起草场景锚 → 对照确认 ─────────── */
+/* ─── 场景定义（第一输入）对话式 → 整理成表1-1 → 对照确认 ─────────── */
 
-test("场景诉求三段式：新建项目问「想梳理什么」→ 起草表1-1 → 对照确认", async ({ page }) => {
-  // 真实模型链路可能较慢（无模型时会降级为按线索预填，不阻断）
+test("场景定义对话（联真）：新建只输名称 → 自动开「场景定义」对话 → 整理成表1-1", async ({
+  page,
+}) => {
+  // 真实模型链路可能较慢（无模型时后端会降级，不阻断）
   test.setTimeout(150_000);
 
   await page.goto(`${LIVE}/`);
   await expect(page.locator(".shell")).toBeVisible();
 
-  // 新建项目应弹出三段的「场景诉求」（不再是一个 window.prompt）
+  // 新建只问名称（不再有三段式表单）
   await page.getByRole("button", { name: /新建项目|^新建$/ }).first().click();
-  const dlg = page.locator(".modal[aria-label='场景诉求']");
-  await expect(dlg).toBeVisible();
+  const newDlg = page.getByRole("dialog", { name: "新建场景" });
+  await expect(newDlg).toBeVisible();
+  await expect(newDlg.locator(".brief-input")).toHaveCount(1);
+  const sceneName = `E2E 智慧水务 ${Date.now()}`;
+  await newDlg.locator(".brief-input").fill(sceneName);
+  await newDlg.getByRole("button", { name: "创建并开始定义" }).click();
+  await expect(newDlg).toBeHidden();
 
-  // ① 场景名称
-  await dlg.locator("input.brief-input").first().fill(`E2E 智慧水务 ${Date.now()}`);
-  await dlg.getByRole("button", { name: "下一步" }).click();
+  // 建完项目直接进入独立的「场景定义」对话（不是中栏、不是抽屉）
+  const dlg = page.getByRole("dialog", { name: "场景定义" });
+  await expect(dlg).toBeVisible({ timeout: 20_000 });
+  await expect(dlg).toContainText(sceneName);
+  await expect(dlg.locator(".definition-ta")).toBeVisible();
+  await expect(dlg.getByRole("button", { name: "整理成定义" })).toBeVisible();
 
-  // ② 你想搞清楚什么（必填，未填应拦住）
-  await dlg.getByRole("button", { name: "下一步" }).click();
-  await expect(dlg.locator(".modal-error")).toContainText("想搞清楚什么");
-  await dlg.locator("textarea.brief-input").fill("这个场景值不值得进");
-  await dlg.getByRole("button", { name: "下一步" }).click();
+  // 首次打开自动发一条引导消息（由定义模式 system prompt 保证模型先给理解再提问）
+  const userBubbles = dlg.locator(".msg.u .bub");
+  const aiBubbles = dlg.locator(".msg.ai .bub");
+  await expect(userBubbles.first()).toBeVisible({ timeout: 20_000 });
+  // 真实模型回复慢：等到非空回复（无模型时后端降级也会给一条说明）
+  await expect
+    .poll(async () => ((await aiBubbles.first().textContent()) ?? "").trim().length, {
+      timeout: 120_000,
+    })
+    .toBeGreaterThan(0);
 
-  // ③ 线索（选填）
-  await dlg.locator("input.brief-input").nth(0).fill("市政水务集团");
-  await dlg.locator("input.brief-input").nth(2).fill("只看出厂到管网");
-  await dlg.getByRole("button", { name: "起草场景锚" }).click();
+  // 用户再补一条场景本体信息（真实模型会回复），回复落定后按钮重新可用
+  await dlg.locator(".definition-ta").fill("客户是市政水务集团，只看出厂到管网，先做内部判断。");
+  await dlg.getByRole("button", { name: "发送" }).click();
+  await expect(userBubbles).toHaveCount(2, { timeout: 20_000 });
+  await expect(dlg.getByRole("button", { name: "整理成定义" })).toBeEnabled({ timeout: 120_000 });
 
-  // ④ 对照式确认：四态分类 + 对照表
+  // 整理成定义：对照表 6 行（表1-1 的 L1 六项）
+  await dlg.getByRole("button", { name: "整理成定义" }).click();
   await expect(dlg.locator(".align-table")).toBeVisible({ timeout: 120_000 });
+  await expect(dlg.locator(".align-table tbody tr")).toHaveCount(6);
   await expect(dlg.locator(".align-badge").first()).toBeVisible();
-  await expect(dlg.locator(".align-table tbody tr")).toHaveCount(6); // L1 六项
-
-  await dlg.getByRole("button", { name: /去确认/ }).click();
+  await dlg.getByRole("button", { name: "完成，去确认表格" }).click();
   await expect(dlg).toBeHidden();
 
-  // 中栏出现常驻场景锚（表1-1），且带 L1 必确认标记
+  // 中栏：第 1 步出现「继续场景定义对话」入口，表1-1 已有内容
+  await expect(
+    page.locator(".ws").getByRole("button", { name: "继续场景定义对话" }),
+  ).toBeVisible({ timeout: 20_000 });
   const anchor = page.locator(".ws .schema-table--anchor").first();
   await expect(anchor).toBeVisible({ timeout: 20_000 });
   expect(await anchor.locator(".confirm-dot").count()).toBeGreaterThanOrEqual(6);
+  await expect(anchor.locator("td .cell-truncate").first()).not.toHaveText("—");
 });
 
 /* ─── 流程逐页推进（v1.5）：诉求内嵌面板 → 完成本步 → 锚确认 → 进入第 3 步 ─── */
@@ -187,7 +207,7 @@ test("流程逐页推进（联真）：完成本步走的是 /flow 接口，确�
   page,
   playwright,
 }) => {
-  test.setTimeout(120_000);
+  test.setTimeout(150_000);
 
   const name = `E2E流程 ${Date.now()}`;
   const req = await playwright.request.newContext({ baseURL: LIVE });
@@ -201,15 +221,23 @@ test("流程逐页推进（联真）：完成本步走的是 /flow 接口，确�
   await page.locator(".proj-hd", { hasText: name }).click();
 
   const rail = page.locator(".flow-rail");
-  await expect(rail.locator(".flow-node--current")).toContainText("场景诉求");
-  // 诉求未填 → 数据判定为未就绪：按钮不可点，readyHint 直接说缺什么
+  await expect(rail.locator(".flow-node--current")).toContainText("场景定义");
+  // 就绪与否由服务端按表1-1 判定（前端只显示、不阻断）；这里只要求当前步就是「场景定义」
+  await expect(rail.locator(".flow-hint")).toContainText("第 1/9 步 · 场景定义");
   const completeBtn = rail.getByRole("button", { name: "完成本步，进入下一步" });
-  await expect(completeBtn).toBeDisabled();
-  await expect(completeBtn).toHaveAttribute("title", /想搞清楚什么/);
 
-  // 第 1 步面板内嵌诉求字段（不是弹窗）；保存后按钮变为可点
-  await page.locator(".ws .brief-textarea").fill("这个场景值不值得进");
-  await page.locator(".ws").getByRole("button", { name: "保存诉求" }).click();
+  // 第 1 步：在独立「场景定义」对话里把场景聊清楚，点「整理成定义」写表1-1
+  await page.locator(".ws").getByRole("button", { name: /场景定义对话/ }).click();
+  const defDlg = page.getByRole("dialog", { name: "场景定义" });
+  await expect(defDlg).toBeVisible({ timeout: 20_000 });
+  await expect(
+    defDlg.locator(".msg.ai .bub").first(),
+  ).toBeVisible({ timeout: 120_000 });
+  await defDlg.getByRole("button", { name: "整理成定义" }).click();
+  await expect(defDlg.locator(".align-table")).toBeVisible({ timeout: 120_000 });
+  await defDlg.getByRole("button", { name: "完成，去确认表格" }).click();
+  await expect(defDlg).toBeHidden();
+  // 整理成定义后本步就绪
   await expect(completeBtn).toBeEnabled({ timeout: 20_000 });
 
   await completeBtn.click();

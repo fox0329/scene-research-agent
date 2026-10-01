@@ -170,6 +170,47 @@ export interface ApiAnchorRow {
   confirm_state?: string | null;
 }
 
+// ─── 场景定义（v1.17：对话式定义，取代三段式填空） ─────────
+
+/** 定义对话的一条消息（role 与后端落库口径一致：用户 / 系统） */
+export interface ApiDefinitionMessage {
+  id: string;
+  role: "用户" | "系统";
+  content: string;
+  created_at: string;
+}
+
+/** 整理成定义后的单行对照结论（四态与右侧 label 由服务端判定） */
+export interface ApiDefinitionAlignment {
+  rowKey: string;
+  label: string;
+  content: string;
+  alignment: "一致" | "系统补充" | "推断" | "待补充";
+  note?: string;
+}
+
+/**
+ * 场景定义状态
+ *
+ * 幂等：首次 `GET /projects/:id/definition` 会创建标题为「场景定义」的会话，
+ * 已存在则复用（同一定义对话跨多次打开延续）。
+ */
+export interface ApiDefinitionState {
+  conversation_id: string;
+  messages: ApiDefinitionMessage[];
+  anchor: ApiAnchorRow[];
+  brief: ApiScenarioBrief | null;
+}
+
+/** 「整理成定义」结果：写表统计 + 对照表 + 仍需用户回答的问题 */
+export interface ApiDefinitionConsolidation {
+  rows: ApiAnchorRow[];
+  alignment: ApiDefinitionAlignment[];
+  updated: number;
+  skipped: number;
+  open_questions: string[];
+}
+
 /** 阶段总结文档（六段骨架 Markdown） */
 export interface ApiStageSummary {
   stage: number;
@@ -379,14 +420,19 @@ export const api = {
       `/projects/${encodeURIComponent(id)}/brief`,
       { method: "PUT", body: brief },
     ),
-  /** 起草场景锚（诉求 + 资料库 → 表1-1 各行；用户确认过的行不会被覆盖） */
-  draftBrief: (id: string) =>
-    req<{
-      rows: ApiAnchorRow[];
-      open_questions: string[];
-      conversation_id: string;
-      used_llm: boolean;
-    }>(`/projects/${encodeURIComponent(id)}/brief/draft`, { method: "POST" }),
+  /* 定义只能来自「场景定义对话 + 整理成定义」：老的 POST /brief/draft
+     自动起草旁路已随服务端一并移除（它会自动写表，与新规则冲突），
+     客户端不再保留任何调用口子。 */
+  // ─── 场景定义对话（v1.17：第 1 步由对话完成，写表只在显式「整理成定义」时发生） ──
+  /** 定义对话状态（幂等：首次调用创建「场景定义」会话，已存在则复用） */
+  getDefinition: (id: string) =>
+    req<ApiDefinitionState>(`/projects/${encodeURIComponent(id)}/definition`),
+  /** 把定义对话整理成表1-1（用户显式点击才写表，不做自动增量改写） */
+  consolidateDefinition: (id: string) =>
+    req<ApiDefinitionConsolidation>(
+      `/projects/${encodeURIComponent(id)}/definition/consolidate`,
+      { method: "POST" },
+    ),
   /** 批量写锚行（逐格确认/编辑；也可只传部分行） */
   saveAnchor: (id: string, rows: ApiAnchorRow[]) =>
     req<{ rows: ApiAnchorRow[]; description: string }>(
@@ -503,13 +549,6 @@ export const api = {
       method: "PATCH",
       body: { name },
     }),
-  /** 场景资料来源：专属库 + 引用的通用库（v1.10） */
-  /** 场景定义起草（v1.13）：系统基于资料起草定义发进「场景梳理」对话 */
-  draftScenarioDefinition: (projectId: string) =>
-    req<{ description: string; open_questions: string[]; conversation_id: string }>(
-      `/projects/${encodeURIComponent(projectId)}/draft-definition`,
-      { method: "POST" },
-    ),
   /** 场景澄清（v1.12）：生成值得确认的问题发进对话 */
   clarifyScenario: (projectId: string) =>
     req<{
@@ -518,6 +557,7 @@ export const api = {
       conversation_id?: string;
       note?: string;
     }>(`/projects/${encodeURIComponent(projectId)}/clarify-scenario`, { method: "POST" }),
+  /** 场景资料来源：专属库 + 引用的通用库（v1.10） */
   materialSources: (projectId: string) =>
     req<ApiMaterialSources>(`/projects/${encodeURIComponent(projectId)}/material-sources`),
   /** 设置场景引用的通用库（只能引通用库；专属库不可被引用） */
@@ -676,6 +716,18 @@ export const reconnectStageStream = (
 /** 会话消息流（T5.5 抽屉使用；发消息即建流） */
 export const conversationMessageStream = (conversationId: string, content: string) =>
   sseRequest(`/conversations/${encodeURIComponent(conversationId)}/messages`, { content });
+
+/**
+ * 场景定义对话流（v1.17 定义模式）
+ *
+ * 与 `conversationMessageStream` 同构（POST + SSE，text 增量 / done / error），
+ * 差别只在服务端用**定义模式的 system prompt**：模型先给出它的理解，再提
+ * ≤3 个场景本体问题，不问表格字段。
+ */
+export const definitionChatStream = (projectId: string, content: string) =>
+  sseRequest(`/projects/${encodeURIComponent(projectId)}/definition/messages`, {
+    content,
+  });
 
 /** 会话回复流断线续传：GET messages/events + Last-Event-ID（契约 v1.5） */
 export const reconnectConversationStream = (conversationId: string, lastEventId: string) =>
