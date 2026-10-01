@@ -52,7 +52,6 @@ for f in \
   apps/server/src/stage-summary-service.ts \
   apps/web/src/components/SchemaTable.tsx \
   apps/web/src/components/StageRightPanel.tsx \
-  apps/web/src/components/ScenarioBriefDialog.tsx \
   apps/web/src/views/DemoStagePanel.tsx \
   scripts/copy-infra-sql.mjs \
   scripts/migrate-info-model.mjs \
@@ -69,7 +68,6 @@ for f in \
   apps/web/src/components/AlignmentTable.tsx \
   apps/web/src/views/DefinitionStepPanel.tsx \
   apps/web/src/components/FlowRail.tsx \
-  apps/web/src/views/BriefStepPanel.tsx \
   apps/web/src/views/DemoFlowPanels.tsx \
   apps/web/src/mock/demo-flow.ts \
   scripts/verify-flow-ui.mjs \
@@ -140,7 +138,7 @@ else
   curl -s -X POST "http://127.0.0.1:${PORT}/api/v1/projects" \
     -H 'content-type: application/json' \
     -d '{"name":"流程验收场景","intent":"验收逐页推进"}' >/dev/null 2>&1 || true
-  if BASE_URL="http://127.0.0.1:${PORT}" node scripts/verify-flow-ui.mjs >"$SDIR/flowui.log" 2>&1; then
+  if BASE_URL="http://127.0.0.1:${PORT}" ALLOW_MUTATE=1 node scripts/verify-flow-ui.mjs >"$SDIR/flowui.log" 2>&1; then
     echo "✅ 流程 UI 真机验收（9 步流程轴 / 四态 / 双 Tab / 无判断产出）"
   else
     echo "❌ 流程 UI 真机验收失败："
