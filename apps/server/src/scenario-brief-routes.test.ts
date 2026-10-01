@@ -3,7 +3,9 @@
  *
  * 覆盖：POST /projects 带诉求建场景、GET/PUT /projects/:id/brief、
  * PUT /projects/:id/anchor（逐格写入 + 派生缓存）、POST /projects/:id/brief/draft、
- * 以及 legacy POST /projects/:id/draft-definition 改走锚后仍保持响应兼容。
+ *
+ * v2.2 起 legacy `POST /projects/:id/draft-definition` 已移除——它会**自动**起草锚行，
+ * 与「只在用户点『整理成定义』时才写表」冲突（定义只走 /definition/* 三端点）。
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -153,22 +155,5 @@ describe("POST /projects/:id/brief/draft", () => {
     expect(body.rows).toHaveLength(12);
     expect(body.used_llm).toBe(false); // mock 无 JSON 输出 → 降级
     expect(body.rows.find((r) => r.item === "客户类型/行业")?.content).toBe("市政水务集团");
-  });
-});
-
-describe("legacy POST /projects/:id/draft-definition 兼容", () => {
-  it("响应形状不变，但数据落在锚行（description 成为派生缓存）", async () => {
-    const id = await createProject({ name: "智慧水务" });
-    const res = await app.inject({
-      method: "POST",
-      url: `/api/v1/projects/${id}/draft-definition`,
-    });
-    expect(res.statusCode).toBe(200);
-    const body = res.json() as { description: string; conversation_id: string };
-    expect(body.conversation_id).toBeTruthy();
-    // 锚行已建，且 description 由锚派生（无模型输出时为空串）
-    const anchor = db.stageDataRepo.listByScenarioStage(id, 1).filter((r) => r.table_code === "表1-1");
-    expect(anchor).toHaveLength(12);
-    expect(body.description).toBe(db.scenarioRepo.getById(id)?.description ?? "");
   });
 });

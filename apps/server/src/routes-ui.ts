@@ -497,28 +497,6 @@ function registerProjectRoutes(app: FastifyInstance, deps: UiRoutesDeps) {
     return { rows: written, description: db.scenarioRepo.getById(id)?.description ?? "" };
   });
 
-  /**
-   * 场景定义起草（v1.13 起；**v1.4 起内部改走场景锚**）
-   *
-   * 数据落点已从「写 description 文本」改为「写表1-1 锚行 + 由锚行派生 description」——
-   * 响应形状保持兼容（description / open_questions / conversation_id）。
-   */
-  app.post("/api/v1/projects/:id/draft-definition", async (request, reply) => {
-    const { id } = request.params as { id: string };
-    const scenario = db.scenarioRepo.getById(id);
-    if (!scenario) return notFound(reply, `场景 ${id} 不存在`);
-    const brief =
-      readBrief(db, id) ??
-      upsertBrief(db, id, { scene_name: scenario.name, intent: "" });
-    const outcome = await draftAnchor(db, deps.dshClient, scenario, brief);
-    const derived = db.scenarioRepo.getById(id)?.description ?? "";
-    return {
-      description: derived,
-      open_questions: outcome.openQuestions,
-      conversation_id: outcome.conversationId,
-    };
-  });
-
   /** 手动场景澄清（v1.12）：强制生成值得确认的问题，发进该场景的对话 */
   app.post("/api/v1/projects/:id/clarify-scenario", async (request, reply) => {
     const { id } = request.params as { id: string };
