@@ -64,9 +64,13 @@ const consolidation = JSON.stringify({
 });
 
 describe("scenario-definition — 系统提示词与上下文", () => {
-  it("提示词约束：只谈场景本体、每轮 ≤3 问、不给判断、不主动输出定义块", () => {
-    expect(DEFINITION_SYSTEM).toContain("最多 3 个");
-    expect(DEFINITION_SYSTEM).toContain("只谈场景本体");
+  it("提示词约束：允许抽象说不准、只问核心 2 项、不追问边界、不给判断", () => {
+    // 用户定调："定义要抽象一点，用户常常说不准，更需要的是对行业的全面了解"
+    expect(DEFINITION_SYSTEM).toContain("最多 2 个");
+    expect(DEFINITION_SYSTEM).toContain("允许抽象、允许说不准");
+    expect(DEFINITION_SYSTEM).toContain("不要追问边界");
+    expect(DEFINITION_SYSTEM).toContain("行业与场景");
+    expect(DEFINITION_SYSTEM).toContain("只谈行业与场景本体");
     expect(DEFINITION_SYSTEM).toContain("不要给判断");
     expect(DEFINITION_SYSTEM).toContain("输出任何 JSON");
   });
