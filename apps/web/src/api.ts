@@ -27,7 +27,7 @@ export interface ApiProject {
   updated_at: string;
   stale_count?: number;
   /**
-   * 流程进度摘要（v1.5：左栏场景列表显示「第 n/9 步」）
+   * 流程进度摘要（v1.5：左栏场景列表显示「第 n/8 步」）
    *
    * 可选：后端版本较旧时该字段缺失——缺失即不显示进度，不做本地猜测。
    */
@@ -38,10 +38,10 @@ export interface ApiProject {
   };
 }
 
-// ─── 业务流程（v1.5 逐页推进，9 步） ───────────────────────
+// ─── 业务流程（v1.5 逐页推进，8 步） ───────────────────────
 
-/** 步骤类型：决定「完成本步」的就绪判定方式 */
-export type ApiFlowStepKind = "输入" | "确认" | "分析" | "组装";
+/** 步骤类型：决定「完成本步」的就绪判定方式（定义对话不占步，故无「输入」） */
+export type ApiFlowStepKind = "确认" | "分析" | "组装";
 
 /** 步骤状态（用户可见四态） */
 export type ApiFlowStepState = "已完成" | "当前" | "可推进" | "未解锁";
@@ -196,7 +196,8 @@ export interface ApiDefinitionAlignment {
  * 已存在则复用（同一定义对话跨多次打开延续）。
  */
 export interface ApiDefinitionState {
-  conversation_id: string;
+  /** 「场景定义」会话；**尚未聊过时为 null**（读操作不创建） */
+  conversation_id: string | null;
   messages: ApiDefinitionMessage[];
   anchor: ApiAnchorRow[];
   brief: ApiScenarioBrief | null;
@@ -425,7 +426,7 @@ export const api = {
   /* 定义只能来自「场景定义对话 + 整理成定义」：老的 POST /brief/draft
      自动起草旁路已随服务端一并移除（它会自动写表，与新规则冲突），
      客户端不再保留任何调用口子。 */
-  // ─── 场景定义对话（v1.17：第 1 步由对话完成，写表只在显式「整理成定义」时发生） ──
+  // ─── 场景定义对话（v1.17/1.18：定义不占流程步，写表只在显式「整理成定义」时发生） ──
   /** 定义对话状态（幂等：首次调用创建「场景定义」会话，已存在则复用） */
   getDefinition: (id: string) =>
     req<ApiDefinitionState>(`/projects/${encodeURIComponent(id)}/definition`),
@@ -442,7 +443,7 @@ export const api = {
       { method: "PUT", body: { rows } },
     ),
 
-  // ─── 业务流程推进（v1.5 逐页推进；9 步） ──────────────────
+  // ─── 业务流程推进（v1.5 逐页推进；8 步） ──────────────────
   /** 流程状态：每步四态 + 就绪判定（数据判定由服务端算，前端只显示） */
   getFlow: (id: string) =>
     req<ApiFlowStatus>(`/projects/${encodeURIComponent(id)}/flow`),
@@ -693,7 +694,7 @@ export async function* sseRequest(
  * 发起本步分析（SSE）
  *
  * `step` 会作为 `?step=N` 传给服务端，按**该流程步的表集**限定模型输出契约——
- * 例如阶段 1 的第 3 步（认识场景）不该重复产出场景锚（表1-1 归第 2 步）。
+ * 例如阶段 1 的第 2 步（认识场景）不该重复产出场景锚（表1-1 归第 1 步）。
  */
 export const advanceStageStream = (projectId: string, stage: number, step?: number) =>
   sseRequest(

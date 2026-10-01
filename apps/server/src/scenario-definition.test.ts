@@ -244,22 +244,42 @@ describe("scenario-definition — 路由", () => {
     app = createApp({ db, dshClient: mockDsh(consolidation), hub: createSseHub() });
   });
 
-  it("GET /definition 幂等创建「场景定义」会话并返回消息与锚行", async () => {
+  it("GET /definition 只读：不创建会话（没有则为 null），但幂等预建锚骨架", async () => {
     const res = await app.inject({
       method: "GET",
       url: `/api/v1/projects/${scenarioId}/definition`,
     });
     expect(res.statusCode).toBe(200);
-    const body = res.json() as { conversation_id: string; messages: unknown[]; anchor: unknown[] };
-    expect(body.conversation_id).toBeTruthy();
+    const body = res.json() as {
+      conversation_id: string | null;
+      messages: unknown[];
+      anchor: unknown[];
+    };
+    // 读操作不产生副作用：看一眼第 1 步不该在左栏凭空多出一个会话
+    expect(body.conversation_id).toBeNull();
     expect(body.messages).toEqual([]);
     expect(body.anchor).toHaveLength(12);
-    // 幂等
+
+    // 真正发第一条消息时才建会话，此后 GET 能读到它
+    await app.inject({
+      method: "POST",
+      url: `/api/v1/projects/${scenarioId}/definition/messages`,
+      payload: { content: "客户是市政水务集团" },
+    });
+    const after = await app.inject({
+      method: "GET",
+      url: `/api/v1/projects/${scenarioId}/definition`,
+    });
+    const b2 = after.json() as { conversation_id: string | null; messages: unknown[] };
+    expect(b2.conversation_id).toBeTruthy();
+    expect(b2.messages.length).toBeGreaterThan(0);
+
+    // 幂等：再读还是同一个会话
     const again = await app.inject({
       method: "GET",
       url: `/api/v1/projects/${scenarioId}/definition`,
     });
-    expect((again.json() as { conversation_id: string }).conversation_id).toBe(body.conversation_id);
+    expect((again.json() as { conversation_id: string }).conversation_id).toBe(b2.conversation_id);
   });
 
   it("POST /definition/messages 走 SSE 流", async () => {

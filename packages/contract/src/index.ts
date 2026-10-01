@@ -505,5 +505,5 @@ export interface StageSummaryRow {
   updated_at: string;
 }
 
-// ─── 业务流程定义（v1.5 逐页推进；9 步） ────────────────────
+// ─── 业务流程定义（v1.6：8 步逐页推进） ──────────────────────
 export * from "./flow.js";

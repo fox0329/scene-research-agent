@@ -410,16 +410,22 @@ export async function consolidateDefinition(
   };
 }
 
+/** 只查不建：「场景定义」会话已存在则返回其 id（读路径用，避免读操作产生副作用） */
+export function findDefinitionConversation(db: DbInstance, scenarioId: string): string | null {
+  const existing = db.conversationRepo
+    .list({ where: "scenario_id = ? AND status = ?", params: [scenarioId, "活跃"] })
+    .find((c) => c.title === "场景定义");
+  return existing?.id ?? null;
+}
+
 /** 找或建「场景定义」会话（幂等） */
 export async function ensureDefinitionConversation(
   db: DbInstance,
   dshClient: DshClient,
   scenario: Scenario,
 ): Promise<string> {
-  const existing = db.conversationRepo
-    .list({ where: "scenario_id = ? AND status = ?", params: [scenario.id, "活跃"] })
-    .find((c) => c.title === "场景定义");
-  if (existing) return existing.id;
+  const existing = findDefinitionConversation(db, scenario.id);
+  if (existing) return existing;
   const handle = await dshClient.createSession({ title: "场景定义" });
   const conv = db.conversationRepo.insert({
     scenario_id: scenario.id,

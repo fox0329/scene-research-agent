@@ -63,6 +63,7 @@ import {
   consolidateDefinition,
   definitionMessages,
   ensureDefinitionConversation,
+  findDefinitionConversation,
 } from "./scenario-definition.js";
 import {
   completeFlowStep,
@@ -805,11 +806,13 @@ function registerConversationRoutes(
     const { id } = request.params as { id: string };
     const scenario = db.scenarioRepo.getById(id);
     if (!scenario) return notFound(reply, `场景 ${id} 不存在`);
-    const conversationId = await ensureDefinitionConversation(db, deps.dshClient, scenario);
     ensureAnchorRows(db, id, scenario.name); // 幂等：与 GET /brief 一致，先保证 12 行锚骨架在
+    // **读操作不创建会话**：只为拿对话条数就建会话，会让"看一眼第 1 步"在左栏凭空多出一个会话。
+    // 会话在用户真正发第一条消息时由 POST /definition/messages 创建（ensureDefinitionConversation）。
+    const existing = findDefinitionConversation(db, id);
     return {
-      conversation_id: conversationId,
-      messages: definitionMessages(db, conversationId),
+      conversation_id: existing,
+      messages: existing ? definitionMessages(db, existing) : [],
       anchor: readAnchorRows(db, id),
       brief: readBrief(db, id) ?? null,
     };
