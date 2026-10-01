@@ -142,7 +142,7 @@ export const StageRightPanel: React.FC<StageRightPanelProps> = ({ snapshot, live
     <>
       <div className="det-h">
         <h3>
-          阶段 {snapshot.stage} · {snapshot.stageLabel}
+          {snapshot.title ?? `阶段 ${snapshot.stage} · ${snapshot.stageLabel}`}
         </h3>
       </div>
 

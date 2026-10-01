@@ -121,6 +121,22 @@ describe("stage-prompts — 信息版口径（不产出判断）", () => {
     expect(p.user).toContain("场景锚尚未填写");
   });
 
+  it("上游数据带来源标注时，首列是「资料来源」（主库/本场景可区分）", () => {
+    const p = buildStagePrompt(
+      3,
+      {
+        M1_产品型号: [
+          { model: "IPC-3000", name: "边缘控制器", data_scope: "本场景" },
+          { model: "SEN-200", name: "压力变送器", data_scope: "主库：公司产品库" },
+        ],
+      },
+      scenario,
+    );
+    expect(p.user).toContain("资料来源");
+    expect(p.user).toContain("本场景");
+    expect(p.user).toContain("主库：公司产品库");
+  });
+
   it("上游数据按表渲染为表格，空表不出现", () => {
     const p = buildStagePrompt(1, { M1: [{ model: "IPC-3000", name: "IPC" }], M2: [] }, scenario);
     expect(p.user).toContain("M1 产品清单（1 行）");

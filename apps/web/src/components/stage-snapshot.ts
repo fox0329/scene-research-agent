@@ -41,6 +41,13 @@ export interface ChecklistViewItem {
 export interface StageSnapshot {
   stage: number;
   stageLabel: string;
+  /**
+   * 右栏页头标题（v1.5 流程化）
+   *
+   * 阶段号已不再是用户的导航单位（导航是「第 n/9 步」），因此面板可以给出
+   * 自己的标题；缺省时右栏退回「阶段 n · label」。
+   */
+  title?: string;
   /** 本阶段全部行（供补充列与统计） */
   rows: ApiStageRow[];
   completeness: ApiCompleteness | null;

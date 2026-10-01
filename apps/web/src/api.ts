@@ -26,6 +26,56 @@ export interface ApiProject {
   created_at: string;
   updated_at: string;
   stale_count?: number;
+  /**
+   * 流程进度摘要（v1.5：左栏场景列表显示「第 n/9 步」）
+   *
+   * 可选：后端版本较旧时该字段缺失——缺失即不显示进度，不做本地猜测。
+   */
+  flow?: {
+    currentStep: number;
+    completedCount: number;
+    finished: boolean;
+  };
+}
+
+// ─── 业务流程（v1.5 逐页推进，9 步） ───────────────────────
+
+/** 步骤类型：决定「完成本步」的就绪判定方式 */
+export type ApiFlowStepKind = "输入" | "确认" | "分析" | "组装";
+
+/** 步骤状态（用户可见四态） */
+export type ApiFlowStepState = "已完成" | "当前" | "可推进" | "未解锁";
+
+/** 本步表集的产出情况 */
+export interface ApiFlowProgress {
+  tablesWithData: number;
+  expectedTables: number;
+  rows: number;
+}
+
+export interface ApiFlowStep {
+  /** 步骤号（1 起，用户可见） */
+  id: number;
+  /** 稳定键（brief|anchor|stage1..stage6|delivery） */
+  key: string;
+  title: string;
+  goal: string;
+  kind: ApiFlowStepKind;
+  state: ApiFlowStepState;
+  /** 「完成本步」是否可点（数据判定，服务端算） */
+  ready: boolean;
+  /** 未就绪时缺什么（人话，直接显示） */
+  readyHint: string;
+  progress: ApiFlowProgress;
+}
+
+export interface ApiFlowStatus {
+  steps: ApiFlowStep[];
+  /** 当前应做步骤号（全部完成时为最后一步号） */
+  currentStep: number;
+  completedCount: number;
+  unlockedAll: boolean;
+  finished: boolean;
 }
 
 export interface ApiConversation {
@@ -343,6 +393,28 @@ export const api = {
       `/projects/${encodeURIComponent(id)}/anchor`,
       { method: "PUT", body: { rows } },
     ),
+
+  // ─── 业务流程推进（v1.5 逐页推进；9 步） ──────────────────
+  /** 流程状态：每步四态 + 就绪判定（数据判定由服务端算，前端只显示） */
+  getFlow: (id: string) =>
+    req<ApiFlowStatus>(`/projects/${encodeURIComponent(id)}/flow`),
+  /** 完成本步（用户显式动作；是否可点由本步 ready 决定） */
+  completeFlowStep: (id: string, step: number) =>
+    req<ApiFlowStatus>(
+      `/projects/${encodeURIComponent(id)}/flow/steps/${step}/complete`,
+      { method: "POST" },
+    ),
+  /** 回到某一步重跑（清该步及其后的完成标记，数据保留） */
+  reopenFlowStep: (id: string, step: number) =>
+    req<ApiFlowStatus>(
+      `/projects/${encodeURIComponent(id)}/flow/steps/${step}/reopen`,
+      { method: "POST" },
+    ),
+  /** 解锁全部步骤（默认锁步推进） */
+  unlockAllSteps: (id: string) =>
+    req<ApiFlowStatus>(`/projects/${encodeURIComponent(id)}/flow/unlock-all`, {
+      method: "POST",
+    }),
 
   // ─── 阶段完整度与总结 ────────────────────────────────────
   stageCompleteness: (id: string, stage: number) =>

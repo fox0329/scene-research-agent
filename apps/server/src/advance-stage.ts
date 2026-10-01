@@ -307,18 +307,71 @@ async function* executeAdvanceStage(
  * 按阶段依赖收集上游表数据。
  * F2 上下文控制：只注入当前阶段需要的数据。
  */
-function collectUpstreamData(
+export function collectUpstreamData(
   db: DbInstance,
   scenario: Scenario,
   stage: StageId,
 ): Record<string, unknown[]> {
   const data: Record<string, unknown[]> = {};
 
-  // v1.10：资料来源 = 场景专属库 + 引用的通用库（引用不拷贝，分析时合并）
+  // 资料来源（v1.5：**默认合并主库** + 本场景专属库 + 显式引用的通用库）
+  //
+  // 为什么默认带主库：产品资料是**基础设施**（上传一次全场景共用）。
+  // 旧实现只带"本场景专属库 + 显式引用的库"，导致新建场景默认看不到任何主库产品。
+  // 存储仍隔离：本场景上传只落自己的库，绝不写回主库。
+  const ownLine = scenario.product_line_id;
+  const globalLines = db.productLineRepo.list({ where: "scenario_id IS NULL" });
   const linkedLineIds = db.scenarioLinkedLineRepo
     .list({ where: "scenario_id = ?", params: [scenario.id] })
     .map((l) => l.product_line_id);
-  const lineIds = [scenario.product_line_id, ...linkedLineIds];
+  const lineIds = [...new Set([ownLine, ...globalLines.map((l) => l.id), ...linkedLineIds])];
+
+  /** 行来源标注：主库 / 本场景 / 引用库（合并后仍可区分，用户可核对） */
+  const scopeOf = (lineId: string): string => {
+    if (lineId === ownLine) return "本场景";
+    const g = globalLines.find((l) => l.id === lineId);
+    if (g) return `主库：${g.name}`;
+    const l = db.productLineRepo.getById(lineId);
+    return `引用库：${l?.name ?? lineId}`;
+  };
+  const annotate = <T extends object>(rows: T[]): (T & { data_scope: string })[] =>
+    rows.map((r) => ({
+      ...r,
+      data_scope: scopeOf(
+        String((r as { product_line_id?: string }).product_line_id ?? ownLine),
+      ),
+    }));
+
+  /**
+   * 按库优先级排序：本场景 → 主库 → 引用库
+   *
+   * 必要性：SQL `IN (...)` 的返回顺序是**表的物理顺序**，不是 `lineIds` 顺序。
+   * 不排序就去重，会让主库的同名型号把本场景的版本挤掉（本场景优先失效）。
+   */
+  const lineOrder = new Map(lineIds.map((id, i) => [id, i]));
+  const ownFirst = <T extends object>(rows: T[]): T[] =>
+    [...rows].sort((a, b) => {
+      const la = lineOrder.get(String((a as { product_line_id?: string }).product_line_id ?? "")) ?? 99;
+      const lb = lineOrder.get(String((b as { product_line_id?: string }).product_line_id ?? "")) ?? 99;
+      return la - lb;
+    });
+
+  /** 同一型号在多库出现时去重：**本场景优先**（配合上面的排序） */
+  const dedupeBy = <T extends object>(rows: T[], key: string): T[] => {
+    const seen = new Set<string>();
+    const out: T[] = [];
+    for (const r of rows) {
+      const k = String((r as Record<string, unknown>)[key] ?? "");
+      if (k === "") {
+        out.push(r);
+        continue;
+      }
+      if (seen.has(k)) continue;
+      seen.add(k);
+      out.push(r);
+    }
+    return out;
+  };
   const inLines = `(${lineIds.map(() => "?").join(",")})`;
   // spec_param 无 product_line_id 列，经 product 反查多库
   const specByLines = `product_id IN (SELECT id FROM product WHERE product_line_id IN ${inLines})`;
@@ -330,31 +383,31 @@ function collectUpstreamData(
       params: lineIds,
     }) as Product[];
 
-    data["M1_产品型号"] = products;
-    data["M2_规格参数"] = db.specParamRepo.list({
+    data["M1_产品型号"] = dedupeBy(annotate(ownFirst(products)), "model");
+    data["M2_规格参数"] = annotate(db.specParamRepo.list({
       where: specByLines,
       params: lineIds,
-    }) as SpecParam[];
-    data["M3_能力清单"] = db.capabilityRepo.list({
+    }) as SpecParam[]);
+    data["M3_能力清单"] = annotate(db.capabilityRepo.list({
       where: `product_line_id IN ${inLines}`,
       params: lineIds,
-    }) as Capability[];
-    data["M4_边界声明"] = db.boundaryRepo.list({
+    }) as Capability[]);
+    data["M4_边界声明"] = annotate(db.boundaryRepo.list({
       where: `product_line_id IN ${inLines}`,
       params: lineIds,
-    }) as Boundary[];
-    data["M5_已知限制"] = db.limitationRepo.list({
+    }) as Boundary[]);
+    data["M5_已知限制"] = annotate(db.limitationRepo.list({
       where: `product_line_id IN ${inLines}`,
       params: lineIds,
-    }) as Limitation[];
-    data["M6_成本单价"] = db.costRateRepo.list({
+    }) as Limitation[]);
+    data["M6_成本单价"] = annotate(db.costRateRepo.list({
       where: `product_line_id IN ${inLines}`,
       params: lineIds,
-    }) as CostRate[];
-    data["O_可选材料"] = db.optionalMaterialRepo.list({
+    }) as CostRate[]);
+    data["O_可选材料"] = annotate(db.optionalMaterialRepo.list({
       where: `product_line_id IN ${inLines}`,
       params: lineIds,
-    }) as OptionalMaterial[];
+    }) as OptionalMaterial[]);
   }
 
   // 阶段 2+ 需要阶段 1 的结果
