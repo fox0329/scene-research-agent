@@ -249,11 +249,25 @@ test("流程逐页推进（联真）：完成本步走的是 /flow 接口，确�
   await expect(
     defDlg.locator(".msg.ai .bub").first(),
   ).toBeVisible({ timeout: 120_000 });
+  // **必须先回答**：新就绪口径看 L1 六项（场景本体）有没有内容——
+  // 只发一句通用引导语就整理，本步**不该**就绪（这正是该口径的意义）
+  await defDlg
+    .locator(".definition-ta")
+    .fill("客户是市政水务集团，范围只看出厂到管网，明确不含二次供水；想搞清楚值不值得进");
+  await defDlg.getByRole("button", { name: "发送" }).click();
+  await expect
+    .poll(
+      async () =>
+        ((await defDlg.locator(".msg.ai .bub").nth(1).textContent()) ?? "").trim().length,
+      { timeout: 120_000 },
+    )
+    .toBeGreaterThan(0);
   await consolidateAndWait(defDlg);
   await defDlg.getByRole("button", { name: "完成，去确认表格" }).click();
   await expect(defDlg).toBeHidden();
-  // 整理成定义后本步就绪
+  // 整理成定义后本步就绪（hint 由服务端给出，前端只显示）
   await expect(completeBtn).toBeEnabled({ timeout: 20_000 });
+  await expect(rail.locator(".flow-hint")).toContainText("场景本体 L1 已填");
 
   await completeBtn.click();
   await expect(rail.locator(".flow-node--done")).toHaveCount(1);
