@@ -161,6 +161,14 @@ CREATE TABLE IF NOT EXISTS scenario (
   updated_at       TEXT NOT NULL
 );
 
+-- 场景流程步完成记录（v1.5 逐页推进）：一场景一行/已完成步，用户点「完成本步」才写入
+CREATE TABLE IF NOT EXISTS scenario_step (
+  scenario_id  TEXT NOT NULL REFERENCES scenario(id),
+  step         INTEGER NOT NULL,
+  completed_at TEXT NOT NULL,
+  PRIMARY KEY (scenario_id, step)
+);
+
 -- 场景诉求（第一输入，v1.4 §3.0）：一场景一行；raw_text 保留用户原文作对照基准
 CREATE TABLE IF NOT EXISTS scenario_brief (
   scenario_id    TEXT PRIMARY KEY REFERENCES scenario(id),

@@ -123,6 +123,49 @@ function runMigrations(db: Database.Database): void {
   if (!scCols.some((c) => c.name === "description")) {
     db.exec("ALTER TABLE scenario ADD COLUMN description TEXT");
   }
+  // v1.5 流程推进：是否已「解锁全部步骤」（默认锁步）
+  if (!scCols.some((c) => c.name === "flow_unlocked_all")) {
+    db.exec("ALTER TABLE scenario ADD COLUMN flow_unlocked_all INTEGER NOT NULL DEFAULT 0");
+  }
+}
+
+// ─── 场景流程步仓库（v1.5 逐页推进） ────────────────────────
+
+/** 场景流程步完成记录仓储 */
+export interface ScenarioStepRepo {
+  /** 已完成的步骤号（升序） */
+  completedSteps(scenarioId: string): number[];
+  /** 标记某步完成（重复标记幂等） */
+  complete(scenarioId: string, step: number): void;
+  /** 清除第 n 步及其之后的完成标记（回到某步重跑），返回清除条数 */
+  clearFrom(scenarioId: string, step: number): number;
+  /** 删除场景时清理 */
+  deleteByScenario(scenarioId: string): number;
+}
+
+function createScenarioStepRepo(db: Database.Database): ScenarioStepRepo {
+  const completedSteps = (scenarioId: string): number[] =>
+    (
+      db
+        .prepare("SELECT step FROM scenario_step WHERE scenario_id = ? ORDER BY step ASC")
+        .all(scenarioId) as { step: number }[]
+    ).map((r) => r.step);
+
+  const complete = (scenarioId: string, step: number): void => {
+    db.prepare(
+      "INSERT OR REPLACE INTO scenario_step (scenario_id, step, completed_at) VALUES (?, ?, ?)",
+    ).run(scenarioId, step, now());
+  };
+
+  const clearFrom = (scenarioId: string, step: number): number =>
+    db
+      .prepare("DELETE FROM scenario_step WHERE scenario_id = ? AND step >= ?")
+      .run(scenarioId, step).changes;
+
+  const deleteByScenario = (scenarioId: string): number =>
+    db.prepare("DELETE FROM scenario_step WHERE scenario_id = ?").run(scenarioId).changes;
+
+  return { completedSteps, complete, clearFrom, deleteByScenario };
 }
 
 // ─── 通用仓库工厂 ──────────────────────────────────────────
@@ -617,6 +660,7 @@ export interface DbInstance {
   scenarioRepo: Repo<Scenario>;
   scenarioBriefRepo: ScenarioBriefRepo;
   stageSummaryRepo: StageSummaryRepo;
+  scenarioStepRepo: ScenarioStepRepo;
   stageDataRepo: StageDataRepo;
   qualityGateRepo: QualityGateRepo;
   scenarioMaterialRepo: Repo<ScenarioMaterial>;
@@ -656,6 +700,7 @@ export function createDb(dbPath?: string): DbInstance {
     scenarioRepo: createRepo<Scenario>(db, "scenario"),
     scenarioBriefRepo: createScenarioBriefRepo(db),
     stageSummaryRepo: createStageSummaryRepo(db),
+    scenarioStepRepo: createScenarioStepRepo(db),
     stageDataRepo: createStageDataRepo(db),
     qualityGateRepo: createQualityGateRepo(db),
     scenarioMaterialRepo: createRepo<ScenarioMaterial>(db, "scenario_material"),

@@ -23,6 +23,7 @@ import type {
   StageId,
   StageData,
 } from "@scene/contract";
+import { FLOW_LAST_STEP } from "@scene/contract";
 import type { DbInstance } from "@scene/infra";
 import {
   parseDocument,
@@ -55,6 +56,12 @@ import {
   upsertBrief,
   writeAnchorRows,
 } from "./scenario-anchor.js";
+import {
+  completeFlowStep,
+  getFlowState,
+  reopenFlowStep,
+  unlockAllFlowSteps,
+} from "./flow-service.js";
 import { createIngestCommand } from "./ingest.js";
 import { parseStage, streamEvents } from "./sse-stream.js";
 import {
@@ -389,6 +396,48 @@ function registerProjectRoutes(app: FastifyInstance, deps: UiRoutesDeps) {
       deadline: body.deadline as string,
     });
     return { brief, anchor: readAnchorRows(db, id) };
+  });
+
+  // ─── 业务流程推进（v1.5 逐页推进；9 步） ────────────────
+
+  /** 流程状态：每步三态（已完成/当前/可推进/未解锁）+ 就绪判定 */
+  app.get("/api/v1/projects/:id/flow", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const scenario = db.scenarioRepo.getById(id);
+    if (!scenario) return notFound(reply, `场景 ${id} 不存在`);
+    return getFlowState(db, scenario);
+  });
+
+  /** 完成本步（用户显式动作；就绪与否由前端按 ready 决定按钮是否可点） */
+  app.post("/api/v1/projects/:id/flow/steps/:step/complete", async (request, reply) => {
+    const { id, step } = request.params as { id: string; step: string };
+    const scenario = db.scenarioRepo.getById(id);
+    if (!scenario) return notFound(reply, `场景 ${id} 不存在`);
+    const n = Number(step);
+    if (!Number.isInteger(n) || n < 1 || n > FLOW_LAST_STEP) {
+      return badRequest(reply, `步骤号非法：${step}（应为 1-${FLOW_LAST_STEP}）`);
+    }
+    return completeFlowStep(db, scenario, n);
+  });
+
+  /** 回到某一步重跑：清掉该步及其后的完成标记（数据保留，场景回到进行中） */
+  app.post("/api/v1/projects/:id/flow/steps/:step/reopen", async (request, reply) => {
+    const { id, step } = request.params as { id: string; step: string };
+    const scenario = db.scenarioRepo.getById(id);
+    if (!scenario) return notFound(reply, `场景 ${id} 不存在`);
+    const n = Number(step);
+    if (!Number.isInteger(n) || n < 1 || n > FLOW_LAST_STEP) {
+      return badRequest(reply, `步骤号非法：${step}（应为 1-${FLOW_LAST_STEP}）`);
+    }
+    return reopenFlowStep(db, scenario, n);
+  });
+
+  /** 解锁全部步骤（默认锁步推进） */
+  app.post("/api/v1/projects/:id/flow/unlock-all", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const scenario = db.scenarioRepo.getById(id);
+    if (!scenario) return notFound(reply, `场景 ${id} 不存在`);
+    return unlockAllFlowSteps(db, scenario);
   });
 
   /** 起草场景锚（表1-1）：诉求 + 资料库 → 12 项内容；用户确认过的行不被覆盖 */

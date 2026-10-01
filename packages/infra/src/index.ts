@@ -19,6 +19,7 @@ export type {
   CreateStageDataInput,
   ScenarioBriefRepo,
   StageSummaryRepo,
+  ScenarioStepRepo,
 } from "./sqlite-repo.js";
 
 export { parseDocument } from "./doc-parser.js";

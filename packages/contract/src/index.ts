@@ -217,6 +217,8 @@ export interface Scenario {
   product_line_id: string;
   status: "进行中" | "已完成" | "已归档";
   current_stage: StageId;
+  /** v1.5 流程推进：是否已「解锁全部步骤」（默认锁步，0/1） */
+  flow_unlocked_all?: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -495,3 +497,6 @@ export interface StageSummaryRow {
   created_at: string;
   updated_at: string;
 }
+
+// ─── 业务流程定义（v1.5 逐页推进；9 步） ────────────────────
+export * from "./flow.js";

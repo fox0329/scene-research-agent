@@ -28,6 +28,7 @@ import type {
   Repo,
   StageDataRepo,
   StageSummaryRepo,
+  ScenarioStepRepo,
   QualityGateRepo,
   MessageRepo,
 } from "@scene/infra";
@@ -228,6 +229,7 @@ function createMockDb(opts: {
       remove: vi.fn(() => false),
     },
     stageSummaryRepo: createMockStageSummaryRepo(),
+    scenarioStepRepo: createMockScenarioStepRepo(),
     stageDataRepo: createMockStageDataRepo(),
     qualityGateRepo: createMockQualityGateRepo(),
     scenarioLinkedLineRepo: { list: () => [], insert: vi.fn(), getById: vi.fn(), update: vi.fn(), deleteById: vi.fn() },
@@ -257,6 +259,32 @@ function createMockStageSummaryRepo(): StageSummaryRepo {
       [...store.values()].filter((r) => r.scenario_id === scenarioId),
     ),
     remove: vi.fn((scenarioId: string, stage: number) => store.delete(key(scenarioId, stage))),
+  };
+}
+
+/** 场景流程步仓储 mock（内存实现） */
+function createMockScenarioStepRepo(): ScenarioStepRepo {
+  const done = new Map<string, Set<number>>();
+  const get = (id: string): Set<number> => {
+    const set = done.get(id) ?? new Set<number>();
+    done.set(id, set);
+    return set;
+  };
+  return {
+    completedSteps: vi.fn((id: string) => [...get(id)].sort((a, b) => a - b)),
+    complete: vi.fn((id: string, step: number) => {
+      get(id).add(step);
+    }),
+    clearFrom: vi.fn((id: string, step: number) => {
+      const before = get(id).size;
+      for (const s of [...get(id)]) if (s >= step) get(id).delete(s);
+      return before - get(id).size;
+    }),
+    deleteByScenario: vi.fn((id: string) => {
+      const n = get(id).size;
+      done.delete(id);
+      return n;
+    }),
   };
 }
 
