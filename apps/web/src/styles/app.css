@@ -2045,6 +2045,8 @@ td.ed {
 .align-推断 { color: var(--cp); background: var(--cp-s); }
 .align-待补充 { color: var(--ct3); background: transparent; border: 1px solid var(--cb); }
 .align-hint { display: block; margin-top: var(--s1); font-size: var(--txs); color: var(--ct3); }
+/* 对照表空态：选行按返回数组派生（核心项 ∪ 系统填了/推断的项），可能一项都没有 */
+.align-empty { font-size: var(--txs); color: var(--ct3); }
 .align-questions h4 { margin: 0 0 var(--s1); font-size: var(--ts); }
 .align-questions ul { margin: 0; padding-left: var(--s4); font-size: var(--ts); color: var(--ct2); }
 

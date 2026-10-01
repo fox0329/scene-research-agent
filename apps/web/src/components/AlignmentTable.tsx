@@ -10,12 +10,17 @@
 
 import React from "react";
 
-/** 四态徽标文案（单一来源，勿在别处重写） */
+/**
+ * 四态徽标文案（单一来源，勿在别处重写）
+ *
+ * 语气口径（用户定调）：场景定义**允许说不准**——推断项不是"欠账"，
+ * 而是"可以留待定、后续行业研究再补全"，因此提示里不出现"必须确认"。
+ */
 export const ALIGN_LABEL: Record<string, { text: string; hint: string }> = {
-  一致: { text: "与你说的不一致？", hint: "已由你确认/补充" },
-  系统补充: { text: "系统从资料补充", hint: "来自材料，你没说过" },
-  推断: { text: "系统推断", hint: "没有依据，必须由你确认" },
-  待补充: { text: "待补充", hint: "还不能确定" },
+  一致: { text: "与你说的一致", hint: "已由你确认/补充" },
+  系统补充: { text: "系统从资料补充", hint: "来自材料，你没说过——不对就改" },
+  推断: { text: "系统推断", hint: "系统猜的：可以先留「待定」，后续研究会补全" },
+  待补充: { text: "待补充", hint: "说不准就先留「待定」" },
 };
 
 /** 对照结论的一行（服务端 `ApiDefinitionAlignment` / 领域层 `AlignmentItem` 同形状） */
@@ -54,6 +59,13 @@ export const AlignmentTable: React.FC<AlignmentTableProps> = ({
         </tr>
       </thead>
       <tbody>
+        {items.length === 0 ? (
+          <tr>
+            <td colSpan={3} className="align-empty">
+              这段对话还没整理出可对照的项
+            </td>
+          </tr>
+        ) : null}
         {items.map((a) => (
           <tr key={a.rowKey}>
             <td>{a.label}</td>

@@ -162,12 +162,15 @@ test("右栏双 Tab：补充说明（含确认清单）/ 阶段总结", async ({
   await expect(tabs.nth(0)).toContainText("补充说明");
   await expect(tabs.nth(1)).toContainText("阶段总结");
 
-  // Tab ①：确认清单（L1 场景本体必确认）
+  // Tab ①：确认清单（只列需要用户表态的项；行数按返回数组派生，不写死）
   await tabs.nth(0).click();
   await expect(page.locator(".det .confirm-list")).toBeVisible();
   await expect(page.locator(".det .layer-L1").first()).toBeVisible();
-  const l1Count = await page.locator(".det .layer-L1").count();
-  expect(l1Count).toBeGreaterThanOrEqual(6); // 表1-1 的 6 项必确认
+  const l1Count = await page.locator(".det .confirm-item:has(.layer-L1)").count();
+  expect(l1Count).toBeGreaterThanOrEqual(2); // 核心必确认 2 项 ∪ 模型实际填了/推断的项
+  const confirmSec = page.locator(".det .det-sec").filter({ has: page.locator(".confirm-list") });
+  await expect(confirmSec).toContainText("只列需要你表态的项");
+  await expect(confirmSec).toContainText("待定");
 
   // Tab ②：阶段总结六段骨架
   await tabs.nth(1).click();
@@ -181,9 +184,9 @@ test("表1-1 场景锚常驻且带必确认标记", async ({ page }) => {
   const anchor = page.locator(".ws .schema-table--anchor").first();
   await expect(anchor).toBeVisible();
   await expect(anchor.locator("th").first()).toHaveText("项");
-  // 6 项 L1 必确认带 ✓ 标记
+  // 带 ✓ = 需要用户表态的核心项（选行由注册表给，前端不假设项数；当前核心 2 项）
   const confirmDots = await anchor.locator(".confirm-dot").count();
-  expect(confirmDots).toBeGreaterThanOrEqual(6);
+  expect(confirmDots).toBeGreaterThanOrEqual(2);
 });
 
 test("流程轴：8 个节点、当前步高亮、未解锁不可点（v1.5 取代阶段 Tab）", async ({ page }) => {
@@ -201,11 +204,11 @@ test("流程轴：8 个节点、当前步高亮、未解锁不可点（v1.5 取�
   await expect(nodes.nth(1)).toBeDisabled();
   await expect(nodes.nth(1)).toHaveAttribute("aria-label", /认识场景/);
 
-  // 当前步的 readyHint 直接显示在轴上（演示态：L1 六项还有 4 项未确认）
+  // 当前步的 readyHint 直接显示在轴上（演示态：表1-1 已有内容 → 定义已整理，本步就绪）
   await expect(rail.locator(".flow-hint")).toContainText("第 1/8 步");
-  await expect(rail.locator(".flow-hint")).toContainText("还有 4 项场景本体未确认");
-  // 未就绪 → 完成本步不可点（就绪是数据判定，前端只显示）
-  await expect(rail.getByRole("button", { name: "完成本步，进入下一步" })).toBeDisabled();
+  await expect(rail.locator(".flow-hint")).toContainText("定义已整理");
+  // 就绪即可推进：不再要求逐项确认（就绪是数据判定，前端只显示）
+  await expect(rail.getByRole("button", { name: "完成本步，进入下一步" })).toBeEnabled();
   await expect(page.locator(".ws .pnl").first()).toBeVisible();
 });
 
@@ -213,24 +216,8 @@ test("流程推进：完成本步 → 当前步前移；已完成步可回看重
   const rail = page.locator(".flow-rail");
   const completeBtn = rail.getByRole("button", { name: "完成本步，进入下一步" });
 
-  // 第 1 步就绪口径 = L1 六项全部确认。先把「场景定义」对话整理成表1-1（补齐六项）
-  await page.locator(".ws").getByRole("button", { name: /场景定义对话/ }).click();
-  const dlg = page.getByRole("dialog", { name: "场景定义" });
-  await expect(dlg).toBeVisible();
-  await dlg.getByRole("button", { name: "整理成定义" }).click();
-  await expect(dlg.locator(".definition-summary")).toContainText("更新");
-  await dlg.getByRole("button", { name: "完成，去确认表格" }).click();
-  await expect(dlg).toBeHidden();
-  // 整理只写表1-1 → 本步仍未就绪（还要用户逐项确认）
-  await expect(rail.locator(".flow-hint")).toContainText("还有 4 项场景本体未确认");
-
-  // 右栏确认清单：L1 六项逐项确认 → 本步就绪
-  const l1Items = page.locator(".det .confirm-item:has(.layer-L1)");
-  await expect(l1Items).toHaveCount(6);
-  for (let i = 0; i < 6; i++) {
-    await l1Items.nth(i).getByRole("button", { name: "确认", exact: true }).click();
-  }
-  await expect(rail.locator(".flow-hint")).toContainText("L1 六项已全部确认");
+  // 第 1 步就绪口径 = 「定义已整理」：演示锚已有内容 → 直接就绪，不再需要逐项确认
+  await expect(rail.locator(".flow-hint")).toContainText("定义已整理");
   await expect(completeBtn).toBeEnabled();
   await completeBtn.click();
 
@@ -273,13 +260,15 @@ test("解锁全部步骤：未解锁节点可点，可直接跳到任一步", as
   await expect(page.locator(".det .md-body")).toContainText("交付物说明");
 });
 
-/* ────── 第 1 步「场景定义与边界」：定义对话（不占步） + 表1-1 逐项确认 ────── */
+/* ────── 第 1 步「场景定义与边界」：定义对话（不占步） + 表1-1 就地补充/表态 ────── */
 
 test("第 1 步：定义状态行 + 独立「场景定义」对话弹窗，整理成定义给出对照结论", async ({ page }) => {
   const ws = page.locator(".ws");
-  // 定义状态行：表1-1 内容摘要（几项已填 / 几项待确认 / 对话几条）+ 常驻入口
+  // 定义状态行：表1-1 内容摘要（几项已填 / 几项待你表态 / 对话几条）+ 常驻入口
   await expect(ws.locator(".definition-status")).toBeVisible();
   await expect(ws.locator(".definition-stat").first()).toContainText("项已有内容");
+  // 口径文案：允许说不准、可留待定，不出现"必须确认才能继续"
+  await expect(ws.locator(".definition-step")).toContainText("待定");
   const entry = ws.getByRole("button", { name: /场景定义对话/ });
   await expect(entry).toBeVisible();
   await expect(entry).toHaveText(/继续场景定义对话/); // 演示态已有预置对话
@@ -301,25 +290,22 @@ test("第 1 步：定义状态行 + 独立「场景定义」对话弹窗，整�
   await expect(dlg.locator(".msg.ai .bub").first()).toBeVisible();
   await expect(dlg.locator(".msg.u .bub").first()).toBeVisible();
 
-  // 整理成定义：写表统计 + 六项对照结论 + 待回答问题
+  // 整理成定义：写表统计 + 对照结论（选行 = 核心项 ∪ 模型实际填了/推断的项，行数按返回数组）+ 待回答问题
   await dlg.getByRole("button", { name: "整理成定义" }).click();
   await expect(dlg.locator(".definition-summary")).toContainText("更新");
-  await expect(dlg.locator(".align-table tbody tr")).toHaveCount(6); // L1 六项
   await expect(dlg.locator(".align-badge").first()).toBeVisible();
+  const alignRows = await dlg.locator(".align-table tbody tr").count();
+  expect(alignRows).toBeGreaterThanOrEqual(2); // 不写死 6 行；当前 = 核心 2 项 ∪ 已填项
   await expect(dlg.locator(".align-questions li").first()).toBeVisible();
 
-  // 「完成，去确认表格」关闭弹窗：入口变为「继续」，表1-1 就地更新
-  await dlg.getByRole("button", { name: "完成，去确认表格" }).click();
+  // 「完成，回到第 1 步」关闭弹窗：入口变为「继续」，表1-1 就地更新
+  await dlg.getByRole("button", { name: "完成，回到第 1 步" }).click();
   await expect(dlg).toBeHidden();
   await expect(ws.getByRole("button", { name: "继续场景定义对话" })).toBeVisible();
   await expect(ws.locator(".schema-table--anchor")).toBeVisible();
 
-  // 整理只写表1-1：本步就绪还要在这里逐项确认 L1 六项（就绪判定在服务端/演示态同口径）
-  const l1Items = page.locator(".det .confirm-item:has(.layer-L1)");
-  await expect(l1Items).toHaveCount(6);
-  for (let i = 0; i < 6; i++) {
-    await l1Items.nth(i).getByRole("button", { name: "确认", exact: true }).click();
-  }
+  // 整理过就能推进：本步已就绪，**不需要逐项确认**（说不准的项可留「待定」）
+  await expect(ws.locator(".definition-done")).toContainText("已整理成定义");
   await expect(
     page.locator(".flow-rail").getByRole("button", { name: "完成本步，进入下一步" }),
   ).toBeEnabled();

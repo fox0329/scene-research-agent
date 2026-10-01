@@ -16,7 +16,10 @@ import { join } from "node:path";
 const LIVE = "http://127.0.0.1:4181";
 
 /**
- * 点「整理成定义」并等对照表出现（6 行 L1）
+ * 点「整理成定义」并等对照表出现
+ *
+ * 对照表选行 = **核心必确认项 ∪ 模型实际填了/推断的项**（领域层给）——
+ * 行数按返回数组派生，不写死（曾经写死 6 行）。
  *
  * 联真用例跑真模型 + 本机共享端口，工作区里可能有并行 E2E 实例在抢 4181：
  * 观察到偶发的网络层失败（弹窗内出现「Failed to fetch」，重跑即好）。
@@ -31,21 +34,20 @@ async function consolidateAndWait(dlg: import("@playwright/test").Locator): Prom
   });
   if (await dlg.locator(".modal-error").count()) await btn.click();
   await expect(dlg.locator(".align-table")).toBeVisible({ timeout: 120_000 });
-  await expect(dlg.locator(".align-table tbody tr")).toHaveCount(6);
+  await expect(dlg.locator(".align-badge").first()).toBeVisible({ timeout: 120_000 });
+  const alignRows = await dlg.locator(".align-table tbody tr").count();
+  expect(alignRows).toBeGreaterThanOrEqual(2);
 }
 
 /**
- * 右栏确认清单里把 L1 六项逐项确认
- *
- * 第 1 步（场景定义与边界）的就绪口径 = L1 六项全部由用户确认/补充；
- * 「整理成定义」只写表1-1，不代替用户确认。
+ * 第 1 步（场景定义与边界）就绪口径 = **定义已整理**（表1-1 除「场景名称」外任一项有内容），
+ * 不再要求逐项确认——定义整过就能推进。就绪与提示由服务端 `readyHint` 给，
+ * 这里只断功能口径：整理完「完成本步」就该可点。
  */
-async function confirmL1(page: import("@playwright/test").Page): Promise<void> {
-  const items = page.locator(".det .confirm-item:has(.layer-L1)");
-  await expect(items).toHaveCount(6, { timeout: 20_000 });
-  for (let i = 0; i < 6; i++) {
-    await items.nth(i).getByRole("button", { name: "确认", exact: true }).click();
-  }
+async function expectStepOneCompletable(page: import("@playwright/test").Page): Promise<void> {
+  await expect(
+    page.locator(".flow-rail").getByRole("button", { name: "完成本步，进入下一步" }),
+  ).toBeEnabled({ timeout: 30_000 });
 }
 
 /** 最小可解析 PDF（正文一段文字，供 doc-parser 提取） */
@@ -215,10 +217,9 @@ test("场景定义对话（联真）：新建只输名称 → 自动开「场景
   await dlg.getByRole("button", { name: "发送" }).click();
   await expect(userBubbles).toHaveCount(2, { timeout: 20_000 });
 
-  // 整理成定义：对照表 6 行（表1-1 的 L1 六项）
+  // 整理成定义：对照表选行 = 核心项 ∪ 模型填了/推断的项（行数动态），带对照结论
   await consolidateAndWait(dlg);
-  await expect(dlg.locator(".align-badge").first()).toBeVisible();
-  await dlg.getByRole("button", { name: "完成，去确认表格" }).click();
+  await dlg.getByRole("button", { name: "完成，回到第 1 步" }).click();
   await expect(dlg).toBeHidden();
 
   // 中栏第 1 步「场景定义与边界」：出现「继续场景定义对话」入口 + 常驻表1-1
@@ -227,26 +228,27 @@ test("场景定义对话（联真）：新建只输名称 → 自动开「场景
   ).toBeVisible({ timeout: 20_000 });
   const anchor = page.locator(".ws .schema-table--anchor").first();
   await expect(anchor).toBeVisible({ timeout: 20_000 });
-  expect(await anchor.locator(".confirm-dot").count()).toBeGreaterThanOrEqual(6);
+  expect(await anchor.locator(".confirm-dot").count()).toBeGreaterThanOrEqual(2);
   // 表1-1 在第 1 步**可就地编辑**：有内容的行渲染成输入框（不是只读文本）
   await expect(anchor.locator("input.cell-input").first()).not.toHaveValue("");
 
   // 回归：**新建路径**（弹窗由 App 打开）整理完成后，流程状态必须跟着刷新——
   // 曾经漏了这一步，表现为聊完/整理完/关掉弹窗后流程轴仍拿着旧状态。
-  // 整理只写表1-1 → 本步仍未就绪（还要用户逐项确认 L1 六项）
-  await expect(page.locator(".flow-rail .flow-hint")).toContainText(/还有 \d 项场景本体未确认/);
-  await confirmL1(page);
-  await expect(page.locator(".flow-rail .flow-hint")).toContainText("L1 六项已全部确认", {
+  // 新口径：整理过就能推进，不需要逐项确认
+  await expectStepOneCompletable(page);
+  await page
+    .locator(".flow-rail")
+    .getByRole("button", { name: "完成本步，进入下一步" })
+    .click();
+  await expect(page.locator(".flow-rail .flow-node--done")).toContainText("场景定义与边界");
+  await expect(page.locator(".flow-rail .flow-node--current")).toContainText("认识场景", {
     timeout: 20_000,
   });
-  await expect(
-    page.locator(".flow-rail").getByRole("button", { name: "完成本步，进入下一步" }),
-  ).toBeEnabled({ timeout: 20_000 });
 });
 
-/* ─── 流程逐页推进（v1.5，8 步）：第 1 步（定义 + 确认）→ 完成本步 → 第 2 步「认识场景」 ─── */
+/* ─── 流程逐页推进（v1.5，8 步）：第 1 步（定义 + 表态）→ 完成本步 → 第 2 步「认识场景」 ─── */
 
-test("流程逐页推进（联真）：完成本步走的是 /flow 接口，确认本步后解锁下一步", async ({
+test("流程逐页推进（联真）：完成本步走的是 /flow 接口，完成本步后解锁下一步", async ({
   page,
   playwright,
 }) => {
@@ -276,8 +278,8 @@ test("流程逐页推进（联真）：完成本步走的是 /flow 接口，确�
   await expect(
     defDlg.locator(".msg.ai .bub").first(),
   ).toBeVisible({ timeout: 120_000 });
-  // **必须先回答**：新就绪口径看 L1 六项（场景本体）有没有内容——
-  // 只发一句通用引导语就整理，本步**不该**就绪（这正是该口径的意义）
+  // 用户补一条场景本体信息（真实模型会回复），回复落定后按钮重新可用——
+  // 这条内容就是「整理成定义」能写出表1-1、进而本步就绪的依据
   await defDlg
     .locator(".definition-ta")
     .fill("客户是市政水务集团，范围只看出厂到管网，明确不含二次供水；想搞清楚值不值得进");
@@ -290,20 +292,11 @@ test("流程逐页推进（联真）：完成本步走的是 /flow 接口，确�
     )
     .toBeGreaterThan(0);
   await consolidateAndWait(defDlg);
-  await defDlg.getByRole("button", { name: "完成，去确认表格" }).click();
+  await defDlg.getByRole("button", { name: "完成，回到第 1 步" }).click();
   await expect(defDlg).toBeHidden();
-  // 整理只写表1-1 → 本步仍未就绪；hint 由服务端给出，前端只显示
-  await expect(rail.locator(".flow-hint")).toContainText(/还有 \d 项场景本体未确认/);
 
-  // 第 1 步（场景定义与边界）：右栏确认清单逐项确认 L1 六项 → 本步就绪
-  await expect(page.locator(".det .confirm-list")).toBeVisible({ timeout: 20_000 });
-  await expect(page.locator(".det .layer-L1")).toHaveCount(6);
-  await confirmL1(page);
-  await expect(rail.locator(".flow-hint")).toContainText("L1 六项已全部确认", {
-    timeout: 20_000,
-  });
-  await expect(completeBtn).toBeEnabled({ timeout: 20_000 });
-
+  // 第 1 步（场景定义与边界）：整理过即就绪 → 直接可推进（不再逐项确认 L1）
+  await expectStepOneCompletable(page);
   await completeBtn.click();
   await expect(rail.locator(".flow-node--done")).toHaveCount(1);
   await expect(rail.locator(".flow-node--done")).toContainText("场景定义与边界");

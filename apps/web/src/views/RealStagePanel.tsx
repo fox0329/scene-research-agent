@@ -462,7 +462,7 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
           <div className="pnl-h">
             <div>
               <h2>表1-1 场景概述 · 场景锚（常驻）</h2>
-              <p>全链唯一的场景定义；带 ✓ 的 6 项需你确认，确认后下游才当作依据（右栏可逐项确认）</p>
+              <p>全链唯一的场景定义；带 ✓ 的是需要你表态的项，其余项可选填、可留「待定」（右栏可表态）</p>
             </div>
           </div>
           <div className="pnl-b flush">

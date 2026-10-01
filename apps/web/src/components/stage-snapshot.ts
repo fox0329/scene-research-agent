@@ -58,7 +58,7 @@ export interface StageSnapshot {
   activeTable: string | null;
   /** 右栏 Tab ①：当前表的补充说明列 */
   supplements: SupplementTable[];
-  /** 右栏 Tab ①：确认清单（L1 来自表1-1 的必确认行） */
+  /** 右栏 Tab ①：确认清单（L1 只列「需要用户表态的项」，行数按返回数组，不假设） */
   checklist: ChecklistViewItem[];
   /** 场景锚（表1-1）当前内容，供确认清单与编辑 */
   anchor: ApiAnchorRow[];

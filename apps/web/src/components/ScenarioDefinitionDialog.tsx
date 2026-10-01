@@ -5,12 +5,16 @@
  * 不是智能体该有的模式"）。所以：
  *   新建场景只输名称 → 打开这个独立对话页 → 模型先给它的理解 + 提 ≤3 个
  *   场景本体问题 → 用户对话回答 → 点「整理成定义」→ 系统把对话整理成表1-1
- *   场景锚 → 关闭后回到流程第 1 步（场景定义与边界）逐项确认。
+ *   场景锚 → 关闭后回到流程第 1 步（场景定义与边界），需要表态的项在右栏，
+ *   但**不确认也能往下走**（定义的松紧不卡推进）。
  *
  * 三条定调（实现不得偏离）：
- *  1. **定义对话不占流程步**：它属于「新建场景」，落成表1-1 后在流程第 1 步确认
+ *  1. **定义对话不占流程步**：它属于「新建场景」，落成表1-1 后在第 1 步就地补充/表态
  *  2. **只在用户点「整理成定义」时才写表**，不自动增量改用户的表
  *  3. 对话是独立弹窗/单独页面——不是中栏，不是右下角对话抽屉
+ *
+ * 语气定调：场景定义允许说不准——整理结果只列出「核心项 + 模型实际填了/推断的项」，
+ * 标「推断」的先留「待定」也行，后续行业研究会补全。
  *
  * 演示模式（`demo`，无后端）：用 `mock/demo-flow.ts` 的本地预置对话与本地整理结果，
  * 结构、类名、文案与联真完全一致（E2E 在演示模式跑）。
@@ -51,11 +55,11 @@ export interface ScenarioDefinitionDialogProps {
   scenarioName: string;
   /** 演示模式：不发任何请求，用本地预置对话与本地整理结果 */
   demo?: boolean;
-  /** 关闭（× / Esc / 「完成，去确认表格」） */
+  /** 关闭（× / Esc / 「完成，回到第 1 步」） */
   onClose: () => void;
   /** 整理成定义成功：父级据此刷新表1-1 与流程就绪 */
   onConsolidated?: (rows: ApiAnchorRow[]) => void;
-  /** 点「完成，去确认表格」：父级据此刷新表1-1 与流程就绪 */
+  /** 点「完成，回到第 1 步」：父级据此刷新表1-1 与流程就绪 */
   onFinished?: () => void;
 }
 
@@ -275,7 +279,7 @@ export const ScenarioDefinitionDialog: React.FC<ScenarioDefinitionDialogProps> =
         <div className="definition-h">
           <div>
             <h2>{scenarioName}</h2>
-            <p>把场景聊清楚就好，不用填表</p>
+            <p>把场景聊清楚就好，不用填表；说不准的地方先放着也可以</p>
           </div>
           <button
             className="btn"
@@ -315,18 +319,21 @@ export const ScenarioDefinitionDialog: React.FC<ScenarioDefinitionDialogProps> =
                 <p className="definition-summary" role="status">
                   已按这段对话整理成表1-1：更新 <strong>{result?.updated ?? 0}</strong> 项，跳过{" "}
                   <strong>{result?.skipped ?? 0}</strong> 项
-                  {(result?.skipped ?? 0) > 0 ? "（你已确认过的行不会被覆盖）" : ""}
+                  {(result?.skipped ?? 0) > 0
+                    ? "（你已确认过的行不会被覆盖）"
+                    : "（说不准的项留空或写「待定」都可以）"}
                 </p>
               ) : (
                 <p className="definition-summary" role="status">
                   这段对话还没有可整理成表1-1 的内容——再聊几句你的场景，或直接在第 1 步表格里手工补充
+                  （补充不齐也不影响往下走）
                 </p>
               )}
               <AlignmentTable
                 items={result?.alignment ?? []}
                 questions={result?.open_questions ?? []}
-                hint="请对照你原话检查：标「推断」的行是系统猜的，必须由你在第 1 步确认后下游才当作依据"
-                questionsTitle="还需要你说清楚的问题"
+                hint="这里只对「核心项 + 系统实际填了/推断的项」——标「推断」的是系统替你猜的，说得准就改，说不准就先留「待定」，后续研究补全；不影响往下走"
+                questionsTitle="还不知道、但后面研究能补上的"
               />
             </div>
           )}
@@ -387,7 +394,7 @@ export const ScenarioDefinitionDialog: React.FC<ScenarioDefinitionDialogProps> =
                   onClose();
                 }}
               >
-                完成，去确认表格
+                完成，回到第 1 步
               </button>
             </>
           )}

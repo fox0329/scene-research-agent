@@ -20,6 +20,12 @@ import {
   type InfoRow,
 } from "@scene/domain";
 import { asSourceType, type ChecklistViewItem } from "../components/stage-snapshot";
+import {
+  definitionRowKey,
+  definitionScopeLabels,
+  draftedItems,
+  isDefinitionDrafted,
+} from "../components/definition-progress";
 import type {
   ApiAnchorRow,
   ApiDefinitionAlignment,
@@ -28,7 +34,7 @@ import type {
   ApiFlowStatus,
 } from "../api";
 
-/** 演示用的场景锚（表1-1） */
+/** 演示用的场景锚（表1-1）——有内容即视为「定义已整理」 */
 export const DEMO_ANCHOR: ApiAnchorRow[] = [
   { item: "场景名称", content: "智慧水务", source_type: "用户补充" },
   { item: "客户类型/行业", content: "市政水务集团", source_type: "用户确认" },
@@ -63,7 +69,7 @@ export const DEMO_DEFINITION_MESSAGES: ApiDefinitionMessage[] = [
     id: "demo-def-3",
     role: "系统",
     content:
-      "收到，场景边界记下了：制水厂到管网末端，不含原水取水与二次供水；切入点是存量泵站改造，目的是内部判断值不值得进。你点「整理成定义」，我把它整理成表1-1 给你逐项确认。",
+      "收到，场景边界记下了：制水厂到管网末端，不含原水取水与二次供水；切入点是存量泵站改造，目的是内部判断值不值得进。你点「整理成定义」，我把它整理成表1-1 给你对照检查——说不准的先留待定也行。",
     created_at: "2026-09-25T09:33:00.000Z",
   },
 ];
@@ -84,7 +90,12 @@ const DEMO_DEFINITION_EXTRA_ROWS: ApiAnchorRow[] = [
   { item: "价值主张", content: "用漏损率下降换运维成本", source_type: "AI推断" },
 ];
 
-/** 六项对照结论的内容与四态（按 label 索引，rowKey 从注册表取，不重抄） */
+/**
+ * 对照结论的内容与四态（按项名索引，rowKey 从注册表取，不重抄）
+ *
+ * 选行与联真同规则：**核心必确认项 ∪ 模型实际填了/推断的项**——所以这里只提供
+ * 内容与四态，行数由 `definitionScopeLabels` 按数据现算，不写死。
+ */
 const DEMO_ALIGNMENT_BY_LABEL: Record<
   string,
   { content: string; alignment: ApiDefinitionAlignment["alignment"]; note?: string }
@@ -95,39 +106,30 @@ const DEMO_ALIGNMENT_BY_LABEL: Record<
     alignment: "系统补充",
     note: "来源：DEMO 水务场景资料",
   },
-  "明确不含什么": {
-    content: "原水取水与二次供水",
-    alignment: "推断",
-    note: "系统推断，需用户确认",
-  },
+  /* 推断项不写 note：语气文案统一由 `ALIGN_LABEL` 给（"可以先留待定"），
+     免得演示态与联真态各说一套 */
+  "明确不含什么": { content: "原水取水与二次供水", alignment: "推断" },
   "核心用途": { content: "判断这个场景值不值得进", alignment: "一致" },
-  "切入点": {
-    content: "存量泵站改造",
-    alignment: "推断",
-    note: "系统推断，需用户确认",
-  },
-  "价值主张": {
-    content: "用漏损率下降换运维成本",
-    alignment: "推断",
-    note: "系统推断，需用户确认",
-  },
+  "切入点": { content: "存量泵站改造", alignment: "推断" },
+  "价值主张": { content: "用漏损率下降换运维成本", alignment: "推断" },
 };
 
 /** 演示态整理结果（与联真 `ApiDefinitionConsolidation` 同形状） */
 export function demoDefinitionConsolidation(): ApiDefinitionConsolidation {
+  const rows = [...DEMO_ANCHOR, ...DEMO_DEFINITION_EXTRA_ROWS];
   return {
-    rows: [...DEMO_ANCHOR, ...DEMO_DEFINITION_EXTRA_ROWS],
-    alignment: l1Rows().map((fixed) => {
-      const hit = DEMO_ALIGNMENT_BY_LABEL[fixed.label];
+    rows,
+    alignment: definitionScopeLabels(rows).map((label) => {
+      const hit = DEMO_ALIGNMENT_BY_LABEL[label];
       return {
-        rowKey: fixed.key,
-        label: fixed.label,
+        rowKey: definitionRowKey(label),
+        label,
         content: hit?.content ?? "",
         alignment: hit?.alignment ?? ("待补充" as const),
         ...(hit?.note ? { note: hit.note } : {}),
       };
     }),
-    updated: 6,
+    updated: rows.length,
     skipped: 0,
     open_questions: [...DEMO_DEFINITION_OPEN_QUESTIONS],
   };
@@ -240,22 +242,26 @@ export function demoProgress(tables: readonly string[]): {
 /**
  * 演示态第 1 步「场景定义与边界」就绪口径（与联真同义）
  *
- * 定义对话不占流程步：对话聊清楚只把表1-1 写出来，**还要用户逐项确认 L1 六项**
- * 才算这一步就绪。联真的就绪由服务端算，这里用本地锚数据按同一语义推导。
+ * 定义对话不占流程步，**整理过就能推进**——表1-1 除「场景名称」外任一项有内容即就绪，
+ * 不再要求逐项确认（用户定调：定义要抽象，且不卡后续推进）。
+ * 联真的就绪由服务端算，这里用本地锚数据按同一语义推导。
  */
 export function demoAnchorReadiness(anchor: readonly ApiAnchorRow[]): FlowReadiness {
-  const l1 = l1Rows();
-  const confirmed = l1.filter((r) => {
-    const row = anchor.find((a) => a.item === r.label);
-    const st = String(row?.source_type ?? "");
+  const drafted = isDefinitionDrafted(anchor);
+  const filled = draftedItems(anchor).length;
+  /* 核心项进度只作提示（服务端同款口径），不参与就绪判定 */
+  const core = l1Rows();
+  const coreDone = core.filter((r) => {
+    const st = String(anchor.find((a) => a.item === r.label)?.source_type ?? "");
     return st === "用户确认" || st === "用户补充";
   }).length;
-  const missing = l1.length - confirmed;
   return {
-    ready: missing === 0,
-    readyHint: missing === 0 ? "L1 六项已全部确认" : `还有 ${missing} 项场景本体未确认`,
+    ready: drafted,
+    readyHint: drafted
+      ? `定义已整理（表1-1 已填 ${filled} 项；核心 ${coreDone}/${core.length} 项已确认）`
+      : "先在「场景定义」对话里聊两句——说不准也没关系，聊完点「整理成定义」即可推进",
     progress: {
-      tablesWithData: anchor.length > 0 ? 1 : 0,
+      tablesWithData: filled > 0 ? 1 : 0,
       expectedTables: 1,
       rows: anchor.length,
     },
@@ -314,17 +320,6 @@ export function demoChecklist(anchor: readonly ApiAnchorRow[]): ChecklistViewIte
     label: i.label,
     state: i.state,
   }));
-}
-
-/** 演示态 L1 已确认数（面板提示用） */
-export function demoConfirmedL1(anchor: readonly ApiAnchorRow[]): number {
-  return buildChecklist({
-    anchorRows: anchor.map((a) => ({
-      item: a.item,
-      content: a.content,
-      source_type: asSourceType(a.source_type),
-    })),
-  }).confirmed;
 }
 
 /** 演示态阶段总结（六段骨架；右栏 Tab ② 与联真同结构） */

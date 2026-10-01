@@ -1,20 +1,24 @@
 /**
  * @scene/web — 第 1 步「场景定义与边界」面板（联真）
  *
- * 这一步是**定义 + 确认合流**（v1.18 把用户可见流程收成 8 步）：
+ * 这一步是**定义 + 表态合流**（v1.18 把用户可见流程收成 8 步）：
  *  - 定义：在独立的「场景定义」对话里把场景聊清楚，用户点「整理成定义」落成表1-1
  *    （对话属于「新建场景」的一部分，不占流程步）
- *  - 确认：表1-1 **常驻、可就地编辑、逐项确认**——"系统理解"不等于"用户说的"，
- *    带 ✓ 的 6 项 L1 必须由用户确认，确认过的行下游才当作依据
+ *  - 表态：表1-1 **常驻、可就地编辑**；右栏清单只列**需要用户表态的项**
+ *    （核心必确认项 ∪ 模型实际填了/推断的项，按返回数组派生，前端不假设行数）
  *
- * 本步就绪判定由服务端给出（`/flow` 的 `readyHint`），前端只显示、不复述规则。
+ * 口径定调（用户拍板）：
+ *  - 定义要抽象，允许说不准：除核心项外都是选填，可留「待定」
+ *  - **定义不卡推进**：第 1 步就绪 = 「定义已整理」，不要求逐项确认
+ *  - 就绪判定与提示由服务端给出（`/flow` 的 `readyHint`），前端只显示、不复述规则
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FLOW_TOTAL, flowStep } from "@scene/contract";
-import { buildChecklist, l1Rows } from "@scene/domain";
+import { buildChecklist } from "@scene/domain";
 import { api, type ApiAnchorRow, type ApiFlowStatus } from "../api";
 import { AnchorTable } from "../components/SchemaTable";
+import { definitionProgress } from "../components/definition-progress";
 import { FlowCompleteness } from "../components/FlowCompleteness";
 import { ScenarioDefinitionDialog } from "../components/ScenarioDefinitionDialog";
 import { asSourceType, type StageSnapshot } from "../components/stage-snapshot";
@@ -72,23 +76,33 @@ export const AnchorStepPanel: React.FC<AnchorStepPanelProps> = ({
     setAnchorOverride(null);
   }, [projectId, refreshToken]);
 
-  const { filled, confirmedL1, pending } = useMemo(() => {
-    const l1 = l1Rows();
-    const labels = new Set(l1.map((r) => r.label));
-    const filledCount = anchor.filter((a) => String(a.content ?? "").trim() !== "").length;
-    const confirmedCount = anchor.filter((a) => {
-      if (!labels.has(a.item)) return false;
-      const st = String(a.source_type ?? "");
-      return st === "用户确认" || st === "用户补充";
-    }).length;
-    return { filled: filledCount, confirmedL1: confirmedCount, pending: l1.length - confirmedCount };
-  }, [anchor]);
+  /**
+   * 确认清单（右栏 Tab ① 的 L1 部分）
+   *
+   * 选行由领域层给（核心必确认项 ∪ 模型实际填了/推断的项）——前端只渲染返回数组，
+   * 不假设行数；下面的进度数字也从这份清单派生。
+   */
+  const checklist = useMemo(
+    () =>
+      buildChecklist({
+        anchorRows: anchor.map((a) => ({
+          item: a.item,
+          content: a.content,
+          source_type: asSourceType(a.source_type),
+        })),
+      }),
+    [anchor],
+  );
 
-  /** 「已整理成定义」看 L1 场景本体是否已有内容（不是看表1-1 骨架有没有被投影填行） */
-  const l1Filled = useMemo(() => {
-    const labels = new Set(l1Rows().map((r) => r.label));
-    return anchor.filter((a) => labels.has(a.item) && String(a.content ?? "").trim() !== "").length;
-  }, [anchor]);
+  /** 第 1 步的两个数字口径：定义整理进度 + 需要用户表态的项（不写死行数） */
+  const { filled, drafted, stanceTotal, stanceDone, stancePending } = useMemo(
+    () =>
+      definitionProgress(
+        anchor,
+        checklist.items.map((i) => ({ layer: i.layer, state: i.state })),
+      ),
+    [anchor, checklist],
+  );
 
   const ready = flow.steps.find((s) => s.id === step.id)?.ready ?? false;
   /** 就绪原因由服务端给（前端不猜规则） */
@@ -214,13 +228,6 @@ export const AnchorStepPanel: React.FC<AnchorStepPanelProps> = ({
   }, [loadSummary]);
 
   const snapshot = useMemo<StageSnapshot | null>(() => {
-    const checklist = buildChecklist({
-      anchorRows: anchor.map((a) => ({
-        item: a.item,
-        content: a.content,
-        source_type: asSourceType(a.source_type),
-      })),
-    });
     return {
       stage: 1,
       stageLabel: step.title,
@@ -243,7 +250,7 @@ export const AnchorStepPanel: React.FC<AnchorStepPanelProps> = ({
       onSupplementChange: () => undefined,
       onAnchorAction: handleAnchorAction,
     };
-  }, [anchor, step.title, handleAnchorAction, summary, summaryLoading, loadSummary]);
+  }, [anchor, checklist, step.title, handleAnchorAction, summary, summaryLoading, loadSummary]);
 
   useEffect(() => {
     onStageSnapshot?.(snapshot);
@@ -301,8 +308,8 @@ export const AnchorStepPanel: React.FC<AnchorStepPanelProps> = ({
               <span className="definition-stat-l">项已有内容</span>
             </div>
             <div className="definition-stat">
-              <span className="definition-stat-n">{pending}</span>
-              <span className="definition-stat-l">项待确认</span>
+              <span className="definition-stat-n">{stancePending}</span>
+              <span className="definition-stat-l">项场景本体待表态</span>
             </div>
             <div className="definition-stat">
               <span className="definition-stat-n">{messageCount}</span>
@@ -312,17 +319,20 @@ export const AnchorStepPanel: React.FC<AnchorStepPanelProps> = ({
 
           <p className="brief-hint">
             在对话里把场景聊清楚，然后点「整理成定义」——系统只在那一刻把对话整理成表1-1，
-            不会自动改你已经确认过的行。
+            不会自动改你已经确认过的行。说不准的项先空着或写「待定」都可以。
           </p>
           <p className="brief-hint" role="status">
             本步就绪（服务端判定）：{readyHint || (ready ? "已就绪" : "未就绪")}；就绪后点上方流程轴的
             「完成本步，进入下一步」。
           </p>
 
-          {l1Filled > 0 ? (
+          {drafted ? (
             <p className="definition-done" role="status">
               <span className="badge success">已整理成定义</span>
-              <span className="brief-hint">下一步：在下方表1-1 里逐项确认场景本体</span>
+              <span className="brief-hint">
+                定义整理过就能往下走；需要你表态的是右栏那 {stanceTotal} 项（已表态 {stanceDone}/
+                {stanceTotal}），其余留「待定」，后续研究补全
+              </span>
             </p>
           ) : null}
         </div>
@@ -336,8 +346,9 @@ export const AnchorStepPanel: React.FC<AnchorStepPanelProps> = ({
           <div>
             <h2>表1-1 场景概述 · 场景锚（可就地编辑）</h2>
             <p>
-              带 ✓ 的 {l1Rows().length} 项需你确认（已确认 {confirmedL1}/{l1Rows().length}）；改内容即视为
-              「用户补充」并立即落库，确认一项即标「用户确认」——只有这两类来源下游才当依据
+              带 ✓ 的是需要你表态的项（已表态 {stanceDone}/{stanceTotal}）；改内容即视为
+              「用户补充」并立即落库，表态一项即标「用户确认」——只有这两类来源下游才当依据。
+              其余项选填，可以留「待定」，后续研究再回填
             </p>
           </div>
         </div>

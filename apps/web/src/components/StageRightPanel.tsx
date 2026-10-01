@@ -124,19 +124,13 @@ export const StageRightPanel: React.FC<StageRightPanelProps> = ({ snapshot, live
 
   const { completeness, checklist, anchor, supplements } = snapshot;
   const pending = checklist.filter((c) => c.state !== "用户确认" && c.state !== "用户修改");
+  /* 表态口径按返回数组派生（核心项 ∪ 模型填了/推断的项），不假设行数 */
+  const l1Items = checklist.filter((c) => c.layer === "L1");
+  const l1Total = l1Items.length;
+  const l1Done = l1Items.filter((c) => c.state === "用户确认" || c.state === "用户修改").length;
 
   const anchorContent = (item: string): string =>
     String(anchor.find((a) => a.item === item)?.content ?? "");
-
-  const anchorState = (item: string): string => {
-    const row = anchor.find((a) => a.item === item);
-    if (!row) return "系统推断";
-    const st = String(row.source_type ?? "");
-    if (st === "用户确认") return "用户确认";
-    if (st === "用户补充") return "用户修改";
-    if (st === "AI推断") return "待确认";
-    return "系统推断";
-  };
 
   return (
     <>
@@ -184,12 +178,16 @@ export const StageRightPanel: React.FC<StageRightPanelProps> = ({ snapshot, live
       <div className="det-body">
         {tab === "supplement" ? (
           <>
-            {/* 确认清单（L1 来自表1-1 的必确认行） */}
+            {/* 确认清单（L1 选行由领域层给：核心项 ∪ 模型实际填了/推断的项） */}
             {checklist.length > 0 ? (
               <section className="det-sec">
                 <h4>
-                  确认清单 <span className="det-sec-sub">{pending.length} 项待确认</span>
+                  确认清单 <span className="det-sec-sub">{pending.length} 项待你表态</span>
                 </h4>
+                <p className="brief-hint">
+                  只列需要你表态的项（核心项 + 系统实际填了/推断的项）；其余项可以先留「待定」，
+                  后续研究补全，不阻断往下走。
+                </p>
                 <ul className="confirm-list">
                   {checklist.map((c) => {
                     const badge = CONFIRM_STATE_BADGE[c.state] ?? CONFIRM_STATE_BADGE["待确认"]!;
@@ -329,11 +327,11 @@ export const StageRightPanel: React.FC<StageRightPanelProps> = ({ snapshot, live
         )}
       </div>
 
-      {/* 锚行状态提示：确认清单的 L1 就是表1-1 的必确认行 */}
+      {/* 锚行状态提示：确认清单的 L1 就是「需要你表态的场景本体项」 */}
       <div className="det-foot">
         <span className="foot-hint">
-          L1 场景本体 {anchor.filter((a) => anchorState(a.item) === "用户确认").length} 项已确认
-          ｜ 状态由你确认后写入
+          场景本体 {l1Done}/{l1Total} 项已表态
+          ｜ 其余可留「待定」，状态由你表态后写入
         </span>
       </div>
     </>

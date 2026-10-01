@@ -2,8 +2,11 @@
  * @scene/web — 演示模式第 1 步面板（无后端）
  *
  * 与联真态**同结构**（同一套类名、同一套文案）：
- *  定义状态行（表1-1 已填几项 / 对话几条）+ 「开始/继续场景定义对话」入口
- *  + 常驻可就地编辑的表1-1（逐项确认在右栏）+ 全流程完整度状态行
+ *  定义状态行（表1-1 已填几项 / 待你表态几项 / 对话几条）+ 「开始/继续场景定义对话」入口
+ *  + 常驻可就地编辑的表1-1（表态在右栏）+ 全流程完整度状态行
+ *
+ * 口径与联真同义：**定义整理过就能往下走**（第 1 步就绪 = 定义已整理），
+ * 需要表态的项按返回数组派生，前端不假设行数。
  *
  * 对话在同一个 `ScenarioDefinitionDialog` 里跑，只是数据来自本地预置（`demo` 分支）。
  * 差别只在数据来源：联真走 API，演示走本地内存 + `mock/demo-flow.ts` 的示例数据。
@@ -12,8 +15,8 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FLOW_TOTAL, flowStep } from "@scene/contract";
-import { l1Rows } from "@scene/domain";
 import { AnchorTable } from "../components/SchemaTable";
+import { definitionProgress } from "../components/definition-progress";
 import { FlowCompleteness } from "../components/FlowCompleteness";
 import { ScenarioDefinitionDialog } from "../components/ScenarioDefinitionDialog";
 import type { StageSnapshot } from "../components/stage-snapshot";
@@ -54,7 +57,8 @@ export interface DemoFirstStepProps {
 /**
  * 第 1 步「场景定义与边界」（演示）
  *
- * 定义对话不占流程步：它属于「新建场景」，聊清楚后落成表1-1，确认动作在这一步完成。
+ * 定义对话不占流程步：它属于「新建场景」，聊清楚后落成表1-1，需要表态的项在右栏；
+ * 但**表态与否都不卡推进**——整理过就能往下走。
  */
 export const DemoFirstStep: React.FC<DemoFirstStepProps> = ({
   flow,
@@ -68,21 +72,19 @@ export const DemoFirstStep: React.FC<DemoFirstStepProps> = ({
   const step = flowStep(1);
   const [dialogOpen, setDialogOpen] = useState(false);
 
-  const filled = anchor.filter((a) => String(a.content ?? "").trim() !== "").length;
-  const l1 = l1Rows();
-  const confirmedL1 = anchor.filter((a) => {
-    if (!l1.some((r) => r.label === a.item)) return false;
-    const st = String(a.source_type ?? "");
-    return st === "用户确认" || st === "用户补充";
-  }).length;
-  const pending = l1.length - confirmedL1;
-  /* 「已整理成定义」看 L1 场景本体是否已有内容（不是看表1-1 骨架有没有被投影填行） */
-  const l1Filled = anchor.filter(
-    (a) => l1.some((r) => r.label === a.item) && String(a.content ?? "").trim() !== "",
-  ).length;
+  /* 确认清单与联真同源（领域层 buildChecklist）——行数按返回数组，不写死 */
+  const checklist = useMemo(() => demoChecklist(anchor), [anchor]);
+  const { filled, drafted, stanceTotal, stanceDone, stancePending } = useMemo(
+    () =>
+      definitionProgress(
+        anchor,
+        checklist.map((i) => ({ layer: i.layer, state: i.state })),
+      ),
+    [anchor, checklist],
+  );
   /* 演示态的对话是预置的：条数固定，入口恒为「继续」 */
   const messageCount = DEMO_DEFINITION_MESSAGES.length;
-  /** 就绪与原因与联真同口径：由本地 flow 状态给（第 1 步 = L1 六项全部确认） */
+  /** 就绪与原因与联真同口径：由本地 flow 状态给（第 1 步 = 定义已整理） */
   const readyHint = flow.steps.find((s) => s.id === step.id)?.readyHint ?? "";
 
   /** 回调经 ref 转发：快照 identity 只跟数据走（与联真同因） */
@@ -111,13 +113,13 @@ export const DemoFirstStep: React.FC<DemoFirstStepProps> = ({
       summaryLoading: false,
       activeTable: "表1-1",
       supplements: [],
-      checklist: demoChecklist(anchor),
+      checklist,
       anchor: [...anchor],
       onRefreshSummary: () => undefined,
       onSupplementChange: () => undefined,
       onAnchorAction: handleAnchorActionStable,
     }),
-    [flow, anchor, step.title, handleAnchorActionStable],
+    [flow, anchor, step.title, handleAnchorActionStable, checklist],
   );
 
   useEffect(() => {
@@ -148,8 +150,8 @@ export const DemoFirstStep: React.FC<DemoFirstStepProps> = ({
               <span className="definition-stat-l">项已有内容</span>
             </div>
             <div className="definition-stat">
-              <span className="definition-stat-n">{pending}</span>
-              <span className="definition-stat-l">项待确认</span>
+              <span className="definition-stat-n">{stancePending}</span>
+              <span className="definition-stat-l">项场景本体待表态</span>
             </div>
             <div className="definition-stat">
               <span className="definition-stat-n">{messageCount}</span>
@@ -159,17 +161,20 @@ export const DemoFirstStep: React.FC<DemoFirstStepProps> = ({
 
           <p className="brief-hint">
             在对话里把场景聊清楚，然后点「整理成定义」——系统只在那一刻把对话整理成表1-1，
-            不会自动改你已经确认过的行。
+            不会自动改你已经确认过的行。说不准的项先空着或写「待定」都可以。
           </p>
           <p className="brief-hint" role="status">
             本步就绪（演示态与联真同口径）：{readyHint}；就绪后点上方流程轴的
             「完成本步，进入下一步」。
           </p>
 
-          {l1Filled > 0 ? (
+          {drafted ? (
             <p className="definition-done" role="status">
               <span className="badge success">已整理成定义</span>
-              <span className="brief-hint">下一步：在下方表1-1 里逐项确认场景本体</span>
+              <span className="brief-hint">
+                定义整理过就能往下走；需要你表态的是右栏那 {stanceTotal} 项（已表态 {stanceDone}/
+                {stanceTotal}），其余留「待定」，后续研究补全
+              </span>
             </p>
           ) : null}
         </div>
@@ -183,8 +188,8 @@ export const DemoFirstStep: React.FC<DemoFirstStepProps> = ({
           <div>
             <h2>表1-1 场景概述 · 场景锚（可就地编辑）</h2>
             <p>
-              带 ✓ 的 {l1.length} 项需你确认（已确认 {confirmedL1}/{l1.length}）；改内容即视为「用户补充」，
-              确认一项即标「用户确认」——演示模式只改本地内存
+              带 ✓ 的是需要你表态的项（已表态 {stanceDone}/{stanceTotal}）；改内容即视为「用户补充」，
+              表态一项即标「用户确认」——演示模式只改本地内存；其余项选填，可以留「待定」
             </p>
           </div>
         </div>

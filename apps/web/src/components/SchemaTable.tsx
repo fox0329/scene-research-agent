@@ -96,7 +96,8 @@ export function tableCategories(tableCode: string): string[] {
 /**
  * 场景锚（表1-1）：固定行**纵向**呈现（「项 / 内容」两列 + 确认状态）
  *
- * 这是唯一常驻表，也是确认机制的 L1 对象（6 项必确认）。
+ * 这是唯一常驻表，也是确认机制的 L1 对象（带 ✓ = 核心必确认项，
+ * 选行由注册表的 `confirmRequired` 给，前端不假设项数）。
  */
 export function AnchorTable({
   rows,
