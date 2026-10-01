@@ -1,5 +1,7 @@
 import type { SourceType } from "@scene/contract";
 import type { ApiAnchorRow, ApiCompleteness, ApiStageRow } from "../api";
+import type { AnchorSummary } from "./definition-progress";
+import { clipText, stripMetaNotes } from "./text-display";
 
 /**
  * 阶段快照（v1.4 右栏双 Tab 的数据面）
@@ -36,7 +38,17 @@ export interface ChecklistViewItem {
   rowKey: string;
   label: string;
   state: string;
+  /**
+   * 该项对应的**原始内容**（可选）
+   *
+   * 右栏只显示截断后的一行（完整内容看中栏表格）——不塞这个字段时右栏就不显示内容，
+   * 避免"确认清单把整段内容再抄一遍"。
+   */
+  content?: string;
 }
+
+/** 右栏确认清单的目标字数上限（约 6 行首屏；完整内容看中栏） */
+export const CHECKLIST_CLIP = 40;
 
 export interface StageSnapshot {
   stage: number;
@@ -62,6 +74,8 @@ export interface StageSnapshot {
   checklist: ChecklistViewItem[];
   /** 场景锚（表1-1）当前内容，供确认清单与编辑 */
   anchor: ApiAnchorRow[];
+  /** 表1-1 折叠态摘要口径（中栏折叠行与右栏页脚同源；缺省由右栏按 anchor 现算） */
+  anchorSummary?: AnchorSummary;
   /** 重新生成阶段总结 */
   onRefreshSummary: () => void;
   /** 编辑补充列单元格 */
@@ -87,4 +101,38 @@ export const CONFIRM_STATE_BADGE: Record<string, { text: string; tone: string }>
  */
 export function asSourceType(v: unknown): SourceType | null {
   return v === "AI提取" || v === "AI推断" || v === "用户确认" || v === "用户补充" ? v : null;
+}
+
+/**
+ * 确认清单项 → 一行内容（L1 取表1-1 锚行内容；L2 取表1-2 该环节的参与程度/角色）
+ *
+ * 只给右栏看，所以这里就**按上限截断并剥掉元说明**——右栏不再重复整段内容。
+ * 认不出对应行时返回空串（调用方显示「—」）。
+ */
+export function checklistContent(
+  tableCode: string,
+  rowKey: string,
+  anchor: readonly ApiAnchorRow[],
+  stageRows: readonly ApiStageRow[] = [],
+): string {
+  if (tableCode === "表1-1") {
+    const row = anchor.find((a) => a.item === rowKey);
+    return stripMetaNotes(String(row?.content ?? ""));
+  }
+  if (tableCode === "表1-2") {
+    const [link, field] = rowKey.split(" · ");
+    const key = field === "我方角色" ? "our_role" : "can_touch";
+    const row = stageRows.find(
+      (r) => r.table_code === "表1-2" && String(r.row["link"] ?? "").trim() === String(link).trim(),
+    );
+    return stripMetaNotes(String(row?.row[key] ?? ""));
+  }
+  return "";
+}
+
+/** 一行内容 → 展示文本（空 → 占位符；超长 → 截断 + …） */
+export function checklistContentText(tableCode: string, rowKey: string, raw: string): string {
+  const text = clipText(raw, CHECKLIST_CLIP);
+  if (text) return text;
+  return tableCode === "表1-2" ? "见中栏表1-2" : "—";
 }

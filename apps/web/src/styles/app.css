@@ -1933,9 +1933,11 @@ td.ed {
 .confirm-item { display: flex; flex-direction: column; gap: var(--s1); font-size: var(--ts); }
 .confirm-main { display: flex; align-items: center; gap: var(--s2); }
 .confirm-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.confirm-actions { display: flex; align-items: center; gap: var(--s1); }
+.confirm-actions { display: flex; align-items: center; gap: var(--s1); min-width: 0; }
+/* 一行截断内容：右栏窄，给足宽度但绝不换行（完整内容看中栏表格） */
 .confirm-content {
-  flex: 1; min-width: 0; font-size: var(--txs); color: var(--ct2);
+  flex: 1; min-width: 0;
+  font-size: var(--txs); color: var(--ct2);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 
@@ -1975,6 +1977,25 @@ td.ed {
 
 .det-foot { padding: var(--s2) var(--s4); border-top: 1px solid var(--cb); }
 .foot-hint { font-size: var(--txs); color: var(--ct3); }
+
+/* ─────────────────────────────────────────────────────────────
+   折叠块（FoldSection / 中栏表1-1 / 确认清单）
+   口径：折叠只省信息量，不省能力——展开后照样可就地编辑/确认
+   ───────────────────────────────────────────────────────────── */
+
+.fold-toggle { white-space: nowrap; }
+.fold-block { padding: var(--s3) var(--s4); }
+.fold-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: var(--s3); margin-bottom: var(--s2);
+}
+.fold-title { font-size: var(--ts); font-weight: var(--fm2); color: var(--ct); }
+.fold-summary {
+  margin: 0; padding: var(--s2) var(--s4);
+  font-size: var(--ts); color: var(--ct2);
+}
+.fold-line { display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap; margin: var(--s2) 0 0; }
+.fold-hint { font-size: var(--txs); color: var(--ct3); }
 
 /* 阶段表切换 chips */
 .table-chips { display: flex; flex-wrap: wrap; gap: var(--s1); margin-bottom: var(--s3); }

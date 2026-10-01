@@ -207,6 +207,8 @@ export interface ApiDefinitionState {
 export interface ApiDefinitionConsolidation {
   /** 模型给了但匹配不到固定项的项名（排查用，正常为空） */
   dropped?: string[];
+  /** 模型顺手推断、按"只收用户说过的"规则丢弃的项数（定义页去噪的可观测指标） */
+  inferred_dropped?: number;
   rows: ApiAnchorRow[];
   alignment: ApiDefinitionAlignment[];
   updated: number;

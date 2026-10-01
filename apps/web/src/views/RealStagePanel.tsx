@@ -17,8 +17,15 @@ import {
   type ApiStageRow,
 } from "../api";
 import { useAsync } from "../hooks/useAsync";
-import { SchemaTable, AnchorTable, tableBlocks, tableCategories } from "../components/SchemaTable";
-import { asSourceType, type StageSnapshot, type SupplementTable } from "../components/stage-snapshot";
+import { SchemaTable, tableBlocks, tableCategories } from "../components/SchemaTable";
+import { AnchorFoldPanel } from "../components/AnchorFoldPanel";
+import { anchorSummary } from "../components/definition-progress";
+import {
+  asSourceType,
+  checklistContent,
+  type StageSnapshot,
+  type SupplementTable,
+} from "../components/stage-snapshot";
 import { useToast } from "../components/Toast";
 
 /**
@@ -254,6 +261,9 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
       pendingCount,
     });
 
+    /** 中栏表1-1 折叠态摘要（口径与右栏页脚同源） */
+    const anchorStats = anchorSummary(anchor);
+
     return {
       stage,
       stageLabel,
@@ -272,8 +282,10 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
         rowKey: i.rowKey,
         label: i.label,
         state: i.state,
+        content: checklistContent(i.tableCode, i.rowKey, anchor, rows),
       })),
       anchor,
+      anchorSummary: anchorStats,
       onRefreshSummary: () => void loadSummary(true),
       onSupplementChange: (rowId, cell, value) => void handleCellChange(rowId, cell, value),
       onAnchorAction: (item, action, content) => void handleAnchorAction(item, action, content),
@@ -421,9 +433,12 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
               信息完整度 {completeness?.tablesWithData ?? 0}/{completeness?.expectedTables ?? 0} 张表
               {completeness ? `（${completeness.percent}%）` : ""}
             </span>
-            {completeness && completeness.gaps.length > 0 ? (
+            {/* 100% 时不再同时喊「缺口 N 项」——那是自相矛盾（缺口清单在右栏） */}
+            {completeness && completeness.percent >= 100 ? (
+              <span className="gap-none">信息齐全</span>
+            ) : completeness && completeness.gaps.length > 0 ? (
               <span className="gap-count">
-                缺口 {completeness.gaps.length} 项（不阻断，右栏可看清单）
+                {completeness.gaps.length} 项缺口（不阻断，右栏可看清单）
               </span>
             ) : (
               <span className="gap-none">暂无缺口</span>
@@ -456,22 +471,12 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
         </div>
       ) : null}
 
-      {/* 表1-1 场景锚：常驻（全链唯一场景定义） */}
+      {/* 表1-1 场景锚：常驻但第 2–8 步默认折叠（一行摘要，点开才铺全文） */}
       {anchor.length > 0 ? (
-        <div className="pnl">
-          <div className="pnl-h">
-            <div>
-              <h2>表1-1 场景概述 · 场景锚（常驻）</h2>
-              <p>全链唯一的场景定义；带 ✓ 的是需要你表态的项，其余项可选填、可留「待定」（右栏可表态）</p>
-            </div>
-          </div>
-          <div className="pnl-b flush">
-            <AnchorTable
-              rows={anchor.map((a, i) => ({ id: `anchor-${i}`, row: { ...a } }))}
-              readOnly
-            />
-          </div>
-        </div>
+        <AnchorFoldPanel
+          rows={anchor as unknown as readonly Record<string, unknown>[]}
+          summary={anchorSummary(anchor)}
+        />
       ) : null}
 
       {/* 阶段表：chips 切换 + SchemaTable */}

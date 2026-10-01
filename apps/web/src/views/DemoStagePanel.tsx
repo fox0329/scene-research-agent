@@ -9,8 +9,15 @@ import {
   type InfoStageId,
 } from "@scene/contract";
 import { buildChecklist, buildStageSummary, checkStageCompleteness, type InfoRow } from "@scene/domain";
-import { AnchorTable, SchemaTable, tableBlocks, tableCategories } from "../components/SchemaTable";
-import { asSourceType, type StageSnapshot, type SupplementTable } from "../components/stage-snapshot";
+import { SchemaTable, tableBlocks, tableCategories } from "../components/SchemaTable";
+import { AnchorFoldPanel } from "../components/AnchorFoldPanel";
+import { anchorSummary } from "../components/definition-progress";
+import {
+  asSourceType,
+  checklistContent,
+  type StageSnapshot,
+  type SupplementTable,
+} from "../components/stage-snapshot";
 import type { ApiAnchorRow, ApiCompleteness } from "../api";
 import { DEMO_ANCHOR, DEMO_ROWS } from "../mock/demo-flow";
 
@@ -83,6 +90,9 @@ export const DemoStagePanel: React.FC<DemoStagePanelProps> = ({
     setEdits((prev) => ({ ...prev, [key]: { ...(prev[key] ?? {}), [cell]: value } }));
   };
 
+  /** 场景锚行：联真/演示同口径（调用方给了就用，没给退回示例锚） */
+  const anchorRows = anchor && anchor.length > 0 ? anchor : DEMO_ANCHOR;
+
   const completeness = useMemo<ApiCompleteness>(
     () => checkStageCompleteness({ stage: id, rowsByTable }) as unknown as ApiCompleteness,
     [id, rowsByTable],
@@ -120,7 +130,7 @@ export const DemoStagePanel: React.FC<DemoStagePanelProps> = ({
         });
       }
     }
-    const checklistAnchor = anchor && anchor.length > 0 ? anchor : DEMO_ANCHOR;
+    const checklistAnchor = anchorRows;
     const checklist = buildChecklist({
       anchorRows: checklistAnchor.map((a) => ({
         item: a.item,
@@ -152,13 +162,15 @@ export const DemoStagePanel: React.FC<DemoStagePanelProps> = ({
         rowKey: i.rowKey,
         label: i.label,
         state: i.state,
+        content: checklistContent(i.tableCode, i.rowKey, checklistAnchor),
       })),
       anchor: [...checklistAnchor],
+      anchorSummary: anchorSummary(checklistAnchor),
       onRefreshSummary: () => undefined,
       onSupplementChange: () => undefined,
       onAnchorAction: () => undefined,
     };
-  }, [stage, stepId, def, completeness, summary, activeTable, supplementsKey(activeTable, category), rowsByTable, id, anchor]);
+  }, [stage, stepId, def, completeness, summary, activeTable, supplementsKey(activeTable, category), rowsByTable, id, anchorRows]);
 
   useEffect(() => {
     onStageSnapshot?.(snapshot);
@@ -185,8 +197,11 @@ export const DemoStagePanel: React.FC<DemoStagePanelProps> = ({
               信息完整度 {completeness.tablesWithData}/{completeness.expectedTables} 张表（
               {completeness.percent}%）
             </span>
-            {completeness.gaps.length > 0 ? (
-              <span className="gap-count">缺口 {completeness.gaps.length} 项（不阻断）</span>
+            {/* 100% 时不再同时喊「缺口 N 项」（自相矛盾） */}
+            {completeness.percent >= 100 ? (
+              <span className="gap-none">信息齐全</span>
+            ) : completeness.gaps.length > 0 ? (
+              <span className="gap-count">{completeness.gaps.length} 项缺口（不阻断）</span>
             ) : (
               <span className="gap-none">暂无缺口</span>
             )}
@@ -194,20 +209,11 @@ export const DemoStagePanel: React.FC<DemoStagePanelProps> = ({
         </div>
       </div>
 
-      <div className="pnl">
-        <div className="pnl-h">
-          <div>
-            <h2>表1-1 场景概述 · 场景锚（常驻）</h2>
-            <p>全链唯一的场景定义；带 ✓ 的是需要你表态的项，其余项可选填、可留「待定」</p>
-          </div>
-        </div>
-        <div className="pnl-b flush">
-          <AnchorTable
-            rows={DEMO_ANCHOR.map((a, i) => ({ id: `anchor-${i}`, row: { ...a } }))}
-            readOnly
-          />
-        </div>
-      </div>
+      {/* 表1-1 与联真同结构：第 2–8 步默认折叠成一行摘要 */}
+      <AnchorFoldPanel
+        rows={anchorRows as unknown as readonly Record<string, unknown>[]}
+        summary={anchorSummary(anchorRows)}
+      />
 
       {stageTables.length > 0 ? (
         <div className="pnl">

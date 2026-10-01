@@ -861,6 +861,8 @@ function registerConversationRoutes(
       used_llm: out.usedLlm,
       // 模型给了但匹配不到固定项的项名：暴露出来，避免"整理后啥也没写"无从排查
       dropped: out.dropped,
+      // 模型顺手推断、按"只收用户说过的"规则丢弃的项数（定义页去噪的可观测指标）
+      inferred_dropped: out.inferredDropped,
     };
   });
 

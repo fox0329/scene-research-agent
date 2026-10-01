@@ -172,8 +172,16 @@ test("右栏双 Tab：补充说明（含确认清单）/ 阶段总结", async ({
   await expect(confirmSec).toContainText("只列需要你表态的项");
   await expect(confirmSec).toContainText("待定");
 
-  // Tab ②：阶段总结六段骨架
+  // Tab ②：阶段总结默认折叠（首段 + 一句），点「展开全文」才渲染六段骨架
   await tabs.nth(1).click();
+  await expect(page.locator(".det .md-body")).toHaveCount(0);
+  // 按钮文案随状态变（展开全文⇄收起），所以按类名定位而不是按文案
+  const foldToggle = page.locator(".det .fold-toggle");
+  await expect(foldToggle).toContainText("展开全文");
+  await expect(foldToggle).toHaveAttribute("aria-expanded", "false");
+  await expect(page.locator(".det .fold-summary")).toContainText("本阶段要获得的信息是");
+  await foldToggle.click();
+  await expect(foldToggle).toHaveAttribute("aria-expanded", "true");
   const md = page.locator(".det .md-body");
   await expect(md).toBeVisible();
   await expect(md).toContainText("信息摘要");
@@ -257,6 +265,7 @@ test("解锁全部步骤：未解锁节点可点，可直接跳到任一步", as
   await expect(page.locator(".ws .delivery-step")).toHaveCount(8);
   await expect(page.locator(".ws").getByRole("button", { name: "生成并导出交付物" })).toBeVisible();
   await page.locator(".det .det-tab").nth(1).click();
+  await page.locator(".det .fold-toggle").click();
   await expect(page.locator(".det .md-body")).toContainText("交付物说明");
 });
 
@@ -434,4 +443,87 @@ test("设置保存给出 Toast 反馈", async ({ page }) => {
   await page.getByRole("button", { name: "设置" }).click();
   await page.getByRole("button", { name: "保存", exact: true }).click();
   await expect(page.locator(".toast-item")).toContainText("已保存模型配置");
+});
+
+/* ────────── 信息密度收紧：中栏表1-1 折叠 / 右栏清单不抄全文 / 完整度不再自相矛盾 ────────── */
+
+async function gotoStep2(page: Page) {
+  // 前面的用例可能停在资料库/知识库/设置视图：先点左栏场景项回到工作台
+  if ((await page.locator(".flow-rail").count()) === 0) {
+    await page.locator(".side .proj-hd").first().click();
+  }
+  const rail = page.locator(".flow-rail");
+  const unlock = rail.getByRole("button", { name: "解锁全部步骤" });
+  if (await unlock.isEnabled()) await unlock.click();
+  await rail.getByRole("tab", { name: /认识场景/ }).click();
+  await expect(page.locator(".ws .table-chips").first()).toBeVisible();
+}
+
+test("中栏表1-1：分析步默认折叠成一行摘要，展开后仍可就地编辑", async ({ page }) => {
+  await gotoStep2(page);
+
+  // 第 2 步默认折叠：整张表**不挂载**，只给一行摘要
+  const anchorTable = page.locator(".ws .schema-table--anchor");
+  await expect(anchorTable).toHaveCount(0);
+  const summary = page.locator(".ws .fold-summary");
+  await expect(summary).toBeVisible();
+  await expect(summary).toContainText("表1-1 场景概述 · 已填");
+  await expect(summary).toContainText("核心");
+
+  // 折叠/展开一律 <button> 且 aria-expanded 正确（键盘可达）
+  // 注意：按钮文案会随状态变（展开⇄收起），断言要按类名定位而不是按文案
+  const toggle = page.locator(".ws .fold-toggle");
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
+  await toggle.click();
+  await expect(toggle).toHaveAttribute("aria-expanded", "true");
+
+  // 展开后能力不丢：表1-1 全文可见（第 1 步正是靠它就地编辑/确认）
+  await expect(anchorTable).toBeVisible();
+  await expect(anchorTable.locator("th").first()).toHaveText("项");
+  const dots = await anchorTable.locator(".confirm-dot").count();
+  expect(dots).toBeGreaterThanOrEqual(2);
+
+  // 收起回摘要态，避免影响后续用例
+  await toggle.click();
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
+  await expect(anchorTable).toHaveCount(0);
+});
+
+test("右栏确认清单：内容截断到一行、超 8 项折叠（首屏 ≤ 6 行），不重复整段内容", async ({ page }) => {
+  await gotoStep2(page);
+  await page.locator(".det .det-tab").nth(0).click();
+
+  const items = page.locator(".det .confirm-list .confirm-item");
+  const total = await items.count();
+  expect(total).toBeGreaterThan(0);
+
+  // 每项只给一行内容（≤40 字，超出以 … 结尾），完整内容在中栏
+  const first = items.first();
+  await expect(first.locator(".layer-tag")).toBeVisible();
+  await expect(first.locator(".confirm-label")).toBeVisible();
+  await expect(first.locator(".state-badge")).toBeVisible();
+  const content = first.locator(".confirm-content");
+  await expect(content).toBeVisible();
+  expect(((await content.innerText()) ?? "").length).toBeLessThanOrEqual(41);
+
+  if (total > 8) {
+    // 超 8 项：默认只显示 6 行 + 一句折叠入口
+    await expect(items).toHaveCount(6);
+    const more = page.locator(".det").getByRole("button", { name: /展开剩余 \d+ 项表态/ });
+    await expect(more).toHaveAttribute("aria-expanded", "false");
+    await more.click();
+    await expect(page.locator(".det .confirm-list .confirm-item")).toHaveCount(total);
+    await page.locator(".det").getByRole("button", { name: /收起，只看/ }).click();
+  }
+  // 行数不写死：清单条数由返回数组派生
+  expect(total).toBeGreaterThanOrEqual(2);
+});
+
+test("完整度 100% 时不再同时喊「缺口 N 项」", async ({ page }) => {
+  const bar = page.locator(".det .completeness-bar").first();
+  await expect(bar).toContainText("信息完整度");
+  if ((await bar.innerText()).includes("（100%）")) {
+    await expect(bar).toContainText("信息齐全");
+    expect(await bar.innerText()).not.toContain("缺口");
+  }
 });

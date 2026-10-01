@@ -32,6 +32,49 @@ export function definitionItemLabels(): string[] {
     .map((r) => r.label);
 }
 
+/** 表1-1 的**核心必确认**项名（L1，注册表给行，前端不假设行数） */
+export function coreConfirmLabels(): string[] {
+  return (tableDef("表1-1")?.fixedRows ?? [])
+    .filter((r) => r.confirmRequired)
+    .map((r) => r.label);
+}
+
+/**
+ * 表1-1 折叠态摘要口径（中栏折叠行 + 右栏页脚共用一份，避免两处算法漂移）
+ *
+ * - `filled`：已有内容的定义项数（不含「场景名称」；「待定」算有内容）
+ * - `coreConfirmed` / `coreTotal`：核心必确认项的已表态数 / 总数
+ */
+export interface AnchorSummary {
+  filled: number;
+  total: number;
+  coreConfirmed: number;
+  coreTotal: number;
+}
+
+export function anchorSummary(
+  anchor: readonly Pick<ApiAnchorRow, "item" | "content" | "source_type">[],
+): AnchorSummary {
+  const filled = draftedItems(anchor as readonly ApiAnchorRow[]).length;
+  const core = coreConfirmLabels();
+  const confirmed = anchor.filter(
+    (a) =>
+      core.includes(a.item) &&
+      (a.source_type === "用户确认" || a.source_type === "用户补充"),
+  ).length;
+  return {
+    filled,
+    total: tableDef("表1-1")?.fixedRows?.length ?? 0,
+    coreConfirmed: confirmed,
+    coreTotal: core.length,
+  };
+}
+
+/** 折叠摘要文案（中栏 / 右栏同一句，防止两处措辞分叉） */
+export function anchorFoldSummary(s: AnchorSummary): string {
+  return `表1-1 场景概述 · 已填 ${s.filled} 项（核心 ${s.coreConfirmed}/${s.coreTotal} 已确认）`;
+}
+
 /** 已整理的定义项（有内容即算，含「待定」） */
 export function draftedItems(anchor: readonly ApiAnchorRow[]): string[] {
   const names = new Set(definitionItemLabels());

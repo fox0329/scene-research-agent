@@ -17,8 +17,8 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { FLOW_TOTAL, flowStep } from "@scene/contract";
 import { buildChecklist } from "@scene/domain";
 import { api, type ApiAnchorRow, type ApiFlowStatus } from "../api";
-import { AnchorTable } from "../components/SchemaTable";
-import { definitionProgress } from "../components/definition-progress";
+import { AnchorFoldPanel } from "../components/AnchorFoldPanel";
+import { anchorSummary, definitionProgress } from "../components/definition-progress";
 import { FlowCompleteness } from "../components/FlowCompleteness";
 import { ScenarioDefinitionDialog } from "../components/ScenarioDefinitionDialog";
 import { asSourceType, type StageSnapshot } from "../components/stage-snapshot";
@@ -246,6 +246,7 @@ export const AnchorStepPanel: React.FC<AnchorStepPanelProps> = ({
         state: i.state,
       })),
       anchor,
+      anchorSummary: anchorSummary(anchor),
       onRefreshSummary: () => void loadSummary(true),
       onSupplementChange: () => undefined,
       onAnchorAction: handleAnchorAction,
@@ -341,24 +342,13 @@ export const AnchorStepPanel: React.FC<AnchorStepPanelProps> = ({
         </div>
       </div>
 
-      <div className="pnl">
-        <div className="pnl-h">
-          <div>
-            <h2>表1-1 场景概述 · 场景锚（可就地编辑）</h2>
-            <p>
-              带 ✓ 的是需要你表态的项（已表态 {stanceDone}/{stanceTotal}）；改内容即视为
-              「用户补充」并立即落库，表态一项即标「用户确认」——只有这两类来源下游才当依据。
-              其余项选填，可以留「待定」，后续研究再回填
-            </p>
-          </div>
-        </div>
-        <div className="pnl-b flush">
-          <AnchorTable
-            rows={anchor.map((a, i) => ({ id: `anchor-${i}`, row: { ...a } }))}
-            onCellChange={handleCellChange}
-          />
-        </div>
-      </div>
+      {/* 第 1 步 = 定义与表态步：表1-1 默认展开，就地编辑/确认能力不变 */}
+      <AnchorFoldPanel
+        rows={anchor as unknown as readonly Record<string, unknown>[]}
+        summary={anchorSummary(anchor)}
+        defaultOpen
+        onCellChange={handleCellChange}
+      />
 
       <ScenarioDefinitionDialog
         open={dialogOpen}

@@ -22,6 +22,7 @@ import {
   type TableColumn,
 } from "@scene/contract";
 import { SceneTable, type ColumnDef } from "./SceneTable.js";
+import { plainText } from "./text-display";
 
 /** 一行数据（注册表列定义作用在 `row` 上，行 id 用于回写） */
 export interface SchemaRow {
@@ -146,8 +147,8 @@ export function AnchorTable({
               </td>
               <td>
                 {readOnly || !r ? (
-                  <span className="cell-truncate" title={cellText(r?.row["content"])}>
-                    {cellText(r?.row["content"]) || "—"}
+                  <span className="cell-truncate" title={plainText(cellText(r?.row["content"]))}>
+                    {plainText(cellText(r?.row["content"])) || "—"}
                   </span>
                 ) : (
                   <input
