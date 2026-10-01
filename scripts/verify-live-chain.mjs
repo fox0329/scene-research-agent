@@ -154,17 +154,22 @@ await page.waitForFunction(
 await defDlg.getByRole("button", { name: "整理成定义" }).click();
 await defDlg.locator(".schema-table").first().waitFor({ state: "visible", timeout: 180_000 });
 const l1Rows = await defDlg.locator(".schema-table tbody tr").count();
+// 对照表口径（2026-09-25 放松后）= 核心 2 项 ∪ 模型实际填了内容的项：
+// 不再要求 6/12 项齐全，但核心 2 项必须列出、且至少有一项真有内容
+const coreLabels = await defDlg.locator(".align-table tbody tr td:first-child").allInnerTexts();
+const hasCore = coreLabels.some((t) => t.includes("客户类型")) && coreLabels.some((t) => t.includes("覆盖什么"));
 // 注意：「与你说的不一致？」是徽标文案，「已由你确认/补充」在旁边的 .align-hint 里
 // （一开始数 .align-badge 得到 0，误判成"没填上"）
 const filled = await defDlg
   .locator(".align-table .align-hint", { hasText: /已由你确认/ })
   .count();
-await defDlg.getByRole("button", { name: /完成，去确认表格/ }).click();
+// 按钮文案：v1.6 起为「完成，回到第 1 步」（旧版是「完成，去确认表格」）
+await defDlg.getByRole("button", { name: /完成，(回到第 1 步|去确认表格)/ }).click();
 await page.waitForSelector(".proj-hd:has-text('端到端实测项目')", { timeout: 8000 });
 ok(
-  "3b 整理成定义 → 对照 6 项，且 L1 确有内容（写表由用户显式触发）",
-  l1Rows === 6 && filled > 0,
-  `${l1Rows} 行 · 已填 ${filled} 项`,
+  "3b 整理成定义 → 对照表含核心 2 项且确有内容（不要求填满，写表由用户显式触发）",
+  l1Rows >= 2 && l1Rows <= 12 && hasCore && filled > 0,
+  `${l1Rows} 行 · 已填 ${filled} 项 · 核心项在列 ${hasCore}`,
 );
 
 /* 就绪口径（放松版）：第 1 步 = **定义已整理**（不要求确认齐全）。
@@ -207,7 +212,7 @@ if (await startBtn.count()) {
 }
 ok("4 阶段分析 SSE 链路（真实或降级）实时上屏", true, analysisNote);
 
-/* 5. 右栏双 Tab：补充说明（确认清单 L1 ≥6）/ 阶段总结（六段骨架） */
+/* 5. 右栏双 Tab：补充说明（确认清单只列**需要表态的项**）/ 阶段总结（六段骨架） */
 const detTabs = page.locator(".det .det-tab");
 await detTabs.first().waitFor({ state: "visible", timeout: 15_000 });
 const tabCount = await detTabs.count();
@@ -218,9 +223,10 @@ const mdText = (await page.locator(".det .md-body").innerText().catch(() => ""))
 const hasSix = /信息摘要/.test(mdText) && /信息缺口与待补充/.test(mdText);
 /* 产品不产出判断：整页不得出现建议档位措辞 */
 const noAdvice = !/建议(通过|有条件通过|不通过|进)/.test(await page.locator(".shell").innerText());
+// 清单口径（放松后）：核心 2 项必有，且**不再把 12 项都摊给用户**（上限留点余量）
 ok("5 右栏双 Tab（补充说明 + 阶段总结）且不产出判断",
-  tabCount === 2 && l1Count >= 6 && hasSix && noAdvice,
-  `Tab ${tabCount} 个 · L1 ${l1Count} 项 · 六段 ${hasSix} · 无建议措辞 ${noAdvice}`);
+  tabCount === 2 && l1Count >= 2 && l1Count <= 6 && hasSix && noAdvice,
+  `Tab ${tabCount} 个 · 待表态 ${l1Count} 项 · 六段 ${hasSix} · 无建议措辞 ${noAdvice}`);
 
 /* 5b. 第 1 步（场景定义与边界）：右栏清单只列**需要表态的项**（核心 2 项 ∪ 推断项），
    逐项确认后提示里的核心计数应变成 2/2（就绪本来就已经是 true，确认是"让它更可靠"） */
