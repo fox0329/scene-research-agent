@@ -66,7 +66,6 @@ for f in \
   apps/web/src/components/ScenarioDefinitionDialog.tsx \
   apps/web/src/components/NewScenarioDialog.tsx \
   apps/web/src/components/AlignmentTable.tsx \
-  apps/web/src/views/DefinitionStepPanel.tsx \
   apps/web/src/components/FlowRail.tsx \
   apps/web/src/views/DemoFlowPanels.tsx \
   apps/web/src/mock/demo-flow.ts \
@@ -260,6 +259,8 @@ fi
 
 echo ""
 echo "=== [M5 验收] 6/6 契约与文档收口 ==="
+# 注意：本函数用 grep 基本正则（BRE）——模式不要以 * 开头（会报 repetition-operator
+# operand invalid，表现为"文档缺少"其实只是模式非法），含 . * 的才当正则用。
 check_contains() {
   if grep -q "$2" "$ROOT/$1"; then
     echo "✅ $1 · $3"
@@ -304,6 +305,10 @@ check_contains "03-数据契约与API.md" "v2.2" "契约版本记录 v2.2（场�
 check_contains "03-数据契约与API.md" "/definition/consolidate" "「整理成定义」端点登记"
 check_contains "03-数据契约与API.md" "只在用户点「整理成定义」时才写表" "显式写表规则登记"
 check_contains "04-业务过程重定义.md" "v1.6" "业务过程 v1.6（对话式定义）"
+# ── v2.3 流程收成 8 步 ───────────────────────────────────
+check_contains "03-数据契约与API.md" "v2.3" "契约版本记录 v2.3（流程收成 8 步）"
+check_contains "07-业务流程总表.md" "用户可见的 8 步流程" "流程总表改为 8 步"
+check_contains "01-产品定义.md" "8 个阶段（0-7，数据落库口径）" "产品定义流程概览为 8 阶段 0-7"
 if [ -f "$ROOT/05-表格定义总表.md" ] && pnpm check:docs >/dev/null 2>&1; then
   echo "✅ 05-表格定义总表.md 与表定义注册表一致（漂移守卫）"
 else
