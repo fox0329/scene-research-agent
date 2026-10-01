@@ -45,6 +45,9 @@ interface RealStagePanelProps {
   tables?: readonly string[];
   /** 流程步骤号：头部与右栏显示「第 n/9 步」，推进按钮也按流程步走 */
   stepId?: number;
+  /** 本步是否就绪（与流程轴同一判定，避免两处按钮一个可点一个不可点） */
+  ready?: boolean;
+  readyHint?: string;
   /** 完成本步后通知父级重取 /flow（流程状态变化的唯一出口） */
   onFlowChanged?: () => void;
 }
@@ -57,6 +60,8 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
   onStageSnapshot,
   tables,
   stepId,
+  ready,
+  readyHint,
   onFlowChanged,
 }) => {
   const { status, data, error, reload } = useAsync<ApiStagePanel>(
@@ -349,7 +354,7 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
         <div className="pnl-h">
           <div>
             <h2>{headTitle}</h2>
-            <p>后端连接失败，本阶段数据不可用</p>
+            <p>后端连接失败，本步数据不可用</p>
           </div>
           <button className="btn" type="button" onClick={reload}>
             重试
@@ -381,8 +386,8 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
             <h2>{headTitle}</h2>
             <p>
               {isModel
-                ? `本阶段要获得的信息：${stageDefRow?.goal ?? ""}`
-                : `本阶段信息由「${stageDefRow?.producedBy ?? ""}」产生，不需要模型分析`}
+                ? `${stepId !== undefined ? "本步" : "本阶段"}要获得的信息：${stageDefRow?.goal ?? ""}`
+                : `本步信息由「${stageDefRow?.producedBy ?? ""}」产生，不需要模型分析`}
             </p>
           </div>
           <div className="pnl-actions">
@@ -393,16 +398,16 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
                 onClick={() => void startAnalysis()}
                 disabled={running}
               >
-                {running ? "分析进行中…" : activeRows.length > 0 ? "重算本阶段" : "开始本阶段分析"}
+                {running ? "分析进行中…" : activeRows.length > 0 ? "重算本步分析" : "开始本步分析"}
               </button>
             ) : null}
-            {/* 导航动作（全局唯一推进入口在流程轴，这里是同一语义的就地入口） */}
+            {/* 导航动作（与流程轴同一判定：缺口不阻断，但"本步还没有产出"不该被跳过） */}
             <button
               className="btn"
               type="button"
               onClick={() => void completeStep()}
-              disabled={running}
-              title="导航动作：信息缺口不阻断，缺口可在右栏随时回看"
+              disabled={running || ready === false}
+              title={readyHint ?? "导航动作：信息缺口不阻断，缺口可在右栏随时回看"}
             >
               完成本步，进入下一步
             </button>
@@ -432,7 +437,7 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
           <div className="pnl-h">
             <div>
               <h2>阶段分析进度</h2>
-              <p>{running ? "分析进行中，流式输出…" : "本阶段分析输出"}</p>
+              <p>{running ? "分析进行中，流式输出…" : "本步分析输出"}</p>
             </div>
           </div>
           <div className="pnl-b">
@@ -472,7 +477,7 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
         <div className="pnl">
           <div className="pnl-h">
             <div>
-              <h2>本阶段信息表</h2>
+              <h2>{stepId !== undefined ? "本步信息表" : "本阶段信息表"}</h2>
               <p>{stageTables.length} 张表；列由表定义注册表给出，中栏只放重要信息（说明类在右栏）</p>
             </div>
           </div>
@@ -542,7 +547,7 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
         <div className="pnl">
           <div className="pnl-b">
             <div className="empty-state">
-              <div className="empty-state-title">本阶段没有信息表</div>
+              <div className="empty-state-title">本步没有信息表</div>
               <div className="empty-state-desc">
                 交付物由系统按「章节 ← 表映射」装配，不需要模型分析；可在右栏查看阶段总结。
               </div>

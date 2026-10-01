@@ -2327,3 +2327,20 @@ td.ed {
 .proj-hd.active .proj-step {
   color: var(--cp);
 }
+
+.delivery-panel .pnl-b.flush + .pnl-b {
+  border-top: 1px solid var(--cb);
+}
+
+/* 回看时选中的非当前步：与「可推进」区分开（否则看不出正在看哪一步） */
+.flow-node--ready[aria-selected="true"] {
+  background: var(--cm);
+  color: var(--ct);
+  border-color: var(--ct3);
+}
+
+.flow-actions .btn.primary:disabled {
+  background: var(--cm);
+  color: var(--ct3);
+  border-color: var(--cb);
+}

@@ -208,7 +208,7 @@ export const DemoStagePanel: React.FC<DemoStagePanelProps> = ({
         <div className="pnl">
           <div className="pnl-h">
             <div>
-              <h2>本阶段信息表</h2>
+              <h2>本步信息表</h2>
               <p>{stageTables.length} 张表；列由表定义注册表给出，中栏只放重要信息</p>
             </div>
           </div>

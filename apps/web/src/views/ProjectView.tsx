@@ -264,6 +264,7 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
         );
       }
       const def = flowStep(step);
+      const isCurrent = flow.currentStep === step;
       return (
         <RealStagePanel
           projectId={project.id}
@@ -271,6 +272,12 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
           stageLabel={STAGE_DEFS.find((s) => s.id === stepStage)?.name ?? def.title}
           tables={def.tables}
           stepId={step}
+          ready={isCurrent ? (stepDef?.ready ?? false) : false}
+          readyHint={
+            isCurrent
+              ? (stepDef?.readyHint ?? "")
+              : "本步已完成：如需重跑请点上方「回到这一步重跑」"
+          }
           onChanged={onProjectsChanged}
           onFlowChanged={() => void reloadFlow(true)}
           onStageSnapshot={onStageSnapshot}

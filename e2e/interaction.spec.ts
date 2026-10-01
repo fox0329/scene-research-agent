@@ -209,12 +209,17 @@ test("流程轴：9 个节点、当前步高亮、未解锁不可点（v1.5 取�
 
 test("流程推进：完成本步 → 当前步前移；已完成步可回看重跑", async ({ page }) => {
   const rail = page.locator(".flow-rail");
-  await rail.getByRole("button", { name: "完成本步，进入下一步" }).click();
+  const completeBtn = rail.getByRole("button", { name: "完成本步，进入下一步" });
+  await completeBtn.click();
 
   await expect(rail.locator(".flow-node--done")).toHaveCount(1);
   await expect(rail.locator(".flow-node--done")).toContainText("场景诉求");
   await expect(rail.locator(".flow-node--current")).toContainText("场景定义与边界");
   await expect(rail.locator(".flow-node--locked")).toHaveCount(7);
+  // 第 2 步未就绪（L1 还有 4 项未确认）→ 数据判定为不可点，title 直接说明缺什么
+  await expect(completeBtn).toBeDisabled();
+  await expect(completeBtn).toHaveAttribute("title", /未确认/);
+  await expect(rail.locator(".flow-hint")).toContainText("还有 4 项场景本体未确认");
   // 第 2 步：表1-1 可就地编辑 + 全流程完整度状态行
   await expect(page.locator(".ws .schema-table--anchor")).toBeVisible();
   await expect(page.locator(".ws .completeness-bar")).toBeVisible();
@@ -240,6 +245,22 @@ test("解锁全部步骤：未解锁节点可点，可直接跳到任一步", as
   await expect(rail.locator(".flow-node--current")).toContainText("场景诉求");
   await expect(rail.getByRole("button", { name: /回到当前步/ })).toBeVisible();
   await expect(page.locator(".ws .completeness-bar")).toBeVisible();
+
+  // 第 9 步交付物：列出 9 步状态 + 导出按钮；右栏是交付物说明
+  await rail.getByRole("tab", { name: /交付物/ }).click();
+  await expect(page.locator(".ws .delivery-panel")).toBeVisible();
+  await expect(page.locator(".ws .delivery-step")).toHaveCount(9);
+  await expect(page.locator(".ws").getByRole("button", { name: "生成并导出交付物" })).toBeVisible();
+  await page.locator(".det .det-tab").nth(1).click();
+  await expect(page.locator(".det .md-body")).toContainText("交付物说明");
+});
+
+test("第 1 步内嵌面板：起草场景锚后就地显示对照式确认表（复用对话框子组件）", async ({ page }) => {
+  await page.locator(".ws").getByRole("button", { name: "起草场景锚" }).click();
+  await expect(page.locator(".ws .align-table")).toBeVisible();
+  await expect(page.locator(".ws .align-table tbody tr")).toHaveCount(6); // L1 六项
+  await expect(page.locator(".ws .align-badge").first()).toBeVisible();
+  await expect(page.locator(".ws .align-questions li").first()).toBeVisible();
 });
 
 test("随时回编辑：关键表格单元格可逐格编辑，失焦后值保留", async ({ page }) => {
