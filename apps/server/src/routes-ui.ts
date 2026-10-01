@@ -319,7 +319,7 @@ function registerProjectRoutes(app: FastifyInstance, deps: UiRoutesDeps) {
     return scenarios.map((s) => ({
       ...s,
       stale_count: staleCount.get(s.id) ?? 0,
-      // v1.5 左栏场景列表显示「第 n/9 步」：只按完成记录推导，不做逐表就绪判定（列表要轻）
+      // v1.5 左栏场景列表显示「第 n/8 步」：只按完成记录推导，不做逐表就绪判定（列表要轻）
       flow: (() => {
         const st = buildFlowStatus({
           completed: db.scenarioStepRepo.completedSteps(s.id),
@@ -421,7 +421,7 @@ function registerProjectRoutes(app: FastifyInstance, deps: UiRoutesDeps) {
     return { brief, anchor: readAnchorRows(db, id) };
   });
 
-  // ─── 业务流程推进（v1.5 逐页推进；9 步） ────────────────
+  // ─── 业务流程推进（v1.5 逐页推进；v1.6 起 8 步） ──────────
 
   /** 流程状态：每步三态（已完成/当前/可推进/未解锁）+ 就绪判定 */
   app.get("/api/v1/projects/:id/flow", async (request, reply) => {
