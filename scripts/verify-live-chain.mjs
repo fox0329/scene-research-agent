@@ -167,17 +167,22 @@ ok(
   `${l1Rows} 行 · 已填 ${filled} 项`,
 );
 
-/* 就绪口径：L1 有内容后本步才可点（服务端判定，前端只显示）。
+/* 就绪口径（8 步版）：第 1 步 = 定义已整理 **且** 6 项 L1 全部确认。
+   整理刚写完 3 项 → 提示应从"先去对话"变成"还有 N 项未确认"。
    关闭弹窗后流程状态要重新拉取，**必须轮询等待**——立刻读会读到刷新前的旧 hint */
 await page
   .waitForFunction(
-    () => /场景本体 L1 已填/.test(document.querySelector(".flow-rail .flow-hint")?.textContent ?? ""),
+    () => /场景本体未确认/.test(document.querySelector(".flow-rail .flow-hint")?.textContent ?? ""),
     null,
     { timeout: 20_000 },
   )
   .catch(() => undefined);
 const readyHint = await page.locator(".flow-rail .flow-hint").innerText();
-ok("3c 第 1 步按 L1 口径就绪", /场景本体 L1 已填/.test(readyHint), readyHint.split("\n").pop());
+ok(
+  "3c 定义已整理：第 1 步提示从「去对话」变为「还差 N 项未确认」",
+  /场景本体未确认/.test(readyHint),
+  readyHint.split("\n").pop(),
+);
 
 /* 4. 阶段分析 SSE 链路：密钥在 → 真实落库；密钥缺 → 流内降级【错误】 */
 const startBtn = page.locator("button:has-text('开始本阶段分析')");
@@ -216,6 +221,25 @@ const noAdvice = !/建议(通过|有条件通过|不通过|进)/.test(await page
 ok("5 右栏双 Tab（补充说明 + 阶段总结）且不产出判断",
   tabCount === 2 && l1Count >= 6 && hasSix && noAdvice,
   `Tab ${tabCount} 个 · L1 ${l1Count} 项 · 六段 ${hasSix} · 无建议措辞 ${noAdvice}`);
+
+/* 5b. 第 1 步（场景定义与边界）：右栏确认清单逐项确认 → 本步就绪
+   （8 步版把"定义"和"确认"合到一步，所以确认动作必须在这里做完） */
+await detTabs.nth(0).click();
+const confirmItems = page.locator(".det .confirm-item");
+const confirmCount = await confirmItems.count();
+for (let i = 0; i < confirmCount; i++) {
+  const btn = confirmItems.nth(i).getByRole("button", { name: "确认", exact: true });
+  if (await btn.count()) await btn.click();
+}
+await page
+  .waitForFunction(
+    () => /已全部确认/.test(document.querySelector(".flow-rail .flow-hint")?.textContent ?? ""),
+    null,
+    { timeout: 20_000 },
+  )
+  .catch(() => undefined);
+const confirmedHint = await page.locator(".flow-rail .flow-hint").innerText();
+ok("5b 逐项确认 L1 后第 1 步就绪", /已全部确认/.test(confirmedHint), confirmedHint.split("\n").pop());
 
 /* 6. 交付物双口径导出：服务端落盘 md + toast 回显路径 */
 const filesBefore = existsSync(EXPORT_DIR) ? readdirSync(EXPORT_DIR).length : 0;

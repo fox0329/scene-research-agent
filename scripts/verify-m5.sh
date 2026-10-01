@@ -134,12 +134,12 @@ else
     FAIL=1
   fi
   # ── 流程 UI 真机验收（v1.5 逐页推进）─────────────────────
-  # 先建一个场景（脚本会驱动浏览器进入它并断言 9 步流程轴）
+  # 先建一个场景（脚本会驱动浏览器进入它并断言 8 步流程轴）
   curl -s -X POST "http://127.0.0.1:${PORT}/api/v1/projects" \
     -H 'content-type: application/json' \
     -d '{"name":"流程验收场景","intent":"验收逐页推进"}' >/dev/null 2>&1 || true
   if BASE_URL="http://127.0.0.1:${PORT}" ALLOW_MUTATE=1 node scripts/verify-flow-ui.mjs >"$SDIR/flowui.log" 2>&1; then
-    echo "✅ 流程 UI 真机验收（9 步流程轴 / 四态 / 双 Tab / 无判断产出）"
+    echo "✅ 流程 UI 真机验收（8 步流程轴 / 四态 / 双 Tab / 无判断产出）"
   else
     echo "❌ 流程 UI 真机验收失败："
     tail -8 "$SDIR/flowui.log"
