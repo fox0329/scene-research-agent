@@ -171,8 +171,12 @@ const externalClean = extContent.length > 100 && !/证据等级|来源权威性/
 ok("6b 交付物为装配式（内部含阶段总结+附录；对外不含内部治理信息）",
   internalOk && externalClean, `${newest} ${content.length}B · 内部 ${internalOk} / 对外 ${externalClean}`);
 
-/* 7. 导航动作「进入下一阶段」真实推进（不是判断，信息不齐备也不阻断） */
-await page.click("button:has-text('进入下一阶段')");
+/* 7. 流程推进（导航动作，不是判断，信息不齐备也不阻断）
+   v1.5 逐页推进后按钮文案为「完成本步，进入下一步」；兼容旧的「进入下一阶段」 */
+const advanceBtn = page
+  .locator("button:has-text('完成本步'), button:has-text('进入下一阶段')")
+  .first();
+await advanceBtn.click();
 await page.waitForFunction(
   () => /已进入阶段/.test(document.body.innerText),
   null,
