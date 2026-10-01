@@ -219,7 +219,7 @@ rm -rf "$SDIR2"
 for P in 4180 4181; do
   STALE=$(lsof -nP -iTCP:"$P" -sTCP:LISTEN -t 2>/dev/null | sort -u)
   if [ -n "$STALE" ]; then
-    echo "· 清理上一次遗留的 :$P 服务（PID $STALE）"
+    echo "· 清理上一次遗留的 :$P 服务（PID ${STALE}）"
     kill $STALE 2>/dev/null || true
     sleep 1
   fi
