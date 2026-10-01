@@ -48,23 +48,16 @@ describe("confirmation — 状态机", () => {
 });
 
 describe("confirmation — L1 必确认项来自注册表", () => {
-  it("表1-1 的 L1 必确认行为 6 项且与注册表一致", () => {
+  it("表1-1 的必确认行为**核心 2 项**且与注册表一致", () => {
     const keys = l1Rows().map((r) => r.key);
-    expect(keys).toEqual([
-      "customer_type",
-      "scope_in",
-      "scope_out",
-      "use_case",
-      "entry_point",
-      "value_proposition",
-    ]);
+    expect(keys).toEqual(["customer_type", "scope_in"]);
   });
 });
 
 describe("confirmation — 确认清单", () => {
-  it("空输入时：L1 六项全待确认", () => {
+  it("空输入时：只有核心 2 项进清单（不再把 12 项都摊给用户）", () => {
     const c = buildChecklist({});
-    expect(c.required).toBe(6);
+    expect(c.required).toBe(2);
     expect(c.confirmed).toBe(0);
     expect(c.allDone).toBe(false);
     expect(c.items.every((i) => i.layer === "L1")).toBe(true);
@@ -78,8 +71,8 @@ describe("confirmation — 确认清单", () => {
     expect(l2).toHaveLength(4);
     expect(l2[0]?.rowKey).toBe("制水 · 能否参与");
     expect(l2[1]?.rowKey).toBe("制水 · 我方角色");
-    // L1 6 + L2 4 = 10
-    expect(c.required).toBe(10);
+    // L1 2 + L2 4 = 6
+    expect(c.required).toBe(6);
   });
 
   it("待确认清单作为 L3 聚合项计入", () => {
@@ -87,14 +80,14 @@ describe("confirmation — 确认清单", () => {
     const l3 = c.items.filter((i) => i.layer === "L3");
     expect(l3).toHaveLength(1);
     expect(l3[0]?.label).toContain("3 项");
-    expect(c.required).toBe(7);
+    expect(c.required).toBe(3); // 核心 2 项 + 1 个 L3 聚合项
   });
 
-  it("用户确认 L1 后计入 confirmed；全确认则 allDone", () => {
+  it("核心 2 项确认后即 allDone（不再要求 6 项）", () => {
     const labels = l1Rows().map((r) => r.label);
     const anchorRows = labels.map((label) => confirmed({ item: label, content: "x" }));
     const c = buildChecklist({ anchorRows });
-    expect(c.confirmed).toBe(6);
+    expect(c.confirmed).toBe(2);
     expect(c.allDone).toBe(true);
   });
 
@@ -106,7 +99,7 @@ describe("confirmation — 确认清单", () => {
 });
 
 describe("confirmation — 对照式确认（以用户诉求为基准）", () => {
-  it("四态分类：一致 / 系统补充 / 推断 / 待补充", () => {
+  it("四态分类：一致 / 系统补充 / 推断；没内容的非核心项不打扰", () => {
     const items = alignmentWithBrief([
       confirmed({ item: "客户类型/行业", content: "市政水务集团" }),
       extracted({ item: "覆盖什么", content: "制水到输配" }),
@@ -116,13 +109,16 @@ describe("confirmation — 对照式确认（以用户诉求为基准）", () =>
     const byKey = Object.fromEntries(items.map((i) => [i.rowKey, i]));
     expect(byKey["customer_type"]?.alignment).toBe("一致");
     expect(byKey["scope_in"]?.alignment).toBe("系统补充");
-    expect(byKey["use_case"]?.alignment).toBe("推断");
-    expect(byKey["scope_out"]?.alignment).toBe("待补充");
-    expect(byKey["entry_point"]?.alignment).toBe("待补充"); // 表里没有该行
+    expect(byKey["use_case"]?.alignment).toBe("推断"); // 有内容 → 列出来让用户核对
+    // 「明确不含什么」内容是「未提供」且已非核心项 → 不进对照表（可留待定）
+    expect(byKey["scope_out"]).toBeUndefined();
+    // 核心 2 项永远在表里（覆盖什么 有内容；客户类型/行业 已确认）
+    expect(items.map((i) => i.rowKey).slice(0, 2)).toEqual(["customer_type", "scope_in"]);
   });
 
-  it("只对 L1 六项做对照，不扩散到全表", () => {
-    expect(alignmentWithBrief([])).toHaveLength(6);
+  it("对照表只列核心 2 项（空输入时），不扩散到全表", () => {
+    // 空锚行 → 只有核心必确认 2 项（其余项没内容就不打扰）
+    expect(alignmentWithBrief([])).toHaveLength(2);
   });
 
   it("指出「冲突」需语义判断，不由纯函数假定", () => {

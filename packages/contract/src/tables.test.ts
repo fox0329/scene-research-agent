@@ -124,17 +124,16 @@ describe("表定义注册表 — 关键结构", () => {
     expect(pinnedTables().map((t) => t.code)).toEqual(["表1-1"]);
   });
 
-  it("表1-1 有 12 个固定行，其中 6 项为 L1 必确认", () => {
+  it("表1-1 有 12 个固定行，其中**核心 2 项**需用户确认（其余选填可待定）", () => {
     const rows = tableDef("表1-1").fixedRows ?? [];
     expect(rows).toHaveLength(12);
+    // 2026-09-25 由 6 项降到 2 项：用户定调「定义要求太细了，要抽象一点」
     expect(rows.filter((r) => r.confirmRequired).map((r) => r.key)).toEqual([
       "customer_type",
       "scope_in",
-      "scope_out",
-      "use_case",
-      "entry_point",
-      "value_proposition",
     ]);
+    // 其余项选填、可「待定」——后续阶段研究后再回填
+    expect(rows.filter((r) => !r.confirmRequired).map((r) => r.key)).toContain("value_proposition");
   });
 
   it("表1-1 用「项 / 内容」两列纵向呈现", () => {

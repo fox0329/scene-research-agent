@@ -58,11 +58,14 @@ describe("stage-prompts — 内容由注册表派生", () => {
     expect(p.system).toContain("枚举 can_touch");
   });
 
-  it("表1-1 的固定行逐个列出（含需用户确认标记）", () => {
+  it("表1-1 的固定行逐个列出，且只给核心 2 项打「需用户确认」", () => {
     const p = buildStagePrompt(1, {}, scenario);
     expect(p.system).toContain("固定行");
     expect(p.system).toContain("客户类型/行业（必填）（需用户确认）");
-    expect(p.system).toContain("价值主张（必填）（需用户确认）");
+    expect(p.system).toContain("覆盖什么（必填）（需用户确认）");
+    // 其余项是选填/可待定（用户常说不准），不该再要求逐个确认
+    expect(p.system).not.toContain("价值主张（必填）（需用户确认）");
+    expect(p.system).toContain("价值主张");
   });
 
   it("renderTableSpec 对可选材料列出 6 种 payload", () => {

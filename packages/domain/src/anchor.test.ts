@@ -28,18 +28,12 @@ const brief = (o: Partial<ScenarioBrief> = {}): ScenarioBrief => ({
 });
 
 describe("anchor — 固定行取自注册表", () => {
-  it("表1-1 有 12 个固定行，必填 9 个，L1 必确认 6 个", () => {
+  it("表1-1 有 12 个固定行，必填 3 个，核心必确认 2 个（可留待定的项不再算必填）", () => {
     expect(anchorFixedRows()).toHaveLength(12);
-    expect(anchorRequiredRows()).toHaveLength(9);
-    expect(anchorConfirmRows()).toHaveLength(6);
-    expect(anchorConfirmRows().map((r) => r.key)).toEqual([
-      "customer_type",
-      "scope_in",
-      "scope_out",
-      "use_case",
-      "entry_point",
-      "value_proposition",
-    ]);
+    // 必填只剩「场景名称 + 核心 2 项」——用户定调"定义要抽象一点"
+    expect(anchorRequiredRows()).toHaveLength(3);
+    expect(anchorConfirmRows()).toHaveLength(2);
+    expect(anchorConfirmRows().map((r) => r.key)).toEqual(["customer_type", "scope_in"]);
   });
 });
 
@@ -100,12 +94,13 @@ describe("anchor — 完成度", () => {
       { item: "明确不含什么", content: "" },
     ];
     const c = anchorCompletion(rows);
-    expect(c.required).toBe(9);
+    expect(c.required).toBe(3);
     expect(c.filled).toBe(2);
-    expect(c.missing).toContain("明确不含什么");
+    // 「明确不含什么」已不是必填（选填可待定），所以不算缺失
+    expect(c.missing).not.toContain("明确不含什么");
     expect(c.unconfirmed).toContain("覆盖什么"); // AI提取 未确认
     expect(c.unconfirmed).not.toContain("客户类型/行业");
-    expect(c.unconfirmed).toHaveLength(5);
+    expect(c.unconfirmed).toHaveLength(1); // 只剩核心 2 项里未确认的那一项
   });
 
   it("全填且确认后无缺失、无未确认", () => {
@@ -118,7 +113,7 @@ describe("anchor — 完成度", () => {
       .filter((r) => !r.required)
       .map((r) => ({ item: r.label, content: "y", source_type: "用户确认" as const }));
     const c = anchorCompletion([...rows, ...confirmOnly]);
-    expect(c.filled).toBe(9);
+    expect(c.filled).toBe(3); // 必填 3 项（场景名称 + 核心 2 项）
     expect(c.missing).toEqual([]);
     expect(c.unconfirmed).toEqual([]);
   });

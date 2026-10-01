@@ -46,12 +46,12 @@ describe("文档生成 — 内容完整性", () => {
     expect(body.match(/- \*\*完整度规则\*\*/g)?.length).toBe(34);
   });
 
-  it("表1-1 渲染固定行并标出 6 项 L1 必确认", () => {
+  it("表1-1 渲染固定行并标出核心 2 项需用户确认", () => {
     const section = body.slice(body.indexOf("### 表1-1 "), body.indexOf("### 表1-2 "));
     expect(section).toContain("**= 场景锚**");
     expect(section).toContain("固定行");
     const l1 = section.match(/\*\*是\*\*/g) ?? [];
-    expect(l1).toHaveLength(6);
+    expect(l1).toHaveLength(2); // 核心 2 项（客户类型/行业、覆盖什么）
   });
 
   it("跨阶段填写的表标出所属阶段", () => {

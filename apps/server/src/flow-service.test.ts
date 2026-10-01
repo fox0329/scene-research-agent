@@ -82,23 +82,24 @@ describe("flow-service — 锁步与就绪", () => {
     expect(s.readyHint).toContain("整理成定义");
   });
 
-  it("第 1 步就绪 = 定义已整理 且 6 项 L1 全部由用户确认", () => {
+  it("第 1 步就绪 = 定义已整理（**不要求确认齐全**，核心项只在提示里点名）", () => {
     const { db, scenarioId } = setup();
     ensureAnchorRows(db, scenarioId, "智慧水务");
     expect(state(db, scenarioId, 1).ready).toBe(false);
 
-    // 整理成定义：模型按对话填了几项（用户补充）→ 有内容但仍不齐 → 未就绪，提示差几项
+    // 整理成定义：模型只填了 1 项 → 已整理 → **即可推进**（用户定调：定义不卡后面的流程）
     writeAnchorRows(db, scenarioId, [
       { item: "客户类型/行业", content: "市政水务集团", source_type: "用户补充" },
     ]);
     const partial = state(db, scenarioId, 1);
-    expect(partial.ready).toBe(false);
-    expect(partial.readyHint).toContain("5 项");
+    expect(partial.ready).toBe(true);
+    expect(partial.readyHint).toContain("定义已整理");
+    expect(partial.readyHint).toContain("核心 1/2 项已确认"); // 提示但不阻断
 
     confirmAllL1(db, scenarioId);
     const ready = state(db, scenarioId, 1);
     expect(ready.ready).toBe(true);
-    expect(ready.readyHint).toContain("已全部确认");
+    expect(ready.readyHint).toContain("核心 2/2 项已确认");
 
     const flow = completeFlowStep(db, db.scenarioRepo.getById(scenarioId)!, 1);
     expect(flow.currentStep).toBe(2);
@@ -107,7 +108,7 @@ describe("flow-service — 锁步与就绪", () => {
     expect(flow.steps[1]!.title).toBe("认识场景");
   });
 
-  it("模型产出的 AI 推断不算已确认（必须用户动作）", () => {
+  it("AI 推断不改变就绪（定义已整理即可推进），但会进右栏清单等用户表态", () => {
     const { db, scenarioId } = setup();
     ensureAnchorRows(db, scenarioId, "智慧水务");
     writeAnchorRows(
@@ -117,7 +118,10 @@ describe("flow-service — 锁步与就绪", () => {
         (item) => ({ item, content: "x", source_type: "AI推断" as const }),
       ),
     );
-    expect(state(db, scenarioId, 1).ready).toBe(false);
+    // 定义已整理 → 就绪（AI 推断也算"整理过"，用户可以选择直接往下走）
+    const s1 = state(db, scenarioId, 1);
+    expect(s1.ready).toBe(true);
+    expect(s1.readyHint).toContain("核心 0/2 项已确认"); // 提醒还没表态，但不拦
   });
 
   it("第 2 步（认识场景）只要求有产出，不要求齐备", () => {

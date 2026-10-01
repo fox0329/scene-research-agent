@@ -81,10 +81,11 @@ describe("scenario-definition — 系统提示词与上下文", () => {
     const ctx = buildDefinitionContext(db, db.scenarioRepo.getById(scenarioId)!);
     expect(ctx).toContain("场景名称：智慧水务");
     expect(ctx).toContain("客户类型/行业（必确认）：市政水务集团 【用户已确认】");
-    expect(ctx).toContain("核心用途（必确认）：漏损监测 【系统推断·待确认】");
+    // 核心用途已不是必确认项（放松定义口径），但它有内容，仍要告诉模型"这项是猜的"
+    expect(ctx).toContain("核心用途：漏损监测 【系统推断·待确认】");
     // 未提及的项标「还空着」，提示模型只补空缺
     expect(ctx).toContain("【还空着】");
-    expect(ctx).toContain("明确不含什么（必确认）：（空） 【还空着】");
+    expect(ctx).toContain("明确不含什么：（空） 【还空着】"); // 已非必确认，但仍提示模型"还空着"
   });
 });
 
@@ -312,7 +313,11 @@ describe("scenario-definition — 路由", () => {
     };
     expect(body.used_llm).toBe(true);
     expect(body.rows.some((r) => r.content === "市政水务集团")).toBe(true);
-    expect(body.alignment).toHaveLength(6); // 只对 L1 六项做对照
+    // 对照表 = 核心 2 项 ∪ 模型填了内容的项（不再要求 12 项齐全）
+    const keys = body.alignment.map((a) => a.rowKey);
+    expect(keys).toContain("customer_type");
+    expect(keys).toContain("scope_in");
+    expect(keys.length).toBeLessThanOrEqual(12);
     expect(body.updated).toBeGreaterThan(0);
   });
 
@@ -348,7 +353,7 @@ describe("scenario-definition — 路由", () => {
     expect(flow.steps[0]!.readyHint).toContain("场景定义");
   });
 
-  it("整理后第 1 步就绪口径随之变化（未齐备 → 提示差几项，而不是「先去对话」）", async () => {
+  it("整理后第 1 步即可推进（就绪=定义已整理，不再要求确认齐全）", async () => {
     const before = await app.inject({ method: "GET", url: `/api/v1/projects/${scenarioId}/flow` });
     expect(
       (before.json() as { steps: { id: number; ready: boolean }[] }).steps[0]!.ready,
@@ -367,9 +372,9 @@ describe("scenario-definition — 路由", () => {
     const after = await app.inject({ method: "GET", url: `/api/v1/projects/${scenarioId}/flow` });
     const first = (after.json() as { steps: { id: number; ready: boolean; readyHint: string }[] })
       .steps[0]!;
-    // 整理只填了「用户说过的」几项 → 仍不齐备，但提示已从"去对话"变成"还差几项"
-    expect(first.ready).toBe(false);
-    expect(first.readyHint).toContain("场景本体未确认");
-    expect(first.readyHint).not.toContain("整理成定义");
+    // 整理过 → 即可推进；提示里点名核心项确认进度（提醒但不阻断）
+    expect(first.ready).toBe(true);
+    expect(first.readyHint).toContain("定义已整理");
+    expect(first.readyHint).toContain("核心");
   });
 });

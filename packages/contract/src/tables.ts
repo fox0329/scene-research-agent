@@ -507,26 +507,33 @@ const TABLES_STAGE_1: readonly TableDef[] = [
     tier: "重要",
     pinned: true,
     rowUnit: "本场景（单行，纵向 项/内容 呈现）",
-    purpose: "场景锚——全链唯一场景定义，用户必须逐格确认",
+    purpose: "场景锚——全链唯一场景定义；**允许抽象与待定**（用户常常还说不准，后续阶段会研究补全）",
     columns: [
       mid("item", "项", { required: true }),
       mid("content", "内容", { required: true, type: "longText", truncate: TRUNCATE_DEFAULT }),
     ],
     fixedRows: [
       { key: "scene_name", label: "场景名称", required: true },
+      // 只有「核心 2 项」需要用户确认（2026-09-25 由 6 项降到 2 项）：
+      // 用户定调「场景定义要求太细了，要抽象一点，很多时候也没说要定义那么准确」。
+      // 其余项都是**选填、可待定**——它们更适合在后续行业/商业研究之后再回填。
       { key: "customer_type", label: "客户类型/行业", required: true, confirmRequired: true },
       { key: "scope_in", label: "覆盖什么", required: true, confirmRequired: true },
-      { key: "scope_out", label: "明确不含什么", required: true, confirmRequired: true },
-      { key: "buyer_type", label: "买方类型", required: true },
+      { key: "scope_out", label: "明确不含什么" },
+      { key: "buyer_type", label: "买方类型" },
       { key: "decision_maker", label: "拍板者" },
       { key: "user_role", label: "使用者" },
       { key: "payer", label: "付费者" },
-      { key: "core_process", label: "核心业务流程", required: true },
-      { key: "use_case", label: "核心用途", required: true, confirmRequired: true },
-      { key: "entry_point", label: "切入点", required: true, confirmRequired: true },
-      { key: "value_proposition", label: "价值主张", required: true, confirmRequired: true },
+      { key: "core_process", label: "核心业务流程" },
+      { key: "use_case", label: "核心用途" },
+      { key: "entry_point", label: "切入点" },
+      { key: "value_proposition", label: "价值主张" },
     ],
-    completeness: ["9 个必填行非空", "『未提供』≥2 行则退回场景梳理", "L1 六项须用户确认"],
+    completeness: [
+      "核心 2 项（客户类型/行业、覆盖什么）建议由用户确认",
+      "其余项选填、可留「待定」——后续阶段研究会回填",
+      "『未提供』≥2 行则退回场景梳理",
+    ],
     consumedBy: [2, 3, 4, 5, 6, 7],
   },
   {

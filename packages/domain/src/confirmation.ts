@@ -98,6 +98,11 @@ export interface ConfirmationChecklist {
 }
 
 /** 表1-1 的 L1 必确认固定行 */
+/** 表1-1 的全部固定行（含选填项） */
+export function anchorRows1_1(): readonly FixedRow[] {
+  return TABLES_BY_CODE["表1-1"]?.fixedRows ?? [];
+}
+
 export function l1Rows(): readonly FixedRow[] {
   return (TABLES_BY_CODE["表1-1"]?.fixedRows ?? []).filter((r) => r.confirmRequired);
 }
@@ -118,10 +123,16 @@ export function buildChecklist(input: {
   const anchorRows = input.anchorRows ?? [];
   const linkRows = input.linkRows ?? [];
 
-  // L1：场景本体 6 项
-  for (const fixed of l1Rows()) {
+  // L1：**只看需要用户表态的项**——核心必确认项（2 项）＋ 模型填了但还不能直接用的项
+  // （如 `AI推断`）。空着的非核心项不进清单：用户说不准是正常的，不该被 12 项追着问。
+  for (const fixed of anchorRows1_1()) {
+    if (fixed.key === "scene_name") continue;
     const row = anchorRows.find((r) => String(r["item"] ?? "").trim() === fixed.label);
-    const state: ConfirmState = !row || isEmptyValue(row["content"]) ? "系统推断" : confirmStateOf(row);
+    const content = row ? String(row["content"] ?? "").trim() : "";
+    const hasContent = Boolean(row) && !isEmptyValue(content);
+    const needsUserWord = hasContent && !usableDownstream(row!);
+    if (!fixed.confirmRequired && !needsUserWord) continue;
+    const state: ConfirmState = !hasContent ? "系统推断" : confirmStateOf(row!);
     items.push({
       layer: "L1",
       tableCode: "表1-1",
@@ -194,15 +205,34 @@ export interface AlignmentItem {
 }
 
 /**
- * 以**用户原始诉求**为基准，对表1-1 的 L1 六项做对照
+ * 该行是否该进「对照表」
+ *
+ * 用户定调：**场景定义要求太细了，要抽象一点**（很多时候用户也说不准，
+ * 更需要的是对行业的全面了解）。因此对照表不再要求 12 项齐全，只拿
+ * **核心必确认项（2 项）＋ 模型实际填了内容的项** 出来让用户对照：
+ *   - 核心 2 项永远列出（空着就显示「待补充」，提示这是最该说的两件事）
+ *   - 其余项只在模型确实填了时才列出——填了就该让用户核对，没填的不打扰
+ *   - 「场景名称」是建场景时用项目名预填的，不属于"对场景的理解"，排除
+ */
+function shouldAlign(fixed: FixedRow, anchorRows: readonly InfoRow[]): boolean {
+  if (fixed.key === "scene_name") return false;
+  if (fixed.confirmRequired) return true;
+  const row = anchorRows.find((r) => String(r["item"] ?? "").trim() === fixed.label);
+  return Boolean(row) && !isEmptyValue(String(row!["content"] ?? "").trim());
+}
+
+/**
+ * 以**用户原始诉求**为基准，对表1-1 的核心项与已知项做对照
  *
  * - `一致`：已由用户确认或补充
  * - `系统补充`：有来源且内容非空（来自材料/检索，用户没说过）
- * - `推断`：`source_type = AI推断`（用户没说，系统猜的 → 必须确认）
+ * - `推断`：`source_type = AI推断`（用户没说，系统猜的 → 建议确认，但不阻断推进）
  * - `待补充`：内容为空或「未提供」
  */
 export function alignmentWithBrief(anchorRows: readonly InfoRow[]): readonly AlignmentItem[] {
-  return l1Rows().map((fixed) => {
+  return anchorRows1_1()
+    .filter((fixed) => shouldAlign(fixed, anchorRows))
+    .map((fixed) => {
     const row = anchorRows.find((r) => String(r["item"] ?? "").trim() === fixed.label);
     const content = row ? String(row["content"] ?? "").trim() : "";
     if (!row || isEmptyValue(content)) {
@@ -220,14 +250,14 @@ export function alignmentWithBrief(anchorRows: readonly InfoRow[]): readonly Ali
         note: "系统推断，需用户确认",
       };
     }
-    return {
-      rowKey: fixed.key,
-      label: fixed.label,
-      content,
-      alignment: "系统补充" as const,
-      note: row.source ? `来源：${String(row.source)}` : undefined,
-    };
-  });
+      return {
+        rowKey: fixed.key,
+        label: fixed.label,
+        content,
+        alignment: "系统补充" as const,
+        note: row.source ? `来源：${String(row.source)}` : undefined,
+      };
+    });
 }
 
 // ─── 待确认清单计数（供完整度检查使用） ─────────────────────
