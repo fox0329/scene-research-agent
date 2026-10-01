@@ -563,6 +563,18 @@ describe("createAdvanceStageCommand", () => {
       expect(events.some((e) => String(e.type) === "advice")).toBe(false);
     });
 
+    it("按流程步限定表集：本步表集外的产出行不入库（场景锚不重复产出）", async () => {
+      const cmd = createAdvanceStageCommand(deps);
+      await collectEvents(
+        cmd.execute({ scenarioId: "sc-1", stage: 1, tables: ["表1-2"] }),
+      );
+      const codes = (db.stageDataRepo.insert as ReturnType<typeof vi.fn>).mock.calls.map(
+        (c) => (c[0] as { table_code: string }).table_code,
+      );
+      expect(codes.length).toBeGreaterThan(0);
+      expect(codes.every((c) => c === "表1-2")).toBe(true);
+    });
+
     it("重算阶段 1 不丢场景锚（表1-1 常驻，用户确认内容保留）", async () => {
       // 预置一条用户已确认的锚行，模拟阶段 1 之前已完成的场景认识
       db.stageDataRepo.insert({

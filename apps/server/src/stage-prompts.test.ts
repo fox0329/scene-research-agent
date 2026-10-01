@@ -168,6 +168,27 @@ describe("stage-prompts — 输出契约（补契约空壳）", () => {
   });
 });
 
+describe("stage-prompts — 流程步限定表集（v1.5）", () => {
+  it("限定表集后：system 只渲染本步的表，契约 enum 也只含本步表号", () => {
+    const step3 = ["表1-2", "表1-3", "表2-2", "表2-3", "表2-4", "表2-5", "表2-7"];
+    const p = buildStagePrompt(1, {}, scenario, { tables: step3 });
+    // 不再出现场景锚（它属第 2 步，由起草 + 用户确认产生）
+    expect(p.system).not.toContain("### 表1-1");
+    expect(p.system).toContain("### 表1-2");
+    expect(p.system).toContain("### 表2-7");
+    const c = p.outputContract as {
+      properties: { rows: { items: { properties: { table_code: { enum: string[] } } } } };
+    };
+    expect(c.properties.rows.items.properties.table_code.enum).toEqual(step3);
+  });
+
+  it("不传限定表集时保持原行为（阶段全部表）", () => {
+    const p = buildStagePrompt(1, {}, scenario);
+    expect(p.system).toContain("### 表1-1");
+    expect(p.system).toContain("### 表2-7");
+  });
+});
+
 describe("stage-prompts — 阶段元信息", () => {
   it("stageMeta 覆盖 8 阶段且表清单与注册表一致", () => {
     const meta = stageMeta();

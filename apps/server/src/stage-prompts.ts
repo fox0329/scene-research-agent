@@ -133,6 +133,13 @@ export function buildStagePrompt(
   stage: StageId,
   upstreamData: Record<string, unknown>,
   scenario?: { name: string; description?: string | null; brief?: string | null },
+  /**
+   * 限定本步要产出的表集（流程步的表集比阶段窄）
+   *
+   * 关键场景：阶段 1 的第 2 步（场景定义与边界）走"起草 + 用户确认"，
+   * 第 3 步（认识场景）只做模型分析——**模型不该重复产出场景锚**。
+   */
+  opts?: { tables?: readonly string[] },
 ): StagePrompt {
   if (stage === 8) {
     throw new Error(
@@ -141,7 +148,10 @@ export function buildStagePrompt(
   }
   const id = stage as InfoStage;
   const def = stageDef(id);
-  const tables = tablesOfStage(id);
+  const all = tablesOfStage(id);
+  const tables = opts?.tables
+    ? all.filter((t) => opts.tables!.includes(t.code))
+    : all;
 
   const anchorRows = Array.isArray(upstreamData["表1-1"])
     ? (upstreamData["表1-1"] as Record<string, unknown>[])
@@ -181,7 +191,7 @@ export function buildStagePrompt(
     "- 依据不足的列填空字符串或「未提供」，**不要编造**。",
   ].join("\n");
 
-  return { system, user, outputContract: getStageOutputContract(stage) };
+  return { system, user, outputContract: getStageOutputContract(stage, opts?.tables) };
 }
 
 /**
@@ -193,11 +203,15 @@ export function buildStagePrompt(
  *   - `source_type` 限 `AI提取` / `AI推断`（模型不得自称用户确认）
  * 真正的一致性由 `@scene/domain` 的 `validateIncomingRows` 本地校验兜底。
  */
-export function getStageOutputContract(stage: StageId): Record<string, unknown> {
+export function getStageOutputContract(
+  stage: StageId,
+  allowedTables?: readonly string[],
+): Record<string, unknown> {
   if (stage === 8) {
     throw new Error("阶段 8 已合并为阶段 7——请改用 0-7");
   }
-  const tables = tablesOfStage(stage as InfoStage);
+  const all = tablesOfStage(stage as InfoStage);
+  const tables = allowedTables ? all.filter((t) => allowedTables.includes(t.code)) : all;
   if (tables.length === 0) {
     // 阶段 7（交付物）：不填表，产出两份文档
     return {

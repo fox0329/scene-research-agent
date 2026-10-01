@@ -47,8 +47,10 @@ export interface RowViolation {
 export function validateIncomingRows(
   stage: InfoStageId,
   rows: readonly IncomingRow[],
+  /** 限定允许的表集（流程步的表集比阶段窄，如第 3 步不含场景锚表1-1） */
+  allowedTables?: readonly string[],
 ): readonly RowViolation[] {
-  const allowed = new Set(tablesOfStage(stage).map((t) => t.code));
+  const allowed = new Set(allowedTables ?? tablesOfStage(stage).map((t) => t.code));
   const out: RowViolation[] = [];
 
   rows.forEach((row, rowIndex) => {

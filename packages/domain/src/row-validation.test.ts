@@ -25,6 +25,39 @@ describe("row-validation — 表号", () => {
   });
 });
 
+describe("row-validation — 流程步限定表集", () => {
+  it("表1-1 不在本步表集内 → 判为未知表号（第 3 步不该产出场景锚）", () => {
+    const step3Tables = ["表1-2", "表1-3"];
+    const v = validateIncomingRows(
+      1,
+      [ok("表1-1", { item: "场景名称", content: "智慧水务" })],
+      step3Tables,
+    );
+    expect(v[0]?.kind).toBe("未知表号");
+    expect(v[0]?.detail).toContain("表1-1");
+  });
+
+  it("本步表集内的表照常校验（不会误判成未知表号）", () => {
+    const v = validateIncomingRows(
+      1,
+      [
+        ok("表1-2", {
+          link: "制水",
+          is_digital: "可以联网采集",
+          can_touch: "可以碰",
+          our_role: "辅助",
+          description: "加药与过滤",
+          responsibility: "我方提供采集",
+          reason: "环节数字化程度高",
+          role_reason: "只做数据不碰控制",
+        }),
+      ],
+      ["表1-2"],
+    );
+    expect(v.some((x) => x.kind === "未知表号")).toBe(false);
+  });
+});
+
 describe("row-validation — 必填列", () => {
   it("缺必填列逐项报出（带列名与行号）", () => {
     // 表1-2 必填：link / is_digital / can_touch / our_role / description

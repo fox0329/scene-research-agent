@@ -9,6 +9,7 @@
  */
 
 import Fastify from "fastify";
+import { FLOW_LAST_STEP, flowStep } from "@scene/contract";
 import type { FastifyInstance } from "fastify";
 import fastifyStatic from "@fastify/static";
 import fastifyMultipart from "@fastify/multipart";
@@ -94,11 +95,20 @@ export function createApp(deps: AppDeps): FastifyInstance {
         return reply.code(404).send({ error: `场景 ${id} 不存在` });
       }
 
+      // v1.5 流程推进：`?step=N` 时按该流程步的表集限定分析范围
+      // （阶段 1 的第 2 步走"起草 + 用户确认"，第 3 步只做模型分析，不重复产出场景锚）
+      const stepParam = (request.query as { step?: string }).step;
+      const stepNum = stepParam === undefined ? null : Number(stepParam);
+      const stepTables =
+        stepNum !== null && Number.isInteger(stepNum) && stepNum >= 1 && stepNum <= FLOW_LAST_STEP
+          ? flowStep(stepNum).tables
+          : undefined;
+
       const runId = `${id}:stage:${stage}#${++runSeq}`;
       latestRuns.set(`${id}:stage:${stage}`, runId);
       hub.start(
         runId,
-        advanceCmd.execute({ scenarioId: id, stage }),
+        advanceCmd.execute({ scenarioId: id, stage, tables: stepTables }),
       );
 
       await streamEvents(hub, runId, request, reply);

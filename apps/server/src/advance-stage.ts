@@ -72,7 +72,7 @@ interface DshStageOutput {
  */
 export function createAdvanceStageCommand(deps: AdvanceStageDeps) {
   return {
-    execute: (opts: { scenarioId: string; stage: StageId }) =>
+    execute: (opts: { scenarioId: string; stage: StageId; tables?: readonly string[] }) =>
       executeAdvanceStage(deps, opts),
   };
 }
@@ -81,7 +81,7 @@ export function createAdvanceStageCommand(deps: AdvanceStageDeps) {
 
 async function* executeAdvanceStage(
   deps: AdvanceStageDeps,
-  opts: { scenarioId: string; stage: StageId },
+  opts: { scenarioId: string; stage: StageId; tables?: readonly string[] },
 ): AsyncIterable<FollowEvent> {
   const { db, dshClient } = deps;
   const { scenarioId, stage } = opts;
@@ -142,11 +142,14 @@ async function* executeAdvanceStage(
   const upstreamData = collectUpstreamData(db, scenario, stage);
 
   // 3. 组 prompt
-  const stagePrompt = buildStagePrompt(stage, upstreamData, {
-    name: scenario.name,
-    description: scenario.description,
-  });
-  const outputContract = getStageOutputContract(stage);
+  const stepTables = opts.tables;
+  const stagePrompt = buildStagePrompt(
+    stage,
+    upstreamData,
+    { name: scenario.name, description: scenario.description },
+    stepTables ? { tables: stepTables } : undefined,
+  );
+  const outputContract = getStageOutputContract(stage, stepTables);
 
   // 4. 创建 DSH session
   const session = await dshClient.createSession({
@@ -205,10 +208,13 @@ async function* executeAdvanceStage(
   db.qualityGateRepo.deleteByScenarioStage(scenarioId, stage);
 
   // 未知表号的产出行不入库（无 schema 就无法渲染，入库只会污染数据）
-  const allowedCodes = new Set(tablesOfStage(effectiveStage).map((t) => t.code));
+  const allowedCodes = new Set(
+    stepTables ?? tablesOfStage(effectiveStage).map((t) => t.code),
+  );
   const violations = validateIncomingRows(
     effectiveStage,
     dshOutput.rows as Parameters<typeof validateIncomingRows>[1],
+    stepTables,
   );
   const acceptedRows = dshOutput.rows.filter((r) => allowedCodes.has(String(r.table_code)));
 

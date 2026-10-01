@@ -24,6 +24,7 @@ import type {
   StageData,
 } from "@scene/contract";
 import { FLOW_LAST_STEP } from "@scene/contract";
+import { buildFlowStatus } from "@scene/domain";
 import type { DbInstance } from "@scene/infra";
 import {
   parseDocument,
@@ -308,7 +309,22 @@ function registerProjectRoutes(app: FastifyInstance, deps: UiRoutesDeps) {
     for (const row of staleRows) {
       staleCount.set(row.scenario_id, (staleCount.get(row.scenario_id) ?? 0) + 1);
     }
-    return scenarios.map((s) => ({ ...s, stale_count: staleCount.get(s.id) ?? 0 }));
+    return scenarios.map((s) => ({
+      ...s,
+      stale_count: staleCount.get(s.id) ?? 0,
+      // v1.5 左栏场景列表显示「第 n/9 步」：只按完成记录推导，不做逐表就绪判定（列表要轻）
+      flow: (() => {
+        const st = buildFlowStatus({
+          completed: db.scenarioStepRepo.completedSteps(s.id),
+          unlockedAll: Boolean(s.flow_unlocked_all),
+        });
+        return {
+          currentStep: st.currentStep,
+          completedCount: st.completedCount,
+          finished: st.finished,
+        };
+      })(),
+    }));
   });
 
   app.post("/api/v1/projects", async (request, reply) => {
