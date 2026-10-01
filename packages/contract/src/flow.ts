@@ -7,9 +7,13 @@
  *
  * 与阶段（stage）的关系：
  *  - 阶段是**数据落库口径**（`stage_data.stage`，8 个，稳定不变）
- *  - 流程步是**用户看到的推进单位**（9 步）
- *  - 第 2 步（场景定义与边界）与第 3 步（认识场景）同属阶段 1，但表集不重叠：
- *    表1-1 归第 2 步（诉求起草 + 用户确认），其余 7 张归第 3 步（模型分析）
+ *  - 流程步是**用户看到的推进单位**（**8 步**）
+ *  - 第 1 步（场景定义与边界）与第 2 步（认识场景）同属阶段 1，但表集不重叠：
+ *    表1-1 归第 1 步（定义 + 用户逐项确认），其余 7 张归第 2 步（模型分析）
+ *
+ * **场景定义对话不占流程步**：它是「新建场景」的一部分（独立弹窗），
+ * 聊清楚后由用户点「整理成定义」落成表1-1；确认动作在第 1 步完成。
+ * 这样用户可见的 8 步与底层 8 个阶段（0-7）一一对得上，不再出现两套数字。
  *
  * 因此"本步的表集"是模型输出契约的过滤依据——阶段 1 的分析**不再重复产出场景锚**。
  */
@@ -18,9 +22,7 @@ import { tablesOfStage, type InfoStageId } from "./tables.js";
 
 /** 步骤类型——决定「完成本步」的就绪判定方式 */
 export type FlowStepKind =
-  /** 输入：用户填诉求 */
-  | "输入"
-  /** 确认：用户逐项确认系统理解（场景锚 L1） */
+  /** 确认：用户逐项确认系统理解（场景锚 L1）——定义对话在新建场景时完成，不占步 */
   | "确认"
   /** 分析：模型按表定义产出信息 */
   | "分析"
@@ -41,15 +43,15 @@ export interface FlowStep {
   tables: readonly string[];
   /**
    * 数据落库阶段；`null` = 本步不写 `stage_data`
-   * （第 1 步诉求写 `scenario_brief`，第 9 步交付物写文档）
+   * （第 1 步定义写表1-1 与 `scenario_brief`，第 8 步交付物写文档）
    */
   stage: InfoStageId | null;
 }
 
-/** 场景锚表号（第 2 步专属） */
+/** 场景锚表号（第 1 步专属） */
 const ANCHOR = "表1-1";
 
-/** 认识场景（第 3 步）= 阶段 1 减去场景锚 */
+/** 认识场景（第 2 步）= 阶段 1 减去场景锚 */
 function stage1Tables(): readonly string[] {
   return tablesOfStage(1)
     .map((t) => t.code)
@@ -57,31 +59,22 @@ function stage1Tables(): readonly string[] {
 }
 
 /**
- * 9 步流程（用户可见的推进单位）
+ * 8 步流程（用户可见的推进单位；与底层 8 个阶段一一对应）
  *
  * 表集全部由注册表派生——流程定义不重抄表号，避免又一处漂移。
  */
 export const FLOW_STEPS: readonly FlowStep[] = [
   {
     id: 1,
-    key: "definition",
-    title: "场景定义",
-    goal: "在对话里把场景聊清楚（模型先给理解再提问），然后整理成表1-1",
-    kind: "输入",
-    tables: [],
-    stage: null, // 定义落表1-1 与 scenario_brief，不进 stage_data
-  },
-  {
-    id: 2,
     key: "anchor",
     title: "场景定义与边界",
-    goal: "确认系统理解的场景本体：客户是谁、覆盖什么、明确不含什么",
+    goal: "确认系统理解的场景本体：客户是谁、覆盖什么、明确不含什么（定义先在「场景定义」对话里聊清楚）",
     kind: "确认",
     tables: [ANCHOR],
     stage: 1,
   },
   {
-    id: 3,
+    id: 2,
     key: "stage1",
     title: "认识场景",
     goal: "场景有哪些业务环节、能否参与；要素、架构、硬约束与门槛",
@@ -90,7 +83,7 @@ export const FLOW_STEPS: readonly FlowStep[] = [
     stage: 1,
   },
   {
-    id: 4,
+    id: 3,
     key: "stage2",
     title: "理解商业",
     goal: "产业链利润在哪、主流方案形态、竞品对照、没被满足的需求",
@@ -99,7 +92,7 @@ export const FLOW_STEPS: readonly FlowStep[] = [
     stage: 2,
   },
   {
-    id: 5,
+    id: 4,
     key: "stage3",
     title: "能力匹配",
     goal: "我方能力底账、哪些真能解、哪些要补齐、哪些不能做",
@@ -108,7 +101,7 @@ export const FLOW_STEPS: readonly FlowStep[] = [
     stage: 3,
   },
   {
-    id: 6,
+    id: 5,
     key: "stage4",
     title: "方案与实现",
     goal: "方案架构与接口、实施路径、成本估算",
@@ -117,7 +110,7 @@ export const FLOW_STEPS: readonly FlowStep[] = [
     stage: 4,
   },
   {
-    id: 7,
+    id: 6,
     key: "stage5",
     title: "价值与验证",
     goal: "价值与指标、基线、验证方式；试点与验收口径",
@@ -126,7 +119,7 @@ export const FLOW_STEPS: readonly FlowStep[] = [
     stage: 5,
   },
   {
-    id: 8,
+    id: 7,
     key: "stage6",
     title: "总结沉淀",
     goal: "把本场景可复用的资产与目标沉淀下来",
@@ -135,7 +128,7 @@ export const FLOW_STEPS: readonly FlowStep[] = [
     stage: 6,
   },
   {
-    id: 9,
+    id: 8,
     key: "delivery",
     title: "交付物",
     goal: "输出内部调研报告与对外汇报材料",
@@ -163,7 +156,7 @@ export function flowStepByKey(key: string): FlowStep | undefined {
   return FLOW_STEPS.find((s) => s.key === key);
 }
 
-/** 某数据阶段对应哪些流程步（阶段 1 → 第 2、3 步；输入步骤不计入任何阶段） */
+/** 某数据阶段对应哪些流程步（阶段 1 → 第 1、2 步） */
 export function flowStepsOfStage(stage: InfoStageId): readonly FlowStep[] {
   return FLOW_STEPS.filter((s) => s.stage === stage);
 }

@@ -72,33 +72,39 @@ describe("flow-service — 锁步与就绪", () => {
     expect(flow.steps.slice(1).every((s) => s.state === "未解锁")).toBe(true);
   });
 
-  it("整理成定义（表1-1 有内容）后第 1 步就绪；完成后第 2 步变当前", () => {
+  it("第 1 步（场景定义与边界）：定义没整理时未就绪，且提示指向「场景定义」对话", () => {
     const { db, scenarioId } = setup();
-    expect(state(db, scenarioId, 1).ready).toBe(false);
-    // v1.5 对话式：就绪看的是「定义已整理」（表1-1 有内容），而不是诉求字段
     ensureAnchorRows(db, scenarioId, "智慧水务");
+    const s = state(db, scenarioId, 1);
+    expect(s.ready).toBe(false);
+    // 定义对话属「新建场景」，不占流程步；这里必须把用户引到对话去
+    expect(s.readyHint).toContain("场景定义");
+    expect(s.readyHint).toContain("整理成定义");
+  });
+
+  it("第 1 步就绪 = 定义已整理 且 6 项 L1 全部由用户确认", () => {
+    const { db, scenarioId } = setup();
+    ensureAnchorRows(db, scenarioId, "智慧水务");
+    expect(state(db, scenarioId, 1).ready).toBe(false);
+
+    // 整理成定义：模型按对话填了几项（用户补充）→ 有内容但仍不齐 → 未就绪，提示差几项
     writeAnchorRows(db, scenarioId, [
       { item: "客户类型/行业", content: "市政水务集团", source_type: "用户补充" },
     ]);
-    expect(state(db, scenarioId, 1).ready).toBe(true);
+    const partial = state(db, scenarioId, 1);
+    expect(partial.ready).toBe(false);
+    expect(partial.readyHint).toContain("5 项");
+
+    confirmAllL1(db, scenarioId);
+    const ready = state(db, scenarioId, 1);
+    expect(ready.ready).toBe(true);
+    expect(ready.readyHint).toContain("已全部确认");
 
     const flow = completeFlowStep(db, db.scenarioRepo.getById(scenarioId)!, 1);
     expect(flow.currentStep).toBe(2);
     expect(flow.steps[0]!.state).toBe("已完成");
     expect(flow.steps[1]!.state).toBe("当前");
-  });
-
-  it("第 2 步（场景定义与边界）就绪 = 6 项 L1 全部由用户确认", () => {
-    const { db, scenarioId } = setup();
-    ensureAnchorRows(db, scenarioId, "智慧水务");
-    const s2 = state(db, scenarioId, 2);
-    expect(s2.ready).toBe(false);
-    expect(s2.readyHint).toContain("6 项");
-
-    confirmAllL1(db, scenarioId);
-    const s2b = state(db, scenarioId, 2);
-    expect(s2b.ready).toBe(true);
-    expect(s2b.readyHint).toContain("已全部确认");
+    expect(flow.steps[1]!.title).toBe("认识场景");
   });
 
   it("模型产出的 AI 推断不算已确认（必须用户动作）", () => {
@@ -111,12 +117,12 @@ describe("flow-service — 锁步与就绪", () => {
         (item) => ({ item, content: "x", source_type: "AI推断" as const }),
       ),
     );
-    expect(state(db, scenarioId, 2).ready).toBe(false);
+    expect(state(db, scenarioId, 1).ready).toBe(false);
   });
 
-  it("第 3 步（认识场景）只要求有产出，不要求齐备", () => {
+  it("第 2 步（认识场景）只要求有产出，不要求齐备", () => {
     const { db, scenarioId } = setup();
-    expect(state(db, scenarioId, 3).ready).toBe(false);
+    expect(state(db, scenarioId, 2).ready).toBe(false);
     db.stageDataRepo.insert({
       scenario_id: scenarioId,
       stage: 1,
@@ -124,18 +130,18 @@ describe("flow-service — 锁步与就绪", () => {
       row: { link: "制水", can_touch: "可以碰" },
       is_stale: false,
     });
-    const s3 = state(db, scenarioId, 3);
-    expect(s3.ready).toBe(true);
-    expect(s3.progress.rows).toBe(1);
-    expect(s3.progress.expectedTables).toBe(7);
+    const s2 = state(db, scenarioId, 2);
+    expect(s2.ready).toBe(true);
+    expect(s2.progress.rows).toBe(1);
+    expect(s2.progress.expectedTables).toBe(7);
   });
 
-  it("完成第 3 步推进 current_stage 到 1；完成第 9 步把场景标记为已完成", () => {
+  it("完成第 2 步推进 current_stage 到 1；完成第 8 步把场景标记为已完成", () => {
     const { db, scenarioId } = setup();
-    completeFlowStep(db, db.scenarioRepo.getById(scenarioId)!, 3);
+    completeFlowStep(db, db.scenarioRepo.getById(scenarioId)!, 2);
     expect(db.scenarioRepo.getById(scenarioId)!.current_stage).toBe(1);
 
-    for (const n of [1, 2, 4, 5, 6, 7, 8, 9]) {
+    for (const n of [1, 3, 4, 5, 6, 7, 8]) {
       completeFlowStep(db, db.scenarioRepo.getById(scenarioId)!, n);
     }
     const sc = db.scenarioRepo.getById(scenarioId)!;
@@ -155,7 +161,7 @@ describe("flow-service — 锁步与就绪", () => {
 describe("flow-service — 回到某步重跑", () => {
   it("reopen 清掉该步及其后标记、场景回到进行中、数据保留", () => {
     const { db, scenarioId } = setup();
-    for (const n of [1, 2, 3, 4, 5, 6, 7, 8, 9]) {
+    for (const n of [1, 2, 3, 4, 5, 6, 7, 8]) {
       completeFlowStep(db, db.scenarioRepo.getById(scenarioId)!, n);
     }
     expect(db.scenarioRepo.getById(scenarioId)!.status).toBe("已完成");
@@ -194,11 +200,11 @@ describe("flow-service — 路由", () => {
     app = createApp({ db, dshClient: mockDsh(), hub: createSseHub() });
   });
 
-  it("GET /flow 返回 9 步三态", async () => {
+  it("GET /flow 返回 8 步三态", async () => {
     const res = await app.inject({ method: "GET", url: `/api/v1/projects/${scenarioId}/flow` });
     expect(res.statusCode).toBe(200);
     const body = res.json() as { steps: unknown[]; currentStep: number; finished: boolean };
-    expect(body.steps).toHaveLength(9);
+    expect(body.steps).toHaveLength(8);
     expect(body.currentStep).toBe(1);
     expect(body.finished).toBe(false);
   });

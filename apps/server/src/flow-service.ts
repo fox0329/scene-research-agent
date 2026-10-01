@@ -70,38 +70,36 @@ export function getFlowState(db: DbInstance, scenario: Scenario): FlowStatus {
 
   for (const step of FLOW_STEPS) {
     switch (step.kind) {
-      case "输入": {
-        // v1.5 对话式定义：就绪 = **定义已整理**，判据取 **L1 六项**（场景本体）——
-        // 不能按"表1-1 任一行有内容"：锚骨架在新建时就用项目名填了「场景名称」，
-        // 那样一建场景就 ready，等于架空了"先聊清楚再整理成定义"
-        const l1 = l1Rows();
-        const filled = l1.filter((r) => {
-          const row = anchor.find((a) => a.item === r.label);
-          const content = String(row?.content ?? "").trim();
-          return content !== "" && content !== "未提供";
-        }).length;
-        const ok = filled > 0;
-        readiness[step.id] = readinessOf(
-          ok,
-          ok
-            ? `定义已整理（场景本体 L1 已填 ${filled}/${l1.length} 项）`
-            : "先在「场景定义」对话里把场景聊清楚，再点「整理成定义」",
-        );
-        break;
-      }
       case "确认": {
+        // 第 1 步「场景定义与边界」= 定义 + 确认合流：
+        //  · 定义由「场景定义」对话产出（对话属于**新建场景**，不占流程步）
+        //  · 就绪要两件事都成：L1 六项（场景本体）**都已由用户确认/补充**
+        // 若定义还没整理（L1 全空），提示指向对话——否则用户会卡在"为什么不能确认"
         const l1 = l1Rows();
         const confirmed = l1.filter((r) => {
           const row = byItem.get(r.label);
           const st = String(row?.source_type ?? "");
           return st === "用户确认" || st === "用户补充";
         });
+        const filled = l1.filter((r) => {
+          const row = byItem.get(r.label);
+          const content = String(row?.content ?? "").trim();
+          return content !== "" && content !== "未提供";
+        }).length;
         const missing = l1.length - confirmed.length;
-        readiness[step.id] = readinessOf(
-          missing === 0,
-          missing === 0 ? "L1 六项已全部确认" : `还有 ${missing} 项场景本体未确认`,
-          tableProgress(db, scenario.id, step.tables, step.stage),
-        );
+        if (filled === 0) {
+          readiness[step.id] = readinessOf(
+            false,
+            "先在「场景定义」对话里把场景聊清楚，再点「整理成定义」",
+            tableProgress(db, scenario.id, step.tables, step.stage),
+          );
+        } else {
+          readiness[step.id] = readinessOf(
+            missing === 0,
+            missing === 0 ? "L1 六项已全部确认" : `还有 ${missing} 项场景本体未确认`,
+            tableProgress(db, scenario.id, step.tables, step.stage),
+          );
+        }
         break;
       }
       case "分析": {

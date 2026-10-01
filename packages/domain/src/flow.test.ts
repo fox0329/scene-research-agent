@@ -12,44 +12,47 @@ import {
 const notReady = (readyHint = "还没有产出"): FlowReadiness => ({ ready: false, readyHint });
 
 describe("flow — 流程定义（取自注册表）", () => {
-  it("共 9 步，步骤号连续", () => {
-    expect(FLOW_STEPS).toHaveLength(9);
-    expect(FLOW_TOTAL).toBe(9);
-    expect(FLOW_STEPS.map((s) => s.id)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9]);
+  it("共 8 步，步骤号连续（用户可见步数与底层 8 阶段对齐）", () => {
+    expect(FLOW_STEPS).toHaveLength(8);
+    expect(FLOW_TOTAL).toBe(8);
+    expect(FLOW_STEPS.map((s) => s.id)).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
   });
 
-  it("第 2 步是场景定义与边界（表1-1），第 3 步是认识场景且不含表1-1", () => {
-    expect(flowStep(2).title).toBe("场景定义与边界");
-    expect(flowStep(2).tables).toEqual(["表1-1"]);
-    expect(flowStep(2).kind).toBe("确认");
+  it("第 1 步是场景定义与边界（表1-1），第 2 步是认识场景且不含表1-1", () => {
+    expect(flowStep(1).title).toBe("场景定义与边界");
+    expect(flowStep(1).tables).toEqual(["表1-1"]);
+    expect(flowStep(1).kind).toBe("确认");
 
-    const s3 = flowStep(3);
-    expect(s3.title).toBe("认识场景");
-    expect(s3.tables).not.toContain("表1-1");
-    expect(s3.tables.length).toBe(7); // 阶段 1 共 8 张，减去场景锚
-    expect(s3.kind).toBe("分析");
+    const s2 = flowStep(2);
+    expect(s2.title).toBe("认识场景");
+    expect(s2.tables).not.toContain("表1-1");
+    expect(s2.tables.length).toBe(7); // 阶段 1 共 8 张，减去场景锚
+    expect(s2.kind).toBe("分析");
+  });
+
+  it("场景定义对话不占流程步（没有 stage=null 的输入步）", () => {
+    // 定义对话是「新建场景」的一部分：它的结果落表1-1，在第 1 步被逐项确认
+    expect(FLOW_STEPS.some((s) => s.stage === null)).toBe(false);
+    expect(FLOW_STEPS.some((s) => s.key === "definition")).toBe(false);
   });
 
   it("步骤表集与注册表一致（不重抄表号）", () => {
-    expect(flowStep(4).tables).toEqual(["表3-1", "表3-2", "表3-3", "表3-4", "表3-6", "表3-7", "表3-8", "表3-9"]);
-    expect(flowStep(8).tables).toEqual(["表7-1"]);
-    expect(flowStep(9).tables).toEqual([]);
+    expect(flowStep(3).tables).toEqual(["表3-1", "表3-2", "表3-3", "表3-4", "表3-6", "表3-7", "表3-8", "表3-9"]);
+    expect(flowStep(7).tables).toEqual(["表7-1"]);
+    expect(flowStep(8).tables).toEqual([]);
   });
 
-  it("阶段 1 对应第 2、3 两步；其余阶段各一步", () => {
-    expect(flowStepsOfStage(1).map((s) => s.id)).toEqual([2, 3]);
-    expect(flowStepsOfStage(2).map((s) => s.id)).toEqual([4]);
-    expect(flowStepsOfStage(7).map((s) => s.id)).toEqual([9]);
-    // 第 1 步诉求落 scenario_brief，不写 stage_data，因此不属于任何阶段
-    expect(flowStep(1).stage).toBeNull();
-    expect(flowStepsOfStage(1).some((s) => s.id === 1)).toBe(false);
+  it("阶段 1 对应第 1、2 两步；其余阶段各一步", () => {
+    expect(flowStepsOfStage(1).map((s) => s.id)).toEqual([1, 2]);
+    expect(flowStepsOfStage(2).map((s) => s.id)).toEqual([3]);
+    expect(flowStepsOfStage(7).map((s) => s.id)).toEqual([8]);
   });
 
-  it("输入与组装步骤不需要模型分析", () => {
-    expect(isAnalysisStep(1)).toBe(false);
-    expect(isAnalysisStep(2)).toBe(false);
-    expect(isAnalysisStep(3)).toBe(true);
-    expect(isAnalysisStep(9)).toBe(false);
+  it("组装步骤不需要模型分析", () => {
+    expect(isAnalysisStep(1)).toBe(false); // 确认
+    expect(isAnalysisStep(2)).toBe(true);
+    expect(isAnalysisStep(7)).toBe(true);
+    expect(isAnalysisStep(8)).toBe(false); // 组装
   });
 
   it("越界步骤号抛明确错误", () => {
@@ -84,10 +87,10 @@ describe("flow — 锁步推进", () => {
   });
 
   it("全部完成：finished=true，当前停留在最后一步", () => {
-    const st = buildFlowStatus({ completed: [1, 2, 3, 4, 5, 6, 7, 8, 9] });
+    const st = buildFlowStatus({ completed: [1, 2, 3, 4, 5, 6, 7, 8] });
     expect(st.finished).toBe(true);
-    expect(st.completedCount).toBe(9);
-    expect(st.currentStep).toBe(9);
+    expect(st.completedCount).toBe(8);
+    expect(st.currentStep).toBe(8);
     expect(st.steps.every((s) => s.state === "已完成")).toBe(true);
   });
 
@@ -138,23 +141,23 @@ describe("flow — 就绪判定（数据判定可用，用户点完成）", () =
 describe("flow — 导航与回退", () => {
   it("next/prev 边界", () => {
     expect(nextStep(1)).toBe(2);
-    expect(nextStep(9)).toBeNull();
+    expect(nextStep(8)).toBeNull();
     expect(prevStep(2)).toBe(1);
     expect(prevStep(1)).toBeNull();
   });
 
   it("从第 n 步重跑：清掉 n 及其之后的完成标记（数据保留）", () => {
     const clear = completionToClearFrom(4);
-    expect([1, 2, 3, 4, 5, 9].filter(clear)).toEqual([4, 5, 9]);
+    expect([1, 2, 3, 4, 5, 8].filter(clear)).toEqual([4, 5, 8]);
     const st = buildFlowStatus({ completed: [1, 2, 3] });
     expect(st.currentStep).toBe(4);
   });
 
   it("flowBrief 给左栏与进度轴用的一句话", () => {
-    expect(flowBrief(buildFlowStatus({ completed: [] }))).toBe("第 1/9 步 · 场景定义");
-    expect(flowBrief(buildFlowStatus({ completed: [1] }))).toBe("第 2/9 步 · 场景定义与边界");
+    expect(flowBrief(buildFlowStatus({ completed: [] }))).toBe("第 1/8 步 · 场景定义与边界");
+    expect(flowBrief(buildFlowStatus({ completed: [1] }))).toBe("第 2/8 步 · 认识场景");
     expect(
-      flowBrief(buildFlowStatus({ completed: [1, 2, 3, 4, 5, 6, 7, 8, 9] })),
-    ).toBe("已完成全部 9 步");
+      flowBrief(buildFlowStatus({ completed: [1, 2, 3, 4, 5, 6, 7, 8] })),
+    ).toBe("已完成全部 8 步");
   });
 });

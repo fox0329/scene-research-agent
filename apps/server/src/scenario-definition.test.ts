@@ -328,7 +328,7 @@ describe("scenario-definition — 路由", () => {
     expect(flow.steps[0]!.readyHint).toContain("场景定义");
   });
 
-  it("整理后流程第 1 步变为就绪（就绪看 L1 场景本体是否已填）", async () => {
+  it("整理后第 1 步就绪口径随之变化（未齐备 → 提示差几项，而不是「先去对话」）", async () => {
     const before = await app.inject({ method: "GET", url: `/api/v1/projects/${scenarioId}/flow` });
     expect(
       (before.json() as { steps: { id: number; ready: boolean }[] }).steps[0]!.ready,
@@ -347,7 +347,9 @@ describe("scenario-definition — 路由", () => {
     const after = await app.inject({ method: "GET", url: `/api/v1/projects/${scenarioId}/flow` });
     const first = (after.json() as { steps: { id: number; ready: boolean; readyHint: string }[] })
       .steps[0]!;
-    expect(first.ready).toBe(true);
-    expect(first.readyHint).toContain("场景本体");
+    // 整理只填了「用户说过的」几项 → 仍不齐备，但提示已从"去对话"变成"还差几项"
+    expect(first.ready).toBe(false);
+    expect(first.readyHint).toContain("场景本体未确认");
+    expect(first.readyHint).not.toContain("整理成定义");
   });
 });
