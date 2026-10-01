@@ -80,18 +80,21 @@ export function writeAnchorRows(
   const byItem = new Map(existing.map((r) => [String(r.row["item"] ?? "").trim(), r]));
 
   for (const row of rows) {
+    // 空行 = 没有来源可标：内容清空时，来源/确认态一并清掉
+    // （否则会留下"空内容 + AI推断"这种自相矛盾的行，界面上看着就是噪音）
+    const isEmpty = String(row.content ?? "").trim() === "";
     const payload: Record<string, unknown> = {
       item: row.item,
       content: row.content,
-      source: row.source ?? undefined,
-      source_type: row.source_type ?? undefined,
-      confirm_state: row.confirm_state ?? undefined,
+      source: isEmpty ? null : (row.source ?? undefined),
+      source_type: isEmpty ? null : (row.source_type ?? undefined),
+      confirm_state: isEmpty ? null : (row.confirm_state ?? undefined),
     };
     const prev = byItem.get(row.item);
     if (prev) {
       db.stageDataRepo.update(prev.id, {
         row: { ...prev.row, ...payload },
-        source_type: row.source_type ?? undefined,
+        source_type: isEmpty ? null : (row.source_type ?? undefined),
       });
     } else {
       db.stageDataRepo.insert({

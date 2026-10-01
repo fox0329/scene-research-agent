@@ -17,7 +17,10 @@ import type { DbInstance } from "@scene/infra";
 import { createApp } from "./app.js";
 import { createSseHub } from "./sse-hub.js";
 import {
+  DEFINITION_CELL_MAX_CHARS,
   DEFINITION_SYSTEM,
+  compressCell,
+  stripMetaNotes,
   buildDefinitionContext,
   consolidateDefinition,
   ensureDefinitionConversation,
@@ -93,6 +96,47 @@ describe("scenario-definition — 系统提示词与上下文", () => {
   });
 });
 
+describe("scenario-definition — 正文去噪（用户投诉「大量无效信息」）", () => {
+  it("剥离元说明注解（谁说的由来源字段表达，不该写进正文）", () => {
+    expect(stripMetaNotes("水厂中控室值班人员（用户未明说，按行业通行情况推断）")).toBe(
+      "水厂中控室值班人员",
+    );
+    expect(
+      stripMetaNotes("不含管网输配、二次供水（对话中由助手按行业通行情况推断范围外，用户未明确否定）"),
+    ).toBe("不含管网输配、二次供水");
+    expect(stripMetaNotes("正常内容（括号里是补充说明）")).toBe("正常内容（括号里是补充说明）");
+  });
+
+  it("超长格按句界压到上限（定义要一句话，不要 88–115 字的段落）", () => {
+    // 对齐用户真实数据里最长的那格（核心业务流程 115 字）
+    const long =
+      "原水取入→加药混凝沉淀→过滤→消毒→出厂水送管网；过程中由现场仪表/PLC采集流量、压力、浊度、余氯、pH等水质与工艺参数，汇总到中控室监控系统，值班人员看数、加减药量、调泵启停与转速、处理报警、记运行台账，并向上级/监管上报数据";
+    const out = compressCell(long);
+    expect(out.length).toBeLessThanOrEqual(DEFINITION_CELL_MAX_CHARS + 1);
+    expect(out.endsWith("…")).toBe(true);
+    // 短内容原样保留
+    expect(compressCell("市政水务集团")).toBe("市政水务集团");
+  });
+
+  it("重新整理会**清掉上次的推断残留**（否则旧噪音永远洗不掉）", async () => {
+    const { db, scenarioId } = setup();
+    ensureAnchorRows(db, scenarioId, "智慧水务");
+    // 上次整理留下的推断行（用户从未说过）
+    writeAnchorRows(db, scenarioId, [
+      { item: "买方类型", content: "园区开发主体（用户未明说，按行业通行情况推断）", source_type: "AI推断" },
+      { item: "客户类型/行业", content: "市政水务集团", source_type: "用户补充" },
+    ]);
+    const dsh = mockDsh(consolidation);
+    const convId = await ensureDefinitionConversation(db, dsh, db.scenarioRepo.getById(scenarioId)!);
+    await consolidateDefinition(db, dsh, db.scenarioRepo.getById(scenarioId)!, convId);
+
+    const rows = readAnchorRows(db, scenarioId);
+    // 旧推断行被清空；用户持有行保留且元说明被剥掉
+    expect(rows.find((r) => r.item === "买方类型")?.content ?? "").toBe("");
+    expect(rows.find((r) => r.item === "客户类型/行业")?.content).toBe("市政水务集团");
+  });
+});
+
 describe("scenario-definition — 整理结果收敛", () => {
   it("优先 item_key 匹配；空内容不落行；丢弃项被显式记录（不静默）", () => {
     const { rows, dropped } = normalizeConsolidatedItems({
@@ -150,11 +194,13 @@ describe("scenario-definition — 整理成定义", () => {
 
     const out = await consolidateDefinition(db, dsh, db.scenarioRepo.getById(scenarioId)!, convId);
     expect(out.usedLlm).toBe(true);
-    expect(out.openQuestions).toHaveLength(3);
+    expect(out.openQuestions).toHaveLength(2); // 最多 2 个（只围绕客户/行业与覆盖什么）
     const rows = readAnchorRows(db, scenarioId);
     expect(rows.find((r) => r.item === "客户类型/行业")?.content).toBe("市政水务集团");
     expect(rows.find((r) => r.item === "客户类型/行业")?.source_type).toBe("用户补充");
-    expect(rows.find((r) => r.item === "核心用途")?.source_type).toBe("AI推断");
+    // **只收用户说过的**：模型顺手推断的「核心用途」不落表（用户投诉过表格里的推断噪音）
+    expect(rows.find((r) => r.item === "核心用途")?.content ?? "").toBe("");
+    expect(out.inferredDropped).toBeGreaterThan(0);
     expect(rows.some((r) => r.item === "不存在的项")).toBe(false);
     expect(readBrief(db, scenarioId)?.intent).toBe("这个场景值不值得进");
     expect(hasDefinition(db, scenarioId)).toBe(true);

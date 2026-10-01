@@ -51,12 +51,23 @@ export const DEFINITION_SYSTEM = `你是「场景通」的场景定义助手。�
 - 聊个大概就够推进了——后续阶段（认识场景 / 理解商业）会去做行业与商业研究。
 
 ## 每一轮回复的结构（务必照做）
-1. **先给理解**（重点）：用 3–5 句说清"**这个行业/这类场景大概是怎样的**"——例如这类客户平时怎么做这件事、
-   行业里通行的做法与环节、钱大致怎么流、常见门槛是什么；再说"你这个场景我理解是……"。
-   依据：场景名 + 已入库资料 + 用户前面说的话。**没有依据的部分要说明是推测**。
-2. **再提问题**：**最多 2 个**，且只问这两件事（其余都不必问）：
-   - **客户/行业**：这场景服务的客户/行业是谁（谁在用）
+**先判断这是第几轮：看消息里的【对话历史】块——没有历史 = 第一轮；有历史 = 后续轮。**
+
+### 第一轮（行业背景只讲这一次）
+1. **给行业理解**：3–4 句说清"这类场景在行业里大概是什么样"——客户是谁、平时怎么做、
+   钱大致怎么流、常见门槛；最后一句"你这个场景我理解是……"。
+2. **提问**：最多 2 个，只问这两件事：
+   - **客户/行业**：这场景服务的客户/行业是谁
    - **覆盖什么**：大致覆盖哪些环节/对象（**说个大概即可**）
+
+### 第二轮起（**必须短**）
+- **不要重复已经讲过的行业背景**——用户已经看过了，重复就是噪音
+  （曾因此被用户投诉"整个页面大量的无效信息"，此为硬约束）。
+- 只回 **1–2 句**：① 只写**变化的部分**——"那我更新一下：……"（把用户刚说的并进理解）；
+  ② 最多 **1 个**问题，且只在还缺「客户/行业」或「覆盖什么」时才问；
+  两件都清楚了就**不要再问**，直接说"够了，点『整理成定义』就行"。
+- **整轮 ≤ 120 字**。用户答得短（"都包括""工业水厂为主"）是正常的，**直接接受并收口**，
+  不要借机再展开一段行业讲解。
 
 ## 铁律
 - **只谈行业与场景本体**：不要谈具体产品、型号、厂商、技术选型、方案架构——那是后续阶段的事。
@@ -64,20 +75,26 @@ export const DEFINITION_SYSTEM = `你是「场景通」的场景定义助手。�
 - **不要追问边界**：不要反复问"明确不含什么"；用户没提就**留空**，后续阶段会自然收敛。
 - 用户说"不知道/不清楚/大概吧/还没想好"→ **接受并继续**，不要把同一个问题换个说法再问。
 - **不要编造**客户名、数字、标准号；依据不足就直说"这块我还不确定"。
-- 说人话，术语首次出现要解释。
+- **不要写自我说明**：正文里不要出现"（用户未明说）""按行业通行情况推断"这类注解——
+  谁说的由系统在表格来源字段里表达，不要写进正文。
+- 说人话，术语首次出现要解释；**宁可短，不要长**。
 - 用户没主动提就**不要**输出任何 JSON 或"定义块"——整理成表由用户点「整理成定义」触发。`;
+
+/** 单个定义格的字符上限（超出即按句界截断；定义要的是"一句话"，不是段落） */
+export const DEFINITION_CELL_MAX_CHARS = 80;
 
 /** 定义整理时给模型的任务（要求严格 JSON） */
 const CONSOLIDATE_TASK = `请把上面的对话**整理成场景定义表**（表1-1 的固定项）。
 
 要求：
 0. **优先用 \`item_key\`**（清单里每项前面的英文名，如 \`customer_type\`）——中文标签容易写错导致对不上。
-1. **先填核心 2 项**（\`customer_type\` 客户类型/行业、\`scope_in\` 覆盖什么）：这两项最重要。
-2. 其余项**只在对话里确实有依据时才填**：
-   - 用户明确说过的 → \`source_type: "用户补充"\`
-   - 你根据已有信息推断的 → \`source_type: "AI推断"\`
-   - **没提到的就填 ""（空字符串）——不要为了填满而推断**，后续阶段研究会回填
-3. 宁可少填、不要编：**空着是正常且被允许的**（用户常常还说不准，这不是失败）。
+1. **只填用户在本对话里明确说过的内容**，\`source_type\` 一律用 \`"用户补充"\`：
+   - **不要推断、不要补充"行业通行情况"**——用户没说的就填 ""（空字符串）。
+   - 例：用户只说了"工业水厂为主"，就只写客户类型；不要顺手把买方/拍板者/价值主张也猜一遍。
+2. **每个格 ≤ 40 字，写成一个短句/短语**——这是给别人一眼看懂的定义，**不是段落**：
+   - 不要罗列细节（不要把"加药、混凝、沉淀、过滤、消毒…"整串抄进去），概括成一句；
+   - 不要在正文里写"①…②…③…"这种枚举，也不要写"（用户未明说）""按行业推断"这类**自我说明**。
+3. 宁可少填、不要编：**空着是正常且被允许的**（用户常常还说不准，这不是失败），后续阶段研究会回填。
 4. \`item\` 必须严格取自下面的固定项清单（不得自创、不得改字）。
 5. 如果对话里能看出"用户想搞清楚什么"，把它放进 \`intent\`（没有就留空字符串）。
 6. \`open_questions\` 只放**仍然没问清的问题**，最多 2 个，且只围绕"客户/行业"与"覆盖什么"。`;
@@ -97,7 +114,11 @@ const CONSOLIDATE_CONTRACT: Record<string, unknown> = {
           },
           item: { type: "string", description: "固定项中文名（item_key 不确定时才用）" },
           content: { type: "string" },
-          source_type: { type: "string", enum: ["用户补充", "AI推断"] },
+          source_type: {
+            type: "string",
+            enum: ["用户补充"],
+            description: "定义整理只收用户说过的内容；不要用 AI推断（用户没说的请留空）",
+          },
           source: { type: "string", description: "出处（如 对话、产品资料）" },
         },
       },
@@ -299,6 +320,42 @@ export function normalizeConsolidatedItems(payload: {
   return { rows, dropped };
 }
 
+/**
+ * 剥掉正文里的"元说明"注解
+ *
+ * 模型爱在定义正文里写"（用户未明说，按行业通行情况推断）""（对话中由助手推断…）"这类
+ * 来源说明——用户投诉过"整个页面大量的无效信息"，这些注解就是典型噪音：
+ * 谁说的应该由 `source_type`/`source` 字段表达，不该混进正文。
+ */
+export function stripMetaNotes(content: string): string {
+  return String(content ?? "")
+    .replace(/[（(][^（）()]*(?:用户未(?:明说|明确|提及)|按行业[^（）()]*推断|由助手[^（）()]*推断|系统推断|推断而来)[^（）()]*[）)]/g, "")
+    .replace(/[，,、；;]\s*[。.]/g, "。")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
+/**
+ * 把一个定义格压到可读长度
+ *
+ * 定义表要的是"一眼看懂的一句话"，不是段落——用户投诉过表格里 88–115 字的枚举段落。
+ * 优先在句界（。；！？, ；）截断；找不到句界就硬截并加省略号。
+ */
+export function compressCell(content: string): string {
+  const text = stripMetaNotes(content).replace(/\s+/g, " ");
+  if (text.length <= DEFINITION_CELL_MAX_CHARS) return text;
+  const head = text.slice(0, DEFINITION_CELL_MAX_CHARS);
+  const cut = Math.max(
+    head.lastIndexOf("。"),
+    head.lastIndexOf("；"),
+    head.lastIndexOf("，"),
+    head.lastIndexOf(";"),
+    head.lastIndexOf(","),
+  );
+  const kept = cut > 20 ? head.slice(0, cut) : head;
+  return `${kept.replace(/[，,；;]$/, "")}…`;
+}
+
 /** 「整理成定义」等待模型的上限（毫秒）；超时即降级为不写任何内容，避免请求无限挂起 */
 export const CONSOLIDATE_TIMEOUT_MS = 120_000;
 
@@ -310,6 +367,8 @@ export interface ConsolidateOutcome {
   usedLlm: boolean;
   /** 模型给了但匹配不到固定项的项名（暴露问题，避免静默丢失） */
   dropped: string[];
+  /** 模型顺手推断、按"只收用户说过的"规则丢弃的项数（不落表，但可观测） */
+  inferredDropped: number;
 }
 
 /**
@@ -343,6 +402,8 @@ export async function consolidateDefinition(
   let intent = "";
   let openQuestions: string[] = [];
   let dropped: string[] = [];
+  /** 模型顺手推断、按规则丢弃的项数（不落表，但要能看见） */
+  let inferredDropped = 0;
 
   try {
     const session: SessionHandle = await dshClient.createSession({
@@ -371,11 +432,16 @@ export async function consolidateDefinition(
     const parsed = parseConsolidation(full);
     if (parsed) {
       const normalized = normalizeConsolidatedItems(parsed);
-      incoming = normalized.rows;
+      // **只收"用户说过的"**：模型顺手推断的（AI推断）一律不落表。
+      // 用户投诉过"整个页面大量的无效信息"——起因就是模型把行业通行情况也猜进了定义表，
+      // 还在正文里写"（用户未明说，按行业通行情况推断）"。定义要的是用户的原话。
+      const userStated = normalized.rows.filter((r) => r.source_type === "用户补充");
+      inferredDropped = normalized.rows.length - userStated.length;
+      incoming = userStated.map((r) => ({ ...r, content: compressCell(r.content) }));
       dropped = normalized.dropped;
       intent = String(parsed.intent ?? "").trim();
       openQuestions = Array.isArray(parsed.open_questions)
-        ? parsed.open_questions.map(String).slice(0, 3)
+        ? parsed.open_questions.map(String).slice(0, 2)
         : [];
     }
   } catch {
@@ -386,7 +452,20 @@ export async function consolidateDefinition(
   const before = readAnchorRows(db, scenario.id);
   // 保留用户已确认行：mergeAnchorRows 内部对本场景/用户持有的行不覆盖
   const merged = mergeAnchorRows(before, incoming);
-  const rows = writeAnchorRows(db, scenario.id, merged);
+  // 「重新整理」要能洗掉上次的噪音，否则旧推断永远留着：
+  //  ① 模型这次没再产出的**旧推断行** → 清空（用户持有的行不动）
+  //  ② 所有行的正文一律剥掉元说明注解
+  const incomingItems = new Set(incoming.map((r) => r.item));
+  const cleaned = merged.map((row) => {
+    const prev = before.find((b) => b.item === row.item);
+    const userOwned =
+      prev && (prev.source_type === "用户确认" || prev.source_type === "用户补充");
+    if (!userOwned && prev?.source_type === "AI推断" && !incomingItems.has(row.item)) {
+      return { item: row.item, content: "" };
+    }
+    return { ...row, content: stripMetaNotes(String(row.content ?? "")) };
+  });
+  const rows = writeAnchorRows(db, scenario.id, cleaned);
   syncDerivedDescription(db, scenario.id);
 
   if (intent) {
@@ -414,6 +493,7 @@ export async function consolidateDefinition(
     openQuestions,
     usedLlm,
     dropped,
+    inferredDropped,
   };
 }
 

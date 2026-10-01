@@ -484,7 +484,16 @@ export interface StageDataRepo {
   deleteByScenarioStage(scenarioId: string, stage: StageId): number;
   getById(id: string): StageData | undefined;
   /** 单元格编辑落库（M5 联真）：row 整体覆盖写回 JSON，可同步 source_type；返回更新后的行 */
-  update(id: string, patch: { row?: Record<string, unknown>; source_type?: string }): StageData | undefined;
+  /**
+   * 局部更新；`source_type: null` = **显式清空**来源（传 undefined 表示"不改"）
+   *
+   * 为什么需要 null：行被清空内容后（如"重新整理定义"清掉旧推断），来源标记必须一起清，
+   * 否则会留下"空内容 + AI推断"这种自相矛盾的行。
+   */
+  update(
+    id: string,
+    patch: { row?: Record<string, unknown>; source_type?: string | null },
+  ): StageData | undefined;
 }
 
 function createStageDataRepo(db: Database.Database): StageDataRepo {
@@ -553,7 +562,7 @@ function createStageDataRepo(db: Database.Database): StageDataRepo {
 
   const update = (
     id: string,
-    patch: { row?: Record<string, unknown>; source_type?: string },
+    patch: { row?: Record<string, unknown>; source_type?: string | null },
   ): StageData | undefined => {
     const existing = getById(id);
     if (!existing) return undefined;

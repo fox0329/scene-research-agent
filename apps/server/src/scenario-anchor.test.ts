@@ -86,6 +86,24 @@ describe("scenario-anchor — 锚行写入与派生缓存", () => {
     expect(rows.find((r) => r.item === "覆盖什么")?.content).toBe("制水到输配（含二次供水）");
   });
 
+  it("内容被清空时，来源/确认态一并清掉（不留「空内容 + AI推断」的自相矛盾行）", () => {
+    const { db, scenarioId } = setup();
+    ensureAnchorRows(db, scenarioId, "智慧水务");
+    writeAnchorRows(db, scenarioId, [
+      { item: "买方类型", content: "园区开发主体", source_type: "AI推断", source: "系统推断", confirm_state: "系统推断" },
+    ]);
+    // 先确认它带着来源
+    expect(readAnchorRows(db, scenarioId).find((r) => r.item === "买方类型")?.source_type).toBe("AI推断");
+
+    // 「重新整理定义」清空该行 → 来源列也必须清（否则界面显示"空内容 + 系统推断"）
+    writeAnchorRows(db, scenarioId, [{ item: "买方类型", content: "" }]);
+    const col = db.stageDataRepo
+      .list({ where: "scenario_id = ? AND table_code = ?", params: [scenarioId, "表1-1"] })
+      .find((r) => r.row["item"] === "买方类型");
+    expect(col?.source_type ?? null).toBeNull();
+    expect(col?.source ?? null).toBeNull();
+  });
+
   it("syncDerivedDescription 由锚行生成 description（派生缓存）", () => {
     const { db, scenarioId } = setup();
     ensureAnchorRows(db, scenarioId, "智慧水务");
