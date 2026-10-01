@@ -5,7 +5,7 @@ import { STAGE_DEFS } from "@scene/contract";
  * 首版硬编码，后续按 03-数据契约与API.md 接真实 API
  */
 
-/* ═══ 阶段定义（9 阶段，对应 00b 工作流标准）═══ */
+/* ═══ 阶段定义（现行 8 阶段 0–7；取自契约 STAGE_DEFS，不是 00b 的旧 9 阶段）═══ */
 
 export type StageDef = {
   index: number;
