@@ -56,6 +56,13 @@ for f in \
   apps/web/src/views/DemoStagePanel.tsx \
   scripts/copy-infra-sql.mjs \
   scripts/migrate-info-model.mjs \
+  packages/contract/src/flow.ts \
+  packages/domain/src/flow.ts \
+  packages/domain/src/flow.test.ts \
+  apps/server/src/flow-service.ts \
+  apps/server/src/flow-service.test.ts \
+  apps/server/src/library-merge.test.ts \
+  apps/web/src/components/FlowRail.tsx \
   05-表格定义总表.md; do
   if [ -f "$ROOT/$f" ]; then
     echo "✅ $(basename "$f")"
@@ -235,6 +242,12 @@ check_contains "03-数据契约与API.md" "/stages/{n}/summary" "阶段总结端
 check_contains "03-数据契约与API.md" "/projects/{id}/brief" "场景诉求端点登记（第一输入）"
 check_contains "03-数据契约与API.md" "只有「用户确认」「用户补充」可被下游当依据" "确认机制铁律登记"
 check_contains "docs/项目变更表.md" "| 53 |" "变更表 #53 三段式诉求与 SQL 迁移修复"
+# ── v2.1 业务流程逐页推进收口 ──────────────────────────────
+check_contains "03-数据契约与API.md" "v2.1" "契约版本记录 v2.1（逐页推进）"
+check_contains "03-数据契约与API.md" "/flow/steps/{n}/complete" "流程推进端点登记"
+check_contains "03-数据契约与API.md" "scenario_step" "流程步完成表登记"
+check_contains "03-数据契约与API.md" "data_scope" "资料合并来源可区分登记"
+check_contains "docs/项目变更表.md" "| 55 |" "变更表 #55 逐页推进登记"
 if [ -f "$ROOT/05-表格定义总表.md" ] && pnpm check:docs >/dev/null 2>&1; then
   echo "✅ 05-表格定义总表.md 与表定义注册表一致（漂移守卫）"
 else

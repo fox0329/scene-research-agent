@@ -244,3 +244,65 @@ interface DshClient {
 
 旧表号与旧阶段号需要迁移（`O1..O6` → `可选材料`、`表1-4`/`表1-5` → `表1-3`、`表2-8` → `表1-2`、阶段 7/8 重编号等）。
 提供 `scripts/migrate-info-model.mjs`：默认**只报告**（dry-run），`--apply` 才写入；无法无损映射的行会被列出待人工处理。
+| v2.1 | 2026-09-25 | **UI 逻辑重构：业务流程逐页推进（9 步）**：新增流程状态与推进端点（`GET /projects/{id}/flow`、`POST .../flow/steps/{n}/complete|reopen`、`POST .../flow/unlock-all`，`POST .../stages/{n}/advance?step=N` 按流程步限定表集）；新表 `scenario_step`、`scenario.flow_unlocked_all`；`GET /projects` 每项增加 `flow` 进度；资料合并改为**默认含主库**且每行标注 `data_scope`；变更表 #55 |
+
+---
+
+## 八、v2.1 业务流程逐页推进（9 步）
+
+> 动机：v1.4 把 8 个阶段并列成 tab，等于把整套方法论摊开给用户看（一进来面对 8 个空表格）。
+> v2.1 改为**流程驱动**：方法论藏在流程里，用户只回答"现在这一步"。
+
+### 8.1 概念区分（重要）
+
+| 概念 | 含义 | 数量 |
+|---|---|---|
+| **阶段**（stage） | **数据落库口径**（`stage_data.stage`），稳定不变 | 8（0-7） |
+| **流程步**（flow step） | **用户看到的推进单位** | 9（1-9） |
+
+第 2 步「场景定义与边界」与第 3 步「认识场景」**同属阶段 1，但表集不重叠**：
+表1-1（场景锚）归第 2 步（诉求起草 + 用户确认），其余 7 张归第 3 步（模型分析）。
+因此 `?step=N` 会**按该步表集限定模型输出契约**——阶段 1 的分析不再重复产出场景锚。
+
+### 8.2 9 步定义（`packages/contract/src/flow.ts`）
+
+| 步 | 标题 | 类型 | 落库阶段 | 就绪判定（决定「完成本步」可否点） |
+|---|---|---|---|---|
+| 1 | 场景诉求 | 输入 | —（落 `scenario_brief`） | `intent` 非空 |
+| 2 | 场景定义与边界 | 确认 | 1 | 表1-1 的 **6 项 L1 全部**为「用户确认/用户补充」（AI 推断不算） |
+| 3 | 认识场景 | 分析 | 1 | 本步表集至少 1 张有数据（**不要求齐备**） |
+| 4 | 理解商业 | 分析 | 2 | 同上 |
+| 5 | 能力匹配 | 分析 | 3 | 同上 |
+| 6 | 方案与实现 | 分析 | 4 | 同上 |
+| 7 | 价值与验证 | 分析 | 5 | 同上 |
+| 8 | 总结沉淀 | 分析 | 6 | 同上 |
+| 9 | 交付物 | 组装 | 7 | 随时可生成并导出 |
+
+**本步表集由注册表派生**（不重抄表号）：第 3 步 = `tablesOfStage(1)` 减去表1-1。
+
+### 8.3 三条推进规则
+
+1. **数据判定可用 + 用户显式推进**：服务端只算 `ready`（并给 `readyHint` 说明缺什么），
+   **不自动完成**。门槛在**流程步进**上；**信息完备度仍只提示不阻断**（两者不可混）。
+2. **默认锁步**：第 n 步未完成则第 n+1 步为「未解锁」；`POST .../flow/unlock-all` 一键解锁全部。
+3. **已完成步骤可回去重跑**：`POST .../flow/steps/{n}/reopen` 清掉第 n 步及其后的完成标记
+   （**数据保留**，按既有失效/重算语义处理下游），场景回到「进行中」。
+
+### 8.4 端点
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| GET | `/projects/{id}/flow` | 9 步三态（已完成/当前/可推进/未解锁）+ `ready`/`readyHint`/`progress` + `currentStep`/`completedCount`/`unlockedAll`/`finished` |
+| POST | `/projects/{id}/flow/steps/{n}/complete` | 完成本步：写 `scenario_step`、`current_stage` 单调推进、第 9 步置场景「已完成」；返回最新流程状态 |
+| POST | `/projects/{id}/flow/steps/{n}/reopen` | 回到第 n 步重跑：清后缀标记 + 场景回「进行中」；数据保留 |
+| POST | `/projects/{id}/flow/unlock-all` | 解锁全部步骤 |
+| POST | `/projects/{id}/stages/{n}/advance?step=N` | 按第 N 步的表集限定分析范围（不传 `step` 则整阶段） |
+| GET | `/projects` | 每项新增 `flow: { currentStep, completedCount, finished }`（左栏显示「第 n/9 步」） |
+
+### 8.5 数据表与资料合并
+
+| 变更 | 说明 |
+|---|---|
+| 新增 `scenario_step` | 流程步完成记录（`scenario_id + step` 复合主键，**用户点「完成本步」才写入**，`completed_at`） |
+| `scenario.flow_unlocked_all` | 是否已解锁全部步骤（幂等 ALTER，默认 0） |
+| 资料合并（`collectUpstreamData`） | 资料来源 = **本场景专属库 + 全部主库（`scenario_id IS NULL`）+ 显式引用的通用库**；<br>每行标注 `data_scope`（`本场景` / `主库：<名>` / `引用库：<名>`），提示词上游表首列渲染「资料来源」；<br>**同一型号多库出现时本场景优先**（先按库优先级排序再去重）；<br>**存储隔离**：本场景上传只落自己的库，绝不写回主库。 |
