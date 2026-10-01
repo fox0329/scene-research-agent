@@ -63,6 +63,10 @@ for f in \
   apps/server/src/flow-service.test.ts \
   apps/server/src/library-merge.test.ts \
   apps/web/src/components/FlowRail.tsx \
+  apps/web/src/views/BriefStepPanel.tsx \
+  apps/web/src/views/DemoFlowPanels.tsx \
+  apps/web/src/mock/demo-flow.ts \
+  scripts/verify-flow-ui.mjs \
   05-表格定义总表.md; do
   if [ -f "$ROOT/$f" ]; then
     echo "✅ $(basename "$f")"
@@ -125,6 +129,19 @@ else
     echo "❌ 项目创建失败，无法验证 CRUD"
     FAIL=1
   fi
+  # ── 流程 UI 真机验收（v1.5 逐页推进）─────────────────────
+  # 先建一个场景（脚本会驱动浏览器进入它并断言 9 步流程轴）
+  curl -s -X POST "http://127.0.0.1:${PORT}/api/v1/projects" \
+    -H 'content-type: application/json' \
+    -d '{"name":"流程验收场景","intent":"验收逐页推进"}' >/dev/null 2>&1 || true
+  if BASE_URL="http://127.0.0.1:${PORT}" node scripts/verify-flow-ui.mjs >"$SDIR/flowui.log" 2>&1; then
+    echo "✅ 流程 UI 真机验收（9 步流程轴 / 四态 / 双 Tab / 无判断产出）"
+  else
+    echo "❌ 流程 UI 真机验收失败："
+    tail -8 "$SDIR/flowui.log"
+    FAIL=1
+  fi
+
   # 会话重连端点（契约 v1.5）：未知会话 404
   C_EVT=$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:${PORT}/api/v1/conversations/nope/messages/events")
   if [ "$C_EVT" = "404" ]; then
