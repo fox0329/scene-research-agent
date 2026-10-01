@@ -65,6 +65,7 @@ export const DEFINITION_SYSTEM = `你是「场景通」的场景定义助手。�
 const CONSOLIDATE_TASK = `请把上面的对话**整理成场景定义表**（表1-1 的固定项）。
 
 要求：
+0. **优先用 \`item_key\`**（清单里每项前面的英文名，如 \`customer_type\`）——中文标签容易写错导致对不上。
 1. 只填有依据的项：
    - 用户明确说过的 → \`source_type: "用户补充"\`
    - 你根据已有信息推断的 → \`source_type: "AI推断"\`
@@ -83,7 +84,11 @@ const CONSOLIDATE_CONTRACT: Record<string, unknown> = {
         type: "object",
         required: ["item", "content", "source_type"],
         properties: {
-          item: { type: "string", description: "固定项名称，必须取自给定清单" },
+          item_key: {
+            type: "string",
+            description: "固定项的英文 key（**优先用这个**，必须严格取自清单，如 customer_type）",
+          },
+          item: { type: "string", description: "固定项中文名（item_key 不确定时才用）" },
           content: { type: "string" },
           source_type: { type: "string", enum: ["用户补充", "AI推断"] },
           source: { type: "string", description: "出处（如 对话、产品资料）" },
@@ -155,30 +160,140 @@ function parseConsolidation(text: string): {
   return null;
 }
 
+/** 规范化项名：去空白、统一分隔符（用于容错匹配模型输出的中文标签） */
+function normalizeLabel(text: string): string {
+  return text
+    .replace(/[\s/、·・,，;；:：()（）\[\]]/g, "")
+    .replace(/行业|类型|环节/g, (m) => m) // 保留语义词，仅做去噪
+    .trim();
+}
+
+/**
+ * 项名 → 固定行 key 的查找表
+ *
+ * 为什么需要：模型输出的中文标签常与注册表**不完全一致**
+ * （如「客户类型」vs「客户类型/行业」、「不含什么」vs「明确不含什么」）。
+ * 早期实现用精确标签匹配，导致产出行被**静默丢弃**——真机联调时表现为
+ * "整理成定义后 L1 全空"，而 used_llm=true（只有「场景名称」侥幸匹配）。
+ * 因此改为：**优先 item_key**，其次规范化标签匹配。
+ */
+/**
+ * 中文别名表（模型常用近义改写）
+ *
+ * 为什么用**显式别名**而不是模糊打分：这一步会写进用户的场景定义，
+ * 宁可漏匹配（记为 dropped 暴露出来）也不要猜错。别名表确定性、可审计、可测试。
+ */
+const ITEM_ALIASES: Readonly<Record<string, string>> = {
+  场景名称: "scene_name",
+  场景: "scene_name",
+  客户类型: "customer_type",
+  客户行业: "customer_type",
+  客户: "customer_type",
+  行业: "customer_type",
+  覆盖什么: "scope_in",
+  覆盖范围: "scope_in",
+  场景范围: "scope_in",
+  范围: "scope_in",
+  明确不含什么: "scope_out",
+  不含什么: "scope_out",
+  不含: "scope_out",
+  边界: "scope_out",
+  明确边界: "scope_out",
+  买方类型: "buyer_type",
+  买方: "buyer_type",
+  拍板者: "decision_maker",
+  决策人: "decision_maker",
+  使用者: "user_role",
+  使用方: "user_role",
+  付费者: "payer",
+  付款方: "payer",
+  核心业务流程: "core_process",
+  业务流程: "core_process",
+  核心流程: "core_process",
+  核心用途: "use_case",
+  场景用途: "use_case",
+  用途: "use_case",
+  切入点: "entry_point",
+  切入环节: "entry_point",
+  入口: "entry_point",
+  价值主张: "value_proposition",
+  价值点: "value_proposition",
+  客户价值: "value_proposition",
+};
+
+function buildItemResolver(): (raw: { item_key?: unknown; item?: unknown }) => string | null {
+  const byKey = new Map<string, string>();
+  const byLabel = new Map<string, string>();
+  for (const r of anchorFixedRows()) {
+    byKey.set(r.key.toLowerCase(), r.key);
+    byLabel.set(normalizeLabel(r.label), r.key);
+  }
+  const byAlias = new Map(Object.entries(ITEM_ALIASES).map(([k, v]) => [normalizeLabel(k), v]));
+
+  return (raw) => {
+    const key = String(raw.item_key ?? "").trim().toLowerCase();
+    if (key && byKey.has(key)) return byKey.get(key)!;
+    const label = String(raw.item ?? "").trim();
+    if (!label) return null;
+    const norm = normalizeLabel(label);
+    if (byLabel.has(norm)) return byLabel.get(norm)!;
+    if (byAlias.has(norm)) return byAlias.get(norm)!;
+    // 最后兜一层：子串/超串（如「覆盖率」≈「覆盖什么」）
+    for (const [n, k] of byLabel) {
+      if (n && (n.includes(norm) || norm.includes(n))) return k;
+    }
+    return null;
+  };
+}
+
+export interface NormalizeResult {
+  rows: AnchorRow[];
+  /** 未能匹配到固定项的原始项名（用于暴露问题，而不是静默丢弃） */
+  dropped: string[];
+}
+
 /**
  * 把模型输出收敛成合法锚行
  *
  * `用户确认` 一律不接受（只能由用户动作产生）；空内容不落行。
  */
 export function normalizeConsolidatedItems(payload: {
-  items: { item?: unknown; content?: unknown; source_type?: unknown; source?: unknown }[];
-}): AnchorRow[] {
-  const labels = new Set(anchorFixedRows().map((r) => r.label));
+  items: {
+    item_key?: unknown;
+    item?: unknown;
+    content?: unknown;
+    source_type?: unknown;
+    source?: unknown;
+  }[];
+}): NormalizeResult {
+  const resolve = buildItemResolver();
+  const byKey = new Map(anchorFixedRows().map((r) => [r.key, r]));
   const rows: AnchorRow[] = [];
+  const dropped: string[] = [];
+
   for (const raw of payload.items ?? []) {
-    const item = String(raw.item ?? "").trim();
+    const key = resolve(raw);
+    const name = String(raw.item ?? raw.item_key ?? "").trim();
+    if (!key) {
+      if (name) dropped.push(name);
+      continue;
+    }
     const content = String(raw.content ?? "").trim();
-    if (!labels.has(item) || content === "" || content === "未提供") continue;
+    if (content === "" || content === "未提供") continue; // 空内容不落行（不算丢弃）
+    if (rows.some((r) => r.item === byKey.get(key)!.label)) continue; // 同项去重，先到先得
     const sourceType = raw.source_type === "用户补充" ? "用户补充" : "AI推断";
     rows.push({
-      item,
+      item: byKey.get(key)!.label,
       content,
       source: String(raw.source ?? "").trim() || (sourceType === "用户补充" ? "对话" : "系统推断"),
       source_type: sourceType,
     });
   }
-  return rows;
+  return { rows, dropped };
 }
+
+/** 「整理成定义」等待模型的上限（毫秒）；超时即降级为不写任何内容，避免请求无限挂起 */
+export const CONSOLIDATE_TIMEOUT_MS = 120_000;
 
 export interface ConsolidateOutcome {
   rows: AnchorRow[];
@@ -186,6 +301,8 @@ export interface ConsolidateOutcome {
   skipped: number;
   openQuestions: string[];
   usedLlm: boolean;
+  /** 模型给了但匹配不到固定项的项名（暴露问题，避免静默丢失） */
+  dropped: string[];
 }
 
 /**
@@ -200,25 +317,32 @@ export async function consolidateDefinition(
   dshClient: DshClient,
   scenario: Scenario,
   conversationId: string,
+  opts?: { timeoutMs?: number },
 ): Promise<ConsolidateOutcome> {
+  const timeoutMs = opts?.timeoutMs ?? CONSOLIDATE_TIMEOUT_MS;
   const messages = db.messageRepo.listByConversation(conversationId);
   const transcript = messages
     .map((m) => `${m.role === "用户" ? "用户" : "助手"}：${m.content}`)
     .join("\n");
 
   const itemList = anchorFixedRows()
-    .map((r) => `- ${r.label}${r.confirmRequired ? "（必确认）" : ""}`)
+    .map(
+      (r) =>
+        `- item_key=\`${r.key}\`  中文名「${r.label}」${r.confirmRequired ? "（必确认）" : ""}`,
+    )
     .join("\n");
 
   let incoming: AnchorRow[] = [];
   let intent = "";
   let openQuestions: string[] = [];
+  let dropped: string[] = [];
 
   try {
     const session: SessionHandle = await dshClient.createSession({
       title: `场景定义整理 · ${scenario.name}`,
     });
     let full = "";
+    const deadline = Date.now() + timeoutMs;
     for await (const ev of dshClient.prompt(session, {
       system: DEFINITION_SYSTEM,
       user: [
@@ -233,10 +357,15 @@ export async function consolidateDefinition(
       outputContract: CONSOLIDATE_CONTRACT,
     })) {
       if (ev.type === "text") full += (ev as { type: string; text: string }).text;
+      // 有界等待：模型长时间无输出就断开（break 会关闭该异步生成器），
+      // 降级为"不写任何内容"——用户可再点一次，而不是让请求悬着
+      if (Date.now() > deadline) break;
     }
     const parsed = parseConsolidation(full);
     if (parsed) {
-      incoming = normalizeConsolidatedItems(parsed);
+      const normalized = normalizeConsolidatedItems(parsed);
+      incoming = normalized.rows;
+      dropped = normalized.dropped;
       intent = String(parsed.intent ?? "").trim();
       openQuestions = Array.isArray(parsed.open_questions)
         ? parsed.open_questions.map(String).slice(0, 3)
@@ -277,6 +406,7 @@ export async function consolidateDefinition(
     skipped: Math.max(0, anchorConfirmRows().length - updated),
     openQuestions,
     usedLlm,
+    dropped,
   };
 }
 
@@ -315,9 +445,31 @@ export function definitionMessages(
     }));
 }
 
-/** 表1-1 是否已有内容（流程第 1 步的就绪判定：定义已整理过） */
+/**
+ * L1 六项（场景本体）中已填的数量
+ *
+ * 为什么就绪判定要看 **L1** 而不是"表1-1 任一行有内容"：
+ * 锚骨架在**新建场景时**就用项目名填了「场景名称」，若按"任一行有内容"判定，
+ * 项目一建好第 1 步就 ready，直接架空了"先聊清楚再整理成定义"的设计意图
+ * （前端面板的「已整理成定义」徽标也是按 L1 判定——两处口径必须一致）。
+ */
+export function l1FilledCount(db: DbInstance, scenarioId: string): number {
+  const byItem = new Map(readAnchorRows(db, scenarioId).map((r) => [r.item, r]));
+  return anchorConfirmRows().filter((r) => {
+    const row = byItem.get(r.label);
+    const content = String(row?.content ?? "").trim();
+    return content !== "" && content !== "未提供";
+  }).length;
+}
+
+/** 定义是否已整理（流程第 1 步就绪判定：L1 至少一项有内容） */
 export function hasDefinition(db: DbInstance, scenarioId: string): boolean {
-  return readAnchorRows(db, scenarioId).some((r) => String(r.content).trim() !== "" && r.content !== "未提供");
+  return l1FilledCount(db, scenarioId) > 0;
+}
+
+/** L1 待确认项数（右栏确认清单与就绪提示共用口径） */
+export function l1PendingCount(db: DbInstance, scenarioId: string): number {
+  return anchorConfirmRows().length - l1FilledCount(db, scenarioId);
 }
 
 /** 供测试与调试：表1-1 定义项定义 */

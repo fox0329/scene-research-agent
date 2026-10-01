@@ -204,6 +204,8 @@ export interface ApiDefinitionState {
 
 /** 「整理成定义」结果：写表统计 + 对照表 + 仍需用户回答的问题 */
 export interface ApiDefinitionConsolidation {
+  /** 模型给了但匹配不到固定项的项名（排查用，正常为空） */
+  dropped?: string[];
   rows: ApiAnchorRow[];
   alignment: ApiDefinitionAlignment[];
   updated: number;

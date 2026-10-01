@@ -15,6 +15,25 @@ import { join } from "node:path";
 
 const LIVE = "http://127.0.0.1:4181";
 
+/**
+ * 点「整理成定义」并等对照表出现（6 行 L1）
+ *
+ * 联真用例跑真模型 + 本机共享端口，工作区里可能有并行 E2E 实例在抢 4181：
+ * 观察到偶发的网络层失败（弹窗内出现「Failed to fetch」，重跑即好）。
+ * 这里在**不降低断言强度**的前提下重试一次；业务错误仍会原样失败。
+ */
+async function consolidateAndWait(dlg: import("@playwright/test").Locator): Promise<void> {
+  const btn = dlg.getByRole("button", { name: "整理成定义" });
+  await expect(btn).toBeEnabled({ timeout: 120_000 });
+  await btn.click();
+  await expect(dlg.locator(".align-table").or(dlg.locator(".modal-error"))).toBeVisible({
+    timeout: 120_000,
+  });
+  if (await dlg.locator(".modal-error").count()) await btn.click();
+  await expect(dlg.locator(".align-table")).toBeVisible({ timeout: 120_000 });
+  await expect(dlg.locator(".align-table tbody tr")).toHaveCount(6);
+}
+
 /** 最小可解析 PDF（正文一段文字，供 doc-parser 提取） */
 const PDF_FIXTURE = join(tmpdir(), "scene-e2e-upload.pdf");
 
@@ -181,12 +200,9 @@ test("场景定义对话（联真）：新建只输名称 → 自动开「场景
   await dlg.locator(".definition-ta").fill("客户是市政水务集团，只看出厂到管网，先做内部判断。");
   await dlg.getByRole("button", { name: "发送" }).click();
   await expect(userBubbles).toHaveCount(2, { timeout: 20_000 });
-  await expect(dlg.getByRole("button", { name: "整理成定义" })).toBeEnabled({ timeout: 120_000 });
 
   // 整理成定义：对照表 6 行（表1-1 的 L1 六项）
-  await dlg.getByRole("button", { name: "整理成定义" }).click();
-  await expect(dlg.locator(".align-table")).toBeVisible({ timeout: 120_000 });
-  await expect(dlg.locator(".align-table tbody tr")).toHaveCount(6);
+  await consolidateAndWait(dlg);
   await expect(dlg.locator(".align-badge").first()).toBeVisible();
   await dlg.getByRole("button", { name: "完成，去确认表格" }).click();
   await expect(dlg).toBeHidden();
@@ -233,8 +249,7 @@ test("流程逐页推进（联真）：完成本步走的是 /flow 接口，确�
   await expect(
     defDlg.locator(".msg.ai .bub").first(),
   ).toBeVisible({ timeout: 120_000 });
-  await defDlg.getByRole("button", { name: "整理成定义" }).click();
-  await expect(defDlg.locator(".align-table")).toBeVisible({ timeout: 120_000 });
+  await consolidateAndWait(defDlg);
   await defDlg.getByRole("button", { name: "完成，去确认表格" }).click();
   await expect(defDlg).toBeHidden();
   // 整理成定义后本步就绪

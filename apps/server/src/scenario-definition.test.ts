@@ -89,20 +89,50 @@ describe("scenario-definition — 系统提示词与上下文", () => {
 });
 
 describe("scenario-definition — 整理结果收敛", () => {
-  it("丢弃非固定项与空内容；source_type 只接受 用户补充 / AI推断", () => {
-    const rows = normalizeConsolidatedItems({
+  it("优先 item_key 匹配；空内容不落行；丢弃项被显式记录（不静默）", () => {
+    const { rows, dropped } = normalizeConsolidatedItems({
       items: [
-        { item: "客户类型/行业", content: "x", source_type: "用户确认" },
+        { item_key: "customer_type", content: "x", source_type: "用户确认" },
         { item: "覆盖什么", content: "y", source_type: "用户补充" },
         { item: "乱写的项", content: "z", source_type: "用户补充" },
         { item: "核心用途", content: "  ", source_type: "AI推断" },
         { item: "明确不含什么", content: "未提供", source_type: "AI推断" },
       ],
     });
-    // 非固定项与空内容被丢弃；保留的是「客户类型/行业」（自称用户确认 → 降级）与「覆盖什么」
     expect(rows.map((r) => r.item)).toEqual(["客户类型/行业", "覆盖什么"]);
     // 模型自称「用户确认」→ 降级为推断（保留内容，但绝不落成用户确认）
     expect(rows[0]?.source_type).toBe("AI推断");
+    // 匹配不到的项名被列出来（真机上曾因标签对不上而静默丢失）
+    expect(dropped).toEqual(["乱写的项"]);
+  });
+
+  it("中文标签与注册表不完全一致时仍能对上（真机暴露的问题）", () => {
+    // 真机现象：模型输出「客户类型」「不含什么」这类近似标签，
+    // 早期精确匹配把它们全丢掉，导致"整理后 L1 全空"而 used_llm=true
+    const { rows, dropped } = normalizeConsolidatedItems({
+      items: [
+        { item: "客户类型", content: "市政水务集团", source_type: "用户补充" },
+        { item: "不含什么", content: "不含二次供水", source_type: "用户补充" },
+        { item: "覆盖范围", content: "出厂到管网", source_type: "用户补充" },
+      ],
+    });
+    expect(dropped).toEqual([]);
+    expect(rows.map((r) => r.item)).toEqual([
+      "客户类型/行业",
+      "明确不含什么",
+      "覆盖什么",
+    ]);
+  });
+
+  it("同项重复输出时先到先得（不产生重复行）", () => {
+    const { rows } = normalizeConsolidatedItems({
+      items: [
+        { item_key: "use_case", content: "第一版", source_type: "AI推断" },
+        { item: "核心用途", content: "第二版", source_type: "AI推断" },
+      ],
+    });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.content).toBe("第一版");
   });
 });
 
@@ -160,6 +190,29 @@ describe("scenario-definition — 整理成定义", () => {
     };
     const convId = await ensureDefinitionConversation(db, dsh, db.scenarioRepo.getById(scenarioId)!);
     const out = await consolidateDefinition(db, dsh, db.scenarioRepo.getById(scenarioId)!, convId);
+    expect(out.usedLlm).toBe(false);
+    expect(hasDefinition(db, scenarioId)).toBe(false);
+  });
+
+  it("有界等待：模型长时间无输出时降级（不挂起、不写内容）", async () => {
+    const { db, scenarioId } = setup();
+    const slow: DshClient = {
+      createSession: vi.fn(async () => ({ sessionId: "s" })),
+      // 每 20ms 吐一次，永远不结束 → 应被超时截断
+      prompt: vi.fn(async function* (): AsyncGenerator<FollowEvent> {
+        for (let i = 0; i < 100; i++) {
+          await new Promise((r) => setTimeout(r, 20));
+          yield { type: "text", text: "…" };
+        }
+      }),
+      cancel: vi.fn(async () => {}),
+    };
+    const convId = await ensureDefinitionConversation(db, slow, db.scenarioRepo.getById(scenarioId)!);
+    const t0 = Date.now();
+    const out = await consolidateDefinition(db, slow, db.scenarioRepo.getById(scenarioId)!, convId, {
+      timeoutMs: 120,
+    });
+    expect(Date.now() - t0).toBeLessThan(2000); // 有界：不会跑满 100×20ms
     expect(out.usedLlm).toBe(false);
     expect(hasDefinition(db, scenarioId)).toBe(false);
   });
@@ -254,7 +307,28 @@ describe("scenario-definition — 路由", () => {
     expect(nf.statusCode).toBe(404);
   });
 
-  it("整理后流程第 1 步变为就绪（就绪看定义是否已整理）", async () => {
+  it("回归：经路由新建场景后第 1 步**仍未就绪**（锚骨架只填了「场景名称」，不算定义已整理）", async () => {
+    const created = await app.inject({
+      method: "POST",
+      url: "/api/v1/projects",
+      payload: { name: "只输名称的新场景" },
+    });
+    const id = (created.json() as { id: string }).id;
+
+    // 锚骨架确实已建，且「场景名称」被填上（这正是让旧判据误判的原因）
+    const anchor = (
+      await app.inject({ method: "GET", url: `/api/v1/projects/${id}/definition` })
+    ).json() as { anchor: { item: string; content: string }[] };
+    expect(anchor.anchor.find((r) => r.item === "场景名称")?.content).toBe("只输名称的新场景");
+
+    const flow = (
+      await app.inject({ method: "GET", url: `/api/v1/projects/${id}/flow` })
+    ).json() as { steps: { id: number; ready: boolean; readyHint: string }[] };
+    expect(flow.steps[0]!.ready).toBe(false);
+    expect(flow.steps[0]!.readyHint).toContain("场景定义");
+  });
+
+  it("整理后流程第 1 步变为就绪（就绪看 L1 场景本体是否已填）", async () => {
     const before = await app.inject({ method: "GET", url: `/api/v1/projects/${scenarioId}/flow` });
     expect(
       (before.json() as { steps: { id: number; ready: boolean }[] }).steps[0]!.ready,
@@ -274,6 +348,6 @@ describe("scenario-definition — 路由", () => {
     const first = (after.json() as { steps: { id: number; ready: boolean; readyHint: string }[] })
       .steps[0]!;
     expect(first.ready).toBe(true);
-    expect(first.readyHint).toContain("定义已整理");
+    expect(first.readyHint).toContain("场景本体");
   });
 });

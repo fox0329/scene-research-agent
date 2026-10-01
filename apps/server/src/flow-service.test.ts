@@ -68,7 +68,7 @@ describe("flow-service — 锁步与就绪", () => {
     expect(flow.completedCount).toBe(0);
     expect(flow.steps[0]!.state).toBe("当前");
     expect(flow.steps[0]!.ready).toBe(false);
-    expect(flow.steps[0]!.readyHint).toContain("场景定义对话");
+    expect(flow.steps[0]!.readyHint).toContain("场景定义"); // 指向对话与「整理成定义」
     expect(flow.steps.slice(1).every((s) => s.state === "未解锁")).toBe(true);
   });
 

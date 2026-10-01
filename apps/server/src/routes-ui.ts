@@ -853,6 +853,8 @@ function registerConversationRoutes(
       skipped: out.skipped,
       open_questions: out.openQuestions,
       used_llm: out.usedLlm,
+      // 模型给了但匹配不到固定项的项名：暴露出来，避免"整理后啥也没写"无从排查
+      dropped: out.dropped,
     };
   });
 
