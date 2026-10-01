@@ -62,6 +62,12 @@ for f in \
   apps/server/src/flow-service.ts \
   apps/server/src/flow-service.test.ts \
   apps/server/src/library-merge.test.ts \
+  apps/server/src/scenario-definition.ts \
+  apps/server/src/scenario-definition.test.ts \
+  apps/web/src/components/ScenarioDefinitionDialog.tsx \
+  apps/web/src/components/NewScenarioDialog.tsx \
+  apps/web/src/components/AlignmentTable.tsx \
+  apps/web/src/views/DefinitionStepPanel.tsx \
   apps/web/src/components/FlowRail.tsx \
   apps/web/src/views/BriefStepPanel.tsx \
   apps/web/src/views/DemoFlowPanels.tsx \
@@ -292,6 +298,11 @@ check_contains "03-数据契约与API.md" "/flow/steps/{n}/complete" "流程推�
 check_contains "03-数据契约与API.md" "scenario_step" "流程步完成表登记"
 check_contains "03-数据契约与API.md" "data_scope" "资料合并来源可区分登记"
 check_contains "docs/项目变更表.md" "| 55 |" "变更表 #55 逐页推进登记"
+# ── v2.2 场景定义对话收口 ─────────────────────────────────
+check_contains "03-数据契约与API.md" "v2.2" "契约版本记录 v2.2（场景定义对话）"
+check_contains "03-数据契约与API.md" "/definition/consolidate" "「整理成定义」端点登记"
+check_contains "03-数据契约与API.md" "只在用户点「整理成定义」时才写表" "显式写表规则登记"
+check_contains "04-业务过程重定义.md" "v1.6" "业务过程 v1.6（对话式定义）"
 if [ -f "$ROOT/05-表格定义总表.md" ] && pnpm check:docs >/dev/null 2>&1; then
   echo "✅ 05-表格定义总表.md 与表定义注册表一致（漂移守卫）"
 else
