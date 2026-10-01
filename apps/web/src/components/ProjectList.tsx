@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
+import { FLOW_TOTAL } from "@scene/contract";
 import type { Project } from "../mock/project-data";
 
 interface ProjectListProps {
@@ -135,6 +136,14 @@ export const ProjectList: React.FC<ProjectListProps> = ({
               >
                 <span className={`proj-dot ${project.status === "done" ? "done" : "on"}`} />
                 <span className="proj-nm">{project.name}</span>
+                {/* 流程进度（v1.5）：后端未返回 flow 时不显示，不做本地猜测 */}
+                {project.flow ? (
+                  <span className="proj-step">
+                    {project.flow.finished
+                      ? `已完成 ${FLOW_TOTAL}/${FLOW_TOTAL} 步`
+                      : `第 ${project.flow.currentStep}/${FLOW_TOTAL} 步`}
+                  </span>
+                ) : null}
               </button>
               <button
                 type="button"

@@ -180,3 +180,70 @@ test("场景诉求三段式：新建项目问「想梳理什么」→ 起草表1
   await expect(anchor).toBeVisible({ timeout: 20_000 });
   expect(await anchor.locator(".confirm-dot").count()).toBeGreaterThanOrEqual(6);
 });
+
+/* ─── 流程逐页推进（v1.5）：诉求内嵌面板 → 完成本步 → 锚确认 → 进入第 3 步 ─── */
+
+test("流程逐页推进（联真）：完成本步走的是 /flow 接口，确认锚行后解锁下一步", async ({
+  page,
+  playwright,
+}) => {
+  test.setTimeout(120_000);
+
+  const name = `E2E流程 ${Date.now()}`;
+  const req = await playwright.request.newContext({ baseURL: LIVE });
+  const created = (await (
+    await req.post("/api/v1/projects", { data: { name } })
+  ).json()) as { id: string };
+  await req.dispose();
+
+  await page.goto(`${LIVE}/`);
+  await expect(page.locator(".shell")).toBeVisible();
+  await page.locator(".proj-hd", { hasText: name }).click();
+
+  const rail = page.locator(".flow-rail");
+  await expect(rail.locator(".flow-node--current")).toContainText("场景诉求");
+  // 诉求未填 → 数据判定为未就绪：按钮不可点，readyHint 直接说缺什么
+  const completeBtn = rail.getByRole("button", { name: "完成本步，进入下一步" });
+  await expect(completeBtn).toBeDisabled();
+  await expect(completeBtn).toHaveAttribute("title", /想搞清楚什么/);
+
+  // 第 1 步面板内嵌诉求字段（不是弹窗）；保存后按钮变为可点
+  await page.locator(".ws .brief-textarea").fill("这个场景值不值得进");
+  await page.locator(".ws").getByRole("button", { name: "保存诉求" }).click();
+  await expect(completeBtn).toBeEnabled({ timeout: 20_000 });
+
+  await completeBtn.click();
+  await expect(rail.locator(".flow-node--done")).toHaveCount(1);
+  await expect(rail.locator(".flow-node--current")).toContainText("场景定义与边界");
+
+  // 第 2 步：右栏确认清单逐项确认（L1 六项）→ 本步就绪
+  await expect(page.locator(".det .confirm-list")).toBeVisible({ timeout: 20_000 });
+  await expect(page.locator(".det .layer-L1")).toHaveCount(6);
+  for (let i = 0; i < 6; i++) {
+    await page
+      .locator(".det .confirm-item")
+      .nth(i)
+      .getByRole("button", { name: "确认", exact: true })
+      .click();
+    await expect(page.locator(".det .layer-L1").nth(i)).toBeVisible();
+  }
+  await expect(completeBtn).toBeEnabled({ timeout: 20_000 });
+  await completeBtn.click();
+
+  // 第 3 步「认识场景」：只显示本步表集，左栏场景列表同步显示第 3/9 步
+  await expect(rail.locator(".flow-node--done")).toHaveCount(2);
+  await expect(rail.locator(".flow-node--current")).toContainText("认识场景");
+  await expect(page.locator(".ws .table-chips").first()).toBeVisible({ timeout: 20_000 });
+  await expect(page.locator(".proj-hd.active .proj-step")).toContainText("第 3/9 步", {
+    timeout: 20_000,
+  });
+  // 项目确实落库了：flow 接口与 UI 一致
+  const check = await playwright.request.newContext({ baseURL: LIVE });
+  const flow = (await (await check.get(`/api/v1/projects/${created.id}/flow`)).json()) as {
+    currentStep: number;
+    completedCount: number;
+  };
+  await check.dispose();
+  expect(flow.currentStep).toBe(3);
+  expect(flow.completedCount).toBe(2);
+});

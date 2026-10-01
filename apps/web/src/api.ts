@@ -647,9 +647,17 @@ export async function* sseRequest(
 }
 
 /** 启动阶段分析流（T4.1 路由，进度事件实时反馈） */
-export const advanceStageStream = (projectId: string, stage: number) =>
+/**
+ * 发起本步分析（SSE）
+ *
+ * `step` 会作为 `?step=N` 传给服务端，按**该流程步的表集**限定模型输出契约——
+ * 例如阶段 1 的第 3 步（认识场景）不该重复产出场景锚（表1-1 归第 2 步）。
+ */
+export const advanceStageStream = (projectId: string, stage: number, step?: number) =>
   sseRequest(
-    `/projects/${encodeURIComponent(projectId)}/stages/${stage}/advance`,
+    `/projects/${encodeURIComponent(projectId)}/stages/${stage}/advance${
+      step === undefined ? "" : `?step=${step}`
+    }`,
     undefined,
     undefined,
     "POST",

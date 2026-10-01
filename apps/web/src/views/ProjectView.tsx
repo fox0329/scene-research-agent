@@ -1,17 +1,20 @@
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { FLOW_TOTAL, STAGE_DEFS, flowStep, type InfoStageId } from "@scene/contract";
 import { RealStagePanel } from "./RealStagePanel";
 import { DemoStagePanel } from "./DemoStagePanel";
-import { api } from "../api";
+import { BriefStepPanel } from "./BriefStepPanel";
+import { AnchorStepPanel } from "./AnchorStepPanel";
+import { DeliveryPanel } from "./DeliveryPanel";
+import { DemoAnchorStep, DemoBriefStep } from "./DemoFlowPanels";
+import { FlowRail } from "../components/FlowRail";
+import { api, type ApiAnchorRow, type ApiFlowStatus } from "../api";
 import { useAsync } from "../hooks/useAsync";
 import { useToast } from "../components/Toast";
 import { MaterialUpload } from "../components/MaterialUpload";
 import { MaterialSourcesBar } from "./MaterialSourcesBar";
 import type { StageSnapshot } from "../components/stage-snapshot";
-import {
-  STAGES,
-  type Project,
-  type StageDef,
-} from "../mock/project-data";
+import type { Project } from "../mock/project-data";
+import { DEMO_ANCHOR, buildDemoFlowStatus } from "../mock/demo-flow";
 
 interface ProjectViewProps {
   project: Project;
@@ -22,47 +25,25 @@ interface ProjectViewProps {
   onProjectsChanged?: () => void;
   /** 空项目引导新建（联真模式） */
   onNewProject?: () => void;
-  /** 右栏阶段快照（联真模式）：补充说明 + 确认清单 + 阶段总结 */
+  /** 右栏阶段快照：补充说明 + 确认清单 + 阶段总结 */
   onStageSnapshot?: (snap: StageSnapshot | null) => void;
   /** 主动弹出对话抽屉（v1.14）：定义/澄清生成后让用户直接对话 */
   onOpenConversation?: (convId?: string) => void;
 }
 
-/* ═══ 阶段 3-8：占位（仅演示模式） ═══ */
-
-const StagePlaceholder: React.FC<{ stage: StageDef }> = ({ stage }) => (
-  <div className="pnl">
-    <div className="pnl-h">
-      <div>
-        <h2>
-          阶段 {stage.index} · {stage.label}
-        </h2>
-        <p>本阶段面板将在后续任务实现</p>
-      </div>
-    </div>
-    <div className="pnl-b">
-      <div className="empty-state">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          <circle cx="12" cy="12" r="10" />
-          <line x1="12" y1="16" x2="12" y2="12" />
-          <line x1="12" y1="8" x2="12.01" y2="8" />
-        </svg>
-        <div className="empty-state-title">待实现</div>
-        <div className="empty-state-desc">
-          阶段 {stage.index}「{stage.label}」的内容面板属于后续任务范围
-        </div>
-      </div>
-    </div>
-  </div>
-);
-
-/* ═══ 视图主体 ═══ */
+/** 组装步（第 9 步）对应的落库阶段 */
+const DELIVERY_STAGE = 7;
 
 /**
- * 项目工作台视图
- * 页头（48px）+ 9 阶段 Tab（完成态绿点、当前高亮）+ 阶段面板
- * - 联真模式：统一渲染 RealStagePanel（rows/gates/advice 来自后端）
- * - 演示模式：保留 9 个手工 mock 面板（E2E 交互规范断言依赖）
+ * 项目工作台（v1.5 逐页推进）
+ *
+ * 与 v1.4 的差别：**去掉 8 个阶段并列 tab**，改为「流程轴 + 当前步面板」。
+ * 阶段仍是数据落库口径，但用户只面对"现在这一步"：
+ *   1 输入诉求 → 2 确认场景锚 → 3-8 逐步分析 → 9 组装交付物
+ *
+ * 流程状态是唯一权威：
+ *  - 联真：`GET /flow`（就绪判定由服务端按数据算）
+ *  - 演示：本地内存 + `mock/demo-flow.ts`（同一套 `buildFlowStatus` 状态机）
  */
 export const ProjectView: React.FC<ProjectViewProps> = ({
   project,
@@ -71,76 +52,160 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
   onStageSnapshot,
   onOpenConversation,
 }) => {
-  const [activeStage, setActiveStage] = useState(project.stage);
   const { showToast } = useToast();
 
-  /* 资料失效横幅（联真模式）：上游表改动后提示受影响阶段 */
+  /** 联真流程状态（服务端算好的就绪判定） */
+  const [liveFlow, setLiveFlow] = useState<ApiFlowStatus | null>(null);
+  const [flowError, setFlowError] = useState<string | null>(null);
+  /** 演示流程状态（本地内存：completed + 是否解锁全部） */
+  const [demoCompleted, setDemoCompleted] = useState<readonly number[]>([]);
+  const [demoUnlockedAll, setDemoUnlockedAll] = useState(false);
+  const [demoAnchor, setDemoAnchor] = useState<ApiAnchorRow[]>(DEMO_ANCHOR);
+  /** null = 跟随当前步；数字 = 用户正在回看的某一步 */
+  const [activeStep, setActiveStep] = useState<number | null>(null);
+  const [busy, setBusy] = useState(false);
+  /** 本场景资料面板（默认收起，避免把上传入口摊在页头） */
+  const [materialsOpen, setMaterialsOpen] = useState(false);
+
+  const demoFlow = useMemo(
+    () =>
+      buildDemoFlowStatus({
+        completed: demoCompleted,
+        unlockedAll: demoUnlockedAll,
+        anchor: demoAnchor,
+      }),
+    [demoCompleted, demoUnlockedAll, demoAnchor],
+  );
+  const flow = live ? liveFlow : demoFlow;
+  const step = activeStep ?? flow?.currentStep ?? 1;
+  const stepDef = flow?.steps.find((s) => s.id === step);
+  const current = flow?.steps.find((s) => s.id === flow.currentStep);
+  const stepStage = (flowStep(step).stage ?? DELIVERY_STAGE) as InfoStageId;
+
+  /** 资料失效横幅（联真）：上游表改动后提示受影响阶段 */
   const stale = useAsync(
     () => (live ? api.staleInfo(project.id) : Promise.resolve(null)),
     [live, project.id],
   );
 
-  const isProjectDone = project.status === "done";
-  const badgeText = isProjectDone
-    ? "已完成 · 交付物"
-    : `阶段 ${project.stage} ${STAGES[project.stage]!.label}`;
-  const badgeCls = isProjectDone ? "success" : "primary";
+  const reloadFlow = useCallback(
+    async (follow = false): Promise<ApiFlowStatus | null> => {
+      if (!live) return null;
+      try {
+        const f = await api.getFlow(project.id);
+        setLiveFlow(f);
+        setFlowError(null);
+        if (follow) setActiveStep(null);
+        return f;
+      } catch (err: unknown) {
+        setFlowError(err instanceof Error ? err.message : String(err));
+        return null;
+      }
+    },
+    [live, project.id],
+  );
 
-  const handleNext = () => {
-    setActiveStage((prev) => Math.min(prev + 1, 8));
-  };
+  useEffect(() => {
+    void reloadFlow();
+  }, [reloadFlow]);
 
-  /** 页头「完成阶段」：联真走 decide(继续) 落库，演示仅本地切页 */
-  const handleCompleteStage = useCallback(async () => {
-    if (!live) {
-      handleNext();
-      return;
-    }
+  /** 完成本步（导航动作，不判断信息齐备与否） */
+  const handleComplete = useCallback(async () => {
+    if (!flow || busy) return;
+    const n = flow.currentStep;
+    setBusy(true);
     try {
-      const updated = await api.decide(project.id, activeStage, "继续");
-      showToast(`已确认继续，项目进入阶段 ${updated.current_stage}`);
-      setActiveStage(updated.current_stage);
-      onProjectsChanged?.();
-    } catch (err: unknown) {
-      showToast(`阶段推进失败：${err instanceof Error ? err.message : String(err)}`);
-    }
-  }, [live, project.id, activeStage, showToast, onProjectsChanged]);
-
-
-  /** 场景澄清（v1.12）：系统在对话里提出需要确认的问题——不许不管场景蒙头分析 */
-  const [clarifying, setClarifying] = useState(false);
-  const runClarify = useCallback(async () => {
-    setClarifying(true);
-    try {
-      const r = await api.clarifyScenario(project.id);
-      if (r.need_clarification) {
-        onOpenConversation?.(r.conversation_id);
-        showToast(`已在对话中提出 ${r.questions.length} 个场景澄清问题，请直接在对话里回答`);
+      if (live) {
+        const f = await api.completeFlowStep(project.id, n);
+        setLiveFlow(f);
+        setFlowError(null);
+        setActiveStep(null);
+        onProjectsChanged?.();
+        showToast(`已完成第 ${n} 步，进入第 ${f.currentStep} 步`);
       } else {
-        showToast(r.note ?? "场景信息已充分，无需澄清");
+        setDemoCompleted((prev) => (prev.includes(n) ? prev : [...prev, n]));
+        setActiveStep(null);
       }
     } catch (err: unknown) {
-      showToast(`澄清失败：${err instanceof Error ? err.message : String(err)}`);
+      showToast(`推进失败：${err instanceof Error ? err.message : String(err)}`);
     } finally {
-      setClarifying(false);
+      setBusy(false);
     }
-  }, [project.id, showToast, onOpenConversation]);
+  }, [flow, busy, live, project.id, onProjectsChanged, showToast]);
 
-  /** 编辑场景描述（分析锚）：改后即影响后续全部阶段分析 */
-  const editDescription = useCallback(async () => {
-    const next = window.prompt(
-      "场景描述（分析锚）· 客户/行业、要解决的问题、目标与边界",
-      project.description ?? "",
-    );
-    if (next === null) return;
+  /** 回到某一步重跑：清该步及其后的完成标记（数据保留） */
+  const handleReopen = useCallback(
+    async (n: number) => {
+      if (busy) return;
+      setBusy(true);
+      try {
+        if (live) {
+          const f = await api.reopenFlowStep(project.id, n);
+          setLiveFlow(f);
+          setActiveStep(n);
+          onProjectsChanged?.();
+        } else {
+          setDemoCompleted((prev) => prev.filter((id) => id < n));
+          setActiveStep(n);
+        }
+        showToast(`已回到第 ${n} 步重跑（该步及其后的完成标记已清，数据保留）`);
+      } catch (err: unknown) {
+        showToast(`回退失败：${err instanceof Error ? err.message : String(err)}`);
+      } finally {
+        setBusy(false);
+      }
+    },
+    [busy, live, project.id, onProjectsChanged, showToast],
+  );
+
+  /** 解锁全部步骤（默认锁步推进；着急或只想看某一步时用） */
+  const handleUnlockAll = useCallback(async () => {
+    if (busy || flow?.unlockedAll) return;
+    setBusy(true);
     try {
-      await api.patchProject(project.id, { description: next.trim() });
-      showToast("场景描述已保存，后续分析将围绕它展开");
-      onProjectsChanged?.();
+      if (live) {
+        const f = await api.unlockAllSteps(project.id);
+        setLiveFlow(f);
+      } else {
+        setDemoUnlockedAll(true);
+      }
+      showToast("已解锁全部步骤，可直接点任一节点查看");
     } catch (err: unknown) {
-      showToast(`保存失败：${err instanceof Error ? err.message : String(err)}`);
+      showToast(`解锁失败：${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setBusy(false);
     }
-  }, [project.id, project.description, showToast, onProjectsChanged]);
+  }, [busy, live, project.id, flow?.unlockedAll, showToast]);
+
+  /** 演示态：确认 / 修改锚行（只改本地内存） */
+  const handleDemoAnchorAction = useCallback(
+    (item: string, action: "确认" | "修改", content?: string) => {
+      setDemoAnchor((prev) =>
+        prev.map((a) =>
+          a.item === item
+            ? {
+                ...a,
+                content: content ?? a.content,
+                source_type: action === "确认" ? "用户确认" : "用户补充",
+                confirm_state: action === "确认" ? "用户确认" : "用户修改",
+              }
+            : a,
+        ),
+      );
+    },
+    [],
+  );
+
+  /** 演示态：就地编辑锚行内容（视为用户补充） */
+  const handleDemoAnchorEdit = useCallback((index: number, content: string) => {
+    setDemoAnchor((prev) =>
+      prev.map((a, i) =>
+        i === index
+          ? { ...a, content, source_type: "用户补充", confirm_state: "用户修改" }
+          : a,
+      ),
+    );
+  }, []);
 
   /** 交付物双口径导出（T5.6）：真实链路落服务端 exports/，toast 回显路径 */
   const [exporting, setExporting] = useState(false);
@@ -161,25 +226,97 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
     }
   }, [live, exporting, project.id, showToast]);
 
-  const renderStagePanel = () => {
+  const renderStepBody = (): React.ReactNode => {
+    if (!flow) return null;
     if (live) {
+      if (step === 1) {
+        return (
+          <BriefStepPanel
+            projectId={project.id}
+            flow={flow}
+            onChanged={onProjectsChanged}
+            onFlowChanged={() => void reloadFlow()}
+            onStageSnapshot={onStageSnapshot}
+          />
+        );
+      }
+      if (step === 2) {
+        return (
+          <AnchorStepPanel
+            projectId={project.id}
+            flow={flow}
+            onChanged={onProjectsChanged}
+            onFlowChanged={() => void reloadFlow()}
+            onStageSnapshot={onStageSnapshot}
+            onOpenConversation={onOpenConversation}
+          />
+        );
+      }
+      if (step === FLOW_TOTAL) {
+        return (
+          <DeliveryPanel
+            flow={flow}
+            live
+            projectId={project.id}
+            onStageSnapshot={onStageSnapshot}
+            onExported={onProjectsChanged}
+          />
+        );
+      }
+      const def = flowStep(step);
       return (
         <RealStagePanel
           projectId={project.id}
-          stage={activeStage}
-          stageLabel={STAGES[activeStage]!.label}
+          stage={stepStage}
+          stageLabel={STAGE_DEFS.find((s) => s.id === stepStage)?.name ?? def.title}
+          tables={def.tables}
+          stepId={step}
           onChanged={onProjectsChanged}
+          onFlowChanged={() => void reloadFlow(true)}
           onStageSnapshot={onStageSnapshot}
         />
       );
     }
-    // 演示模式：同一套 schema 与领域逻辑（列/固定行/完整度/总结都来自注册表）
-    return <DemoStagePanel stage={activeStage} onStageSnapshot={onStageSnapshot} />;
+
+    // ── 演示模式：同一套结构与领域逻辑，数据来自本地内存 ──
+    if (step === 1) {
+      return <DemoBriefStep flow={flow} anchor={demoAnchor} onStageSnapshot={onStageSnapshot} />;
+    }
+    if (step === 2) {
+      return (
+        <DemoAnchorStep
+          flow={flow}
+          anchor={demoAnchor}
+          onAnchorAction={handleDemoAnchorAction}
+          onAnchorEdit={handleDemoAnchorEdit}
+          onStageSnapshot={onStageSnapshot}
+        />
+      );
+    }
+    if (step === FLOW_TOTAL) {
+      return <DeliveryPanel flow={flow} live={false} onStageSnapshot={onStageSnapshot} />;
+    }
+    const def = flowStep(step);
+    return (
+      <DemoStagePanel
+        stage={stepStage}
+        tables={def.tables}
+        stepId={step}
+        anchor={demoAnchor}
+        onStageSnapshot={onStageSnapshot}
+      />
+    );
   };
+
+  const flowBadge = flow
+    ? flow.finished
+      ? `已完成全部 ${FLOW_TOTAL} 步`
+      : `第 ${flow.currentStep}/${FLOW_TOTAL} 步 · ${current?.title ?? ""}`
+    : "";
 
   return (
     <>
-      {/* 页头：项目名 + 数据来源徽标 + 阶段徽标（单行 48px） */}
+      {/* 场景头：场景名 + 数据来源徽标 + 流程进度 + 场景资料/导出入口 */}
       <div className="pgh pgh-fixed">
         <div style={{ display: "flex", alignItems: "center", gap: "var(--s3)" }}>
           <div className="pgt">{project.name}</div>
@@ -188,61 +325,61 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
           ) : (
             <span className="badge warning">演示数据</span>
           )}
-          <span className={`badge ${badgeCls}`}>{badgeText}</span>
+          {flowBadge ? <span className="badge primary">{flowBadge}</span> : null}
         </div>
         <div className="pga">
-          {live && project.product_line_id ? (
-            <MaterialUpload
-              lineId={project.product_line_id}
-              onDone={() => onProjectsChanged?.()}
-            />
-          ) : (
-            <button
-              className="btn"
-              type="button"
-              onClick={() => showToast("演示模式：上传入口仅为示意")}
-            >
-              上传材料
-            </button>
-          )}
+          <button
+            className="btn"
+            type="button"
+            aria-expanded={materialsOpen}
+            onClick={() => setMaterialsOpen((v) => !v)}
+          >
+            {materialsOpen ? "收起本场景资料" : "本场景资料"}
+          </button>
           <button className="btn" type="button" onClick={() => void handleExport()} disabled={exporting}>
             {exporting ? "导出中…" : "导出交付物"}
-          </button>
-          <button className="btn primary" type="button" onClick={() => void handleCompleteStage()}>
-            完成阶段
           </button>
         </div>
       </div>
 
-      {/* 场景锚（v1.11）：分析的事实锚点——全部阶段产出围绕它 */}
+      {/* 资料来源（v1.10）：专属库 + 引用通用库，分析时合并 */}
       {live && (
-        <div className="material-sources" role="group" aria-label="场景锚">
-          <span className="badge primary">场景锚</span>
-          <span className="provider-item-meta">
-            {(project.description || "").trim()
-              ? project.description
-              : "⚠ 场景描述未填——分析将缺少锚点，产出易发散（点右侧填写）"}
-          </span>
-          <button
-            className="btn btn-sm"
-            type="button"
-            onClick={() => void editDescription()}
-          >
-            编辑描述
-          </button>
-          <button
-            className="btn btn-sm"
-            type="button"
-            disabled={clarifying}
-            onClick={() => void runClarify()}
-          >
-            {clarifying ? "生成问题中…" : "场景澄清"}
-          </button>
-        </div>
+        <MaterialSourcesBar
+          projectId={project.id}
+          ownLineId={project.product_line_id}
+          onChanged={onProjectsChanged}
+        />
       )}
 
-      {/* 资料来源（v1.10）：专属库 + 引用通用库，分析时合并 */}
-      {live && <MaterialSourcesBar projectId={project.id} ownLineId={project.product_line_id} onChanged={onProjectsChanged} />}
+      {/* 本场景资料：与主资料库隔离，分析时合并、来源可区分 */}
+      {materialsOpen ? (
+        <div className="pnl material-panel">
+          <div className="pnl-h">
+            <div>
+              <h2>本场景资料</h2>
+              <p>
+                本场景专属资料，与主资料库隔离；分析时合并使用，来源可区分（第 1/2 步的锚行与后续各步都会标注出处）
+              </p>
+            </div>
+          </div>
+          <div className="pnl-b">
+            {live && project.product_line_id ? (
+              <MaterialUpload lineId={project.product_line_id} onDone={onProjectsChanged} />
+            ) : (
+              <div className="model-discover-row">
+                <button
+                  className="btn"
+                  type="button"
+                  onClick={() => showToast("演示模式：上传入口仅为示意")}
+                >
+                  上传文件
+                </button>
+                <span className="brief-hint">演示模式不上传入库；连接后端后落到本场景专属库</span>
+              </div>
+            )}
+          </div>
+        </div>
+      ) : null}
 
       {/* 资料失效横幅（上游表被改动，本阶段结果需重算） */}
       {live && stale.status === "ok" && stale.data?.banner && (
@@ -252,29 +389,54 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
         </div>
       )}
 
-      {/* 阶段 Tab：完成态显示绿点，当前激活高亮 */}
-      <div className="stabs" role="tablist" aria-label="分析阶段">
-        {STAGES.map((stage) => {
-          const isDone = stage.index < project.stage;
-          const isActive = activeStage === stage.index;
-          return (
-            <button
-              key={stage.index}
-              type="button"
-              role="tab"
-              aria-selected={isActive}
-              className={`stab${isActive ? " active" : ""}${isDone ? " done" : ""}`}
-              onClick={() => setActiveStage(stage.index)}
-            >
-              <span className="sd" />
-              {stage.label}
-            </button>
-          );
-        })}
-      </div>
+      {/* 流程进度轴（取代 v1.4 的 8 个阶段并列 tab） */}
+      {flow ? (
+        <FlowRail
+          status={flow}
+          activeStep={step}
+          busy={busy}
+          onSelectStep={setActiveStep}
+          onComplete={() => void handleComplete()}
+          onUnlockAll={() => void handleUnlockAll()}
+        />
+      ) : (
+        <div className="flow-rail">
+          <div className="pnl-b">
+            {flowError ? (
+              <div className="empty-state">
+                <div className="empty-state-title">流程状态加载失败</div>
+                <div className="empty-state-desc">{flowError}</div>
+                <button className="btn" type="button" onClick={() => void reloadFlow()}>
+                  重试
+                </button>
+              </div>
+            ) : (
+              <div className="loading-strip" role="status" aria-label="加载中" />
+            )}
+          </div>
+        </div>
+      )}
 
-      {/* 阶段面板 */}
-      <div className="ws">{renderStagePanel()}</div>
+      {/* 当前步面板 */}
+      <div className="ws">
+        {stepDef?.state === "已完成" ? (
+          <div className="flow-reopen" role="status">
+            <span className="badge success">已完成</span>
+            <span className="flow-reopen-text">
+              正在回看第 {step} 步「{stepDef.title}」；回到这一步重跑会清掉该步及其后的完成标记，数据保留
+            </span>
+            <button
+              className="btn btn-sm"
+              type="button"
+              disabled={busy}
+              onClick={() => void handleReopen(step)}
+            >
+              回到这一步重跑
+            </button>
+          </div>
+        ) : null}
+        {renderStepBody()}
+      </div>
     </>
   );
 };

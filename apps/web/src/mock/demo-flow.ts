@@ -19,7 +19,7 @@ import {
   type FlowReadiness,
   type InfoRow,
 } from "@scene/domain";
-import { asSourceType } from "../components/stage-snapshot";
+import { asSourceType, type ChecklistViewItem } from "../components/stage-snapshot";
 import type { ApiAnchorRow, ApiFlowStatus } from "../api";
 
 /** 演示用的场景锚（表1-1） */
@@ -194,15 +194,7 @@ export function buildDemoFlowStatus(input: {
 }
 
 /** 演示态确认清单（右栏 Tab ①，与联真同结构） */
-export function demoChecklist(anchor: readonly ApiAnchorRow[]): ApiFlowStatus["steps"][number] extends never
-  ? never
-  : {
-      layer: "L1" | "L2" | "L3";
-      tableCode: string;
-      rowKey: string;
-      label: string;
-      state: string;
-    }[] {
+export function demoChecklist(anchor: readonly ApiAnchorRow[]): ChecklistViewItem[] {
   return buildChecklist({
     anchorRows: anchor.map((a) => ({
       item: a.item,

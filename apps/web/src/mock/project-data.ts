@@ -30,13 +30,23 @@ export type Project = {
   id: string;
   name: string;
   status: ProjectStatus;
-  /** 当前所处阶段 0-8 */
+  /** 当前所处阶段 0-8（数据落库口径；用户看到的推进单位是流程步） */
   stage: number;
   productLine: string;
   /** 场景描述（分析锚 v1.11） */
   description?: string;
   /** 场景专属资料库 id（联真模式 v1.10：场景内上传落这里） */
   product_line_id?: string;
+  /**
+   * 流程进度（v1.5：左栏显示「第 n/9 步」）
+   *
+   * 可选：后端旧版本或演示数据没有该字段 → 不显示进度（不做本地猜测）。
+   */
+  flow?: {
+    currentStep: number;
+    completedCount: number;
+    finished: boolean;
+  };
   conversations: Conversation[];
 }
 

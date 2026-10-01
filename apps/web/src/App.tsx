@@ -43,10 +43,12 @@ function mapApiProject(
     product_line_id: p.product_line_id,
     stage: p.current_stage,
     status:
-      p.current_stage >= 8 || p.status === "已完成" || p.status === "已归档"
+      p.flow?.finished || p.current_stage >= 8 || p.status === "已完成" || p.status === "已归档"
         ? "done"
         : "active",
     productLine: lineNames.get(p.product_line_id) ?? "",
+    /* 流程进度（v1.5）：后端旧版本可能没有 flow 字段 → 可选，缺失即不显示 */
+    ...(p.flow ? { flow: p.flow } : {}),
     conversations: conversations.map((c) => ({ id: c.id, name: c.title })),
   };
 }
@@ -186,7 +188,7 @@ const AppShell: React.FC = () => {
       setBriefOpen(false);
       await refreshProjects(projectId);
       setView("project");
-      showToast("场景诉求已保存，场景锚已起草——请在右栏确认清单里逐项确认");
+      showToast("场景诉求已保存，场景锚已起草——第 1 步点「完成本步」后到第 2 步逐项确认");
     },
     [refreshProjects, showToast],
   );
@@ -410,7 +412,7 @@ const NoProjectsPanel: React.FC<{ onNew: () => void }> = ({ onNew }) => (
             </svg>
             <div className="empty-state-title">还没有项目</div>
             <div className="empty-state-desc">
-              新建一个场景分析项目，上传产品资料后从阶段 0 开始推进
+              新建一个场景分析项目，上传产品资料后从第 1 步「场景诉求」开始推进
             </div>
             <button className="btn primary" type="button" onClick={onNew}>
               新建项目

@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
+  FLOW_STEPS,
   STAGE_DEFS,
   tablesOfStage,
   tableDef,
@@ -10,6 +11,7 @@ import { buildChecklist, buildStageSummary, checkStageCompleteness, type InfoRow
 import { AnchorTable, SchemaTable, tableBlocks, tableCategories } from "../components/SchemaTable";
 import { asSourceType, type StageSnapshot, type SupplementTable } from "../components/stage-snapshot";
 import type { ApiAnchorRow, ApiCompleteness } from "../api";
+import { DEMO_ANCHOR, DEMO_ROWS } from "../mock/demo-flow";
 
 /**
  * 演示模式阶段面板（无后端）
@@ -19,118 +21,35 @@ import type { ApiAnchorRow, ApiCompleteness } from "../api";
  *  - 完整度与阶段总结来自 `packages/domain`（`checkStageCompleteness` / `buildStageSummary`）
  * 因此演示态与联真态的结构一致，E2E 断言的交互规范同样成立——这也是删除
  * 9 个手写 mock 面板（约 1.7k 行）后仍能验收的原因。
+ *
+ * v1.5：本面板只负责「某一步的表集」——`tables` 由流程定义给出（第 3-8 步），
+ * 推进按钮上移到 `FlowRail`（全局唯一推进入口）。
  */
-
-const DEMO_ANCHOR: ApiAnchorRow[] = [
-  { item: "场景名称", content: "智慧水务", source_type: "用户补充" },
-  { item: "客户类型/行业", content: "市政水务集团", source_type: "用户确认" },
-  { item: "覆盖什么", content: "只看出厂到管网", source_type: "AI提取" },
-  { item: "核心用途", content: "想搞清楚这个场景值不值得进", source_type: "用户确认" },
-  { item: "切入点", content: "存量泵站改造", source_type: "AI推断" },
-];
-
-/** 演示行：键必须存在于该表定义中（否则会被渲染成空列） */
-const DEMO_ROWS: Record<string, InfoRow[]> = {
-  M1: [
-    { model: "IPC-3000", name: "边缘控制器", status: "在售", category: "控制类" },
-    { model: "SEN-200", name: "压力变送器", status: "在售", category: "感知类" },
-  ],
-  M3: [
-    { domain: "设备接入", name: "Modbus/OPC-UA 接入", maturity: "已交付", note: "支持 20+ 协议" },
-  ],
-  "表1-2": [
-    {
-      link: "制水",
-      is_digital: "可以联网采集",
-      can_touch: "可以碰",
-      our_role: "辅助",
-      description: "加药与过滤环节的数据采集",
-    },
-    {
-      link: "输配",
-      is_digital: "可以联网采集",
-      can_touch: "可以碰",
-      our_role: "替代",
-      description: "管网调度与漏损分析",
-    },
-    {
-      link: "原水取水",
-      is_digital: "必须物理隔离",
-      can_touch: "不能碰",
-      our_role: "不参与",
-      description: "水源安全相关，不介入",
-    },
-  ],
-  "表1-3": [
-    {
-      barrier_type: "技术",
-      barrier_name: "等保三级",
-      criteria: "GB/T 22239",
-      current_status: "过得了",
-      judgment: "过得了",
-    },
-    {
-      barrier_type: "行业准入",
-      barrier_name: "计量器具型式批准",
-      criteria: "CPA 认证",
-      current_status: "绕道",
-      judgment: "绕道",
-    },
-  ],
-  "表3-1": [{ link: "视频监控", gross_margin: "35%", representative: "行业头部厂商" }],
-  "表3-2": [
-    {
-      form: "一体化平台",
-      key_points: "软硬一体、统一运维",
-      leader: "头部厂商",
-      position: "主导",
-      our_entry: "从边缘分析切入",
-    },
-  ],
-  "表4-1": [
-    { capability: "设备接入", level: "已具备", evidence: "M3 能力清单", gap: "无" },
-  ],
-  "表5-1": [
-    {
-      layer: "边缘层",
-      components: "边缘网关 + 协议转换",
-      interface: "Modbus/OPC-UA",
-      integration: "对接现有 SCADA",
-      boundary: "不承担安全责任",
-    },
-  ],
-  "表6-1": [
-    {
-      benefit: "降低漏损率",
-      metric: "漏损率",
-      baseline: "18%",
-      expected: "12%",
-      how_to_measure: "分区计量（DMA）",
-      user_feeling: "水费与投诉下降",
-      evidence_level: "C",
-    },
-  ],
-  "表7-1": [
-    {
-      target: "内部能力沉淀",
-      content: "沉淀水务行业方案模板与报价基线",
-      basis: "阶段 2 表3-8 需求缺口",
-    },
-  ],
-};
 
 export interface DemoStagePanelProps {
   stage: number;
+  /** 本步表集（流程定义给出）；缺省 = 该阶段全部表 */
+  tables?: readonly string[];
+  /** 流程步骤号（右栏页头用「第 n/9 步」而不是阶段号） */
+  stepId?: number;
+  /** 演示态场景锚（确认清单的 L1 来源） */
+  anchor?: readonly ApiAnchorRow[];
   onStageSnapshot?: (snap: StageSnapshot | null) => void;
 }
 
-export const DemoStagePanel: React.FC<DemoStagePanelProps> = ({ stage, onStageSnapshot }) => {
+export const DemoStagePanel: React.FC<DemoStagePanelProps> = ({
+  stage,
+  tables,
+  stepId,
+  anchor,
+  onStageSnapshot,
+}) => {
   const id = (stage === 8 ? 7 : stage) as InfoStageId;
   const def = STAGE_DEFS.find((s) => s.id === id);
-  const stageTables = useMemo(
-    () => tablesOfStage(id).filter((t) => t.code !== "表1-1"),
-    [id],
-  );
+  const stageTables = useMemo(() => {
+    const all = tablesOfStage(id).filter((t) => t.code !== "表1-1");
+    return tables ? all.filter((t) => tables.includes(t.code)) : all;
+  }, [id, tables]);
   const [activeTable, setActiveTable] = useState<string | null>(null);
   /** 演示态编辑：只改本地内存（无后端），保证交互规范（逐格可编辑）在演示态同样成立 */
   const [edits, setEdits] = useState<Record<string, Record<string, unknown>>>({});
@@ -200,8 +119,9 @@ export const DemoStagePanel: React.FC<DemoStagePanelProps> = ({ stage, onStageSn
         });
       }
     }
+    const checklistAnchor = anchor && anchor.length > 0 ? anchor : DEMO_ANCHOR;
     const checklist = buildChecklist({
-      anchorRows: DEMO_ANCHOR.map((a) => ({
+      anchorRows: checklistAnchor.map((a) => ({
         item: a.item,
         content: a.content,
         source_type: asSourceType(a.source_type),
@@ -212,6 +132,9 @@ export const DemoStagePanel: React.FC<DemoStagePanelProps> = ({ stage, onStageSn
     return {
       stage,
       stageLabel: def?.name ?? "",
+      ...(stepId
+        ? { title: `第 ${stepId}/9 步 · ${FLOW_STEPS.find((s) => s.id === stepId)?.title ?? (def?.name ?? "")}` }
+        : {}),
       rows: [],
       completeness,
       summary,
@@ -225,12 +148,12 @@ export const DemoStagePanel: React.FC<DemoStagePanelProps> = ({ stage, onStageSn
         label: i.label,
         state: i.state,
       })),
-      anchor: DEMO_ANCHOR,
+      anchor: [...checklistAnchor],
       onRefreshSummary: () => undefined,
       onSupplementChange: () => undefined,
       onAnchorAction: () => undefined,
     };
-  }, [stage, def, completeness, summary, activeTable, supplementsKey(activeTable, category), rowsByTable, id]);
+  }, [stage, stepId, def, completeness, summary, activeTable, supplementsKey(activeTable, category), rowsByTable, id, anchor]);
 
   useEffect(() => {
     onStageSnapshot?.(snapshot);
@@ -245,14 +168,11 @@ export const DemoStagePanel: React.FC<DemoStagePanelProps> = ({ stage, onStageSn
         <div className="pnl-h">
           <div>
             <h2>
-              阶段 {stage} · {def?.name ?? ""}
+              {stepId ? `第 ${stepId}/9 步 · ` : `阶段 ${stage} · `}
+              {stepId ? (FLOW_STEPS.find((s) => s.id === stepId)?.title ?? def?.name ?? "") : def?.name ?? ""}
             </h2>
             <p>演示模式：结构、列定义与完整度口径与联真一致（数据为示例）</p>
           </div>
-          {/* 导航动作与联真一致：信息不齐备也不阻断 */}
-          <button className="btn" type="button">
-            进入下一阶段
-          </button>
         </div>
         <div className="pnl-b flush">
           <div className="completeness-bar">

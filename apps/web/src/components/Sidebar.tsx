@@ -32,8 +32,9 @@ interface SidebarProps {
 /**
  * 左栏导航
  * 顶部：产品名 + 新建按钮
- * 中部：项目列表（项目/会话管理，见 ProjectList）
- * 底部：产品资料库 / 知识库 / 设置 视图入口
+ * 基础设施区（常驻，与场景无关）：产品资料库 / 知识库
+ * 场景区：场景列表（项目/会话管理，见 ProjectList）——每项显示「第 n/9 步」
+ * 底部：设置
  */
 export const Sidebar: React.FC<SidebarProps> = ({
   activeView,
@@ -63,18 +64,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </button>
       </div>
 
-      <div className="side-body">
-        <ProjectList
-          projects={projects}
-          activeProjectId={activeProjectId}
-          activeConvId={activeConvId}
-          onSelectProject={onSelectProject}
-          onSelectConversation={onSelectConversation}
-          onProjectAction={onProjectAction}
-          onConversationAction={onConversationAction}
-        />
-      </div>
-      <div className="side-foot">
+      {/* 基础设施区：与场景无关的常驻入口（资料库 / 知识库） */}
+      <div className="side-group">
+        <div className="side-group-title">基础设施</div>
         <button
           className={`nav-item${activeView === "library" ? " active" : ""}`}
           onClick={() => onViewChange("library")}
@@ -97,6 +89,21 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <span>知识库</span>
           <span className="count">{knowledgeCount != null ? `${knowledgeCount} 条` : "23 条"}</span>
         </button>
+      </div>
+
+      <div className="side-group-title side-group-title--list">场景</div>
+      <div className="side-body">
+        <ProjectList
+          projects={projects}
+          activeProjectId={activeProjectId}
+          activeConvId={activeConvId}
+          onSelectProject={onSelectProject}
+          onSelectConversation={onSelectConversation}
+          onProjectAction={onProjectAction}
+          onConversationAction={onConversationAction}
+        />
+      </div>
+      <div className="side-foot">
         <button
           className={`nav-item${activeView === "settings" ? " active" : ""}`}
           onClick={() => onViewChange("settings")}

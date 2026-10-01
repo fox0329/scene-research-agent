@@ -186,18 +186,68 @@ test("表1-1 场景锚常驻且带必确认标记", async ({ page }) => {
   expect(confirmDots).toBeGreaterThanOrEqual(6);
 });
 
-test("随时回看任意阶段：阶段 Tab 切换（断点续做的 UI 侧）", async ({ page }) => {
-  const tabs = page.locator(".stabs").getByRole("tab");
-  await expect(tabs).toHaveCount(8);
-  await page.getByRole("tab", { name: /门槛/ }).click();
-  await expect(page.getByRole("tab", { name: /门槛/ })).toHaveAttribute("aria-selected", "true");
+test("流程轴：9 个节点、当前步高亮、未解锁不可点（v1.5 取代阶段 Tab）", async ({ page }) => {
+  const rail = page.locator(".flow-rail");
+  await expect(rail).toBeVisible();
+  const nodes = rail.getByRole("tab");
+  await expect(nodes).toHaveCount(9);
+
+  // 当前步唯一且高亮；初始 0 步完成 → 第 1 步是当前步，其余锁着
+  await expect(rail.locator(".flow-node--current")).toHaveCount(1);
+  await expect(rail.locator(".flow-node--current")).toHaveAttribute("aria-selected", "true");
+  await expect(rail.locator(".flow-node--current")).toContainText("场景诉求");
+  await expect(rail.locator(".flow-node--done")).toHaveCount(0);
+  await expect(rail.locator(".flow-node--locked")).toHaveCount(8);
+  await expect(nodes.nth(1)).toBeDisabled();
+  await expect(nodes.nth(1)).toHaveAttribute("aria-label", /场景定义与边界/);
+
+  // 当前步的 readyHint 直接显示在轴上
+  await expect(rail.locator(".flow-hint")).toContainText("第 1/9 步");
+  await expect(rail.locator(".flow-hint")).toContainText("演示数据已预填诉求");
   await expect(page.locator(".ws .pnl").first()).toBeVisible();
 });
 
+test("流程推进：完成本步 → 当前步前移；已完成步可回看重跑", async ({ page }) => {
+  const rail = page.locator(".flow-rail");
+  await rail.getByRole("button", { name: "完成本步，进入下一步" }).click();
+
+  await expect(rail.locator(".flow-node--done")).toHaveCount(1);
+  await expect(rail.locator(".flow-node--done")).toContainText("场景诉求");
+  await expect(rail.locator(".flow-node--current")).toContainText("场景定义与边界");
+  await expect(rail.locator(".flow-node--locked")).toHaveCount(7);
+  // 第 2 步：表1-1 可就地编辑 + 全流程完整度状态行
+  await expect(page.locator(".ws .schema-table--anchor")).toBeVisible();
+  await expect(page.locator(".ws .completeness-bar")).toBeVisible();
+
+  // 点已完成节点回看：显示该步内容 + 「回到这一步重跑」
+  await rail.getByRole("tab", { name: /场景诉求/ }).click();
+  await expect(rail.locator(".flow-hint")).toContainText("正在回看第 1 步");
+  await expect(page.locator(".flow-reopen")).toBeVisible();
+  await page.getByRole("button", { name: "回到这一步重跑" }).click();
+  await expect(rail.locator(".flow-node--current")).toContainText("场景诉求");
+  await expect(rail.locator(".flow-node--done")).toHaveCount(0);
+  await expect(rail.locator(".flow-node--locked")).toHaveCount(8);
+});
+
+test("解锁全部步骤：未解锁节点可点，可直接跳到任一步", async ({ page }) => {
+  const rail = page.locator(".flow-rail");
+  await rail.getByRole("button", { name: "解锁全部步骤" }).click();
+  await expect(rail.locator(".flow-node--locked")).toHaveCount(0);
+  await expect(rail.getByRole("button", { name: "已解锁全部步骤" })).toBeDisabled();
+
+  // 不按顺序直接跳到第 4 步；当前步仍是第 1 步，轴给出回到当前步的入口
+  await rail.getByRole("tab", { name: /理解商业/ }).click();
+  await expect(rail.locator(".flow-node--current")).toContainText("场景诉求");
+  await expect(rail.getByRole("button", { name: /回到当前步/ })).toBeVisible();
+  await expect(page.locator(".ws .completeness-bar")).toBeVisible();
+});
+
 test("随时回编辑：关键表格单元格可逐格编辑，失焦后值保留", async ({ page }) => {
-  // 阶段 0 表格：可编辑单元格存在
-  await page.getByRole("tab", { name: /材料/ }).click();
-  const cell = page.locator(".ed").first();
+  // 流程轴解锁后跳到第 3 步「认识场景」：本步表集里有可编辑单元格
+  const rail = page.locator(".flow-rail");
+  await rail.getByRole("button", { name: "解锁全部步骤" }).click();
+  await rail.getByRole("tab", { name: /认识场景/ }).click();
+  const cell = page.locator(".ws .ed").first();
   await expect(cell).toHaveAttribute("contenteditable", "true");
   // 资料库 M1 清单：编辑落到数据（handleCellChange 实链路）
   await page.getByRole("button", { name: "产品资料库" }).click();

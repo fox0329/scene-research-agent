@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  FLOW_TOTAL,
   STAGE_DEFS,
+  flowStep,
   supplementColumns,
   tableDef,
   tablesOfStage,
@@ -39,6 +41,12 @@ interface RealStagePanelProps {
   onChanged?: () => void;
   /** 右栏数据面（null=加载中/不可用） */
   onStageSnapshot?: (snap: StageSnapshot | null) => void;
+  /** 本步表集（流程定义给出，如 `flowStep(4).tables`）；缺省 = 该阶段全部表 */
+  tables?: readonly string[];
+  /** 流程步骤号：头部与右栏显示「第 n/9 步」，推进按钮也按流程步走 */
+  stepId?: number;
+  /** 完成本步后通知父级重取 /flow（流程状态变化的唯一出口） */
+  onFlowChanged?: () => void;
 }
 
 export const RealStagePanel: React.FC<RealStagePanelProps> = ({
@@ -47,6 +55,9 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
   stageLabel,
   onChanged,
   onStageSnapshot,
+  tables,
+  stepId,
+  onFlowChanged,
 }) => {
   const { status, data, error, reload } = useAsync<ApiStagePanel>(
     () => api.stagePanel(projectId, stage),
@@ -54,16 +65,28 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
   );
   const { showToast } = useToast();
 
-  /** 进入下一阶段：这是**导航动作**，不是判断——信息不齐备也不阻断（用户自己决定先补还是先走） */
-  const goNextStage = useCallback(async () => {
+  /** 页头标题：v1.5 用「第 n/9 步」表达推进位置（阶段号退为数据口径） */
+  const headTitle =
+    stepId !== undefined
+      ? `第 ${stepId}/${FLOW_TOTAL} 步 · ${flowStep(stepId).title}`
+      : `阶段 ${stage} · ${stageLabel}`;
+
+  /** 完成本步并前进：**导航动作**，不是判断——信息不齐备也不阻断（缺口只在右栏提示） */
+  const completeStep = useCallback(async () => {
     try {
+      if (stepId !== undefined) {
+        const next = await api.completeFlowStep(projectId, stepId);
+        showToast(`已完成第 ${stepId} 步，进入第 ${next.currentStep} 步`);
+        onFlowChanged?.();
+        return;
+      }
       const project = await api.decide(projectId, stage, "继续");
       showToast(`已进入阶段 ${project.current_stage}（信息缺口可在右栏随时回看）`);
       onChanged?.();
     } catch (err: unknown) {
       showToast(`推进失败：${err instanceof Error ? err.message : String(err)}`);
     }
-  }, [projectId, stage, showToast, onChanged]);
+  }, [projectId, stage, stepId, showToast, onChanged, onFlowChanged]);
 
   const [streamLines, setStreamLines] = useState<string[]>([]);
   const [running, setRunning] = useState(false);
@@ -73,11 +96,12 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
   const [patched, setPatched] = useState<Record<string, ApiStageRow>>({});
   const rows = useMemo(() => (data ? data.rows.map((r) => patched[r.id] ?? r) : []), [data, patched]);
 
-  /* 当前选中的表（表1-1 由常驻区负责，不参与切换） */
+  /* 当前选中的表（表1-1 由常驻区负责，不参与切换）；传了 tables 时只渲染本步表集 */
   const stageTables = useMemo(() => {
     const code = (stage === 8 ? 7 : stage) as InfoStageId;
-    return tablesOfStage(code).filter((t) => t.code !== "表1-1");
-  }, [stage]);
+    const all = tablesOfStage(code).filter((t) => t.code !== "表1-1");
+    return tables ? all.filter((t) => tables.includes(t.code)) : all;
+  }, [stage, tables]);
   const [activeTable, setActiveTable] = useState<string | null>(null);
   useEffect(() => {
     if (activeTable && stageTables.some((t) => t.code === activeTable)) return;
@@ -228,6 +252,7 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
     return {
       stage,
       stageLabel,
+      ...(stepId !== undefined ? { title: `第 ${stepId}/9 步 · ${flowStep(stepId).title}` } : {}),
       rows,
       completeness: data.completeness ?? null,
       summary,
@@ -256,6 +281,7 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
     category,
     stage,
     stageLabel,
+    stepId,
     loadSummary,
     handleCellChange,
     handleAnchorAction,
@@ -272,7 +298,7 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
     setRunning(true);
     setStreamLines(["已发起阶段分析…"]);
     try {
-      for await (const ev of advanceStageStream(projectId, stage)) {
+      for await (const ev of advanceStageStream(projectId, stage, stepId)) {
         if (ev.type === "progress") {
           setStreamLines((prev) => [...prev, String(ev.text ?? "分析中…")].slice(-8));
         } else if (ev.type === "error") {
@@ -297,7 +323,7 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
       runningRef.current = false;
       setRunning(false);
     }
-  }, [projectId, stage, reload, loadSummary, onChanged]);
+  }, [projectId, stage, stepId, reload, loadSummary, onChanged]);
 
   /* ── 三态渲染 ── */
 
@@ -306,9 +332,7 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
       <div className="pnl">
         <div className="pnl-h">
           <div>
-            <h2>
-              阶段 {stage} · {stageLabel}
-            </h2>
+            <h2>{headTitle}</h2>
             <p>正在加载信息…</p>
           </div>
         </div>
@@ -324,9 +348,7 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
       <div className="pnl">
         <div className="pnl-h">
           <div>
-            <h2>
-              阶段 {stage} · {stageLabel}
-            </h2>
+            <h2>{headTitle}</h2>
             <p>后端连接失败，本阶段数据不可用</p>
           </div>
           <button className="btn" type="button" onClick={reload}>
@@ -356,9 +378,7 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
       <div className="pnl">
         <div className="pnl-h">
           <div>
-            <h2>
-              阶段 {stage} · {stageLabel}
-            </h2>
+            <h2>{headTitle}</h2>
             <p>
               {isModel
                 ? `本阶段要获得的信息：${stageDefRow?.goal ?? ""}`
@@ -376,9 +396,15 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
                 {running ? "分析进行中…" : activeRows.length > 0 ? "重算本阶段" : "开始本阶段分析"}
               </button>
             ) : null}
-            {/* 导航动作：信息不齐备也可继续（缺口只在右栏提示） */}
-            <button className="btn" type="button" onClick={() => void goNextStage()} disabled={running}>
-              进入下一阶段
+            {/* 导航动作（全局唯一推进入口在流程轴，这里是同一语义的就地入口） */}
+            <button
+              className="btn"
+              type="button"
+              onClick={() => void completeStep()}
+              disabled={running}
+              title="导航动作：信息缺口不阻断，缺口可在右栏随时回看"
+            >
+              完成本步，进入下一步
             </button>
           </div>
         </div>

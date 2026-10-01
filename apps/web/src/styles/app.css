@@ -2050,3 +2050,280 @@ td.ed {
 
 /* 阶段头右侧动作组（分析 / 进入下一阶段） */
 .pnl-actions { display: flex; align-items: center; gap: var(--s2); }
+
+/* ─────────────────────────────────────────────────────────────
+   流程进度轴（v1.5 逐页推进）——取代 v1.4 的 8 个阶段并列 tab
+   ───────────────────────────────────────────────────────────── */
+
+.flow-rail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  flex-shrink: 0;
+  padding: var(--s2) var(--s5);
+  background: var(--csr);
+  border-bottom: 1px solid var(--cb);
+}
+
+.flow-nodes {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s1);
+}
+
+.flow-node {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s15);
+  padding: var(--s15) var(--s3);
+  font-family: inherit;
+  font-size: var(--txs);
+  font-weight: var(--fm2);
+  color: var(--ct2);
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--r4);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color var(--d) var(--e), background var(--d) var(--e),
+    border-color var(--d) var(--e), opacity var(--d) var(--e);
+}
+
+.flow-node:hover:not(:disabled) {
+  color: var(--ct);
+  background: var(--cm);
+}
+
+.flow-node-no {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--size-20);
+  height: var(--size-20);
+  border-radius: var(--rp);
+  background: var(--cm);
+  color: var(--ct2);
+  font-size: var(--t2x);
+}
+
+.flow-node-tt {
+  line-height: 1;
+}
+
+/* 三态：已完成 / 当前 / 可推进 / 未解锁 */
+.flow-node--done {
+  color: var(--cs-h);
+}
+
+.flow-node--done .flow-node-no {
+  background: var(--cs-s);
+  color: var(--cs-h);
+}
+
+.flow-node--current {
+  color: var(--cp);
+  background: var(--cp-s);
+  border-color: var(--cp);
+}
+
+.flow-node--current .flow-node-no {
+  background: var(--cp);
+  color: var(--cf);
+}
+
+.flow-node--ready {
+  color: var(--ct);
+}
+
+.flow-node--locked {
+  color: var(--ct3);
+  cursor: not-allowed;
+}
+
+.flow-node--locked .flow-node-no {
+  background: transparent;
+  border: 1px solid var(--cb);
+  color: var(--ct3);
+}
+
+.flow-node-lock {
+  font-size: var(--t2x);
+}
+
+.flow-hint {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--s2);
+  font-size: var(--txs);
+  color: var(--ct2);
+}
+
+.flow-hint-step {
+  font-weight: var(--fm2);
+  color: var(--ct);
+}
+
+.flow-hint-text {
+  color: var(--ct2);
+}
+
+.flow-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s2);
+}
+
+.flow-actions-note {
+  margin-right: auto;
+  font-size: var(--t2x);
+  color: var(--ct3);
+}
+
+.flow-actions .btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* 已完成步骤回看时的重跑条 */
+.flow-reopen {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s2);
+  margin-bottom: var(--s3);
+  padding: var(--s2) var(--s3);
+  font-size: var(--txs);
+  color: var(--ct2);
+  background: var(--cs-s);
+  border: 1px solid var(--cb);
+  border-radius: var(--r8);
+}
+
+.flow-reopen-text {
+  flex: 1;
+  min-width: 0;
+}
+
+/* 第 1 步（内嵌诉求）与场景资料面板 */
+.brief-step .brief-grid {
+  margin-bottom: var(--s2);
+}
+
+.material-panel .material-upload {
+  align-items: flex-start;
+}
+
+/* 交付物面板（第 9 步） */
+.delivery-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.delivery-step {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  padding: var(--s2) 0;
+  font-size: var(--txs);
+  color: var(--ct);
+  border-bottom: 1px solid var(--cb);
+}
+
+.delivery-step:last-child {
+  border-bottom: none;
+}
+
+.delivery-step-no {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: var(--size-20);
+  height: var(--size-20);
+  border-radius: var(--rp);
+  background: var(--cm);
+  color: var(--ct2);
+  font-size: var(--t2x);
+}
+
+.delivery-step--已完成 .delivery-step-no {
+  background: var(--cs-s);
+  color: var(--cs-h);
+}
+
+.delivery-step--当前 .delivery-step-no {
+  background: var(--cp);
+  color: var(--cf);
+}
+
+.delivery-step--未解锁 {
+  color: var(--ct3);
+}
+
+.delivery-step-tt {
+  flex: 1;
+  min-width: 0;
+}
+
+.delivery-step-state,
+.delivery-step-rows {
+  font-size: var(--t2x);
+  color: var(--ct3);
+}
+
+.delivery-paths {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  margin-top: var(--s3);
+}
+
+.delivery-paths > div {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  flex-wrap: wrap;
+}
+
+.delivery-paths code {
+  font-family: var(--fm);
+  font-size: var(--txs);
+  color: var(--ct);
+  word-break: break-all;
+}
+
+/* 左栏：基础设施分组 + 场景进度 */
+.side-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+  flex-shrink: 0;
+  padding: var(--s2) var(--s4);
+  border-bottom: 1px solid var(--cb);
+}
+
+.side-group-title {
+  flex-shrink: 0;
+  padding: var(--s1) var(--s4) 0;
+  font-size: var(--t2x);
+  color: var(--ct3);
+}
+
+.side-group-title--list {
+  padding-top: var(--s2);
+}
+
+.proj-step {
+  flex-shrink: 0;
+  margin-right: var(--s2);
+  font-size: var(--t2x);
+  color: var(--ct3);
+}
+
+.proj-hd.active .proj-step {
+  color: var(--cp);
+}
