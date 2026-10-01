@@ -167,20 +167,20 @@ ok(
   `${l1Rows} 行 · 已填 ${filled} 项`,
 );
 
-/* 就绪口径（8 步版）：第 1 步 = 定义已整理 **且** 6 项 L1 全部确认。
-   整理刚写完 3 项 → 提示应从"先去对话"变成"还有 N 项未确认"。
+/* 就绪口径（放松版）：第 1 步 = **定义已整理**（不要求确认齐全）。
+   整理刚写完几项 → 提示应从"先去对话"变成"定义已整理（…核心 x/2 项已确认）"。
    关闭弹窗后流程状态要重新拉取，**必须轮询等待**——立刻读会读到刷新前的旧 hint */
 await page
   .waitForFunction(
-    () => /场景本体未确认/.test(document.querySelector(".flow-rail .flow-hint")?.textContent ?? ""),
+    () => /定义已整理/.test(document.querySelector(".flow-rail .flow-hint")?.textContent ?? ""),
     null,
     { timeout: 20_000 },
   )
   .catch(() => undefined);
 const readyHint = await page.locator(".flow-rail .flow-hint").innerText();
 ok(
-  "3c 定义已整理：第 1 步提示从「去对话」变为「还差 N 项未确认」",
-  /场景本体未确认/.test(readyHint),
+  "3c 整理后第 1 步即可推进（定义已整理；核心项只在提示里点名）",
+  /定义已整理/.test(readyHint) && /核心 \d+\/2 项已确认/.test(readyHint),
   readyHint.split("\n").pop(),
 );
 
@@ -222,8 +222,8 @@ ok("5 右栏双 Tab（补充说明 + 阶段总结）且不产出判断",
   tabCount === 2 && l1Count >= 6 && hasSix && noAdvice,
   `Tab ${tabCount} 个 · L1 ${l1Count} 项 · 六段 ${hasSix} · 无建议措辞 ${noAdvice}`);
 
-/* 5b. 第 1 步（场景定义与边界）：右栏确认清单逐项确认 → 本步就绪
-   （8 步版把"定义"和"确认"合到一步，所以确认动作必须在这里做完） */
+/* 5b. 第 1 步（场景定义与边界）：右栏清单只列**需要表态的项**（核心 2 项 ∪ 推断项），
+   逐项确认后提示里的核心计数应变成 2/2（就绪本来就已经是 true，确认是"让它更可靠"） */
 await detTabs.nth(0).click();
 const confirmItems = page.locator(".det .confirm-item");
 const confirmCount = await confirmItems.count();
@@ -233,13 +233,17 @@ for (let i = 0; i < confirmCount; i++) {
 }
 await page
   .waitForFunction(
-    () => /已全部确认/.test(document.querySelector(".flow-rail .flow-hint")?.textContent ?? ""),
+    () => /核心 2\/2 项已确认/.test(document.querySelector(".flow-rail .flow-hint")?.textContent ?? ""),
     null,
     { timeout: 20_000 },
   )
   .catch(() => undefined);
 const confirmedHint = await page.locator(".flow-rail .flow-hint").innerText();
-ok("5b 逐项确认 L1 后第 1 步就绪", /已全部确认/.test(confirmedHint), confirmedHint.split("\n").pop());
+ok(
+  "5b 清单逐项表态后核心 2/2（清单只列需要表态的项，不是 12 项）",
+  /核心 2\/2 项已确认/.test(confirmedHint) && confirmCount <= 4,
+  `${confirmCount} 项待表态 · ${confirmedHint.split("\n").pop()}`,
+);
 
 /* 6. 交付物双口径导出：服务端落盘 md + toast 回显路径 */
 const filesBefore = existsSync(EXPORT_DIR) ? readdirSync(EXPORT_DIR).length : 0;

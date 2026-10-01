@@ -309,6 +309,12 @@ check_contains "04-业务过程重定义.md" "v1.6" "业务过程 v1.6（对话�
 check_contains "03-数据契约与API.md" "v2.3" "契约版本记录 v2.3（流程收成 8 步）"
 check_contains "07-业务流程总表.md" "用户可见的 8 步流程" "流程总表改为 8 步"
 check_contains "01-产品定义.md" "8 个阶段（0-7，数据落库口径）" "产品定义流程概览为 8 阶段 0-7"
+# ── v2.4 放松场景定义 ────────────────────────────────────
+check_contains "03-数据契约与API.md" "v2.4" "契约版本记录 v2.4（放松定义口径）"
+check_contains "03-数据契约与API.md" "定义已整理" "第 1 步就绪降为「定义已整理」"
+check_contains "07-业务流程总表.md" "不要求确认齐全" "流程总表就绪条件改「不要求确认齐全」"
+check_contains "04-业务过程重定义.md" "v1.7" "业务过程 v1.7（放松定义）"
+check_contains "docs/项目变更表.md" "| 61 |" "变更表 #61 放松定义登记"
 if [ -f "$ROOT/05-表格定义总表.md" ] && pnpm check:docs >/dev/null 2>&1; then
   echo "✅ 05-表格定义总表.md 与表定义注册表一致（漂移守卫）"
 else
