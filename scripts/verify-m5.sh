@@ -229,13 +229,13 @@ kill_our_server_on_port() {
     cmd=$(ps -o command= -p "$pid" 2>/dev/null || true)
     case "$cmd" in
       *"vite preview"*|*"apps/server/dist/index.js"*)
-        echo "· 清理上一次遗留的 :$port 服务（PID $pid）"
+        echo "· 清理上一次遗留的 :$port 服务（PID ${pid}）"
         kill "$pid" 2>/dev/null || true
         ;;
       "")
         ;;
       *)
-        echo "· 注意：:$port 被非本项目进程占用（PID $pid），跳过：$(printf '%s' "$cmd" | cut -c1-70)"
+        echo "· 注意：:$port 被非本项目进程占用（PID ${pid}），跳过：$(printf '%s' "$cmd" | cut -c1-70)"
         ;;
     esac
   done

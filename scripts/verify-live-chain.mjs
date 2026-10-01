@@ -93,23 +93,41 @@ const ingestLine = await page.evaluate(
 );
 ok("2b 真实白皮书 PDF 上传 → 解析入库 SSE 完成", !!ingestLine, ingestLine);
 
-/* 3. 项目创建：已改为「场景诉求」三段式对话框（v1.4 第一输入） */
+/* 3. 项目创建（v2.2 对话式定义）：新建**只输名称** → 自动弹「场景定义」对话页
+      → 点「整理成定义」→ 对话落成表1-1（对照 6 行） */
 await page.click(".nbtn");
-const briefDlg = page.locator(".modal[aria-label='场景诉求']");
-await briefDlg.waitFor({ state: "visible", timeout: 8000 });
-await briefDlg.locator("input.brief-input").first().fill("端到端实测项目");
-await briefDlg.getByRole("button", { name: "下一步" }).click();
-await briefDlg.locator("textarea.brief-input").fill("这个场景值不值得进");
-await briefDlg.getByRole("button", { name: "下一步" }).click();
-await briefDlg.locator("input.brief-input").nth(0).fill("市政水务集团");
-await briefDlg.getByRole("button", { name: "起草场景锚" }).click();
-/* 第四段：对照式确认（真实模型较慢；无模型时降级为按线索预填） */
-await briefDlg.locator(".align-table").waitFor({ state: "visible", timeout: 180_000 });
-const l1Rows = await briefDlg.locator(".align-table tbody tr").count();
-await briefDlg.getByRole("button", { name: /去确认/ }).click();
+const nameDlg = page.locator("[role='dialog'][aria-label='新建场景']");
+await nameDlg.waitFor({ state: "visible", timeout: 10_000 });
+await nameDlg.locator("input.brief-input").fill(`端到端实测项目`);
+await nameDlg.getByRole("button", { name: "创建并开始定义" }).click();
+
+const defDlg = page.locator("[role='dialog'][aria-label='场景定义']");
+await defDlg.waitFor({ state: "visible", timeout: 20_000 });
+ok("3a 新建只输名称 → 自动弹出「场景定义」对话页（不再让用户填空）", true);
+
+/* 首轮由弹窗自动发引导消息，模型给出理解 + 提问（真实链路较慢，等回复出现） */
+await page.waitForFunction(
+  () => {
+    const d = document.querySelector("[role='dialog'][aria-label='场景定义']");
+    return !!d && (d.textContent ?? "").length > 120;
+  },
+  null,
+  { timeout: 180_000 },
+).catch(() => undefined);
+
+/* 补一句用户回答，再点「整理成定义」（写表由用户显式触发） */
+const chatInput = defDlg.locator("textarea").first();
+if ((await chatInput.count()) > 0) {
+  await chatInput.fill("客户是市政水务集团，范围只看出厂到管网，明确不含二次供水");
+  await defDlg.getByRole("button", { name: "发送" }).click();
+  await page.waitForTimeout(1500);
+}
+await defDlg.getByRole("button", { name: "整理成定义" }).click();
+await defDlg.locator(".schema-table").first().waitFor({ state: "visible", timeout: 180_000 });
+const l1Rows = await defDlg.locator(".schema-table tbody tr").count();
+await defDlg.getByRole("button", { name: /完成，去确认表格/ }).click();
 await page.waitForSelector(".proj-hd:has-text('端到端实测项目')", { timeout: 8000 });
-await page.waitForSelector("text=导出交付物", { timeout: 8000 });
-ok("3 场景诉求三段式建项目（真实落库 + 起草场景锚 + L1 六项对照）", l1Rows === 6, `${l1Rows} 行`);
+ok("3b 整理成定义 → 表1-1 对照 6 项（写表由用户显式触发）", l1Rows === 6, `${l1Rows} 行`);
 
 /* 4. 阶段分析 SSE 链路：密钥在 → 真实落库；密钥缺 → 流内降级【错误】 */
 const startBtn = page.locator("button:has-text('开始本阶段分析')");
