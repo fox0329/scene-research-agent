@@ -211,6 +211,13 @@ test("场景定义对话（联真）：新建只输名称 → 自动开「场景
   await expect(
     page.locator(".ws").getByRole("button", { name: "继续场景定义对话" }),
   ).toBeVisible({ timeout: 20_000 });
+
+  // 回归：**新建路径**（弹窗由 App 打开）整理完成后，流程状态必须跟着刷新——
+  // 曾经漏了这一步，表现为聊完/整理完/关掉弹窗后「完成本步」仍然是灰的
+  await expect(
+    page.locator(".flow-rail").getByRole("button", { name: "完成本步，进入下一步" }),
+  ).toBeEnabled({ timeout: 20_000 });
+  await expect(page.locator(".flow-rail .flow-hint")).toContainText("场景本体 L1 已填");
   const anchor = page.locator(".ws .schema-table--anchor").first();
   await expect(anchor).toBeVisible({ timeout: 20_000 });
   expect(await anchor.locator(".confirm-dot").count()).toBeGreaterThanOrEqual(6);

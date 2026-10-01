@@ -116,6 +116,18 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
     void reloadFlow();
   }, [reloadFlow]);
 
+  /**
+   * 场景定义对话整理/关闭后，**流程状态必须重取**
+   *
+   * 曾经漏了这一步：App 层的「场景定义」弹窗（新建场景时自动打开的那条主路径）
+   * 整理成功后只刷新了项目列表与定义数据，流程轴仍拿着旧状态——
+   * 表现是用户聊完、整理完、关掉弹窗后，「完成本步」还是灰的（服务端其实已就绪）。
+   * 两条路径（App 弹窗 / 第 1 步面板弹窗）都会 bump definitionRefresh，这里统一接住。
+   */
+  useEffect(() => {
+    if (definitionRefresh > 0) void reloadFlow();
+  }, [definitionRefresh, reloadFlow]);
+
   /** 完成本步（导航动作，不判断信息齐备与否） */
   const handleComplete = useCallback(async () => {
     if (!flow || busy) return;

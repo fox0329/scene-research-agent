@@ -105,29 +105,79 @@ const defDlg = page.locator("[role='dialog'][aria-label='场景定义']");
 await defDlg.waitFor({ state: "visible", timeout: 20_000 });
 ok("3a 新建只输名称 → 自动弹出「场景定义」对话页（不再让用户填空）", true);
 
-/* 首轮由弹窗自动发引导消息，模型给出理解 + 提问（真实链路较慢，等回复出现） */
+/* 首轮由弹窗自动发引导消息，模型给出理解 + 提问。
+   注意：只等"气泡出现"不够——那时回复可能还在流式，贸然发第二条会踩到禁用态 */
+await page
+  .waitForFunction(
+    () => {
+      const d = document.querySelector("[role='dialog'][aria-label='场景定义']");
+      const bub = d?.querySelector(".msg.ai .bub");
+      return !!bub && (bub.textContent ?? "").trim().length > 0;
+    },
+    null,
+    { timeout: 180_000 },
+  )
+  .catch(() => undefined);
+
+/* 补一句用户回答（必须回答：就绪口径看 L1 场景本体是否有内容），
+   再点「整理成定义」——写表由用户显式触发 */
+const chatInput = defDlg.locator("textarea").first();
+if ((await chatInput.count()) > 0) {
+  await chatInput.fill("客户是市政水务集团，范围只看出厂到管网，明确不含二次供水；想搞清楚值不值得进");
+  // 首轮回复未结束时发送按钮是禁用的，等它可用再点
+  await page.waitForFunction(
+    () => {
+      const d = document.querySelector("[role='dialog'][aria-label='场景定义']");
+      const btn = [...(d?.querySelectorAll("button") ?? [])].find((b) =>
+        (b.textContent ?? "").trim().startsWith("发送"),
+      );
+      return !!btn && !btn.disabled;
+    },
+    null,
+    { timeout: 180_000 },
+  );
+  await defDlg.getByRole("button", { name: /^发送/ }).click();
+}
+/* 「整理成定义」在模型回复期间是禁用的：**等它可用再点**，
+   否则点击会一路重试到超时（曾因只 sleep 1.5s 而踩到） */
 await page.waitForFunction(
   () => {
     const d = document.querySelector("[role='dialog'][aria-label='场景定义']");
-    return !!d && (d.textContent ?? "").length > 120;
+    const btn = [...(d?.querySelectorAll("button") ?? [])].find((b) =>
+      (b.textContent ?? "").includes("整理成定义"),
+    );
+    return !!btn && !btn.disabled;
   },
   null,
   { timeout: 180_000 },
-).catch(() => undefined);
-
-/* 补一句用户回答，再点「整理成定义」（写表由用户显式触发） */
-const chatInput = defDlg.locator("textarea").first();
-if ((await chatInput.count()) > 0) {
-  await chatInput.fill("客户是市政水务集团，范围只看出厂到管网，明确不含二次供水");
-  await defDlg.getByRole("button", { name: "发送" }).click();
-  await page.waitForTimeout(1500);
-}
+);
 await defDlg.getByRole("button", { name: "整理成定义" }).click();
 await defDlg.locator(".schema-table").first().waitFor({ state: "visible", timeout: 180_000 });
 const l1Rows = await defDlg.locator(".schema-table tbody tr").count();
+// 注意：「与你说的不一致？」是徽标文案，「已由你确认/补充」在旁边的 .align-hint 里
+// （一开始数 .align-badge 得到 0，误判成"没填上"）
+const filled = await defDlg
+  .locator(".align-table .align-hint", { hasText: /已由你确认/ })
+  .count();
 await defDlg.getByRole("button", { name: /完成，去确认表格/ }).click();
 await page.waitForSelector(".proj-hd:has-text('端到端实测项目')", { timeout: 8000 });
-ok("3b 整理成定义 → 表1-1 对照 6 项（写表由用户显式触发）", l1Rows === 6, `${l1Rows} 行`);
+ok(
+  "3b 整理成定义 → 对照 6 项，且 L1 确有内容（写表由用户显式触发）",
+  l1Rows === 6 && filled > 0,
+  `${l1Rows} 行 · 已填 ${filled} 项`,
+);
+
+/* 就绪口径：L1 有内容后本步才可点（服务端判定，前端只显示）。
+   关闭弹窗后流程状态要重新拉取，**必须轮询等待**——立刻读会读到刷新前的旧 hint */
+await page
+  .waitForFunction(
+    () => /场景本体 L1 已填/.test(document.querySelector(".flow-rail .flow-hint")?.textContent ?? ""),
+    null,
+    { timeout: 20_000 },
+  )
+  .catch(() => undefined);
+const readyHint = await page.locator(".flow-rail .flow-hint").innerText();
+ok("3c 第 1 步按 L1 口径就绪", /场景本体 L1 已填/.test(readyHint), readyHint.split("\n").pop());
 
 /* 4. 阶段分析 SSE 链路：密钥在 → 真实落库；密钥缺 → 流内降级【错误】 */
 const startBtn = page.locator("button:has-text('开始本阶段分析')");
@@ -195,6 +245,22 @@ const doneBefore = await page.locator(".flow-rail .flow-node--done").count();
 const advanceBtn = page
   .locator("button:has-text('完成本步'), button:has-text('进入下一阶段')")
   .first();
+// 等它可用：禁用时直接点会一路重试到超时，报错信息也看不出原因
+await page
+  .waitForFunction(
+    () => {
+      const b = [...document.querySelectorAll(".flow-rail button")].find((x) =>
+        /完成本步|进入下一阶段/.test(x.textContent ?? ""),
+      );
+      return !!b && !b.disabled;
+    },
+    null,
+    { timeout: 60_000 },
+  )
+  .catch(async () => {
+    const hint = await page.locator(".flow-rail .flow-hint").innerText().catch(() => "");
+    throw new Error(`「完成本步」不可点：${hint.replace(/\n+/g, " ")}`);
+  });
 await advanceBtn.click();
 await page.waitForFunction(
   (n) => document.querySelectorAll(".flow-rail .flow-node--done").length > n,
