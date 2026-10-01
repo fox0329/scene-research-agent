@@ -214,7 +214,24 @@ kill "$SRV2" 2>/dev/null || true
 wait "$SRV2" 2>/dev/null || true
 rm -rf "$SDIR2"
 
+# E2E 用固定端口 4180/4181：上一次失败可能留下服务，先把端口清干净再跑，
+# 否则 playwright 会以「4181 already used」直接失败（而不是测试失败，容易误判）
+for P in 4180 4181; do
+  STALE=$(lsof -nP -iTCP:"$P" -sTCP:LISTEN -t 2>/dev/null | sort -u)
+  if [ -n "$STALE" ]; then
+    echo "· 清理上一次遗留的 :$P 服务（PID $STALE）"
+    kill $STALE 2>/dev/null || true
+    sleep 1
+  fi
+done
+
 E2E_OUT=$(npm run test:e2e 2>&1) && E2E_OK=1 || E2E_OK=0
+
+# 收尾：无论成败都清掉 E2E 起的服务，避免污染后续手工验证
+for P in 4180 4181; do
+  STALE=$(lsof -nP -iTCP:"$P" -sTCP:LISTEN -t 2>/dev/null | sort -u)
+  [ -n "$STALE" ] && kill $STALE 2>/dev/null || true
+done
 if [ "$E2E_OK" = "1" ]; then
   EN=$(printf '%s' "$E2E_OUT" | grep -Eo "[0-9]+ passed" | tail -1 || echo "?")
   echo "✅ 演示模式 E2E 通过（${EN}）"
