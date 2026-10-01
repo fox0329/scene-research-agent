@@ -2110,8 +2110,15 @@ td.ed {
 .definition-stat-l { font-size: var(--txs); color: var(--ct3); }
 .definition-done { display: flex; align-items: center; gap: var(--s2); margin: var(--s3) 0 0; }
 
-/* 阶段头右侧动作组（分析 / 进入下一阶段） */
-.pnl-actions { display: flex; align-items: center; gap: var(--s2); }
+/* 阶段头右侧动作组（分析 / 进入下一阶段）
+   flex-shrink:0 —— 动作组不参与收缩：标题里的长说明换行就好；
+   动作组被挤窄会把按钮文案折成两行（第 1 步「继续场景定义对话」踩过） */
+.pnl-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  flex-shrink: 0;
+}
 
 /* ─────────────────────────────────────────────────────────────
    流程进度轴（v1.5 逐页推进）——取代 v1.4 的 8 个阶段并列 tab

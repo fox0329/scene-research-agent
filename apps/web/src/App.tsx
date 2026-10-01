@@ -216,11 +216,11 @@ const AppShell: React.FC = () => {
     [refreshProjects],
   );
 
-  /** 定义对话整理完成：刷新列表（流程第 1 步是否可完成由服务端判定） */
+  /** 定义对话整理完成：刷新列表（本步是否可完成由服务端按 L1 六项判定） */
   const handleDefinitionConsolidated = useCallback(async () => {
     setDefinitionRefresh((n) => n + 1);
     await refreshProjects().catch(() => {});
-    showToast("场景定义已整理成表1-1——关闭对话后点「完成本步」进入第 2 步逐项确认");
+    showToast("场景定义已整理成表1-1——关闭对话后在本步逐项确认，再点「完成本步」");
   }, [refreshProjects, showToast]);
 
   /** 关闭 App 层的定义对话：让第 1 步面板重取对话条数与表1-1 */
@@ -458,7 +458,7 @@ const NoProjectsPanel: React.FC<{ onNew: () => void }> = ({ onNew }) => (
             </svg>
             <div className="empty-state-title">还没有项目</div>
             <div className="empty-state-desc">
-              新建一个场景分析项目，上传产品资料后从第 1 步「场景定义」开始推进
+              新建一个场景分析项目，上传产品资料后从第 1 步「场景定义与边界」开始推进
             </div>
             <button className="btn primary" type="button" onClick={onNew}>
               新建项目

@@ -43,7 +43,7 @@ interface RealStagePanelProps {
   onStageSnapshot?: (snap: StageSnapshot | null) => void;
   /** 本步表集（流程定义给出，如 `flowStep(4).tables`）；缺省 = 该阶段全部表 */
   tables?: readonly string[];
-  /** 流程步骤号：头部与右栏显示「第 n/9 步」，推进按钮也按流程步走 */
+  /** 流程步骤号：头部与右栏显示「第 n/FLOW_TOTAL 步」，推进按钮也按流程步走 */
   stepId?: number;
   /** 本步是否就绪（与流程轴同一判定，避免两处按钮一个可点一个不可点） */
   ready?: boolean;
@@ -70,7 +70,7 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
   );
   const { showToast } = useToast();
 
-  /** 页头标题：v1.5 用「第 n/9 步」表达推进位置（阶段号退为数据口径） */
+  /** 页头标题：v1.5 用「第 n/FLOW_TOTAL 步」表达推进位置（阶段号退为数据口径） */
   const headTitle =
     stepId !== undefined
       ? `第 ${stepId}/${FLOW_TOTAL} 步 · ${flowStep(stepId).title}`
@@ -257,7 +257,9 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
     return {
       stage,
       stageLabel,
-      ...(stepId !== undefined ? { title: `第 ${stepId}/9 步 · ${flowStep(stepId).title}` } : {}),
+      ...(stepId !== undefined
+        ? { title: `第 ${stepId}/${FLOW_TOTAL} 步 · ${flowStep(stepId).title}` }
+        : {}),
       rows,
       completeness: data.completeness ?? null,
       summary,

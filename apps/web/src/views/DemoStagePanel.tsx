@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
   FLOW_STEPS,
+  FLOW_TOTAL,
   STAGE_DEFS,
   tablesOfStage,
   tableDef,
@@ -22,7 +23,7 @@ import { DEMO_ANCHOR, DEMO_ROWS } from "../mock/demo-flow";
  * 因此演示态与联真态的结构一致，E2E 断言的交互规范同样成立——这也是删除
  * 9 个手写 mock 面板（约 1.7k 行）后仍能验收的原因。
  *
- * v1.5：本面板只负责「某一步的表集」——`tables` 由流程定义给出（第 3-8 步），
+ * v1.5：本面板只负责「某一步的表集」——`tables` 由流程定义给出（第 2-7 步），
  * 推进按钮上移到 `FlowRail`（全局唯一推进入口）。
  */
 
@@ -30,7 +31,7 @@ export interface DemoStagePanelProps {
   stage: number;
   /** 本步表集（流程定义给出）；缺省 = 该阶段全部表 */
   tables?: readonly string[];
-  /** 流程步骤号（右栏页头用「第 n/9 步」而不是阶段号） */
+  /** 流程步骤号（右栏页头用「第 n/FLOW_TOTAL 步」而不是阶段号） */
   stepId?: number;
   /** 演示态场景锚（确认清单的 L1 来源） */
   anchor?: readonly ApiAnchorRow[];
@@ -133,7 +134,11 @@ export const DemoStagePanel: React.FC<DemoStagePanelProps> = ({
       stage,
       stageLabel: def?.name ?? "",
       ...(stepId
-        ? { title: `第 ${stepId}/9 步 · ${FLOW_STEPS.find((s) => s.id === stepId)?.title ?? (def?.name ?? "")}` }
+        ? {
+            title: `第 ${stepId}/${FLOW_TOTAL} 步 · ${
+              FLOW_STEPS.find((s) => s.id === stepId)?.title ?? (def?.name ?? "")
+            }`,
+          }
         : {}),
       rows: [],
       completeness,
@@ -168,7 +173,7 @@ export const DemoStagePanel: React.FC<DemoStagePanelProps> = ({
         <div className="pnl-h">
           <div>
             <h2>
-              {stepId ? `第 ${stepId}/9 步 · ` : `阶段 ${stage} · `}
+              {stepId ? `第 ${stepId}/${FLOW_TOTAL} 步 · ` : `阶段 ${stage} · `}
               {stepId ? (FLOW_STEPS.find((s) => s.id === stepId)?.title ?? def?.name ?? "") : def?.name ?? ""}
             </h2>
             <p>演示模式：结构、列定义与完整度口径与联真一致（数据为示例）</p>

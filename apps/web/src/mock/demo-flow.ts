@@ -2,7 +2,7 @@
  * @scene/web — 演示模式的流程数据（无后端）
  *
  * 演示态与联真态**共用同一套流程口径**：
- *  - 9 步定义来自 `@scene/contract` 的 `FLOW_STEPS`（不重抄表号/标题）
+ *  - 8 步定义来自 `@scene/contract` 的 `FLOW_STEPS`（不重抄表号/标题）
  *  - 状态推导用 `@scene/domain` 的 `buildFlowStatus`（不重写状态机）
  *  - 只有"就绪判定的数据从哪来"不同：联真是服务端算好的，这里是本地示例数据
  *
@@ -133,23 +133,6 @@ export function demoDefinitionConsolidation(): ApiDefinitionConsolidation {
   };
 }
 
-/**
- * 演示态第 1 步就绪口径（与联真同义：表1-1 有内容 = 场景定义已成形）
- *
- * 联真的就绪由服务端算，这里用本地锚数据按同一语义推导。
- */
-export function demoDefinitionReadiness(anchor: readonly ApiAnchorRow[]): FlowReadiness {
-  const filled = anchor.filter((a) => String(a.content ?? "").trim() !== "").length;
-  return {
-    ready: filled > 0,
-    readyHint:
-      filled > 0
-        ? `场景定义已有 ${filled} 项内容（演示数据已预填）`
-        : "还没有场景定义：先对话，再点「整理成定义」",
-    progress: { tablesWithData: filled > 0 ? 1 : 0, expectedTables: 1, rows: anchor.length },
-  };
-}
-
 /** 演示行：键必须存在于该表定义中（否则会被渲染成空列） */
 export const DEMO_ROWS: Record<string, InfoRow[]> = {
   M1: [
@@ -254,7 +237,12 @@ export function demoProgress(tables: readonly string[]): {
   return { tablesWithData, expectedTables: tables.length, rows };
 }
 
-/** 演示态场景锚 → 确认清单的就绪判定（L1 六项是否都已确认） */
+/**
+ * 演示态第 1 步「场景定义与边界」就绪口径（与联真同义）
+ *
+ * 定义对话不占流程步：对话聊清楚只把表1-1 写出来，**还要用户逐项确认 L1 六项**
+ * 才算这一步就绪。联真的就绪由服务端算，这里用本地锚数据按同一语义推导。
+ */
 export function demoAnchorReadiness(anchor: readonly ApiAnchorRow[]): FlowReadiness {
   const l1 = l1Rows();
   const confirmed = l1.filter((r) => {
@@ -282,10 +270,7 @@ export function buildDemoFlowStatus(input: {
 }): ApiFlowStatus {
   const readiness: Record<number, FlowReadiness> = {};
   for (const step of FLOW_STEPS) {
-    if (step.id === 1) {
-      /* 第 1 步 = 场景定义（对话完成）：就绪看表1-1 是否已有内容 */
-      readiness[step.id] = demoDefinitionReadiness(input.anchor);
-    } else if (step.kind === "确认") {
+    if (step.kind === "确认") {
       readiness[step.id] = demoAnchorReadiness(input.anchor);
     } else if (step.kind === "分析") {
       const p = demoProgress(step.tables);

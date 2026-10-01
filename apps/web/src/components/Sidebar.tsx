@@ -33,7 +33,7 @@ interface SidebarProps {
  * 左栏导航
  * 顶部：产品名 + 新建按钮
  * 基础设施区（常驻，与场景无关）：产品资料库 / 知识库
- * 场景区：场景列表（项目/会话管理，见 ProjectList）——每项显示「第 n/9 步」
+ * 场景区：场景列表（项目/会话管理，见 ProjectList）——每项显示「第 n/8 步」
  * 底部：设置
  */
 export const Sidebar: React.FC<SidebarProps> = ({

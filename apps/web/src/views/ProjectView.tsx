@@ -2,10 +2,9 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { FLOW_TOTAL, STAGE_DEFS, flowStep, type InfoStageId } from "@scene/contract";
 import { RealStagePanel } from "./RealStagePanel";
 import { DemoStagePanel } from "./DemoStagePanel";
-import { DefinitionStepPanel } from "./DefinitionStepPanel";
 import { AnchorStepPanel } from "./AnchorStepPanel";
 import { DeliveryPanel } from "./DeliveryPanel";
-import { DemoAnchorStep, DemoDefinitionStep } from "./DemoFlowPanels";
+import { DemoFirstStep } from "./DemoFlowPanels";
 import { FlowRail } from "../components/FlowRail";
 import { api, type ApiAnchorRow, type ApiFlowStatus } from "../api";
 import { useAsync } from "../hooks/useAsync";
@@ -37,15 +36,15 @@ interface ProjectViewProps {
   definitionRefresh?: number;
 }
 
-/** 组装步（第 9 步）对应的落库阶段 */
+/** 组装步（最后一步）对应的落库阶段 */
 const DELIVERY_STAGE = 7;
 
 /**
  * 项目工作台（v1.5 逐页推进）
  *
  * 与 v1.4 的差别：**去掉 8 个阶段并列 tab**，改为「流程轴 + 当前步面板」。
- * 阶段仍是数据落库口径，但用户只面对"现在这一步"：
- *   1 输入诉求 → 2 确认场景锚 → 3-8 逐步分析 → 9 组装交付物
+ * 阶段仍是数据落库口径，但用户只面对"现在这一步"（8 步，与底层 8 个阶段一一对应）：
+ *   1 场景定义与边界（定义对话 + 表1-1 逐项确认）→ 2-7 逐步分析 → 8 组装交付物
  *
  * 流程状态是唯一权威：
  *  - 联真：`GET /flow`（就绪判定由服务端按数据算）
@@ -255,27 +254,15 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
     if (live) {
       if (step === 1) {
         return (
-          <DefinitionStepPanel
+          <AnchorStepPanel
             projectId={project.id}
             scenarioName={project.name}
             flow={flow}
             onChanged={onProjectsChanged}
             onFlowChanged={() => void reloadFlow()}
             onStageSnapshot={onStageSnapshot}
-            onGoToAnchorStep={() => setActiveStep(2)}
-            refreshToken={definitionRefresh}
-          />
-        );
-      }
-      if (step === 2) {
-        return (
-          <AnchorStepPanel
-            projectId={project.id}
-            flow={flow}
-            onChanged={onProjectsChanged}
-            onFlowChanged={() => void reloadFlow()}
-            onStageSnapshot={onStageSnapshot}
             onOpenConversation={onOpenConversation}
+            refreshToken={definitionRefresh}
           />
         );
       }
@@ -315,21 +302,11 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
     // ── 演示模式：同一套结构与领域逻辑，数据来自本地内存 ──
     if (step === 1) {
       return (
-        <DemoDefinitionStep
+        <DemoFirstStep
           flow={flow}
           anchor={demoAnchor}
           scenarioName={project.name}
           onConsolidated={handleDemoAnchorConsolidated}
-          onGoToAnchorStep={() => setActiveStep(2)}
-          onStageSnapshot={onStageSnapshot}
-        />
-      );
-    }
-    if (step === 2) {
-      return (
-        <DemoAnchorStep
-          flow={flow}
-          anchor={demoAnchor}
           onAnchorAction={handleDemoAnchorAction}
           onAnchorEdit={handleDemoAnchorEdit}
           onStageSnapshot={onStageSnapshot}
