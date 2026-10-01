@@ -26,8 +26,8 @@ describe("stage-prompts — 阶段覆盖（8 阶段口径）", () => {
   });
 
   it("旧编号的阶段 8 明确报错（已合并为阶段 7）", () => {
-    expect(() => buildStagePrompt(8, {})).toThrow(/阶段 8 已合并为阶段 7/);
-    expect(() => getStageOutputContract(8)).toThrow(/阶段 8 已合并为阶段 7/);
+    expect(() => buildStagePrompt(8 as never, {})).toThrow(/阶段 8 已合并为阶段 7/);
+    expect(() => getStageOutputContract(8 as never)).toThrow(/阶段 8 已合并为阶段 7/);
   });
 });
 

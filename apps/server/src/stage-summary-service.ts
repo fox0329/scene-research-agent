@@ -26,9 +26,13 @@ import {
 } from "@scene/domain";
 import { readAnchorRows, readBrief } from "./scenario-anchor.js";
 
-/** 阶段编号归一：旧编号 8（交付物）合并为 7 */
+/**
+ * 阶段编号归一：旧编号 8（交付物）合并为 7
+ *
+ * StageId 已收窄为 0-7，但**老数据/老调用仍可能带 8**——按数值比较保留这层兼容。
+ */
 export function normalizeStage(stage: StageId): InfoStageId {
-  return (stage === 8 ? 7 : stage) as InfoStageId;
+  return ((stage as number) === 8 ? 7 : stage) as InfoStageId;
 }
 
 /** 读某阶段各表的行（按注册表的表号；跨阶段的表也按表号取全量） */

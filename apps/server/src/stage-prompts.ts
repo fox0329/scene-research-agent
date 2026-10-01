@@ -145,7 +145,9 @@ export function buildStagePrompt(
    */
   opts?: { tables?: readonly string[] },
 ): StagePrompt {
-  if (stage === 8) {
+  // StageId 已收窄为 0-7，但**运行期仍可能被塞进老编号 8**（老数据/老调用）：
+  // 这里按数值比较主动拦截并给出可执行的修正提示
+  if ((stage as number) === 8) {
     throw new Error(
       "阶段 8 已合并为阶段 7（8 阶段口径：6 总结沉淀、7 最终交付物）——请改用 0-7",
     );
@@ -211,7 +213,7 @@ export function getStageOutputContract(
   stage: StageId,
   allowedTables?: readonly string[],
 ): Record<string, unknown> {
-  if (stage === 8) {
+  if ((stage as number) === 8) {
     throw new Error("阶段 8 已合并为阶段 7——请改用 0-7");
   }
   const all = tablesOfStage(stage as InfoStage);

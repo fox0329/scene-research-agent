@@ -71,7 +71,7 @@ function seed(): { db: DbInstance; scenarioId: string; lineId: string } {
 
 describe("stage-summary-service — 阶段归一", () => {
   it("旧编号 8（交付物）归一为 7", () => {
-    expect(normalizeStage(8)).toBe(7);
+    expect(normalizeStage(8 as never)).toBe(7);
     expect(normalizeStage(1)).toBe(1);
   });
 });
@@ -126,7 +126,7 @@ describe("stage-summary-service — 生成与落库", () => {
   it("交付阶段（7 / 旧 8）也能生成说明性总结", () => {
     const { db, scenarioId } = seed();
     const sc = db.scenarioRepo.getById(scenarioId)!;
-    const r = generateStageSummary(db, sc, 8);
+    const r = generateStageSummary(db, sc, 8 as never);
     expect(r.stage).toBe(7);
     expect(r.markdown).toContain("阶段 7 · 最终交付物");
     expect(r.markdown).toContain("不含任何建议或判断");

@@ -11,14 +11,14 @@ import type { StageId } from "@scene/contract";
 
 // ─── 阶段常量 ─────────────────────────────────────────────────
 
-/** 全部阶段编号（0-8，00b §一工作流总览） */
-export const STAGES: readonly StageId[] = [0, 1, 2, 3, 4, 5, 6, 7, 8];
+/** 全部阶段编号（**现行 0-7**；老 00b 的 0-8 已收窄，门槛并入「认识场景」、交付物为阶段 7） */
+export const STAGES: readonly StageId[] = [0, 1, 2, 3, 4, 5, 6, 7];
 
 /** 首阶段 */
 export const FIRST_STAGE: StageId = 0;
 
-/** 终态阶段（阶段 8 · 最终交付物，无后继） */
-export const LAST_STAGE: StageId = 8;
+/** 终态阶段（阶段 7 · 最终交付物，无后继） */
+export const LAST_STAGE: StageId = 7;
 
 // ─── 资料失效标记类型 ─────────────────────────────────────────
 
@@ -38,7 +38,7 @@ export interface StaleMark {
 
 // ─── 内部工具 ─────────────────────────────────────────────────
 
-/** 校验阶段编号在 0-8 范围内（JS 边界的参数防御） */
+/** 校验阶段编号在 0-7 范围内（JS 边界的参数防御） */
 function assertValidStage(stage: number, label: string): asserts stage is StageId {
   if (!Number.isInteger(stage) || stage < FIRST_STAGE || stage > LAST_STAGE) {
     throw new Error(`${label}非法：${stage}（合法范围 ${FIRST_STAGE}-${LAST_STAGE}）`);
@@ -55,13 +55,13 @@ function assertNonBlank(value: string, label: string): void {
 // ─── 公共接口 ─────────────────────────────────────────────────
 
 /**
- * 推进到下一阶段（0→1→…→8）
+ * 推进到下一阶段（0→1→…→7）
  *
  * 仅做状态迁移计算，不含质量关判定——是否推进由用户决定（核心原则）。
  *
  * @param currentStage - 当前阶段
  * @returns 下一阶段编号
- * @throws 当前阶段为 8（终态）或编号非法时抛错
+ * @throws 当前阶段为 7（终态）或编号非法时抛错
  */
 export function advance(currentStage: StageId): StageId {
   assertValidStage(currentStage, "当前阶段");
@@ -72,7 +72,7 @@ export function advance(currentStage: StageId): StageId {
 }
 
 /**
- * 是否可推进（阶段 8 是终态）
+ * 是否可推进（阶段 7 是终态）
  *
  * @param currentStage - 当前阶段
  * @returns 0-7 返回 true；8 返回 false
@@ -212,7 +212,7 @@ export const TABLE_DEPENDENCIES: Record<string, StageId[]> = {
   "M4": [1, 5], // 边界声明 → 门槛判据、方案边界
   "M5": [5, 6], // 已知限制 → 实施风险、验收约束
   "M6": [5], // 内部费率 → 成本估算单价
-  "O2": [4, 8], // 已交付案例 → 能力证明、对外案例
+  "O2": [4, 7], // 已交付案例 → 能力证明、对外案例（对外材料=阶段 7）
   "O3": [5], // 价格与授权 → 价格定位
 
   // 阶段 1
@@ -233,11 +233,11 @@ export const TABLE_DEPENDENCIES: Record<string, StageId[]> = {
   "表4-4": [5], // 优先级矩阵 → 先做哪个细分
 
   // 阶段 5
-  "表5-5": [6, 8], // 成本估算 → 投入、报告
-  "表5-6": [6, 8], // 竞品价格对照 → 价值测算、对外材料
+  "表5-5": [6, 7], // 成本估算 → 投入、报告
+  "表5-6": [6, 7], // 竞品价格对照 → 价值测算、对外材料
 
   // 阶段 6
-  "表6-3": [8], // 投资回报估算 → 内部报告结论
+  "表6-3": [7], // 投资回报估算 → 内部报告结论
 };
 
 /**

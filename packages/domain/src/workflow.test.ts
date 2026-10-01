@@ -23,20 +23,20 @@ describe("advance", () => {
     expect(advance(0)).toBe(1);
   });
 
-  it("逐阶段推进 0→8 全链", () => {
+  it("逐阶段推进 0→7 全链", () => {
     let stage = 0 as Parameters<typeof advance>[0];
-    for (const next of [1, 2, 3, 4, 5, 6, 7, 8]) {
+    for (const next of [1, 2, 3, 4, 5, 6, 7]) {
       stage = advance(stage);
       expect(stage).toBe(next);
     }
   });
 
-  it("阶段 8 是终态，推进抛错", () => {
-    expect(() => advance(8)).toThrow("终态");
+  it("阶段 7 是终态，推进抛错", () => {
+    expect(() => advance(7)).toThrow("终态");
   });
 
   it("非法阶段编号抛错（JS 边界防御）", () => {
-    expect(() => advance(9 as never)).toThrow("非法");
+    expect(() => advance(8 as never)).toThrow("非法");
     expect(() => advance(-1 as never)).toThrow("非法");
     expect(() => advance(1.5 as never)).toThrow("非法");
   });
@@ -45,14 +45,14 @@ describe("advance", () => {
 // ─── canAdvance ──────────────────────────────────────────────
 
 describe("canAdvance", () => {
-  it("阶段 0-7 均可推进", () => {
-    for (const stage of [0, 1, 2, 3, 4, 5, 6, 7]) {
+  it("阶段 0-6 均可推进（阶段 7 是终态）", () => {
+    for (const stage of [0, 1, 2, 3, 4, 5, 6]) {
       expect(canAdvance(stage as Parameters<typeof canAdvance>[0])).toBe(true);
     }
   });
 
-  it("阶段 8 不可推进", () => {
-    expect(canAdvance(8)).toBe(false);
+  it("阶段 7 不可推进", () => {
+    expect(canAdvance(7)).toBe(false);
   });
 
   it("非法阶段编号抛错", () => {
@@ -65,7 +65,7 @@ describe("canAdvance", () => {
 describe("rollback", () => {
   it("回退到更早阶段，返回目标阶段", () => {
     expect(rollback(5, 2)).toBe(2);
-    expect(rollback(8, 0)).toBe(0);
+    expect(rollback(7, 0)).toBe(0);
     expect(rollback(1, 0)).toBe(0);
   });
 
@@ -82,7 +82,7 @@ describe("rollback", () => {
   });
 
   it("非法阶段编号抛错", () => {
-    expect(() => rollback(8, -1 as never)).toThrow("非法");
+    expect(() => rollback(8 as never, -1 as never)).toThrow("非法");
     expect(() => rollback(-1 as never, 0 as never)).toThrow("非法");
   });
 });
@@ -185,8 +185,8 @@ describe("getRiskChain", () => {
 // ─── 常量 ────────────────────────────────────────────────────
 
 describe("STAGES 常量", () => {
-  it("包含 0-8 共 9 个阶段", () => {
-    expect(STAGES).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8]);
+  it("包含 0-7 共 8 个阶段", () => {
+    expect(STAGES).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
   });
 });
 
@@ -206,7 +206,7 @@ describe("getAffectedStages", () => {
   });
 
   it("表5-5 成本估算 → 阶段 6,8", () => {
-    expect(getAffectedStages("表5-5")).toEqual([6, 8]);
+    expect(getAffectedStages("表5-5")).toEqual([6, 7]);
   });
 
   it("未知表名 → 空数组", () => {

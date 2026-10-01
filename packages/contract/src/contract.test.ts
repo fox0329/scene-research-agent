@@ -53,9 +53,9 @@ describe("@scene/contract 通用枚举", () => {
     expect(v).toHaveLength(4);
   });
 
-  it("StageId 0-8", () => {
-    const v: StageId[] = [0, 1, 2, 3, 4, 5, 6, 7, 8];
-    expect(v).toHaveLength(9);
+  it("StageId 0-7（现行 8 个阶段）", () => {
+    const v: StageId[] = [0, 1, 2, 3, 4, 5, 6, 7];
+    expect(v).toHaveLength(8);
   });
 
   it("DecisionAction 四种动作", () => {

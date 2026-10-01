@@ -2,15 +2,15 @@
  * @scene/server — SSE 推流共享工具
  *
  * advance / converse / ingest 三类流式端点共用：
- * - parseStage：阶段编号解析（0-8）
+ * - parseStage：阶段编号解析（0-7）
  * - streamEvents：把 hub 订阅流写成 §四 统一 SSE 报文（event: follow + id 递增）
  */
 
 import type { StageId } from "@scene/contract";
 import type { SseHub } from "./sse-hub.js";
 
-/** 最后一个阶段编号 */
-export const LAST_STAGE_ID: StageId = 8;
+/** 最后一个阶段编号（现行 8 阶段 0-7；老的 9 阶段 0-8 已收窄） */
+export const LAST_STAGE_ID: StageId = 7;
 
 export function parseStage(raw: string): StageId | undefined {
   const n = Number(raw);

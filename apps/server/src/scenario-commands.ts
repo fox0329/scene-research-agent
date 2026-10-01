@@ -110,8 +110,10 @@ export async function executeAppCommand(
   switch (cmd.command) {
     case "advance_stage": {
       const stage = Number(cmd.params.stage ?? scenario.current_stage);
-      if (!Number.isInteger(stage) || stage < 0 || stage > 8) {
-        return `【执行结果】阶段编号非法：${cmd.params.stage ?? "（空）"}（应为 0-8）`;
+      // 阶段是**数据口径**（8 个，0-7），不是用户可见的 8 流程步：
+      // 命令跑的是"阶段分析"，用户界面按流程步推进（第 1、2 步同属阶段 1）
+      if (!Number.isInteger(stage) || stage < 0 || stage > 7) {
+        return `【执行结果】阶段编号非法：${cmd.params.stage ?? "（空）"}（应为 0-7）`;
       }
       const advance = createAdvanceStageCommand({ db, dshClient });
       let rowsWritten = 0;
@@ -123,7 +125,7 @@ export async function executeAppCommand(
         if (ev.type === "error") errored = String((ev as { message?: unknown }).message ?? "");
       }
       if (errored) return `【执行结果】阶段 ${stage} 分析未完成：${errored}`;
-      return `【执行结果】阶段 ${stage} 分析完成：共 ${rowsWritten} 行产出。可在阶段面板逐表审阅，右栏已生成阶段总结。`;
+      return `【执行结果】阶段 ${stage} 分析完成：共 ${rowsWritten} 行产出。可在当前流程步的表里逐表审阅，右栏已生成阶段总结。`;
     }
 
     case "export_deliverables": {

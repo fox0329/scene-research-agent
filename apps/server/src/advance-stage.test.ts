@@ -465,10 +465,10 @@ describe("createAdvanceStageCommand", () => {
     });
 
     it("阶段 8 终态运行不抛错、current_stage 保持 8", async () => {
-      db = createMockDb({ scenario: { current_stage: 8 } });
+      db = createMockDb({ scenario: { current_stage: 8 as never } });
       const cmd = createAdvanceStageCommand({ db, dshClient });
       const events = await collectEvents(
-        cmd.execute({ scenarioId: "sc-1", stage: 8 }),
+        cmd.execute({ scenarioId: "sc-1", stage: 8 as never }),
       );
 
       expect(events.at(-1)!.type).toBe("done");
