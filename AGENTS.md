@@ -5,7 +5,8 @@
 场景通是基于 DeepSeek Harness（DSH）的场景落地分析智能体，帮解决方案架构师把"这场景能不能进、怎么进、值不值"的调研从几周压到几天。
 
 - 产品定义：`01-产品定义.md`
-- 工作流标准：`00b-智能体工作流标准.md`（v2.2）
+- 工作流标准：**现行 8 阶段（0–7）/ 34 张信息表** → `04-业务过程重定义.md`（过程）+ `packages/contract/src/tables.ts`（表定义）
+- 方法论底稿：`00b-智能体工作流标准.md`（其 9 阶段 / 约 55 表的过程结构**已被取代**，方法层仍有效）
 - UI 规范：`~/Documents/QoderCN/design-system/design-spec.md`（v1.9）
 - AI 底座：DeepSeek Harness（DSH），本地源码构建（`vendor/deepseek-harness/`），端口 3081（隔离规则见第二章）
 
