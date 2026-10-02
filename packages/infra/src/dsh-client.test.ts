@@ -139,6 +139,55 @@ describe("createDshClient", () => {
     }
   });
 
+  /**
+   * 回归：连接超时**只能盖住"等到响应头"**，不能盖整条流
+   *
+   * 曾经把 `AbortSignal.timeout()` 直接挂在 fetch 上——到点连响应体读取一起中止，
+   * 于是任何跑过 60 秒的分析都在第 60 秒被自己掐死（用户实机：重算第 3 步到 62 秒
+   * 报「The operation was aborted due to timeout」）。这里把连接超时压到 40ms，
+   * 再让流慢吞吞吐 200ms 才结束：必须正常收到全文，不许报错。
+   */
+  it("连接超时不会掐断长流：响应头已到后慢速吐完仍成功", async () => {
+    seedRegistry();
+    process.env["LLM_CONNECT_TIMEOUT_MS"] = "40";
+    const origFetch = globalThis.fetch;
+    const enc = new TextEncoder();
+    // 桩必须**响应 abort 信号**（真实 fetch 会），否则这个用例连旧 bug 都照不出来
+    globalThis.fetch = (async (_url: string, init: RequestInit) => {
+      const signal = init?.signal ?? undefined;
+      const body = new ReadableStream<Uint8Array>({
+        async start(controller) {
+          signal?.addEventListener("abort", () => controller.error(signal.reason));
+          for (const piece of ["长", "流", "没", "被", "掐"]) {
+            await new Promise((r) => setTimeout(r, 40));
+            controller.enqueue(
+              enc.encode(`data: {"choices":[{"delta":{"content":"${piece}"}}]}\n\n`),
+            );
+          }
+          controller.enqueue(enc.encode("data: [DONE]\n\n"));
+          controller.close();
+        },
+      });
+      return new Response(body, {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+      });
+    }) as typeof fetch;
+    try {
+      const client = createDshClient();
+      const h = await client.createSession({ title: "长流" });
+      const events: FollowEvent[] = [];
+      for await (const e of client.prompt(h, { system: "s", user: "u", outputContract: {} })) {
+        events.push(e);
+      }
+      expect(events.some((e) => e.type === "error")).toBe(false);
+      expect(events.at(-1)!.type).toBe("done");
+    } finally {
+      globalThis.fetch = origFetch;
+      delete process.env["LLM_CONNECT_TIMEOUT_MS"];
+    }
+  });
+
   it("cancel 对不存在的会话不应抛错", async () => {
     const client = createDshClient();
     await client.cancel({ sessionId: "nonexistent-id" });

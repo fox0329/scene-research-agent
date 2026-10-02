@@ -356,6 +356,27 @@ check_contains "docs/项目变更表.md" "| 73 |" "变更表 #73 分析中修正
 # 正向守卫：v1.16 中栏只剩信息（表名一行、无表号）+ 分析入口在流程轴按钮位
 check_contains "04-业务过程重定义.md" "v1.16" "业务过程 v1.16（分析步中栏只剩信息）"
 check_contains "docs/项目变更表.md" "| 74 |" "变更表 #74 中栏信息口径登记"
+# v1.17 守卫：商业理解（第 3 步）的行业行情必须写满，不许把市场调研退回给用户
+check_contains "04-业务过程重定义.md" "v1.17" "业务过程 v1.17（商业理解的行业行情口径）"
+check_contains "docs/项目变更表.md" "| 75 |" "变更表 #75 市场行情口径登记"
+check_contains "apps/server/src/stage-prompts.ts" "市场行情必须由你写出来" "商业理解：行业行情必须由模型写满"
+check_contains "apps/server/src/stage-prompts.ts" "行业通例（模型知识·待核实）" "行业行情须标 C/T4 待核实"
+check_contains "packages/infra/src/dsh-client.ts" "LLM_MAX_TOKENS" "单次生成给足输出预算（避免中途截断）"
+# 反向守卫：连接超时只盖「等到响应头」，不得挂到 fetch 上（会把跑过 60 秒的分析整条掐断）
+if grep -qF "AbortSignal.timeout(connectTimeoutMs)" "$ROOT/packages/infra/src/dsh-client.ts"; then
+  echo "❌ 连接超时又挂到 fetch 上了：任何跑过 60 秒的分析都会被自己掐死"
+  FAIL=1
+else
+  echo "✅ 连接超时只盖握手，不掐长流"
+fi
+# 反向守卫：截断 / 解析不出行 = 失败，且必须**先判空再清库**（否则重算把本步数据清零）
+if grep -qF 'finishReason === "length"' "$ROOT/apps/server/src/advance-stage.ts" && \
+   [ "$(grep -n 'dshOutput.rows.length === 0' "$ROOT/apps/server/src/advance-stage.ts" | head -1 | cut -d: -f1)" -lt "$(grep -n 'db.stageDataRepo.deleteByScenarioStage' "$ROOT/apps/server/src/advance-stage.ts" | head -1 | cut -d: -f1)" ]; then
+  echo "✅ 截断/解析失败按失败处理，且先判空再清库（不会清空用户数据）"
+else
+  echo "❌ 截断或空结果的判定丢了／顺序错了：重算会把本步数据清空"
+  FAIL=1
+fi
 if grep -qE "AnchorFoldPanel|本步信息表|完成本步，进入下一步|重算本步分析" "$ROOT/apps/web/src/views/RealStagePanel.tsx"; then
   echo "❌ 中栏又冒出表1-1／小标题／动作按钮（用户定调：上一步的信息不要在这一步显示、上面有下一步）"
   FAIL=1

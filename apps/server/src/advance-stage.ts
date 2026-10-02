@@ -26,6 +26,8 @@ import type {
   OptionalMaterial,
 } from "@scene/contract";
 import type { DbInstance } from "@scene/infra";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { isModelStage, stageDef, tablesOfStage, type InfoStageId } from "@scene/contract";
 import {
   advance,
@@ -205,6 +207,17 @@ async function* executeAdvanceStage(
         });
         return;
       }
+      // 供应商因输出长度上限截断（finish_reason=length）：**不能当成功**——
+      // 截断的 JSON 解析必然失败，若继续走"清旧数据 + 写新数据"就会把用户原有的
+      // 本步数据清空且一条不写（实机事故：第 3 步重算后 30 行变 0 行）。
+      if (event.type === "done" && (event as { finishReason?: string }).finishReason === "length") {
+        yield emit({
+          type: "error",
+          message:
+            "模型输出被长度上限截断（本次未写入任何数据，本步原有内容已保留）——请重试；若反复出现，说明本步要一次生成的表太多，需要拆小后重算",
+        });
+        return;
+      }
     }
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
@@ -214,6 +227,24 @@ async function* executeAdvanceStage(
 
   // 7. 解析 DSH 输出
   const dshOutput = parseDshOutput(fullText);
+  dumpRawOutput(stage, fullText);
+
+  /**
+   * 解析不出任何行 = 失败，**绝不能清库**
+   *
+   * 曾经的顺序是「先 deleteByScenarioStage 再 insert」：模型输出被截断或不是合法
+   * JSON 时，parseDshOutput 静默返回 `{rows:[]}`，于是旧数据被删、新数据为 0，
+   * 用户只看到「完成，共写入 0 条信息」——一步重算把本步数据清空（实机事故）。
+   * 现在先判定解析结果，再决定动不动旧数据。
+   */
+  if (dshOutput.rows.length === 0) {
+    yield emit({
+      type: "error",
+      message:
+        "模型这次没有产出可解析的表格数据（未写入任何内容，本步原有数据已保留）——可直接重试",
+    });
+    return;
+  }
 
   // 8. 写入 stage_data → yield row 事件
   //    重算覆盖（T4.2）：先清除该阶段旧数据行与旧质量关记录再写新结果；
@@ -450,6 +481,27 @@ export function collectUpstreamData(
 // ─── 子函数：执行质量关 ────────────────────────────────────
 
 // ─── DSH 输出解析 ──────────────────────────────────────────
+
+/**
+ * 把模型原始输出落盘留证（`SCENE_DUMP_RAW_DIR=/tmp/xxx` 时生效）
+ *
+ * 解析失败时最需要的就是"模型到底吐了什么"——之前没有任何留证，只能靠猜
+ * （截断？截断在哪？）。默认关闭，排查时打开。
+ */
+function dumpRawOutput(stage: number, text: string): void {
+  const dir = process.env["SCENE_DUMP_RAW_DIR"];
+  if (!dir) return;
+  try {
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(
+      join(dir, `stage-${stage}-${new Date().toISOString().replace(/[:.]/g, "-")}.txt`),
+      text,
+      "utf8",
+    );
+  } catch {
+    /* 留证失败不影响分析 */
+  }
+}
 
 /**
  * 从 DSH 输出文本中提取 JSON。

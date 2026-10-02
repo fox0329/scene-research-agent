@@ -33,6 +33,15 @@ const sessions = new Map<string, SessionState>();
 const llmIdleTimeoutMs = (): number => Number(process.env["LLM_IDLE_TIMEOUT_MS"] ?? 120_000);
 const llmConnectTimeoutMs = (): number => Number(process.env["LLM_CONNECT_TIMEOUT_MS"] ?? 60_000);
 
+/**
+ * 单次生成的最大输出预算
+ *
+ * 不显式给就等于交给供应商默认值：一次生成整步的表格（第 3 步 8 张表 ~50 行）实测
+ * 要 1.6–2 万字符，默认上限小的时候会中途截断，截断的 JSON 解析必然失败
+ * （实机事故：30 行被清成 0 行）。这里给足预算，并留环境变量给不同供应商/模型调。
+ */
+const llmMaxTokens = (): number => Number(process.env["LLM_MAX_TOKENS"] ?? 32_768);
+
 /** 模型流空闲超时（区别于用户主动取消：这条要报错，不能静默当成功） */
 class LlmTimeoutError extends Error {
   constructor(ms: number, what: string) {
@@ -127,7 +136,7 @@ class DshClientImpl implements DshClient {
     session.abortController = abortController;
     /** 连接超时（区别于用户主动取消） */
     let timedOut = false;
-    let connectTimeoutMs = llmConnectTimeoutMs();
+    const connectTimeoutMs = llmConnectTimeoutMs();
 
     try {
       // 实时解析登记表：设置页改动无需重启即生效
@@ -157,16 +166,31 @@ class DshClientImpl implements DshClient {
         Authorization: `Bearer ${resolved.provider.api_key}`,
       };
 
-      const connectTimeout = AbortSignal.timeout(connectTimeoutMs);
-      connectTimeout.addEventListener("abort", () => {
+      /**
+       * 连接超时只盖「等到响应头」，**不能盖整个流**
+       *
+       * 曾经写成 `AbortSignal.timeout()` 直接挂在 fetch 上：那个信号一旦到点会连
+       * **响应体读取**一起中止——本步分析一次要跑 1–3 分钟，结果任何超过 60 秒的
+       * 分析都在第 60 秒被自己掐死，报「The operation was aborted due to timeout」
+       * （用户实机复现：重算第 3 步跑到 62 秒整条断掉）。所以这里用手动定时器，
+       * 响应头一到就 clearTimeout 摘掉它；流中卡死由 idle 超时（readWithIdleTimeout）管。
+       */
+      const connectAbort = new AbortController();
+      const connectTimer = setTimeout(() => {
         timedOut = true;
-      });
-      const response = await fetchWithLlmCheck(url, {
-        method: "POST",
-        headers,
-        body: JSON.stringify(body),
-        signal: AbortSignal.any([abortController.signal, connectTimeout]),
-      });
+        connectAbort.abort();
+      }, connectTimeoutMs);
+      let response: Response;
+      try {
+        response = await fetchWithLlmCheck(url, {
+          method: "POST",
+          headers,
+          body: JSON.stringify(body),
+          signal: AbortSignal.any([abortController.signal, connectAbort.signal]),
+        });
+      } finally {
+        clearTimeout(connectTimer);
+      }
 
       // 流式读取 SSE
       yield* this.consumeStream(response, abortController);
@@ -240,7 +264,8 @@ class DshClientImpl implements DshClient {
                 yield { type: "text", text: content };
               }
               if (chunk.choices?.[0]?.finish_reason) {
-                yield { type: "done" };
+                // finish_reason 要透出去：`length` = 被输出上限截断，调用方必须按失败处理
+                yield { type: "done", finishReason: chunk.choices[0].finish_reason };
                 return;
               }
             } catch {
@@ -297,6 +322,8 @@ function buildRequestBody(
     messages,
     stream: true,
     temperature: 0.3,
+    // 本步一次生成整步表格，输出很长：给足上限，避免中途截断
+    max_tokens: llmMaxTokens(),
   };
 
   if (hasSchema) {

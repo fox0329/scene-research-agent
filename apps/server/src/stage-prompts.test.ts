@@ -108,7 +108,30 @@ describe("stage-prompts — 信息版口径（不产出判断）", () => {
     const p = buildStagePrompt(3, {}, scenario);
     expect(p.system).toContain("不产出判断");
     expect(p.system).toContain("不得自称「用户确认」");
-    expect(p.system).toContain("依据不足就填「未提供」");
+    // 反编造与「行业行情要写满」是一对相反的要求，必须同时在场（见下方 market 用例）
+    expect(p.system).toContain("没有材料依据就写「未提供」");
+    expect(p.system).toContain("行业公共知识");
+  });
+
+  /**
+   * 第 3 步（理解商业）的回归：这一阶段产出的是**行业行情**（毛利、玩家、采购机制、
+   * 门槛、趋势），可旧口径「依据不足就填未提供」让它整列留白——用户原话「认识场景
+   * 商业理解之后主要就是要了解市场信息，你全都不填，要用户自己填吗？」。
+   * 这里把口径钉住：行情必须写满并标 C/T4 待核实，具体事实才可留「未提供」。
+   */
+  it("阶段 2 的市场行情口径：必须写满 + 行业通例 C/T4 待核实（不许退回给用户）", () => {
+    const market = buildStagePrompt(2, {}, scenario);
+    expect(market.system).toContain("市场行情必须由你写出来");
+    expect(market.system).toContain("不许整列留「未提供」");
+    expect(market.system).toContain("行业通例（模型知识·待核实）");
+    expect(market.system).toContain("毛利率");
+    expect(market.system).toContain("主导者");
+    expect(market.system).toContain("时间窗口");
+
+    // 别的阶段不该被塞进市场口径（能力匹配等阶段的事实仍以材料为准）
+    for (const other of [1, 3, 4, 5] as const) {
+      expect(buildStagePrompt(other, {}, scenario).system).not.toContain("市场行情必须由你写出来");
+    }
   });
 
   it("user 注入场景诉求与场景锚", () => {

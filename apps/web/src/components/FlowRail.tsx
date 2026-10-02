@@ -49,6 +49,17 @@ export interface FlowRailProps {
     /** true = 已有产出，这次是重算 */
     recompute: boolean;
   };
+  /**
+   * 「本步已产出、但用户想重跑一次」的次级入口（当前模型步专属）
+   *
+   * 主按钮位是「下一步」（用户定调：不再有第二个推进标签）；已产出的步要重跑，
+   * 就点这里——没有它的话，分析结果不理想时用户只能删库或回退才能重来。
+   */
+  recompute?: {
+    running: boolean;
+    elapsedLabel: string;
+    onStart: () => void;
+  };
 }
 
 /** 步骤状态 → 节点样式后缀 */
@@ -66,6 +77,7 @@ export const FlowRail: React.FC<FlowRailProps> = ({
   onComplete,
   busy = false,
   analysis,
+  recompute,
 }) => {
   const nodeRefs = useRef<Record<number, HTMLButtonElement | null>>({});
 
@@ -119,6 +131,17 @@ export const FlowRail: React.FC<FlowRailProps> = ({
 
       {/* 行末动作：就绪提示进 title（不占第二行）；按钮不进 tablist，也不随节点滚动 */}
       <div className="flow-actions">
+          {recompute ? (
+            <button
+              className="btn"
+              type="button"
+              disabled={busy || recompute.running}
+              title="本步已经跑过一次：想换一版就重算（结果会覆盖本步表格）"
+              onClick={recompute.onStart}
+            >
+              {recompute.running ? `分析中 ${recompute.elapsedLabel}` : "重算本步"}
+            </button>
+          ) : null}
           {analysis ? (
             <button
               className="btn primary"

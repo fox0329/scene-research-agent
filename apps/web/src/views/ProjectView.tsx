@@ -245,14 +245,25 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
    * 只在「当前步 + 模型分析步」上接管，回看历史步与交付步不受影响。
    */
   const stepStale = (stale.data?.stages ?? []).includes(stepStage);
+  const isModelStep = live && stepDef?.state === "当前" && stepDef.kind === "分析";
+  // 主按钮位被分析接管：没产出（必须能发起）或资料已失效（必须能刷新）
   const analysisAction =
-    live && stepDef?.state === "当前" && stepDef.kind === "分析" && (!stepDef.ready || stepStale)
+    isModelStep && (!stepDef.ready || stepStale)
       ? {
           running: analysis.running,
           elapsedLabel: analysis.elapsedLabel,
           onStart: analysis.start,
           hint: stepDef.readyHint,
           recompute: stepDef.ready,
+        }
+      : undefined;
+  // 已产出且没失效：主按钮位还给「下一步」，另给一个次级「重算本步」入口
+  const recomputeAction =
+    isModelStep && stepDef.ready && !stepStale
+      ? {
+          running: analysis.running,
+          elapsedLabel: analysis.elapsedLabel,
+          onStart: analysis.start,
         }
       : undefined;
 
@@ -418,6 +429,7 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
           onSelectStep={setActiveStep}
           onComplete={() => void handleComplete()}
           analysis={analysisAction}
+          recompute={recomputeAction}
         />
       ) : (
         <div className="flow-rail">

@@ -670,6 +670,52 @@ describe("createAdvanceStageCommand", () => {
       expect(db.stageDataRepo.insert).toHaveBeenCalledTimes(3);
     });
 
+    /**
+     * 事故回归：模型输出被截断 / 不是合法 JSON 时**不许清库**
+     *
+     * 实机经过：第 3 步重算时模型输出到 18584 字被上限截断（finish_reason=length），
+     * parseDshOutput 静默返回 `{rows:[]}`，而当时的顺序是"先删旧数据再插入"——
+     * 30 行直接清零，界面还显示「完成，共写入 0 条信息」。现在必须：报错 + 原数据不动。
+     */
+    it("输出不是合法 JSON：报错且**不清空**本步原有数据", async () => {
+      db = createMockDb({ scenario: { current_stage: 2 } });
+      const truncated = '{"rows":[{"table_code":"表3-1","fields":{"link":"视频监控"';
+      dshClient = createMockDshClient(truncated);
+      deps = { db, dshClient };
+
+      const cmd = createAdvanceStageCommand(deps);
+      const events = await collectEvents(cmd.execute({ scenarioId: "sc-1", stage: 2 }));
+
+      const last = events.at(-1)!;
+      expect(last.type).toBe("error");
+      expect(String((last as { message?: string }).message)).toContain("没有产出可解析");
+      expect(db.stageDataRepo.deleteByScenarioStage).not.toHaveBeenCalled();
+      expect(db.stageDataRepo.insert).not.toHaveBeenCalled();
+    });
+
+    it("finish_reason=length（被输出上限截断）：报错且不清库", async () => {
+      db = createMockDb({ scenario: { current_stage: 2 } });
+      const validJson = JSON.stringify(makeStage2DshOutput());
+      dshClient = {
+        createSession: vi.fn(async () => ({ sessionId: "mock-truncated" })),
+        prompt: vi.fn(async function* (): AsyncGenerator<FollowEvent> {
+          yield { type: "text", text: validJson };
+          yield { type: "done", finishReason: "length" };
+        }),
+        cancel: vi.fn(async () => {}),
+      };
+      deps = { db, dshClient };
+
+      const cmd = createAdvanceStageCommand(deps);
+      const events = await collectEvents(cmd.execute({ scenarioId: "sc-1", stage: 2 }));
+
+      const last = events.at(-1)!;
+      expect(last.type).toBe("error");
+      expect(String((last as { message?: string }).message)).toContain("长度上限截断");
+      expect(db.stageDataRepo.deleteByScenarioStage).not.toHaveBeenCalled();
+      expect(db.stageDataRepo.insert).not.toHaveBeenCalled();
+    });
+
     it("阶段 2 也应落库阶段总结（不再写质量关）", async () => {
       const cmd = createAdvanceStageCommand(deps);
       await collectEvents(cmd.execute({ scenarioId: "sc-1", stage: 2 }));
