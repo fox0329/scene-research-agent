@@ -178,6 +178,8 @@ export { extractImportablePaths, expandHomePath, IMPORTABLE_EXTS } from "./chat-
 // ─── 信息完整度检查（替代旧「质量关」；见 04 §六） ─────────────
 export {
   checkStageCompleteness,
+  userGaps,
+  agentGaps,
   gapsToSummaryLines,
   gapsBrief,
   isEmptyValue,
@@ -186,6 +188,7 @@ export type {
   InfoRow,
   Gap,
   GapKind,
+  GapOwner,
   StageCompleteness,
 } from "./completeness.js";
 
@@ -194,17 +197,13 @@ export {
   confirmStateOf,
   usableDownstream,
   applyConfirmation,
-  buildChecklist,
+  anchorRows1_1,
   alignmentWithBrief,
-  pendingConfirmationCount,
-  l1Rows,
   ALIGNMENT_CONFLICT_NOTE,
 } from "./confirmation.js";
 export type {
   ConfirmState,
   ConfirmAction,
-  ChecklistItem,
-  ConfirmationChecklist,
   Alignment,
   AlignmentItem,
 } from "./confirmation.js";
@@ -213,7 +212,8 @@ export type {
 export {
   anchorFixedRows,
   anchorRequiredRows,
-  anchorConfirmRows,
+  anchorUserRows,
+  anchorAgentRows,
   buildAnchorSkeleton,
   anchorFromBrief,
   briefDraftHints,
