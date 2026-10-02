@@ -38,7 +38,58 @@ function summaryFor(rows: Record<string, InfoRow[]> = stage1Rows): string {
   });
 }
 
-describe("stage-summary — 六段骨架", () => {
+/**
+ * 步骤级总结（右栏口径，v2.9）
+ *
+ * 用户定调「右栏的补充说明和阶段总结只针对当前阶段做说明和总结，不要整理整个过程」：
+ * 步骤级只覆盖本步表集，且**不含用户诉求全文与上下游衔接**（那两段属于阶段级/交付物）。
+ */
+describe("stage-summary — 步骤级只讲本步", () => {
+  const stepRows: Record<string, InfoRow[]> = { "表1-2": stage1Rows["表1-2"] ?? [] };
+  const md = buildStageSummary({
+    stage: 1,
+    step: 2,
+    tableCodes: ["表1-2"],
+    scope: "step",
+    scenarioName: "智慧水务",
+    productLineName: "感知与控制",
+    rowsByTable: stepRows,
+    completeness: checkStageCompleteness({ stage: 1, rowsByTable: stepRows, tableCodes: ["表1-2"] }),
+    briefRawText: "场景名称：智慧水务\n想搞清楚什么：值不值得进",
+    generatedAt: "2026-09-25",
+  });
+
+  it("抬头写「第 n 步」而不是底层阶段名", () => {
+    expect(md).toContain("# 第 2 步 · 认识场景 — 总结");
+    expect(md).not.toContain("阶段 1 ·");
+    expect(md).toContain("本步要获得的信息是：");
+  });
+
+  it("不含用户诉求全文（那是整个项目的输入，不属于某一步）", () => {
+    expect(md).not.toContain("用户诉求（第一输入，唯一基准）");
+    expect(md).not.toContain("值不值得进");
+  });
+
+  it("不含「六、上下游衔接」（那是整个流程的映射）", () => {
+    expect(md).not.toContain("上下游衔接");
+    expect(md).not.toContain("上游依据");
+  });
+
+  it("只写本步表集：其他表的行与表名不出现，完整度也只算本步", () => {
+    expect(md).toContain("表1-2");
+    expect(md).not.toContain("表1-1");
+    expect(md).toContain("信息完整度：1/1 张表齐备");
+  });
+
+  it("五段骨架齐全且顺序固定（步骤级没有第六段）", () => {
+    const titles = ["## 一、信息摘要", "## 二、关键信息清单", "## 三、说明与方法口径", "## 四、来源与抽查", "## 五、待补齐信息"];
+    const positions = titles.map((t) => md.indexOf(t));
+    expect(positions.every((p) => p >= 0)).toBe(true);
+    expect([...positions].sort((a, b) => a - b)).toEqual(positions);
+  });
+});
+
+describe("stage-summary — 阶段级六段骨架（交付物装配口径）", () => {
   const md = summaryFor();
 
   it("标题与头部信息（场景/产品线/完整度/用户诉求）", () => {

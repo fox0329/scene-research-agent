@@ -403,8 +403,11 @@ export const api = {
     }),
   staleInfo: (id: string) =>
     req<ApiStaleInfo>(`/projects/${encodeURIComponent(id)}/stale`),
-  stagePanel: (id: string, stage: number) =>
-    req<ApiStagePanel>(`/projects/${encodeURIComponent(id)}/stages/${stage}`),
+  /** 阶段面板数据；`step` 传了就按**本步表集**算完整度（右栏"只针对当前步骤"） */
+  stagePanel: (id: string, stage: number, step?: number) =>
+    req<ApiStagePanel>(
+      `/projects/${encodeURIComponent(id)}/stages/${stage}${step ? `?step=${step}` : ""}`,
+    ),
 
   // ─── 场景诉求（第一输入）与场景锚（表1-1） ───────────────
   getBrief: (id: string) =>
@@ -464,12 +467,20 @@ export const api = {
       { method: "POST" },
     ),
   // ─── 阶段完整度与总结 ────────────────────────────────────
-  stageCompleteness: (id: string, stage: number) =>
-    req<ApiCompleteness>(`/projects/${encodeURIComponent(id)}/stages/${stage}/completeness`),
-  stageSummary: (id: string, stage: number, refresh = false) =>
-    req<ApiStageSummary>(
-      `/projects/${encodeURIComponent(id)}/stages/${stage}/summary${refresh ? "?refresh=1" : ""}`,
+  stageCompleteness: (id: string, stage: number, step?: number) =>
+    req<ApiCompleteness>(
+      `/projects/${encodeURIComponent(id)}/stages/${stage}/completeness${step ? `?step=${step}` : ""}`,
     ),
+  /** 阶段总结；`step` 传了就是"只讲这一步"（无诉求全文、无上下游衔接） */
+  stageSummary: (id: string, stage: number, refresh = false, step?: number) => {
+    const q = new URLSearchParams();
+    if (refresh) q.set("refresh", "1");
+    if (step) q.set("step", String(step));
+    const qs = q.toString();
+    return req<ApiStageSummary>(
+      `/projects/${encodeURIComponent(id)}/stages/${stage}/summary${qs ? `?${qs}` : ""}`,
+    );
+  },
   /** 阶段总结 Markdown 下载地址（直接给 <a download> 用） */
   stageSummaryDownloadUrl: (id: string, stage: number) =>
     `${BASE}/projects/${encodeURIComponent(id)}/stages/${stage}/summary?format=md`,

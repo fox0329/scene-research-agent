@@ -20,6 +20,7 @@
 
 import {
   COVERAGE_RULES,
+  tableDef,
   tablesOfStage,
   type InfoStageId,
   type SourceType,
@@ -236,8 +237,17 @@ function tableGaps(t: TableDef, rows: readonly InfoRow[]): Gap[] {
 export function checkStageCompleteness(input: {
   stage: InfoStageId;
   rowsByTable: Readonly<Record<string, readonly InfoRow[] | undefined>>;
+  /**
+   * 只检查这些表（缺省 = 本阶段全部表）
+   *
+   * 右栏按**当前步骤**传本步表集：阶段 1 横跨第 1、2 两（表1-1 归第 1 步），
+   * 不限定表集就会出现"第 2 步的面板里还算着第 1 步的表"——那就是整理整个过程。
+   */
+  tableCodes?: readonly string[];
 }): StageCompleteness {
-  const tables = tablesOfStage(input.stage);
+  const tables = input.tableCodes
+    ? input.tableCodes.map((c) => tableDef(c)).filter((t): t is NonNullable<typeof t> => Boolean(t))
+    : tablesOfStage(input.stage);
   const gaps: Gap[] = [];
   const missingTables: string[] = [];
   let tablesWithData = 0;

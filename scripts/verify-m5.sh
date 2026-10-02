@@ -322,6 +322,19 @@ check_contains "01-产品定义.md" "没有「解锁全部」" "产品定义：�
 check_contains "04-业务过程重定义.md" "v1.11" "业务过程 v1.11（进度卡一行）"
 check_contains "04-业务过程重定义.md" "v1.12" "业务过程 v1.12（进度卡保留关键词、去圆点）"
 check_contains "docs/项目变更表.md" "| 68 |" "变更表 #68 关键词进度卡登记"
+# ── v2.10 右栏只讲当前步骤 ───────────────────────────────
+check_contains "03-数据契约与API.md" "v2.10" "契约版本记录 v2.10（右栏只讲当前步骤）"
+check_contains "03-数据契约与API.md" "?step=N" "总结/完整度的 step 限定登记"
+check_contains "04-业务过程重定义.md" "v1.13" "业务过程 v1.13（右栏只讲当前步骤）"
+check_contains "04-业务过程重定义.md" "右栏只针对当前步骤" "右栏步骤级口径登记"
+check_contains "docs/项目变更表.md" "| 69 |" "变更表 #69 右栏只讲当前步骤登记"
+# 负向守卫：右栏的步骤级总结不得再引用诉求全文与上下游衔接
+if grep -q "briefRawText" "$ROOT/packages/domain/src/stage-summary.ts" &&    grep -q 'scope !== "step" && input.briefRawText' "$ROOT/packages/domain/src/stage-summary.ts" &&    grep -q 'scope !== "step"' "$ROOT/packages/domain/src/stage-summary.ts"; then
+  echo "✅ 步骤级总结已隔离诉求全文与上下游衔接（只在阶段级/交付物出现）"
+else
+  echo "❌ 步骤级总结仍会带上诉求全文或上下游衔接（用户定调：不要整理整个过程）"
+  FAIL=1
+fi
 check_contains "docs/项目变更表.md" "| 66 |" "变更表 #66 资料默认引用登记"
 check_contains "docs/项目变更表.md" "| 67 |" "变更表 #67 进度卡一行登记"
 # 负向守卫：「解锁全部步骤」必须从契约 / 领域 / 服务 / 前端四条链路彻底消失

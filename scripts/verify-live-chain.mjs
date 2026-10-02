@@ -201,8 +201,10 @@ ok(
   readyHint.slice(0, 60),
 );
 
-/* 5. 右栏双 Tab：补充说明 / 阶段总结（六段骨架）
-      —— 确认清单与缺口清单已整块删除（用户定调「不用显示待确认」） */
+/* 5. 右栏双 Tab：补充说明 / 阶段总结（**只讲本步**的五段骨架）
+      —— 确认清单与缺口清单已整块删除（用户定调「不用显示待确认」）；
+         右栏只针对当前步骤（用户定调「不要整理整个过程」）：
+         不含用户诉求全文、不含上下游衔接、不提别的步骤的表 */
 const detTabs = page.locator(".det .det-tab");
 await detTabs.first().waitFor({ state: "visible", timeout: 15_000 });
 const tabCount = await detTabs.count();
@@ -212,19 +214,29 @@ const junkCount =
   (await page.locator(".det .gap-list").count()) +
   (await page.locator(".det .layer-L1").count());
 await detTabs.nth(1).click();
-// 阶段总结默认**折叠**（页面瘦身）：先展开全文再断言六段骨架
+// 本步总结默认**折叠**（页面瘦身）：先展开全文再断言五段骨架
 const expandBtn = page.locator(".det button.fold-toggle", { hasText: /展开全文/ });
 if (await expandBtn.count()) {
   await expandBtn.first().click();
   await page.waitForTimeout(300);
 }
 const mdText = (await page.locator(".det .md-body").innerText().catch(() => "")) || "";
-const hasSix = /信息摘要/.test(mdText) && /待补齐信息/.test(mdText);
+const hasFive = /信息摘要/.test(mdText) && /待补齐信息/.test(mdText);
+/* 本步口径的抬头：「第 1 步 · 场景定义与边界」，而不是底层阶段名「阶段 1 · 认识场景」 */
+const stepOnly =
+  !/用户诉求/.test(mdText) &&
+  !/上下游衔接/.test(mdText) &&
+  /* md-body 渲染后是 <h1>，innerText 里没有 # —— 只比文字 */
+  /^第 1 步 ·/.test((mdText.trim().split("\n")[0] ?? "").trim()) &&
+  !/^阶段/.test((mdText.trim().split("\n")[0] ?? "").trim());
 /* 产品不产出判断：整页不得出现建议档位措辞 */
 const noAdvice = !/建议(通过|有条件通过|不通过|进)/.test(await page.locator(".shell").innerText());
 ok("5 右栏双 Tab（补充说明 + 阶段总结）且不产出判断、不出现确认/缺口清单",
-  tabCount === 2 && junkCount === 0 && hasSix && noAdvice,
-  `Tab ${tabCount} 个 · 清单残留 ${junkCount} 处 · 六段 ${hasSix} · 无建议措辞 ${noAdvice}`);
+  tabCount === 2 && junkCount === 0 && hasFive && noAdvice,
+  `Tab ${tabCount} 个 · 清单残留 ${junkCount} 处 · 五段 ${hasFive} · 无建议措辞 ${noAdvice}`);
+ok("5d 右栏只讲本步：抬头写「第 1 步」而不是阶段名，且没有用户诉求全文、没有上下游衔接",
+  stepOnly,
+  `诉求 ${!/用户诉求/.test(mdText)} · 上下游 ${!/上下游衔接/.test(mdText)} · 抬头「${(mdText.trim().split("\n")[0] ?? "").slice(0, 24)}」`);
 
 /* 5b. 中栏第 1 步只留表1-1：步标题/引导语/状态行/完整度条/确认按钮都不再出现，
    整页不出现「待确认」；就绪提示只在流程轴上出现一次 */

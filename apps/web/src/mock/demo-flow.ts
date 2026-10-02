@@ -9,7 +9,13 @@
  * 这样 E2E 在演示模式下断言的流程轴行为，与联真态是同一份逻辑。
  */
 
-import { FLOW_STEPS, STAGE_DEFS, tablesOfStage, type InfoStageId } from "@scene/contract";
+import {
+  FLOW_STEPS,
+  STAGE_DEFS,
+  flowStep,
+  tablesOfStage,
+  type InfoStageId,
+} from "@scene/contract";
 import {
   buildFlowStatus,
   buildStageSummary,
@@ -329,17 +335,32 @@ export function buildDemoFlowStatus(input: {
 }
 
 /** 演示态阶段总结（六段骨架；右栏 Tab ② 与联真同结构） */
-export function demoStageSummary(stage: InfoStageId): string {
+/**
+ * 演示态总结（与联真同口径）
+ *
+ * 传 `step` 就是右栏口径：**只讲本步**（本步表集 + 五段骨架，不含用户诉求全文与
+ * 上下游衔接）；不传则是阶段级（交付物装配口径）。
+ */
+export function demoStageSummary(stage: InfoStageId, step?: number): string {
+  const stepDef = step === undefined ? undefined : flowStep(step);
+  const codes = stepDef ? stepDef.tables : tablesOfStage(stage).map((t) => t.code);
   const rowsByTable: Record<string, InfoRow[]> = {};
-  for (const t of tablesOfStage(stage)) rowsByTable[t.code] = DEMO_ROWS[t.code] ?? [];
-  rowsByTable["表1-1"] = DEMO_ANCHOR.map((a) => ({ item: a.item, content: a.content }));
+  for (const code of codes) rowsByTable[code] = DEMO_ROWS[code] ?? [];
+  if (codes.includes("表1-1")) {
+    rowsByTable["表1-1"] = DEMO_ANCHOR.map((a) => ({ item: a.item, content: a.content }));
+  }
   return buildStageSummary({
     stage,
+    ...(stepDef ? { step, tableCodes: codes, scope: "step" as const } : {}),
     scenarioName: "智慧水务",
     productLineName: "感知与控制",
     rowsByTable,
-    completeness: checkStageCompleteness({ stage, rowsByTable }),
-    briefRawText: "场景名称：智慧水务\n想搞清楚什么：这个场景值不值得进",
+    completeness: checkStageCompleteness({
+      stage,
+      rowsByTable,
+      ...(stepDef ? { tableCodes: codes } : {}),
+    }),
+    ...(stepDef ? {} : { briefRawText: "场景名称：智慧水务\n想搞清楚什么：这个场景值不值得进" }),
     generatedAt: "2026-09-25",
   });
 }

@@ -207,7 +207,7 @@ interface DshClient {
 | 变更 | 说明 |
 |---|---|
 | 新增 `scenario_brief` | 场景诉求（第一输入，一场景一行）：`scene_name`/`intent`（想搞清楚什么，必填）/客户·地域·范围·用途·时间线索/`raw_text`（**用户原文，确认基准，系统不得改写**） |
-| 新增 `stage_summary` | 阶段总结文档（复合主键 `scenario_id + stage`）：六段骨架 Markdown，**确定性生成，不需要 LLM** |
+| 新增 `stage_summary` | 总结文档（复合主键 `scenario_id + stage`）：阶段级六段骨架 Markdown，**确定性生成，不需要 LLM**。**v2.10 起右栏读的是步骤级五段**（`?step=N`，即时推导**不落库**——库里那份留给交付物装配） |
 | `stage_data.table_code` 放宽 | 由 `TableCode` 放宽为 `TableCode \| InfoTableCode`（含「可选材料」等新表号）；**未知表号的产出行不入库**（无 schema 无法渲染） |
 | `quality_gate` 停用 | 保留表结构但**不再读写**（判断类产出整体移除） |
 | 场景锚（表1-1）落点 | 不再写 `scenario.description` 文本；**锚行存 `stage_data`（stage=1, table_code=表1-1）**，`description` **降级为由锚行派生的展示缓存** |
@@ -221,7 +221,7 @@ interface DshClient {
 | POST | `/projects/{id}/brief/draft` | 起草场景锚：诉求 + 资料库 → 12 项内容；**用户确认过的行不被覆盖**；LLM 失败降级为按线索预填（`used_llm=false`） |
 | PUT | `/projects/{id}/anchor` | 批量写锚行（逐格确认/编辑）；返回重算后的 `description` |
 | GET | `/projects/{id}/stages/{n}/completeness` | **信息完整度**（替代旧质量关读接口）：`{ stage, expectedTables, tablesWithData, missingTables, gaps, percent }`——只说明"还缺什么"，**不产出通过/不通过** |
-| GET | `/projects/{id}/stages/{n}/summary` | 阶段总结文档：`{ stage, markdown, completeness }`；`?format=md` 直接下载；`?refresh=1` 强制重算 |
+| GET | `/projects/{id}/stages/{n}/summary` | 总结文档：`{ stage, markdown, completeness, scope }`；**`?step=N` = 只讲这一步**（右栏口径：表集限本步、无诉求全文、无上下游衔接）；`?format=md` 直接下载；`?refresh=1` 强制重算（v2.10） |
 | POST | `/projects` | 可随建随传场景诉求字段（`intent`/`customer_hint`/`region_hint`/`scope_hint`/`audience`/`deadline`） |
 | POST | `/projects/{id}/draft-definition` | **兼容保留**：内部改走场景锚，响应形状不变（`description`/`open_questions`/`conversation_id`）；`description` 变为派生缓存 |
 | POST | `/projects/{id}/deliverables/export` | 交付物改为**装配式**：内部报告 = 各阶段总结装配 + 附录（来源索引/覆盖概览）；对外材料 = 章节 ← 表映射且**只渲染中栏列**（天然不含来源/证据级/权威性） |
@@ -231,7 +231,7 @@ interface DshClient {
 | 旧 | 新 | 说明 |
 |---|---|---|
 | `gate` | `completeness` | 载荷 `{ completeness, violations }`：完整度报告 + 产出行校验违规（未知表号/缺必填列/枚举非法/缺来源/自称用户确认）。**不阻断** |
-| `advice` | `summary` | 载荷 `{ markdown }`：该阶段总结文档（六段骨架） |
+| `advice` | `summary` | 载荷 `{ markdown }`：总结文档（本次分析按步骤级五段，交付物装配按阶段级六段；v2.10） |
 
 ### 7.5 确认机制（新增）
 
@@ -357,3 +357,4 @@ interface DshClient {
 | v2.7 | 2026-09-26 | **表1-1 从「12 项填空」收敛为「6 项业务画像」（用户拍板）**：用户指出「**拍板者、使用者、付费者这些信息都应该是用户提供的吗？用户什么都不知道还要我们干什么？**」并定调「**用户只负责输入场景名称，智能体只负责从业务角度说清楚场景的范围**」「表格用户自己可以修改」「**不用显示待确认**」。① 表1-1 **12 项 → 6 项**：`scene_name`(用户,必填) / `scene_boundary`(必填) / `production_object` / `core_systems` / `buyer_type` / `procurement`；② `confirmRequired` 整体删除，改为**固定行属主** `owner: "用户" \| "智能体"`，`docgen` 表头加「内容属主」列；③ **拍板者/使用者/付费者搬入表3-3**（`decision_maker`/`user_role`/`payer`，与 `customer_type/default_choice/budget_item` 同表，中栏仍 6 列）；④ `Gap` 新增必填 `owner`，缺口分 `userGaps`/`agentGaps`；⑤ 阶段总结第五节「信息缺口与待补充」→「**待补齐信息**」；⑥ 第 1 步就绪 = **智能体已写出业务画像**（不再要求逐项确认）；⑦ 新增存量迁移脚本 `scripts/migrate-anchor-v119.mjs`（dry-run 默认）；变更表 #64 |（用户投诉「整个页面大量的无效信息」）**：① 定义对话**只在第一轮讲行业**，第二轮起只回 1–2 句"变化的部分" + ≤1 个问题、整轮 ≤120 字，并禁止在正文写自我说明；② 「整理成定义」**只收用户说过的**（`source_type` enum 收窄为 `["用户补充"]`，模型顺手推断的一律不落表，新增 `inferred_dropped` 可观测），`open_questions` ≤2；③ 新增正文去噪 `stripMetaNotes`（剥掉"（用户未明说，按行业通行情况推断）"这类括号注解）与 `compressCell`（超 80 字按句界截断），定义格 ≤80 字；④ 重新整理时清空"本次未再产出的旧推断行"，用户持有行正文也去噪；⑤ 数据层 `update` 支持 `source_type: null` 显式清空，空行不留来源；⑥ 一次性清洗脚本 `scripts/clean-anchor-notes.mjs`（dry-run 默认，--apply 自动备份），已对真实库执行 558→312 字；变更表 #63 |
 | v2.8 | 2026-09-26 | **中栏只放信息表 + 确认动作改为就地编辑**（用户定调"中栏只重点显示场景概述这个表格，其他的都不要干扰"）：① 第 1 步中栏只剩表1-1（步标题/引导语/就绪状态行/信息完整度条/「确认无误」按钮全删）；② `PUT /projects/{id}/anchor` 的调用方只剩就地编辑（`source_type` 仍只写「用户补充」）；③ 页头常驻的「资料来源」条删除，`GET/PUT /projects/{id}/material-sources` 的入口移入「本场景资料」面板；④ 阶段总结只带注册表里的固定锚行（存量旧 12 项残项不进总结）；变更表 #65 |
 | v2.9 | 2026-09-26 | **通用库默认引用（可取消）+ 删掉「解锁全部步骤」**（用户定调：「新建项目，默认直接引用基础产品资料（默认勾选），除非用户取消勾选，勾选就代表引用，**不需要保存引用按钮**」「进度卡删除解锁全部步骤按钮，不需要这个功能」）：① `scenario_linked_line` 新增 `excluded` 列，**没有行 = 默认引用**（存量场景天然全引用，不需要回填），`excluded = 1` = 用户显式取消；② `PUT /projects/{id}/material-sources` 收的仍是**勾选集合**，落库落补集（哪些被取消）——勾/取消即生效，前端不再有「保存引用」；③ `collectUpstreamData` 的合并范围 = 专属库 + 通用库中未被取消的（去掉无条件全带主库），`data_scope` 只剩 `本场景` / `主库：<名>`；④ **删除 `POST .../flow/unlock-all`** 与 `scenario.flow_unlocked_all` 字段，`buildFlowStatus` 不再有 `unlockedAll`（锁步推进是唯一路径）；变更表 #66/#67 |
+| v2.10 | 2026-09-26 | **右栏只讲当前步骤**（用户定调「补充说明和阶段总结只针对当前阶段，不要整理整个过程」）：① `/stages/{n}`、`/stages/{n}/completeness`、`/stages/{n}/summary` 三个端点新增 `?step=N`——完整度按**本步表集**算（阶段 1 不再把第 1 步的表1-1 算进第 2 步）；② 总结新增 `scope: "step" | "stage"`：`step` 时表集限本步、抬头写「第 n 步」、**不含用户诉求全文与上下游衔接**，且**不落库**（`stage_summary` 里那份是阶段级、供交付物装配，两者不互相覆盖）；③ `checkStageCompleteness` / `buildStageSummary` 新增 `tableCodes` 入参；④ 交付物装配口径不变。变更表 #69 |

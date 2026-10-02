@@ -69,9 +69,10 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
   readyHint,
   onFlowChanged,
 }) => {
+  // 右栏（完整度 / 补充说明 / 阶段总结）一律带上本步：**只针对当前步骤**
   const { status, data, error, reload } = useAsync<ApiStagePanel>(
-    () => api.stagePanel(projectId, stage),
-    [projectId, stage],
+    () => api.stagePanel(projectId, stage, stepId),
+    [projectId, stage, stepId],
   );
   const { showToast } = useToast();
 
@@ -150,7 +151,7 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
     async (refresh = false) => {
       setSummaryLoading(true);
       try {
-        const r = await api.stageSummary(projectId, stage, refresh);
+        const r = await api.stageSummary(projectId, stage, refresh, stepId);
         setSummary(r.markdown);
       } catch {
         setSummary(null);
@@ -158,7 +159,7 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
         setSummaryLoading(false);
       }
     },
-    [projectId, stage],
+    [projectId, stage, stepId],
   );
   useEffect(() => {
     void loadSummary(false);

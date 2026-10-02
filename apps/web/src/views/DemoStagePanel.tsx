@@ -18,7 +18,7 @@ import {
   type SupplementTable,
 } from "../components/stage-snapshot";
 import type { ApiAnchorRow, ApiCompleteness } from "../api";
-import { DEMO_ANCHOR, DEMO_ROWS } from "../mock/demo-flow";
+import { DEMO_ANCHOR, DEMO_ROWS, demoStageSummary } from "../mock/demo-flow";
 
 /**
  * 演示模式阶段面板（无后端）
@@ -92,23 +92,21 @@ export const DemoStagePanel: React.FC<DemoStagePanelProps> = ({
   /** 场景锚行：联真/演示同口径（调用方给了就用，没给退回示例锚） */
   const anchorRows = anchor && anchor.length > 0 ? anchor : DEMO_ANCHOR;
 
+  /** 右栏只针对当前步骤：完整度与总结都按**本步表集**算 */
+  const stepCodes = tables && tables.length > 0 ? tables : undefined;
   const completeness = useMemo<ApiCompleteness>(
-    () => checkStageCompleteness({ stage: id, rowsByTable }) as unknown as ApiCompleteness,
-    [id, rowsByTable],
+    () =>
+      checkStageCompleteness({
+        stage: id,
+        rowsByTable,
+        ...(stepCodes ? { tableCodes: stepCodes } : {}),
+      }) as unknown as ApiCompleteness,
+    [id, rowsByTable, stepCodes],
   );
 
   const summary = useMemo(
-    () =>
-      buildStageSummary({
-        stage: id,
-        scenarioName: "智慧水务",
-        productLineName: "感知与控制",
-        rowsByTable,
-        completeness: checkStageCompleteness({ stage: id, rowsByTable }),
-        briefRawText: "场景名称：智慧水务\n想搞清楚什么：这个场景值不值得进",
-        generatedAt: "2026-09-25",
-      }),
-    [id, rowsByTable],
+    () => demoStageSummary(id, stepId),
+    [id, stepId],
   );
 
   const snapshot = useMemo<StageSnapshot>(() => {

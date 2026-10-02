@@ -478,6 +478,62 @@ describe("场景资料来源（v2.9 默认引用 + 可取消）", () => {
   });
 });
 
+describe("右栏总结与完整度：只针对当前步骤（v2.9）", () => {
+  let h: Harness;
+  beforeEach(() => {
+    h = makeHarness();
+  });
+
+  it("?step=2 的阶段总结不含用户诉求全文与上下游衔接；缺省（阶段级）才含", async () => {
+    const { scenarioId } = seedScenario(h.db, "总结范围场景");
+    // 给诉求与一行数据，确保阶段级总结里"本该有"那两段
+    await h.app.inject({
+      method: "PUT",
+      url: `/api/v1/projects/${scenarioId}/brief`,
+      payload: { raw_text: "想搞清楚什么：值不值得进" },
+    });
+    const stepUrl = `/api/v1/projects/${scenarioId}/stages/1/summary?step=2`;
+    const stageUrl = `/api/v1/projects/${scenarioId}/stages/1/summary`;
+
+    const stepMd = ((await h.app.inject({ method: "GET", url: stepUrl })).json() as {
+      markdown: string;
+    }).markdown;
+    expect(stepMd).not.toContain("用户诉求（第一输入，唯一基准）");
+    expect(stepMd).not.toContain("上下游衔接");
+    // 第 2 步的表集不含表1-1（那是第 1 步的表）
+    expect(stepMd).not.toContain("表1-1");
+
+    const stageMd = ((await h.app.inject({ method: "GET", url: stageUrl })).json() as {
+      markdown: string;
+    }).markdown;
+    expect(stageMd).toContain("上下游衔接");
+  });
+
+  it("?step=2 的完整度只算本步 7 张表（表1-1 归第 1 步）", async () => {
+    const { scenarioId } = seedScenario(h.db, "完整度范围场景");
+    const stepC = (await h.app.inject({
+      method: "GET",
+      url: `/api/v1/projects/${scenarioId}/stages/1/completeness?step=2`,
+    })).json() as { expectedTables: number };
+    const stageC = (await h.app.inject({
+      method: "GET",
+      url: `/api/v1/projects/${scenarioId}/stages/1/completeness`,
+    })).json() as { expectedTables: number };
+    expect(stepC.expectedTables).toBe(stageC.expectedTables - 1);
+    expect(stepC.expectedTables).toBe(7);
+  });
+
+  it("阶段面板 ?step=2 也按本步表集给完整度", async () => {
+    const { scenarioId } = seedScenario(h.db, "面板范围场景");
+    const res = await h.app.inject({
+      method: "GET",
+      url: `/api/v1/projects/${scenarioId}/stages/1?step=2`,
+    });
+    expect(res.statusCode).toBe(200);
+    expect((res.json() as { completeness: { expectedTables: number } }).completeness.expectedTables).toBe(7);
+  });
+});
+
 describe("资料库路由", () => {
   let h: Harness;
   let plId: string;

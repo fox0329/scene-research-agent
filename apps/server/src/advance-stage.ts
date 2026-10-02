@@ -256,13 +256,20 @@ async function* executeAdvanceStage(
   //    只输出"还缺什么"，不输出通过/不通过、不给建议；不齐备不阻断。
   yield emit({ type: "progress", stage, message: "正在检查信息完整度..." });
 
+  // 按**本次分析的表集**算完整度：指定了步骤就只算本步的表（阶段 1 横跨第 1、2 两步，
+  // 按整阶段算会把这步没产出的表1-1 也算成本步欠账）
+  const coveredCodes = stepTables ?? tablesOfStage(effectiveStage).map((t) => t.code);
   const rowsByTable: Record<string, InfoRow[]> = {};
-  for (const t of tablesOfStage(effectiveStage)) {
-    rowsByTable[t.code] = db.stageDataRepo
-      .list({ where: "scenario_id = ? AND table_code = ?", params: [scenarioId, t.code] })
+  for (const code of coveredCodes) {
+    rowsByTable[code] = db.stageDataRepo
+      .list({ where: "scenario_id = ? AND table_code = ?", params: [scenarioId, code] })
       .map((r) => r.row as InfoRow);
   }
-  const completeness = checkStageCompleteness({ stage: effectiveStage, rowsByTable });
+  const completeness = checkStageCompleteness({
+    stage: effectiveStage,
+    rowsByTable,
+    ...(stepTables ? { tableCodes: stepTables } : {}),
+  });
   yield emit({ type: "completeness", stage, completeness, violations });
 
   // 10. 右栏阶段总结文档（确定性生成，不额外调用模型）

@@ -12,6 +12,7 @@
 import {
   ANCHOR_TABLE_CODE,
   STAGE_DEFS,
+  flowStep,
   tablesOfStage,
   type InfoStageId,
   type Scenario,
@@ -36,26 +37,39 @@ export function normalizeStage(stage: StageId): InfoStageId {
   return ((stage as number) === 8 ? 7 : stage) as InfoStageId;
 }
 
-/** 读某阶段各表的行（按注册表的表号；跨阶段的表也按表号取全量） */
+/**
+ * 读各表的行（按注册表的表号）
+ *
+ * @param tableCodes 只读这些表（缺省 = 本阶段全部表）。右栏按**当前步骤**传本步表集——
+ *   阶段 1 横跨第 1、2 两步，不限定表集就会在第 2 步读到第 1 步的表1-1。
+ */
 export function readStageRowsByTable(
   db: DbInstance,
   scenarioId: string,
   stage: InfoStageId,
+  tableCodes?: readonly string[],
 ): Record<string, InfoRow[]> {
+  const codes = tableCodes ?? tablesOfStage(stage).map((t) => t.code);
   const out: Record<string, InfoRow[]> = {};
-  for (const t of tablesOfStage(stage)) {
+  for (const code of codes) {
     const rows = db.stageDataRepo
-      .list({ where: "scenario_id = ? AND table_code = ?", params: [scenarioId, t.code] })
+      .list({ where: "scenario_id = ? AND table_code = ?", params: [scenarioId, code] })
       .map((r) => r.row as InfoRow);
-    out[t.code] = t.code === ANCHOR_TABLE_CODE ? keepAnchorRows(rows) : rows;
+    out[code] = code === ANCHOR_TABLE_CODE ? keepAnchorRows(rows) : rows;
   }
-  // 场景锚（表1-1）始终带上：它是全链唯一场景定义，总结里要以它为准
-  if (!out[ANCHOR_TABLE_CODE]) {
+  // 场景锚（表1-1）在**阶段级**（交付物装配）总结里始终带上：它是全链唯一场景定义；
+  // 步骤级总结不兜这个底——第 2 步不该再讲一遍第 1 步的场景定义
+  if (tableCodes === undefined && !out[ANCHOR_TABLE_CODE]) {
     out[ANCHOR_TABLE_CODE] = keepAnchorRows(
       readAnchorRows(db, scenarioId) as unknown as InfoRow[],
     );
   }
   return out;
+}
+
+/** 步骤级总结的覆盖范围（表集 + 范围标记） */
+function stepScope(step: number): { tableCodes: readonly string[] } {
+  return { tableCodes: flowStep(step).tables };
 }
 
 /**
@@ -73,6 +87,13 @@ export interface StageSummaryResult {
   markdown: string;
   completeness: StageCompleteness;
   stage: InfoStageId;
+  /** 覆盖范围：`step` = 只讲这一步（右栏）；`stage` = 阶段级归纳（交付物装配） */
+  scope: "step" | "stage";
+}
+
+/** 生成选项：传 `step` 即按**当前步骤**出总结（右栏用） */
+export interface StageSummaryOptions {
+  step?: number;
 }
 
 /**
@@ -84,11 +105,17 @@ export function generateStageSummary(
   db: DbInstance,
   scenario: Scenario,
   stage: StageId,
+  options: StageSummaryOptions = {},
 ): StageSummaryResult {
   const id = normalizeStage(stage);
-  const rowsByTable = readStageRowsByTable(db, scenario.id, id);
-  const completeness = checkStageCompleteness({ stage: id, rowsByTable });
-  const brief = readBrief(db, scenario.id);
+  const step = options.step;
+  const tableCodes = step === undefined ? undefined : stepScope(step).tableCodes;
+  const rowsByTable = readStageRowsByTable(db, scenario.id, id, tableCodes);
+  const completeness = checkStageCompleteness({
+    stage: id,
+    rowsByTable,
+    ...(tableCodes ? { tableCodes } : {}),
+  });
   const productLine = db.productLineRepo.getById(scenario.product_line_id);
   const markdown = buildStageSummary({
     stage: id,
@@ -96,10 +123,17 @@ export function generateStageSummary(
     productLineName: productLine?.name,
     rowsByTable,
     completeness,
-    briefRawText: brief?.raw_text,
+    ...(tableCodes ? { tableCodes } : {}),
+    ...(step === undefined ? {} : { step }),
+    // 只讲本步：不带用户诉求全文、不带上下游衔接（用户定调"不要整理整个过程"）
+    scope: step === undefined ? "stage" : "step",
+    // 诉求基准只在阶段级（交付物装配）出现
+    ...(step === undefined ? { briefRawText: readBrief(db, scenario.id)?.raw_text } : {}),
   });
-  db.stageSummaryRepo.upsert(scenario.id, id, markdown);
-  return { markdown, completeness, stage: id };
+  // 步骤级总结是**即时推导**（确定性、毫秒级），不落库：库里那份是阶段级的，
+  // 交付物装配要用它，两者混在一张表里会互相覆盖
+  if (step === undefined) db.stageSummaryRepo.upsert(scenario.id, id, markdown);
+  return { markdown, completeness, stage: id, scope: step === undefined ? "stage" : "step" };
 }
 
 /** 读已落库的总结；没有则即时生成（保证右栏永远有内容） */
@@ -107,27 +141,38 @@ export function getOrGenerateStageSummary(
   db: DbInstance,
   scenario: Scenario,
   stage: StageId,
+  options: StageSummaryOptions = {},
 ): StageSummaryResult & { cached: boolean } {
   const id = normalizeStage(stage);
+  // 步骤级：不读缓存（缓存存的是阶段级那份），每次按本步表集即时推导
+  if (options.step !== undefined) {
+    return { ...generateStageSummary(db, scenario, id, options), cached: false };
+  }
   const existing = db.stageSummaryRepo.get(scenario.id, id);
   if (existing) {
     // 缓存命中也要给出最新完整度（缺口可能因编辑而变化）
     const rowsByTable = readStageRowsByTable(db, scenario.id, id);
     const completeness = checkStageCompleteness({ stage: id, rowsByTable });
-    return { markdown: existing.content, completeness, stage: id, cached: true };
+    return { markdown: existing.content, completeness, stage: id, scope: "stage", cached: true };
   }
   return { ...generateStageSummary(db, scenario, id), cached: false };
 }
 
-/** 阶段面板用：只给完整度（不做 LLM、不写库） */
+/**
+ * 阶段面板用：只给完整度（不做 LLM、不写库）
+ *
+ * @param step 传了就按**本步表集**算（右栏"只针对当前步骤"）；缺省整阶段
+ */
 export function stageCompletenessOf(
   db: DbInstance,
   scenarioId: string,
   stage: StageId,
+  step?: number,
 ): StageCompleteness {
   const id = normalizeStage(stage);
-  const rowsByTable = readStageRowsByTable(db, scenarioId, id);
-  return checkStageCompleteness({ stage: id, rowsByTable });
+  const tableCodes = step === undefined ? undefined : stepScope(step).tableCodes;
+  const rowsByTable = readStageRowsByTable(db, scenarioId, id, tableCodes);
+  return checkStageCompleteness({ stage: id, rowsByTable, ...(tableCodes ? { tableCodes } : {}) });
 }
 
 /**

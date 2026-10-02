@@ -172,20 +172,23 @@ test("右栏双 Tab：补充说明 / 阶段总结（确认清单与缺口清单�
   await expect(page.locator(".det")).not.toContainText("待确认");
   await expect(page.locator(".det")).not.toContainText("缺口");
 
-  // Tab ②：阶段总结默认折叠（首段 + 一句），点「展开全文」才渲染六段骨架
+  // Tab ②：本步总结默认折叠（首段 + 一句），点「展开全文」才渲染五段骨架
   await tabs.nth(1).click();
   await expect(page.locator(".det .md-body")).toHaveCount(0);
   // 按钮文案随状态变（展开全文⇄收起），所以按类名定位而不是按文案
   const foldToggle = page.locator(".det .fold-toggle");
   await expect(foldToggle).toContainText("展开全文");
   await expect(foldToggle).toHaveAttribute("aria-expanded", "false");
-  await expect(page.locator(".det .fold-summary")).toContainText("本阶段要获得的信息是");
+  await expect(page.locator(".det .fold-summary")).toContainText("本步要获得的信息是");
   await foldToggle.click();
   await expect(foldToggle).toHaveAttribute("aria-expanded", "true");
   const md = page.locator(".det .md-body");
   await expect(md).toBeVisible();
   await expect(md).toContainText("信息摘要");
   await expect(md).toContainText("待补齐信息");
+  // 只讲本步：不带用户诉求全文、不带上下游衔接（用户定调"不要整理整个过程"）
+  await expect(md).not.toContainText("用户诉求");
+  await expect(md).not.toContainText("上下游衔接");
 });
 
 test("表1-1 只有「项 / 内容」两列：无状态列、无 ✓、无待确认", async ({ page }) => {

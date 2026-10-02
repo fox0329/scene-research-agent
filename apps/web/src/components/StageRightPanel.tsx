@@ -1,10 +1,10 @@
 /**
  * @scene/web — 右栏：阶段面板（双 Tab）
  *
- * 对应 04 §4.2 的分工：
- *  - **Tab ① 补充说明**：中栏表格放不下的说明类信息（来源、证据级、权威性等
- *    右栏补充列）
- *  - **Tab ② 阶段总结**：六段骨架 Markdown（可导出）
+ * 对应 04 §4.2 的分工（**只讲当前步骤，不整理整个过程**——用户定调 v2.9）：
+ *  - **Tab ① 补充说明**：中栏**当前表**放不下的说明类信息（来源、证据级、权威性等）
+ *  - **Tab ② 步骤总结**：本步表集的五段骨架 Markdown（可导出）——
+ *    不含用户诉求全文与上下游衔接（那两段属于交付物装配的阶段级文档）
  *
  * 三条铁律的落点：
  *  - **不出现建议档位与"通过/不通过"**：右栏只呈现信息
@@ -163,7 +163,7 @@ export const StageRightPanel: React.FC<StageRightPanelProps> = ({ snapshot, live
 
   const { completeness, supplements, rows } = snapshot;
 
-  const emptyMsg = "本步还没有产出——做完本步分析后这里会生成阶段总结";
+  const emptyMsg = "本步还没有产出——做完本步分析后这里会生成本步总结";
   const full = snapshot.summary ?? "";
   const preview = summarizeMarkdown(full);
   const fullLength = plainText(full).replace(/\s/gu, "").length;
@@ -215,7 +215,7 @@ export const StageRightPanel: React.FC<StageRightPanelProps> = ({ snapshot, live
               <div className="empty-state">
                 <div className="empty-state-title">暂无补充说明</div>
                 <div className="empty-state-desc">
-                  选中中栏的一张表后，这里显示它的来源、证据级、方法口径等说明类信息。
+                  这里只显示本步当前表的说明类信息（来源、证据级、方法口径）——切中栏的表就跟着换。
                 </div>
               </div>
             ) : (
@@ -264,7 +264,7 @@ export const StageRightPanel: React.FC<StageRightPanelProps> = ({ snapshot, live
         ) : (
           <section className="det-sec">
             <div className="summary-head">
-              <h4>阶段总结文档</h4>
+              <h4>本步总结文档</h4>
               <div className="summary-actions">
                 <button
                   type="button"
@@ -284,15 +284,15 @@ export const StageRightPanel: React.FC<StageRightPanelProps> = ({ snapshot, live
               </div>
             ) : !snapshot.summary ? (
               <div className="empty-state">
-                <div className="empty-state-title">尚未生成阶段总结</div>
+                <div className="empty-state-title">尚未生成本步总结</div>
                 <div className="empty-state-desc">
-                  点击「重新生成」按六段骨架生成：信息摘要 / 关键信息清单 / 说明与方法口径 /
-                  来源与抽查 / 待补齐信息 / 上下游衔接。
+                  点击「重新生成」按五段骨架生成本步内容：信息摘要 / 关键信息清单 /
+                  说明与方法口径 / 来源与抽查 / 待补齐信息。只讲这一步，不讲整个过程。
                 </div>
               </div>
             ) : (
               <FoldSection
-                title="阶段总结"
+                title="本步总结"
                 summary={preview || "（总结只有标题，点开看全文）"}
                 expandLabel={`展开全文（约 ${fullLength} 字）`}
               >

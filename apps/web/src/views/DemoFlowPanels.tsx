@@ -78,7 +78,7 @@ export const DemoFirstStep: React.FC<DemoFirstStepProps> = ({
       title: `第 1/${FLOW_TOTAL} 步 · ${step.title}`,
       rows: [],
       completeness: overallCompleteness(flow, 1),
-      summary: demoStageSummary(1),
+      summary: demoStageSummary(1, 1),
       summaryLoading: false,
       activeTable: "表1-1",
       supplements: [],

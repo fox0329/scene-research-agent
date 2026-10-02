@@ -1,7 +1,11 @@
 /**
  * stage-summary — 阶段总结文档生成（对应 04 §五）
  *
- * 每阶段一份、右栏显示、可导出；**六段骨架固定**，且**不含任何建议与判断**。
+ * 每份总结**围绕一个范围**展开，且**不含任何建议与判断**：
+ *  - `scope: "step"`（右栏默认，v2.9）：**只讲本步**——表集限本步、不含用户诉求全文、
+ *    不含上下游衔接（用户定调："右栏的补充说明和阶段总结只针对当前阶段做说明和总结，
+ *    不要整理整个过程"）
+ *  - `scope: "stage"`（交付物装配用）：阶段级归纳，开头带诉求基准、结尾带上下游衔接
  *
  * 关键设计：**确定性生成**——由阶段信息行 + 完整度报告 + 注册表推导，
  * 不需要 LLM（更稳、可测、零成本）。LLM 只用于可选润色，不是必需路径。
@@ -10,16 +14,37 @@
 import {
   STAGE_DEFS,
   TABLES,
+  flowStep,
   middleColumns,
   stageDef,
   tableDef,
   tablesOfStage,
   type InfoStageId,
+  type TableDef,
 } from "@scene/contract";
 import { gapsToSummaryLines, isEmptyValue, type InfoRow, type StageCompleteness } from "./completeness.js";
 
 export interface StageSummaryInput {
   stage: InfoStageId;
+  /**
+   * 本份总结覆盖的表集（缺省 = 本阶段全部表）
+   *
+   * 右栏按**当前步骤**传本步表集：阶段 1 横跨第 1、2 两步（表1-1 归第 1 步），
+   * 不限定表集就会在第 2 步的总结里再讲一遍场景定义。
+   */
+  tableCodes?: readonly string[];
+  /**
+   * 步骤号（右栏口径）：给了就用**本步的标题与目标**做抬头与摘要首句，
+   * 抬头从「阶段 1 · 认识场景」变成「第 2 步 · 认识场景」
+   */
+  step?: number;
+  /**
+   * 总结范围（v2.9）
+   *
+   * - `step`（右栏默认）：只讲本步——跳过用户诉求全文与「上下游衔接」
+   * - `stage`（交付物装配）：阶段级归纳，含诉求基准与上下游衔接
+   */
+  scope?: "step" | "stage";
   scenarioName: string;
   /** 产品线名（可缺） */
   productLineName?: string;
@@ -70,13 +95,22 @@ interface RowEntry {
 }
 
 /** 汇总本阶段全部行，并保留表的归属 */
-function allEntries(input: StageSummaryInput): RowEntry[] {
+function allEntries(input: StageSummaryInput, tables: readonly TableDef[]): RowEntry[] {
   const out: RowEntry[] = [];
-  for (const t of tablesOfStage(input.stage)) {
+  for (const t of tables) {
     for (const row of input.rowsByTable[t.code] ?? []) out.push({ code: t.code, row });
   }
   return out;
 }
+
+/** 本份总结覆盖的表（按给定顺序；`tableCodes` 缺省 = 本阶段全部表） */
+function tablesFor(input: StageSummaryInput): TableDef[] {
+  if (!input.tableCodes) return [...tablesOfStage(input.stage)];
+  return input.tableCodes
+    .map((c) => tableDef(c))
+    .filter((t): t is NonNullable<typeof t> => Boolean(t));
+}
+
 
 /** 给一行起个可读标签（用**它自己那张表**的中栏列） */
 function labelOf(entry: RowEntry): string {
@@ -87,25 +121,32 @@ function labelOf(entry: RowEntry): string {
 /**
  * 生成阶段总结文档（Markdown，六段骨架）
  *
- * 六段：一、信息摘要 ｜ 二、关键信息清单 ｜ 三、说明与方法口径
- *       四、来源与抽查 ｜ 五、待补齐信息 ｜ 六、上下游衔接
+ * 骨架：一、信息摘要 ｜ 二、关键信息清单 ｜ 三、说明与方法口径
+ *       四、来源与抽查 ｜ 五、待补齐信息
+ *       （**步骤级**到此为止；**阶段级**再加 六、上下游衔接）
  */
 export function buildStageSummary(input: StageSummaryInput): string {
   const def = stageDef(input.stage);
-  const tables = tablesOfStage(input.stage);
-  const entries = allEntries(input);
+  const scope = input.scope ?? "stage";
+  const tables = tablesFor(input);
+  const entries = allEntries(input, tables);
   const rows = entries.map((e) => e.row);
   const dist = authorityDistribution(rows);
   const generatedAt = input.generatedAt ?? new Date().toISOString().slice(0, 10);
   const L: string[] = [];
 
-  // 文档头
-  L.push(`# 阶段 ${input.stage} · ${def.name} — 总结`);
+  // 文档头（右栏按步骤时抬头写「第 n 步」，不用底层阶段名——用户看的单位是步）
+  const stepDef = input.step === undefined ? undefined : flowStep(input.step);
+  L.push(
+    stepDef
+      ? `# 第 ${input.step} 步 · ${stepDef.title} — 总结`
+      : `# 阶段 ${input.stage} · ${def.name} — 总结`,
+  );
   L.push("");
   L.push(
     `> 场景：${input.scenarioName}${input.productLineName ? ` ｜ 产品线：${input.productLineName}` : ""} ｜ 生成时间：${generatedAt} ｜ 信息完整度：${input.completeness.tablesWithData}/${input.completeness.expectedTables} 张表齐备（${input.completeness.percent}%）`,
   );
-  if (input.briefRawText) {
+  if (scope !== "step" && input.briefRawText) {
     L.push(">");
     L.push("> **用户诉求（第一输入，唯一基准）**：");
     for (const line of input.briefRawText.split("\n")) L.push(`> ${line}`);
@@ -118,7 +159,7 @@ export function buildStageSummary(input: StageSummaryInput): string {
   L.push("## 一、信息摘要");
   L.push("");
   L.push(
-    `本阶段要获得的信息是：${def.goal}`,
+    stepDef ? `本步要获得的信息是：${stepDef.goal}` : `本阶段要获得的信息是：${def.goal}`,
   );
   L.push("");
   L.push(
@@ -132,7 +173,7 @@ export function buildStageSummary(input: StageSummaryInput): string {
   L.push("## 二、关键信息清单");
   L.push("");
   if (rows.length === 0) {
-    L.push("（本阶段尚无信息，见第五节待补清单）");
+    L.push(stepDef ? "（本步尚无信息，见第五节待补清单）" : "（本阶段尚无信息，见第五节待补清单）");
   } else {
     for (const t of tables) {
       const tRows = input.rowsByTable[t.code] ?? [];
@@ -179,7 +220,11 @@ export function buildStageSummary(input: StageSummaryInput): string {
   L.push("");
   const sources = [...new Set(rows.map((r) => String(r["source"] ?? "").trim()).filter((s) => s !== ""))];
   if (sources.length === 0) {
-    L.push("（本阶段尚无带来源的信息——来源是硬要求，见第五节待补清单）");
+    L.push(
+      stepDef
+        ? "（本步尚无带来源的信息——来源是硬要求，见第五节待补清单）"
+        : "（本阶段尚无带来源的信息——来源是硬要求，见第五节待补清单）",
+    );
   } else {
     L.push(
       `- 来源分布：T1 ${dist["T1"]} 条 / T2 ${dist["T2"]} 条 / T3 ${dist["T3"]} 条 / T4 ${dist["T4"]} 条`,
@@ -195,30 +240,29 @@ export function buildStageSummary(input: StageSummaryInput): string {
   for (const line of gapsToSummaryLines(input.completeness)) L.push(line);
   L.push("");
 
-  // 六、上下游衔接
-  L.push("## 六、上下游衔接");
-  L.push("");
-  const produced = tables.map((t) => t.code);
-  L.push(`- 本阶段产出：${produced.join("、") || "（无信息表）"}`);
-  const downstream = new Map<InfoStageId, string[]>();
-  for (const t of tables) {
-    for (const s of t.consumedBy ?? []) {
-      const list = downstream.get(s);
-      if (list) list.push(t.code);
-      else downstream.set(s, [t.code]);
+  // 六、上下游衔接（**只在阶段级/交付物装配时给**：右栏按步骤总结时不讲整个过程）
+  if (scope !== "step") {
+    L.push("## 六、上下游衔接");
+    L.push("");
+    L.push(`- 本阶段产出：${tables.map((t) => t.code).join("、") || "（无信息表）"}`);
+    const downstream = new Map<InfoStageId, string[]>();
+    for (const t of tables) {
+      for (const s of t.consumedBy ?? []) {
+        const list = downstream.get(s);
+        if (list) list.push(t.code);
+        else downstream.set(s, [t.code]);
+      }
     }
-  }
-  if (downstream.size > 0) {
     for (const [s, codes] of [...downstream.entries()].sort((a, b) => a[0] - b[0])) {
       const name = STAGE_DEFS.find((x) => x.id === s)?.name ?? `阶段 ${s}`;
       L.push(`  - 阶段 ${s} · ${name} 会引用：${[...new Set(codes)].join("、")}`);
     }
+    const upstream = TABLES.filter(
+      (t) => t.stage < input.stage && (t.consumedBy ?? []).includes(input.stage),
+    ).map((t) => t.code);
+    L.push(`- 上游依据：${upstream.join("、") || "（无跨阶段依赖）"}`);
+    L.push("");
   }
-  const upstream = TABLES.filter(
-    (t) => t.stage < input.stage && (t.consumedBy ?? []).includes(input.stage),
-  ).map((t) => t.code);
-  L.push(`- 上游依据：${upstream.join("、") || "（无跨阶段依赖）"}`);
-  L.push("");
   L.push("---");
   L.push("");
   L.push(

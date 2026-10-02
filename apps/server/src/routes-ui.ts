@@ -145,6 +145,18 @@ function lineFilter(
   return { where: spec.lineWhere ?? "product_line_id = ?", params: [productLineId] };
 }
 
+/**
+ * `?step=N` 解析（右栏"只针对当前步骤"）
+ *
+ * 缺省返回 `undefined` = 不限定步骤（阶段级）。非法值同样按缺省处理——
+ * 右栏拿不到步骤时退回阶段级，不该因为一个查询参数把整页打挂。
+ */
+function parseStepQuery(query: unknown): number | undefined {
+  const raw = (query as { step?: unknown } | null)?.step;
+  const n = Number(raw);
+  return Number.isInteger(n) && n >= 1 && n <= FLOW_LAST_STEP ? n : undefined;
+}
+
 // ─── 注册入口 ──────────────────────────────────────────────
 
 export function registerUiRoutes(app: FastifyInstance, deps: UiRoutesDeps): void {
@@ -640,6 +652,7 @@ function registerProjectRoutes(app: FastifyInstance, deps: UiRoutesDeps) {
   });
 
   // 阶段面板：表格行 + 质量关 + 建议卡（建议由领域层计算）
+  // `?step=N`：完整度按**当前步骤**的表集算（右栏"只针对当前步骤"，阶段 1 横跨第 1、2 两步）
   app.get("/api/v1/projects/:id/stages/:stage", async (request, reply) => {
     const { id, stage: stageParam } = request.params as { id: string; stage: string };
     const stage = parseStage(stageParam);
@@ -649,7 +662,7 @@ function registerProjectRoutes(app: FastifyInstance, deps: UiRoutesDeps) {
     const rows = db.stageDataRepo.listByScenarioStage(id, stage);
     // v1.4：不再返回质量关与建议档位——改为信息完整度（缺口清单）+ 总结是否已生成。
     // gates/advice 保留为空值仅为过渡期兼容旧前端（P4 前端改造后移除）。
-    const completeness = stageCompletenessOf(db, id, stage);
+    const completeness = stageCompletenessOf(db, id, stage, parseStepQuery(request.query));
     // 兼容旧数据：历史 stage=8（老 9 阶段）按现行阶段 7 查总结（同 advance-stage 的垫片）
     const summaryReady = Boolean(
       db.stageSummaryRepo.get(id, ((stage as number) === 8 ? 7 : stage) as InfoStageId),
@@ -669,12 +682,15 @@ function registerProjectRoutes(app: FastifyInstance, deps: UiRoutesDeps) {
     if (!scenario) return notFound(reply, `场景 ${id} 不存在`);
     const n = parseStage(stage);
     if (n === undefined) return badRequest(reply, `阶段号非法：${stage}`);
-    return stageCompletenessOf(db, id, n);
+    return stageCompletenessOf(db, id, n, parseStepQuery(request.query));
   });
 
   /**
-   * 阶段总结文档（右栏 Tab ②；六段骨架）
+   * 阶段总结文档（右栏 Tab ②）
    *
+   * `?step=N`（右栏默认）：**只讲这一步**——表集限本步，不含用户诉求全文与上下游衔接
+   *              （用户定调"只针对当前阶段做说明和总结，不要整理整个过程"）；
+   *              缺省是阶段级归纳（交付物装配用，含诉求基准与上下游衔接）。
    * `?format=md` 直接下载 Markdown；默认返回 JSON（含完整度）。
    * `?refresh=1` 强制重新生成。
    */
@@ -685,10 +701,12 @@ function registerProjectRoutes(app: FastifyInstance, deps: UiRoutesDeps) {
     const n = parseStage(stage);
     if (n === undefined) return badRequest(reply, `阶段号非法：${stage}`);
     const query = request.query as { format?: string; refresh?: string };
+    const step = parseStepQuery(request.query);
+    const opts = step === undefined ? {} : { step };
     const result =
       query.refresh === "1"
-        ? generateStageSummary(db, scenario, n)
-        : getOrGenerateStageSummary(db, scenario, n);
+        ? generateStageSummary(db, scenario, n, opts)
+        : getOrGenerateStageSummary(db, scenario, n, opts);
     if (query.format === "md") {
       return reply
         .header("content-type", "text/markdown; charset=utf-8")

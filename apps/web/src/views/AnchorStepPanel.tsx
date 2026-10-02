@@ -134,14 +134,14 @@ export const AnchorStepPanel: React.FC<AnchorStepPanelProps> = ({
     onFlowChanged?.();
   }, [onChanged, onFlowChanged]);
 
-  /* 右栏 Tab ② 的阶段总结：每一步都要有（用户定调"每阶段一份总结文档供参考"） */
+  /* 右栏 Tab ② 的总结：**只讲本步**（第 1 步 = 表1-1；用户定调"只针对当前阶段，不要整理整个过程"） */
   const [summary, setSummary] = useState<string | null>(null);
   const [summaryLoading, setSummaryLoading] = useState(false);
   const loadSummary = useCallback(
     async (refresh = false) => {
       setSummaryLoading(true);
       try {
-        const r = await api.stageSummary(projectId, 1, refresh);
+        const r = await api.stageSummary(projectId, 1, refresh, 1);
         setSummary(r.markdown);
       } catch {
         setSummary(null);
