@@ -2117,26 +2117,38 @@ td.ed {
    ───────────────────────────────────────────────────────────── */
 
 .flow-rail {
-  /* 单行进度卡（v2.9）：节点 + 行末「下一步」都在这一行里 */
-  container-type: inline-size;
+  /* 单行进度卡（v2.9）：左边关键词节点条 + 右边「下一步」，都在这 39px 一行里 */
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
   flex-shrink: 0;
   padding: var(--s15) var(--s4);
   background: var(--csr);
   border-bottom: 1px solid var(--cb);
+  /* 容器查询基准：中栏调窄时只收紧间距，关键词永不隐藏 */
+  container-type: inline-size;
 }
 
 .flow-nodes {
   display: flex;
   align-items: center;
   gap: var(--s1);
+  flex: 1 1 auto;
+  min-width: 0;
   flex-wrap: nowrap;
-  overflow: hidden;
+  /* 实在放不下时横向可滚（滚动条不画，避免多出一根线）；关键词不被裁掉半截 */
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+
+.flow-nodes::-webkit-scrollbar {
+  display: none;
 }
 
 .flow-node {
   display: inline-flex;
   align-items: center;
-  gap: var(--s15);
   padding: var(--s05) var(--s15);
   font-family: inherit;
   font-size: var(--txs);
@@ -2147,7 +2159,7 @@ td.ed {
   border-radius: var(--r4);
   cursor: pointer;
   white-space: nowrap;
-  min-width: 0;
+  flex: 0 0 auto;
   transition: color var(--d) var(--e), background var(--d) var(--e),
     border-color var(--d) var(--e);
 }
@@ -2157,33 +2169,13 @@ td.ed {
   background: var(--cm);
 }
 
-/* 状态圆点：位置标记。窄栏隐藏标题后，只剩它 —— 因此不能被压扁 */
-.flow-node-dot {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  width: var(--size-8);
-  height: var(--size-8);
-  border-radius: var(--rp);
-  background: var(--cm);
-  font-size: var(--size-8);
-  line-height: 1;
-}
-
+/* 关键词（简化标题）：进度卡上唯一的文字，任何宽度都不隐藏 */
 .flow-node-tt {
   line-height: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
-/* 四态：已完成 / 当前 / 可推进 / 未解锁 */
+/* 四态（没有圆点，状态全靠文字颜色 + 高亮表达） */
 .flow-node--done {
-  color: var(--cs-h);
-}
-
-.flow-node--done .flow-node-dot {
-  background: var(--cs-s);
   color: var(--cs-h);
 }
 
@@ -2193,17 +2185,8 @@ td.ed {
   border-color: var(--cp);
 }
 
-.flow-node--current .flow-node-dot {
-  background: var(--cp);
-  color: var(--cf);
-}
-
 .flow-node--ready {
   color: var(--ct);
-}
-
-.flow-node--ready .flow-node-dot {
-  border: 1px solid var(--cb);
 }
 
 .flow-node--locked {
@@ -2211,28 +2194,24 @@ td.ed {
   cursor: not-allowed;
 }
 
-.flow-node--locked .flow-node-dot {
-  background: transparent;
-  border: 1px solid var(--cb);
+/* 中栏偏窄：先收紧间距与内边距，把关键词留住（比隐藏标题优先） */
+@container (max-width: 820px) {
+  .flow-nodes {
+    gap: var(--s05);
+  }
+
+  .flow-node {
+    padding: var(--s05) var(--s1);
+  }
 }
 
-/* 行末动作靠右；就绪提示进按钮 title，不占第二行 */
+/* 行末动作：按钮钉在最右，不随节点条滚动 */
 .flow-actions {
   display: flex;
   align-items: center;
   gap: var(--s2);
   margin-left: auto;
-  padding-left: var(--s3);
   flex-shrink: 0;
-}
-
-/* 中栏调窄 → 自动隐藏阶段标题，只留状态圆点（一行永远放得下）
-   阈值 900px：整条内容（8 个标题 + 行末动作，回看时还多一个「回到当前步」）约需 890px，
-   低于它就先收起标题，避免出现被裁掉的半截标题 */
-@container (max-width: 900px) {
-  .flow-node-tt {
-    display: none;
-  }
 }
 
 .flow-actions .btn:disabled {

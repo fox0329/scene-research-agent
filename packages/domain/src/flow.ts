@@ -42,7 +42,10 @@ export interface FlowReadiness {
 export interface FlowStepStatus {
   id: number;
   key: string;
+  /** 完整标题（悬停/读屏用） */
   title: string;
+  /** 简化标题：进度卡上显示的关键词（「场景定义」「能力匹配」…） */
+  short: string;
   goal: string;
   kind: FlowStepKind;
   state: FlowStepState;
@@ -97,6 +100,7 @@ export function buildFlowStatus(input: {
       id: s.id,
       key: s.key,
       title: s.title,
+      short: s.short,
       goal: s.goal,
       kind: s.kind,
       state,

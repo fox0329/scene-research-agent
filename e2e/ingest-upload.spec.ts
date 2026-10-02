@@ -249,7 +249,7 @@ test("场景定义对话（联真）：新建只输名称 → 自动开「场景
     .locator(".flow-rail")
     .getByRole("button", { name: "下一步" })
     .click();
-  await expect(page.locator(".flow-rail .flow-node--done")).toContainText("场景定义与边界");
+  await expect(page.locator(".flow-rail .flow-node--done")).toContainText("场景定义");
   await expect(page.locator(".flow-rail .flow-node--current")).toContainText("认识场景", {
     timeout: 20_000,
   });
@@ -275,7 +275,7 @@ test("流程逐页推进（联真）：完成本步走的是 /flow 接口，完�
   await page.locator(".proj-hd", { hasText: name }).click();
 
   const rail = page.locator(".flow-rail");
-  await expect(rail.locator(".flow-node--current")).toContainText("场景定义与边界");
+  await expect(rail.locator(".flow-node--current")).toContainText("场景定义");
   // 就绪与否由服务端按表1-1 判定（前端只显示、不阻断）；这里只要求当前步就是第 1 步
   // 进度卡只一行：就绪提示在「下一步」按钮的 title 里，不再占一行
   await expect(rail.locator(".flow-hint")).toHaveCount(0);
@@ -313,7 +313,7 @@ test("流程逐页推进（联真）：完成本步走的是 /flow 接口，完�
   await expectStepOneCompletable(page);
   await completeBtn.click();
   await expect(rail.locator(".flow-node--done")).toHaveCount(1);
-  await expect(rail.locator(".flow-node--done")).toContainText("场景定义与边界");
+  await expect(rail.locator(".flow-node--done")).toContainText("场景定义");
 
   // 第 2 步「认识场景」：只显示本步表集，左栏场景列表同步显示第 2/8 步
   await expect(rail.locator(".flow-node--current")).toContainText("认识场景");

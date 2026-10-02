@@ -58,7 +58,10 @@ export interface ApiFlowStep {
   id: number;
   /** 稳定键（brief|anchor|stage1..stage6|delivery） */
   key: string;
+  /** 完整标题（悬停/读屏） */
   title: string;
+  /** 简化标题：进度卡上显示的关键词（「场景定义」「能力匹配」…） */
+  short: string;
   goal: string;
   kind: ApiFlowStepKind;
   state: ApiFlowStepState;

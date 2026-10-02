@@ -209,7 +209,7 @@ test("流程轴：8 个节点、当前步高亮、未解锁不可点（v1.5 取�
   // 当前步唯一且高亮；初始 0 步完成 → 第 1 步是当前步，其余锁着
   await expect(rail.locator(".flow-node--current")).toHaveCount(1);
   await expect(rail.locator(".flow-node--current")).toHaveAttribute("aria-selected", "true");
-  await expect(rail.locator(".flow-node--current")).toContainText("场景定义与边界");
+  await expect(rail.locator(".flow-node--current")).toContainText("场景定义");
   await expect(rail.locator(".flow-node--done")).toHaveCount(0);
   await expect(rail.locator(".flow-node--locked")).toHaveCount(7);
   await expect(nodes.nth(1)).toBeDisabled();
@@ -219,7 +219,21 @@ test("流程轴：8 个节点、当前步高亮、未解锁不可点（v1.5 取�
   await expect(rail.locator(".flow-hint")).toHaveCount(0);
   await expect(rail.getByRole("button", { name: /解锁/ })).toHaveCount(0);
   await expect(rail.locator(".flow-node-no")).toHaveCount(0); // 序号已去掉
-  await expect(rail.locator(".flow-node-dot")).toHaveCount(8);
+  await expect(rail.locator(".flow-node-dot")).toHaveCount(0); // 圆点也不要
+  // 保留关键词（用户定调）：8 个节点各显示简化标题，完整标题在 aria-label / title 里
+  await expect(rail.locator(".flow-node-tt")).toHaveCount(8);
+  const keywords = await rail.locator(".flow-node-tt").allTextContents();
+  expect(keywords).toEqual([
+    "场景定义",
+    "认识场景",
+    "理解商业",
+    "能力匹配",
+    "方案实现",
+    "价值验证",
+    "总结沉淀",
+    "交付物",
+  ]);
+  await expect(nodes.nth(3)).toHaveAttribute("title", /第 4 步 · 能力匹配/);
 
   // 就绪提示不占行：它是「下一步」按钮的悬停提示（新场景画像还没写出 → 未就绪）
   const next = rail.getByRole("button", { name: "下一步" });
@@ -244,7 +258,7 @@ test("流程推进：完成本步 → 当前步前移；已完成步可回看重
   await completeBtn.click();
 
   await expect(rail.locator(".flow-node--done")).toHaveCount(1);
-  await expect(rail.locator(".flow-node--done")).toContainText("场景定义与边界");
+  await expect(rail.locator(".flow-node--done")).toContainText("场景定义");
   await expect(rail.locator(".flow-node--current")).toContainText("认识场景");
   await expect(rail.locator(".flow-node--locked")).toHaveCount(6);
   // 第 2 步「认识场景」：中栏只有本步表集（步标题/完整度都在别处）
@@ -256,7 +270,7 @@ test("流程推进：完成本步 → 当前步前移；已完成步可回看重
   await expect(rail.getByRole("button", { name: "回到当前步" })).toBeVisible();
   await expect(page.locator(".flow-reopen")).toBeVisible();
   await page.getByRole("button", { name: "回到这一步重跑" }).click();
-  await expect(rail.locator(".flow-node--current")).toContainText("场景定义与边界");
+  await expect(rail.locator(".flow-node--current")).toContainText("场景定义");
   await expect(rail.locator(".flow-node--done")).toHaveCount(0);
   await expect(rail.locator(".flow-node--locked")).toHaveCount(7);
 });
@@ -270,7 +284,7 @@ test("锁步推进：没有「解锁全部步骤」，未解锁节点点不动",
   const second = rail.getByRole("tab", { name: /认识场景/ });
   await expect(second).toBeDisabled();
   await second.click({ force: true }).catch(() => undefined);
-  await expect(rail.locator(".flow-node--current")).toContainText("场景定义与边界");
+  await expect(rail.locator(".flow-node--current")).toContainText("场景定义");
 
   // 完成第 1 步后第 2 步才开；此时仍没有解锁入口
   await draftDefinition(page);

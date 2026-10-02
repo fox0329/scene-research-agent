@@ -40,6 +40,14 @@ export interface FlowStep {
   key: string;
   /** 用户看到的标题 */
   title: string;
+  /**
+   * 进度卡上显示的**简化标题**（关键词，2–4 字）
+   *
+   * 用户定调（v2.9）：「进度卡只一行显示，简化阶段标题」+「不要只有圆点，
+   * 保留比如场景定义、能力匹配这些关键词」——进度卡只放关键词，完整标题进
+   * `title`/`aria-label`（悬停与读屏仍能拿到全称）。
+   */
+  short: string;
   /** 这一步要获得什么（一句话） */
   goal: string;
   kind: FlowStepKind;
@@ -73,6 +81,7 @@ export const FLOW_STEPS: readonly FlowStep[] = [
     id: 1,
     key: "anchor",
     title: "场景定义与边界",
+    short: "场景定义",
     goal:
       "你给出场景名称，智能体从业务角度写出场景业务画像（场景边界 / 生产对象 / 核心生产系统 / 买方类型 / 采购特征）；看一眼、能改，确认即可",
     kind: "确认",
@@ -83,6 +92,7 @@ export const FLOW_STEPS: readonly FlowStep[] = [
     id: 2,
     key: "stage1",
     title: "认识场景",
+    short: "认识场景",
     goal: "场景有哪些业务环节、能否参与；要素、架构、硬约束与门槛",
     kind: "分析",
     tables: stage1Tables(),
@@ -92,6 +102,7 @@ export const FLOW_STEPS: readonly FlowStep[] = [
     id: 3,
     key: "stage2",
     title: "理解商业",
+    short: "理解商业",
     goal: "产业链利润在哪、主流方案形态、竞品对照、没被满足的需求",
     kind: "分析",
     tables: tablesOfStage(2).map((t) => t.code),
@@ -101,6 +112,7 @@ export const FLOW_STEPS: readonly FlowStep[] = [
     id: 4,
     key: "stage3",
     title: "能力匹配",
+    short: "能力匹配",
     goal: "我方能力底账、哪些真能解、哪些要补齐、哪些不能做",
     kind: "分析",
     tables: tablesOfStage(3).map((t) => t.code),
@@ -110,6 +122,7 @@ export const FLOW_STEPS: readonly FlowStep[] = [
     id: 5,
     key: "stage4",
     title: "方案与实现",
+    short: "方案实现",
     goal: "方案架构与接口、实施路径、成本估算",
     kind: "分析",
     tables: tablesOfStage(4).map((t) => t.code),
@@ -119,6 +132,7 @@ export const FLOW_STEPS: readonly FlowStep[] = [
     id: 6,
     key: "stage5",
     title: "价值与验证",
+    short: "价值验证",
     goal: "价值与指标、基线、验证方式；试点与验收口径",
     kind: "分析",
     tables: tablesOfStage(5).map((t) => t.code),
@@ -128,6 +142,7 @@ export const FLOW_STEPS: readonly FlowStep[] = [
     id: 7,
     key: "stage6",
     title: "总结沉淀",
+    short: "总结沉淀",
     goal: "把本场景可复用的资产与目标沉淀下来",
     kind: "分析",
     tables: tablesOfStage(6).map((t) => t.code),
@@ -137,6 +152,7 @@ export const FLOW_STEPS: readonly FlowStep[] = [
     id: 8,
     key: "delivery",
     title: "交付物",
+    short: "交付物",
     goal: "输出内部调研报告与对外汇报材料",
     kind: "组装",
     tables: [],

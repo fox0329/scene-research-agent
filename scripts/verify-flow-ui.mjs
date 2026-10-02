@@ -76,11 +76,18 @@ const unlockBtn = await rail.getByRole("button", { name: /解锁/ }).count();
 const hintLines = await rail.locator(".flow-hint").count();
 const serials = await rail.locator(".flow-node-no").count();
 const dots = await rail.locator(".flow-node-dot").count();
+const keywords = (await rail.locator(".flow-node-tt").allTextContents()).map((t) => t.trim());
 const railBox = await rail.boundingBox();
 ok(
-  "4c 进度卡只一行（无解锁全部 / 无第二行提示 / 无序号，圆点 " + dots + " 个）",
-  unlockBtn === 0 && hintLines === 0 && serials === 0 && dots === nodes && (railBox?.height ?? 0) < 60,
+  "4c 进度卡只一行（无解锁全部 / 无第二行提示 / 无序号 / 无圆点）",
+  unlockBtn === 0 && hintLines === 0 && serials === 0 && dots === 0 && (railBox?.height ?? 0) < 60,
   `解锁按钮 ${unlockBtn} · 提示行 ${hintLines} · 序号 ${serials} · 圆点 ${dots} · 高 ${Math.round(railBox?.height ?? 0)}px`,
+);
+// 4d. 保留关键词（用户定调"不要只有圆点，保留场景定义/能力匹配这些关键词"）
+ok(
+  "4d 进度卡保留关键词（场景定义 / 能力匹配 …）",
+  keywords.length === nodes && keywords[0] === "场景定义" && keywords.includes("能力匹配"),
+  keywords.join(" / "),
 );
 
 const completeBtn = rail.getByRole("button", { name: "下一步" });

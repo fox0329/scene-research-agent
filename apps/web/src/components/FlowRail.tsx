@@ -10,9 +10,11 @@
  * 用户定调（v2.9）：
  *  - **只一行显示**：8 个节点 + 行末一个「下一步」按钮，不再有第二行提示、
  *    不再有「解锁全部步骤」（这个功能不需要）
- *  - **去掉序号**：节点上的 ①②③ 去掉，位置靠顺序与高亮表达
+ *  - **只放关键词**：节点显示 `short`（场景定义 / 认识场景 / 能力匹配 …），
+ *    完整标题进 `title` 与 `aria-label`——**不要圆点**（"不要只有原点，保留比如
+ *    场景定义、能力匹配这些关键词"／"圆点可以不用"），位置与状态靠顺序、颜色与高亮表达
  *  - 就绪提示不单独占一行，改为「下一步」按钮的悬停提示
- *  - 中栏调窄时自动隐藏阶段标题（仅留状态圆点），见 app.css 的容器查询
+ *  - 中栏调窄：关键词**永不隐藏**，先收紧间距，实在放不下时节点条横向可滚（按钮固定在最右）
  *
  * 无障碍：`role="tablist"` + `role="tab"` + `aria-selected`，左右方向键可移动；
  * 未解锁节点不进 Tab 序列（disabled），`aria-label` 仍带「第 n 步 · 标题」。
@@ -70,6 +72,7 @@ export const FlowRail: React.FC<FlowRailProps> = ({
 
   return (
     <div className="flow-rail">
+      {/* 节点条：只放 tab（ARIA：tablist 里不放普通按钮）；放不下时它自己横滚 */}
       <div className="flow-nodes" role="tablist" aria-label="业务流程步骤" onKeyDown={handleKeyDown}>
         {status.steps.map((s) => {
           const locked = s.state === "未解锁";
@@ -88,17 +91,16 @@ export const FlowRail: React.FC<FlowRailProps> = ({
               aria-label={`第 ${s.id} 步 · ${s.title}（${s.state}）`}
               onClick={() => onSelectStep(s.id)}
             >
-              {/* 状态圆点：窄栏隐藏标题后，它就是唯一的位置标记 */}
-              <span className="flow-node-dot" aria-hidden="true">
-                {s.state === "已完成" ? "✓" : ""}
-              </span>
-              <span className="flow-node-tt">{s.title}</span>
+              {/* 关键词（简化标题）；完整标题在 title / aria-label 里 */}
+              <span className="flow-node-tt">{s.short}</span>
             </button>
           );
         })}
 
-        {/* 行末动作：就绪提示进 title（不占第二行） */}
-        <div className="flow-actions">
+      </div>
+
+      {/* 行末动作：就绪提示进 title（不占第二行）；按钮不进 tablist，也不随节点滚动 */}
+      <div className="flow-actions">
           <button
             className="btn primary"
             type="button"
@@ -117,7 +119,6 @@ export const FlowRail: React.FC<FlowRailProps> = ({
               回到当前步
             </button>
           ) : null}
-        </div>
       </div>
     </div>
   );

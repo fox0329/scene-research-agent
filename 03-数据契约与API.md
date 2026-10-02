@@ -298,7 +298,7 @@ interface DshClient {
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| GET | `/projects/{id}/flow` | 8 步三态（已完成/当前/可推进/未解锁）+ `ready`/`readyHint`/`progress` + `currentStep`/`completedCount`/`finished` |
+| GET | `/projects/{id}/flow` | 8 步三态（已完成/当前/可推进/未解锁）+ `ready`/`readyHint`/`progress` + `currentStep`/`completedCount`/`finished`；每步含 `title`（完整）与 **`short`（进度卡关键词）** |
 | POST | `/projects/{id}/flow/steps/{n}/complete` | 完成本步：写 `scenario_step`、`current_stage` 单调推进、第 8 步置场景「已完成」；返回最新流程状态 |
 | POST | `/projects/{id}/flow/steps/{n}/reopen` | 回到第 n 步重跑：清后缀标记 + 场景回「进行中」；数据保留 |
 | POST | `/projects/{id}/stages/{n}/advance?step=N` | 按第 N 步的表集限定分析范围（不传 `step` 则整阶段） |

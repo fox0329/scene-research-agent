@@ -320,6 +320,8 @@ check_contains "03-数据契约与API.md" "v2.9" "契约版本记录 v2.9（默�
 check_contains "03-数据契约与API.md" "scenario_linked_line.excluded" "通用库取消引用（excluded）登记"
 check_contains "01-产品定义.md" "没有「解锁全部」" "产品定义：锁步推进、无解锁入口"
 check_contains "04-业务过程重定义.md" "v1.11" "业务过程 v1.11（进度卡一行）"
+check_contains "04-业务过程重定义.md" "v1.12" "业务过程 v1.12（进度卡保留关键词、去圆点）"
+check_contains "docs/项目变更表.md" "| 68 |" "变更表 #68 关键词进度卡登记"
 check_contains "docs/项目变更表.md" "| 66 |" "变更表 #66 资料默认引用登记"
 check_contains "docs/项目变更表.md" "| 67 |" "变更表 #67 进度卡一行登记"
 # 负向守卫：「解锁全部步骤」必须从契约 / 领域 / 服务 / 前端四条链路彻底消失
@@ -332,12 +334,18 @@ if [ -n "$UNLOCK_HITS" ]; then
 else
   echo "✅ 「解锁全部步骤」已从契约/领域/服务/前端彻底移除（测试里的 404 反向断言除外）"
 fi
-# 负向守卫：进度卡不得再有第二行提示与序号节点
-if grep -q "flow-hint\|flow-node-no" "$ROOT/apps/web/src/components/FlowRail.tsx" 2>/dev/null; then
-  echo "❌ 进度卡仍渲染第二行提示或序号（用户定调：只一行、去掉序号）"
+# 负向守卫：进度卡不得再有第二行提示、序号或圆点；正向守卫：必须显示关键词
+if grep -q "flow-hint\|flow-node-no\|flow-node-dot" "$ROOT/apps/web/src/components/FlowRail.tsx" 2>/dev/null; then
+  echo "❌ 进度卡仍渲染第二行提示/序号/圆点（用户定调：只一行、去掉序号、不要圆点）"
   FAIL=1
 else
-  echo "✅ 进度卡只一行：无第二行提示、无序号节点"
+  echo "✅ 进度卡只一行：无第二行提示、无序号、无圆点"
+fi
+if grep -q "flow-node-tt" "$ROOT/apps/web/src/components/FlowRail.tsx" && grep -q "short" "$ROOT/packages/contract/src/flow.ts"; then
+  echo "✅ 进度卡保留关键词节点（简化标题来自契约 short 字段）"
+else
+  echo "❌ 进度卡关键词节点缺失（用户定调：不要只有圆点，保留场景定义/能力匹配这些关键词）"
+  FAIL=1
 fi
 if [ -f "$ROOT/05-表格定义总表.md" ] && pnpm check:docs >/dev/null 2>&1; then
   echo "✅ 05-表格定义总表.md 与表定义注册表一致（漂移守卫）"
