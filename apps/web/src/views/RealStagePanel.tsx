@@ -75,12 +75,6 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
   );
   const { showToast } = useToast();
 
-  /** 页头标题：v1.5 用「第 n/FLOW_TOTAL 步」表达推进位置（阶段号退为数据口径） */
-  const headTitle =
-    stepId !== undefined
-      ? `第 ${stepId}/${FLOW_TOTAL} 步 · ${flowStep(stepId).title}`
-      : `阶段 ${stage} · ${stageLabel}`;
-
   /** 完成本步并前进：**导航动作**，不是判断——信息不齐备也不阻断（缺口只在右栏提示） */
   const completeStep = useCallback(async () => {
     try {
@@ -299,10 +293,7 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
     return (
       <div className="pnl">
         <div className="pnl-h">
-          <div>
-            <h2>{headTitle}</h2>
-            <p>正在加载信息…</p>
-          </div>
+          <p className="pnl-note">正在加载信息…</p>
         </div>
         <div className="pnl-b">
           <div className="loading-strip" role="status" aria-label="加载中" />
@@ -315,10 +306,7 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
     return (
       <div className="pnl">
         <div className="pnl-h">
-          <div>
-            <h2>{headTitle}</h2>
-            <p>后端连接失败，本步数据不可用</p>
-          </div>
+          <p className="pnl-note">本步数据暂时取不到</p>
           <button className="btn" type="button" onClick={reload}>
             重试
           </button>
@@ -342,13 +330,9 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
 
   return (
     <>
-      {/* 阶段头 + 完整度 */}
+      {/* 本步只有「本步的表格 + 该步的动作」：步标题与就绪提示在流程轴，完整度在右栏 */}
       <div className="pnl">
         <div className="pnl-h">
-          {/* 步标题 + 引导语不再重复：流程轴上已经写了"第 n/8 步 · 标题"与就绪提示 */}
-          <div>
-            <h2>{headTitle}</h2>
-          </div>
           <div className="pnl-actions">
             {isModel ? (
               <button
@@ -370,24 +354,7 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
             >
               完成本步，进入下一步
             </button>
-          </div>
-        </div>
-        <div className="pnl-b flush">
-          <div className="completeness-bar">
-            <span>
-              信息完整度 {completeness?.tablesWithData ?? 0}/{completeness?.expectedTables ?? 0} 张表
-              {completeness ? `（${completeness.percent}%）` : ""}
-            </span>
-            {/* 100% 时不再同时喊「缺口 N 项」——那是自相矛盾（缺口清单在右栏） */}
-            {completeness && completeness.percent >= 100 ? (
-              <span className="gap-none">信息齐全</span>
-            ) : completeness && completeness.gaps.length > 0 ? (
-              <span className="gap-count">
-                {completeness.gaps.length} 项缺口（不阻断，右栏可看清单）
-              </span>
-            ) : (
-              <span className="gap-none">暂无缺口</span>
-            )}
+            {/* 资料失效提示留在这里（它只跟本步数据有关；完整度与缺口清单在右栏） */}
             {staleCount > 0 ? <span className="badge warning">{staleCount} 行资料待重算</span> : null}
           </div>
         </div>
@@ -430,7 +397,6 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
           <div className="pnl-h">
             <div>
               <h2>{stepId !== undefined ? "本步信息表" : "本阶段信息表"}</h2>
-              <p>{stageTables.length} 张表；列由表定义注册表给出，中栏只放重要信息（说明类在右栏）</p>
             </div>
           </div>
           <div className="pnl-b">

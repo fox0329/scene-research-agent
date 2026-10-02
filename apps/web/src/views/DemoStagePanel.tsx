@@ -162,33 +162,7 @@ export const DemoStagePanel: React.FC<DemoStagePanelProps> = ({
 
   return (
     <>
-      <div className="pnl">
-        <div className="pnl-h">
-          <div>
-            <h2>
-              {stepId ? `第 ${stepId}/${FLOW_TOTAL} 步 · ` : `阶段 ${stage} · `}
-              {stepId ? (FLOW_STEPS.find((s) => s.id === stepId)?.title ?? def?.name ?? "") : def?.name ?? ""}
-            </h2>
-          </div>
-        </div>
-        <div className="pnl-b flush">
-          <div className="completeness-bar">
-            <span>
-              信息完整度 {completeness.tablesWithData}/{completeness.expectedTables} 张表（
-              {completeness.percent}%）
-            </span>
-            {/* 100% 时不再同时喊「缺口 N 项」（自相矛盾） */}
-            {completeness.percent >= 100 ? (
-              <span className="gap-none">信息齐全</span>
-            ) : completeness.gaps.length > 0 ? (
-              <span className="gap-count">{completeness.gaps.length} 项缺口（不阻断）</span>
-            ) : (
-              <span className="gap-none">暂无缺口</span>
-            )}
-          </div>
-        </div>
-      </div>
-
+      {/* 步标题与完整度都不进中栏：标题在流程轴，完整度在右栏 */}
       {/* 表1-1 与联真同结构：第 2–8 步默认折叠成一行摘要 */}
       <AnchorFoldPanel
         rows={anchorRows as unknown as readonly Record<string, unknown>[]}

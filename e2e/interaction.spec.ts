@@ -147,9 +147,9 @@ test("项目与会话均有 ⋯ 菜单（重命名/归档/删除）", async ({ p
 /* ────────────── §4.2 信息版：完整度提示 + 双 Tab（替代旧建议卡） ────────────── */
 
 test("信息完整度状态行：只说产出进度，不出现建议档位与判定", async ({ page }) => {
-  // 第 1 步中栏只有表1-1（用户定调），完整度状态行从第 2 步起才出现
+  // 完整度只出现在**右栏**（中栏只放信息表）；同一信息不得两栏重复
   await gotoStep2(page);
-  const bar = page.locator(".ws .completeness-bar").first();
+  const bar = page.locator(".det .completeness-bar").first();
   await expect(bar).toBeVisible();
   await expect(bar).toContainText(/信息完整度 \d+\/\d+ 张表/);
   // 产品不产出判断：整页不应出现建议档位或"通过/不通过"
@@ -241,9 +241,9 @@ test("流程推进：完成本步 → 当前步前移；已完成步可回看重
   await expect(rail.locator(".flow-node--done")).toContainText("场景定义与边界");
   await expect(rail.locator(".flow-node--current")).toContainText("认识场景");
   await expect(rail.locator(".flow-node--locked")).toHaveCount(6);
-  // 第 2 步「认识场景」：本步表集 + 全流程完整度状态行
+  // 第 2 步「认识场景」：中栏只有本步表集（步标题/完整度都在别处）
   await expect(page.locator(".ws .table-chips").first()).toBeVisible();
-  await expect(page.locator(".ws .completeness-bar")).toBeVisible();
+  await expect(page.locator(".ws .completeness-bar")).toHaveCount(0);
 
   // 点已完成节点回看：显示该步内容 + 「回到这一步重跑」
   await rail.getByRole("tab", { name: /^第 1 步 · 场景定义与边界（/ }).click();
@@ -265,7 +265,7 @@ test("解锁全部步骤：未解锁节点可点，可直接跳到任一步", as
   await rail.getByRole("tab", { name: /理解商业/ }).click();
   await expect(rail.locator(".flow-node--current")).toContainText("场景定义与边界");
   await expect(rail.getByRole("button", { name: /回到当前步/ })).toBeVisible();
-  await expect(page.locator(".ws .completeness-bar")).toBeVisible();
+  await expect(page.locator(".ws .completeness-bar")).toHaveCount(0);
 
   // 第 8 步交付物（最后一步）：列出 8 步状态 + 导出按钮；右栏是交付物说明
   await rail.getByRole("tab", { name: /交付物/ }).click();

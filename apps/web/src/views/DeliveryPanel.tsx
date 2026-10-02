@@ -11,7 +11,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { FLOW_TOTAL, flowStep } from "@scene/contract";
 import { api, type ApiFlowStatus } from "../api";
-import { FlowCompleteness } from "../components/FlowCompleteness";
 import type { StageSnapshot } from "../components/stage-snapshot";
 import { useToast } from "../components/Toast";
 
@@ -98,19 +97,11 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
     <>
       <div className="pnl delivery-panel">
         <div className="pnl-h">
-          <div>
-            <h2>
-              第 {FLOW_TOTAL}/{FLOW_TOTAL} 步 · {step.title}
-            </h2>
-          </div>
           <div className="pnl-actions">
             <button className="btn primary" type="button" disabled={busy} onClick={() => void handleExport()}>
               {busy ? "生成导出中…" : "生成并导出交付物"}
             </button>
           </div>
-        </div>
-        <div className="pnl-b flush">
-          <FlowCompleteness flow={flow} />
         </div>
         <div className="pnl-b">
           <ol className="delivery-steps">
