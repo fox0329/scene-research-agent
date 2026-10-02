@@ -34,3 +34,7 @@ dist/
 
 # 本地包管理器存储（36MB，pnpm 本地 store）
 .pnpm-store/
+
+# 百度云同步产生的临时文件（不是项目产物）
+.baiduyun.uploading.cfg
+**/.baiduyun.uploading.cfg

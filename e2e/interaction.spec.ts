@@ -655,6 +655,76 @@ test("分析步中栏：只有一行表名 + 表格，且不出现上一步的�
 
 
 
+/**
+ * 列宽自动适配（用户定调 2026-10-02）
+ *
+ * 「每个表格生成时调整列宽到行高最小的状态，别让用户自己一个个调整」
+ * 断言口径：① 每张表挂上来就已是适配结果（无 120px 兜底、无横向滚动条）；
+ * ② **自动适配的宽不写 localStorage**（旧实现把它当"用户手动宽度"存下来，于是
+ * 内容更新后仍沿用旧宽，用户只能一列列拖）；③ 用户拖过才留存，双击恢复自适应。
+ */
+test("表格列宽自动适配：生成即是最紧凑布局，未手动拖就不留存", async ({ page }) => {
+  await draftDefinition(page);
+  await gotoStep2(page);
+
+  const read = () =>
+    page.evaluate(() => {
+      const table = document.querySelector(".ws table") as HTMLTableElement | null;
+      if (!table) return null;
+      const ths = [...table.querySelectorAll("thead th")];
+      const wrap = table.closest(".tw") as HTMLElement;
+      const widths = ths.map((th) => Math.round(th.getBoundingClientRect().width));
+      return {
+        widths,
+        container: wrap.clientWidth,
+        scroll: table.scrollWidth > wrap.clientWidth + 1,
+        stored: Object.keys(window.localStorage).filter((k) => k.startsWith("scene.colwidths")),
+      };
+    });
+
+  // ① 数据刚由「下一步」触发的本步分析写进来，表格**已经**是适配结果（这就是"生成时"）
+  //    表格可能比表名一行晚一拍出现，等它挂上来再读（否则读到空面板）
+  await page.locator(".ws table").first().waitFor({ timeout: 10_000 });
+  const generated = (await read())!;
+  expect(generated.widths.length).toBeGreaterThan(1);
+  expect(generated.widths.some((w) => w !== 120)).toBe(true); // 不是整表掉回兜底宽
+  const firstChip = page.locator(".ws .table-chips").first().locator(".chip").first();
+  await firstChip.click();
+  await page.waitForTimeout(300);
+
+  const fitted = (await read())!;
+  expect(fitted.widths.length).toBeGreaterThan(1);
+  // 每列都在可读下限之上
+  for (const w of fitted.widths) expect(w).toBeGreaterThanOrEqual(64);
+  // 列宽之和 ≤ 中栏宽（末列承接余量），因此不出现横向滚动条
+  expect(fitted.widths.reduce((a, b) => a + b, 0)).toBeLessThanOrEqual(fitted.container + 1);
+  expect(fitted.scroll).toBe(false);
+  // 列宽各不相同：按内容分配，不是平均分也不是兜底宽
+  expect(new Set(fitted.widths).size).toBeGreaterThan(1);
+  // **自动适配不留存**
+  expect(fitted.stored).toEqual([]);
+
+  // 用户手动拖第一列的分割线 → 只有这一列变宽，且此时才留存
+  const resize = page.locator(".ws .th-resize").first();
+  const box = (await resize.boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2 + 80, box.y + box.height / 2, { steps: 8 });
+  await page.mouse.up();
+  await page.waitForTimeout(300);
+
+  const dragged = (await read())!;
+  expect(dragged.widths[0]!).toBeGreaterThan(fitted.widths[0]!);
+  expect(dragged.stored.length).toBe(1);
+
+  // 双击分割线：回到按内容自适应（撤销手动列宽并清掉留存）
+  await resize.dblclick();
+  await page.waitForTimeout(300);
+  const reset = (await read())!;
+  expect(reset.stored).toEqual([]);
+  expect(reset.widths[0]!).toBeLessThan(dragged.widths[0]!);
+});
+
 test("右栏不再有确认清单/缺口清单（智能体的待办不进用户界面）", async ({ page }) => {
   await gotoStep2(page);
   await page.locator(".det .det-tab").nth(0).click();

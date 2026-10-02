@@ -1,3 +1,4 @@
+import { fitWidthsMinHeight, type FitColumn } from "./table-fit";
 import React, {
   useCallback,
   useEffect,
@@ -42,38 +43,20 @@ interface SceneTableProps<T> {
 
 /** 拖拽列宽下限（px）：再窄内容与标题都不可读 */
 const MIN_COL_WIDTH = 64;
-/** 自适应时允许压到的下限（比拖拽下限更小，避免窄容器被撑出横向滚动） */
-const FIT_MIN_COL_WIDTH = 24;
 /** 量不到自然宽时的兜底列宽（px） */
 const FALLBACK_COL_WIDTH = 120;
 
 /** 列宽（px，`key` → 宽）。用像素而非百分比：拖一条分割线只改它左边那一列 */
 type Widths = Record<string, number>;
 
-/** 每列的自然宽（单行内容宽，px） */
-interface NaturalWidth {
-  key: string;
-  px: number;
-}
-
 /**
- * 把各列自然宽适配到容器宽（仅默认态用），目标是整体高度最紧凑：
- * - 宽裕（自然宽总和 ≤ 容器）：自然宽 + 剩余按自然宽比例分——所有内容保持单行
- * - 不足：按自然宽的平方根分配——最小化各列换行行数之和（w ∝ √内容宽）
+ * 列宽留存版本（v4）
+ *
+ * v3 的毛病：**把自动适配算出来的宽也存了下来**，下次渲染读到就当成"用户手动调过"，
+ * 于是表格内容更新后仍沿用旧内容的宽度（列挤成一条、行撑得很高），用户只能一列一列
+ * 手动拖。v4 起只有用户真的拖过才留存；旧键（v3）直接不管，一次性回到自动适配。
  */
-function fitWidths(naturals: NaturalWidth[], container: number): number[] {
-  const sum = naturals.reduce((a, n) => a + n.px, 0);
-  if (naturals.length === 0) return [];
-  if (sum <= container || sum <= 0) {
-    const extra = container - sum;
-    return naturals.map((n) => n.px + (sum > 0 ? (extra * n.px) / sum : extra / naturals.length));
-  }
-  const rootSum = naturals.reduce((a, n) => a + Math.sqrt(n.px), 0);
-  // 每列不低于半个拖拽下限，防止极端窄容器压没
-  return naturals.map((n) =>
-    Math.max((container * Math.sqrt(n.px)) / rootSum, MIN_COL_WIDTH / 2),
-  );
-}
+const COL_WIDTHS_KEY_PREFIX = "scene.colwidths.v4.";
 
 /**
  * 读留存列宽（px）。键集与当前列不一致或垃圾值返回 null
@@ -82,7 +65,7 @@ function fitWidths(naturals: NaturalWidth[], container: number): number[] {
 function loadWidths(storageKey: string | undefined, colKeys: string[]): Widths | null {
   if (!storageKey) return null;
   try {
-    const raw = window.localStorage.getItem(`scene.colwidths.v3.${storageKey}`);
+    const raw = window.localStorage.getItem(`${COL_WIDTHS_KEY_PREFIX}${storageKey}`);
     const parsed: unknown = raw ? JSON.parse(raw) : null;
     if (typeof parsed !== "object" || parsed === null) return null;
     const out: Widths = {};
@@ -185,8 +168,12 @@ export function SceneTable<T extends Record<string, unknown>>({
   columnsRef.current = columns;
   widthsRef.current = widths;
   const wrapRef = useRef<HTMLDivElement>(null);
-  /** 各列自然宽缓存 */
-  const naturalsRef = useRef<NaturalWidth[]>([]);
+  /** 各列内容需求（表头 + 每行内容的单行自然宽，px）：自动适配的输入 */
+  const demandsRef = useRef<FitColumn[]>([]);
+  /** 上面这份需求对应的列集签名（切表后需求会过期，必须能识别出来） */
+  const demandsSigRef = useRef<string | null>(null);
+  const colKeysSigRef = useRef(colKeysSig);
+  colKeysSigRef.current = colKeysSig;
   /** 用户手动拖过（或读到留存值）后不再自动重排 */
   const manualRef = useRef(widths !== null);
   /** 拖拽基线：起点 X、被拖列的起点宽、冻结的全表宽 */
@@ -202,41 +189,95 @@ export function SceneTable<T extends Record<string, unknown>>({
   /* 测量阶段（无留存宽度）：整表单行自然宽渲染，量完立即适配容器（绘制前完成，无闪烁） */
   const measuring = widths === null;
 
-  /** 默认态：按内容自然宽适配到当前容器宽（px） */
+  /** 自动适配：按各列内容需求求「总行高最小」的列宽（px） */
   const fitToContainer = useCallback(() => {
-    const naturals = naturalsRef.current;
+    const demands = demandsRef.current;
+    /* 需求必须与当前列集同源：切表时需求还是上一张表的，用它算出来的宽与新表列 key
+       对不上——每列都会掉回兜底宽 120px（实测就是这个现象）。等测量阶段产出新需求。 */
+    if (demandsSigRef.current !== colKeysSigRef.current) return;
     /* 留 1px 余量：border-collapse 的表在宽度刚好等于容器时，最右那条边框会探出
        半像素，浏览器就认为"内容比容器宽 1px"（凭空多一条横向滚动条） */
     const container = Math.max(0, (wrapRef.current?.clientWidth ?? 0) - 1);
-    if (naturals.length === 0 || container <= 0) return;
-    const fitted = fitWidths(naturals, container);
+    if (demands.length === 0 || container <= 0) return;
+    const fitted = fitWidthsMinHeight(demands, container);
     const next: Widths = {};
-    naturals.forEach((n, i) => {
-      next[n.key] = Math.max(FIT_MIN_COL_WIDTH, Math.round(fitted[i] ?? FALLBACK_COL_WIDTH));
-    });
-    // 取整可能让总和比容器宽几个像素——那会凭空多一条横向滚动条，把这点余量从最宽的列抹掉
-    const total = naturals.reduce((a, n) => a + next[n.key]!, 0);
+    for (const d of demands) {
+      next[d.key] = Math.max(1, Math.round(fitted[d.key] ?? FALLBACK_COL_WIDTH));
+    }
+    // 求和取整可能比容器宽几像素——那会凭空多一条横向滚动条，把这点余量从最宽的列抹掉
+    const total = demands.reduce((a, d) => a + next[d.key]!, 0);
     if (total > container) {
-      const widest = naturals.reduce((a, n) => (next[n.key]! > next[a.key]! ? n : a), naturals[0]!);
-      next[widest.key] = Math.max(FIT_MIN_COL_WIDTH, next[widest.key]! - (total - container));
+      const widest = demands.reduce((a, d) => (next[d.key]! > next[a.key]! ? d : a), demands[0]!);
+      next[widest.key] = Math.max(1, next[widest.key]! - (total - container));
+    }
+    // 幂等：值没变就不 setState——ResizeObserver 与布局变化互相触发会打转（实测刷屏重渲染）
+    const prev = widthsRef.current;
+    if (prev && Object.keys(next).length === Object.keys(prev).length) {
+      let same = true;
+      for (const k of Object.keys(next)) if (prev[k] !== next[k]) { same = false; break; }
+      if (same) return;
     }
     setWidths(next);
   }, []);
 
+  /**
+   * 测量阶段：整表单行自然宽渲染，逐格量出「内容需求」，再按总行高最小适配
+   *
+   * 量的是**每个单元格**的单行自然宽（不是只有表头）：行高由该行最高的那一格决定，
+   * 只有知道每一行需要多宽，才能把宽给到真正撑高行的那一列。
+   */
   useLayoutEffect(() => {
     if (!measuring) return;
-    const ths = tableRef.current?.querySelectorAll("th");
-    const naturals: NaturalWidth[] = [];
-    ths?.forEach((th) => {
-      const key = th.dataset.colKey;
-      if (key) naturals.push({ key, px: th.getBoundingClientRect().width });
+    const table = tableRef.current;
+    if (!table) return;
+    const firstCell = table.querySelector("th, td");
+    const cs = firstCell ? window.getComputedStyle(firstCell) : null;
+    const padPx =
+      (cs ? Number.parseFloat(cs.paddingLeft) + Number.parseFloat(cs.paddingRight) : 0) || 24;
+    const contentPx = (el: Element): number =>
+      Math.max(0, el.getBoundingClientRect().width - padPx);
+
+    const demands: { key: string; headerPx: number; demands: number[] }[] = [];
+    table.querySelectorAll("th").forEach((th) => {
+      const key = (th as HTMLElement).dataset["colKey"];
+      if (!key) return;
+      demands.push({ key, headerPx: contentPx(th), demands: [] });
     });
-    if (naturals.length === 0) return;
-    naturalsRef.current = naturals;
+    table.querySelectorAll("tbody tr").forEach((tr) => {
+      // 列顺序 = DOM 顺序（表头与每行都是同一套 columns）
+      tr.querySelectorAll("td").forEach((td, ci) => {
+        demands[ci]?.demands.push(contentPx(td));
+      });
+    });
+    if (demands.length === 0) return;
+    demandsRef.current = demands;
+    demandsSigRef.current = colKeysSig;
     manualRef.current = false;
     fitToContainer();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [measuring, colKeysSig]);
+
+  /**
+   * 内容/行集变化（表格刚生成、重算换了一版）→ 重新自动适配
+   *
+   * 判据取"行数 + 行标识"：生成与重算会换掉行 id（重算=整批新行），而**就地编辑
+   * 单元格不会**——否则用户改一个字就被重新排版，手动拖好的宽度会白拖。
+   */
+  const dataIdsSig = data
+    .map((row) => {
+      const id = (row as { id?: unknown }).id;
+      return typeof id === "string" ? id : "";
+    })
+    .join(",");
+  const dataSig = `${colKeysSig}|${data.length}|${dataIdsSig}`;
+  const dataSigRef = useRef(dataSig);
+  useEffect(() => {
+    if (dataSigRef.current === dataSig) return;
+    dataSigRef.current = dataSig;
+    // 回到测量态：先按单行自然宽渲染量需求，再在绘制前换成适配结果（无闪烁）
+    manualRef.current = false;
+    setWidths(null);
+  }, [dataSig]);
 
   /* 容器宽变化：记下来（算填充列宽）；未手动调过列宽时按内容重新适配 */
   useEffect(() => {
@@ -260,7 +301,7 @@ export function SceneTable<T extends Record<string, unknown>>({
       const next: Widths = {};
       for (const c of cols) {
         const w = widthsRef.current?.[c.key];
-        if (typeof w === "number") next[c.key] = Math.max(FIT_MIN_COL_WIDTH, Math.round(w * scale));
+        if (typeof w === "number") next[c.key] = Math.max(MIN_COL_WIDTH, Math.round(w * scale));
       }
       setWidths(next);
     };
@@ -283,10 +324,16 @@ export function SceneTable<T extends Record<string, unknown>>({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [storageKey, colKeysSig]);
 
+  /**
+   * 只有**用户手动拖过**的列宽才留存
+   *
+   * 自动适配的宽是"这份内容的临时最优解"，内容一变就该重算——存下来会让下一份
+   * 内容沿用旧宽（用户抱怨的"得自己一列一列调"就是这么来的）。
+   */
   useEffect(() => {
-    if (!storageKey || widths === null) return;
+    if (!storageKey || widths === null || !manualRef.current) return;
     try {
-      window.localStorage.setItem(`scene.colwidths.v3.${storageKey}`, JSON.stringify(widths));
+      window.localStorage.setItem(`${COL_WIDTHS_KEY_PREFIX}${storageKey}`, JSON.stringify(widths));
     } catch {
       /* 本地存储不可用时仅本次会话生效 */
     }
@@ -348,7 +395,7 @@ export function SceneTable<T extends Record<string, unknown>>({
     setWidths(null);
     if (!storageKey) return;
     try {
-      window.localStorage.removeItem(`scene.colwidths.v3.${storageKey}`);
+      window.localStorage.removeItem(`${COL_WIDTHS_KEY_PREFIX}${storageKey}`);
     } catch {
       /* 忽略 */
     }

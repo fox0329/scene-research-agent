@@ -393,7 +393,7 @@ else
 fi
 # 正向守卫：只改被拖那一列的像素模型 + 表宽恒等于中栏宽（末列承接余量）+ 多行编辑器
 if grep -qF "末列不给宽" "$ROOT/apps/web/src/components/SceneTable.tsx" && \
-   grep -q "scene.colwidths.v3" "$ROOT/apps/web/src/components/SceneTable.tsx" && \
+   grep -q "scene.colwidths.v4" "$ROOT/apps/web/src/components/SceneTable.tsx" && \
    grep -q "AutoGrowTextarea" "$ROOT/apps/web/src/components/SceneTable.tsx" && \
    grep -q "multiline: true" "$ROOT/apps/web/src/components/SchemaTable.tsx"; then
   echo "✅ 中栏表格：像素列宽（末列承接余量）+ 多行编辑器（只改被拖那一列）"
@@ -423,6 +423,38 @@ elif grep -qF "startResize(col.key, e)" "$ROOT/apps/web/src/components/SceneTabl
   echo "✅ 拖分割线只改被拖的那一列（不再交换两侧宽度）"
 else
   echo "❌ 找不到单列拖拽调用点（SceneTable 的列宽机制被改动过？）"
+  FAIL=1
+fi
+# v1.18 守卫：列宽自动适配到「行高最小」，且自动适配的宽不得当成用户手动宽度留存
+check_contains "04-业务过程重定义.md" "v1.18" "业务过程 v1.18（列宽自动适配）"
+check_contains "docs/项目变更表.md" "| 76 |" "变更表 #76 列宽自动适配登记"
+check_contains "apps/web/src/components/table-fit.ts" "fitWidthsMinHeight" "列宽适配是独立的纯函数（可单测）"
+check_contains "apps/web/src/components/SceneTable.tsx" "demandsSigRef" "适配前校验需求与当前列集同源"
+# 反向守卫：只有用户手动拖过才留存——否则下次生成会沿用旧内容的宽度（列挤成一条、行撑得高）
+if grep -qF "if (!storageKey || widths === null || !manualRef.current) return;" "$ROOT/apps/web/src/components/SceneTable.tsx"; then
+  echo "✅ 只有用户手动拖过的列宽才留存（自动适配不留存）"
+else
+  echo "❌ 列宽留存的判定丢了：自动适配的宽会被当成用户手动宽度存下来，下次生成就沿用旧宽"
+  FAIL=1
+fi
+# 反向守卫：v3 键（把自动宽度也存下来的旧口径）不得再用
+if grep -q "colwidths.v3" "$ROOT/apps/web/src/components/SceneTable.tsx"; then
+  echo "❌ 又开始读写 v3 列宽键（旧键里存的是自动适配的宽，会让表格永远不重新适配）"
+  FAIL=1
+else
+  echo "✅ 列宽留存只用 v4 键（v3 的自动宽度视为无效）"
+fi
+# 反向守卫：生成/重算要触发重新适配（行集变化 → 回测量态）
+if grep -qF "dataSig" "$ROOT/apps/web/src/components/SceneTable.tsx"; then
+  echo "✅ 行集变化（表格刚生成/重算）会触发重新适配"
+else
+  echo "❌ 内容变化不再触发重新适配：生成后还得用户一列列自己调"
+  FAIL=1
+fi
+if grep -qF "列宽自动适配" "$ROOT/e2e/interaction.spec.ts"; then
+  echo "✅ E2E 覆盖列宽自动适配（生成即紧凑、未拖不留存、双击恢复）"
+else
+  echo "❌ 缺少列宽自动适配的 E2E 用例"
   FAIL=1
 fi
 if grep -q "td.ed" "$ROOT/apps/web/src/styles/app.css" && \
