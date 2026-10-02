@@ -8,7 +8,6 @@ import {
   tablesOfStage,
   type InfoStageId,
 } from "@scene/contract";
-import { buildChecklist } from "@scene/domain";
 import {
   api,
   advanceStageStream,
@@ -22,7 +21,6 @@ import { AnchorFoldPanel } from "../components/AnchorFoldPanel";
 import { anchorSummary } from "../components/definition-progress";
 import {
   asSourceType,
-  checklistContent,
   type StageSnapshot,
   type SupplementTable,
 } from "../components/stage-snapshot";
@@ -192,32 +190,7 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
     [projectId, rows, onChanged, showToast],
   );
 
-  /** 锚行确认/修改（确认状态只能由用户动作产生，模型不得自称） */
-  const handleAnchorAction = useCallback(
-    async (item: string, action: "确认" | "修改", content?: string) => {
-      const next: ApiAnchorRow[] = anchor.map((a) =>
-        a.item === item
-          ? {
-              ...a,
-              content: content ?? a.content,
-              source_type: action === "确认" ? "用户确认" : "用户补充",
-              confirm_state: action === "确认" ? "用户确认" : "用户修改",
-            }
-          : a,
-      );
-      setAnchor(next);
-      try {
-        const r = await api.saveAnchor(projectId, next);
-        setAnchor(r.rows);
-        onChanged?.();
-      } catch (err: unknown) {
-        showToast(`确认失败：${err instanceof Error ? err.message : String(err)}`);
-      }
-    },
-    [anchor, projectId, onChanged, showToast],
-  );
-
-  /* 右栏数据面：补充列（当前表的右栏补充列）+ 确认清单 */
+  /* 右栏数据面：补充列（当前表的右栏补充列） */
   const snapshot = useMemo<StageSnapshot | null>(() => {
     if (!data) return null;
 
@@ -243,25 +216,7 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
       }
     }
 
-    // 确认清单：L1 取自表1-1 的必确认固定行；L2 取表1-2 的环节行；L3 为待确认聚合
-    const linkRows = rows
-      .filter((r) => r.table_code === "表1-2")
-      .map((r) => ({ ...r.row, source_type: asSourceType(r.source_type) }));
-    const pendingCount = rows.filter((r) => {
-      const st = String(r.source_type ?? "");
-      return st !== "用户确认" && st !== "用户补充";
-    }).length;
-    const checklist = buildChecklist({
-      anchorRows: anchor.map((a) => ({
-        item: a.item,
-        content: a.content,
-        source_type: asSourceType(a.source_type),
-      })),
-      linkRows: stage === 1 ? linkRows : [],
-      pendingCount,
-    });
-
-    /** 中栏表1-1 折叠态摘要（口径与右栏页脚同源） */
+    /** 中栏表1-1 折叠态摘要 */
     const anchorStats = anchorSummary(anchor);
 
     return {
@@ -276,19 +231,10 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
       summaryLoading,
       activeTable,
       supplements,
-      checklist: checklist.items.map((i) => ({
-        layer: i.layer,
-        tableCode: i.tableCode,
-        rowKey: i.rowKey,
-        label: i.label,
-        state: i.state,
-        content: checklistContent(i.tableCode, i.rowKey, anchor, rows),
-      })),
       anchor,
       anchorSummary: anchorStats,
       onRefreshSummary: () => void loadSummary(true),
       onSupplementChange: (rowId, cell, value) => void handleCellChange(rowId, cell, value),
-      onAnchorAction: (item, action, content) => void handleAnchorAction(item, action, content),
     };
   }, [
     data,
@@ -303,7 +249,6 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
     stepId,
     loadSummary,
     handleCellChange,
-    handleAnchorAction,
   ]);
 
   useEffect(() => {

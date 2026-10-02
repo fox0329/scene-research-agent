@@ -27,7 +27,6 @@ interface ProjectViewProps {
   /** 右栏阶段快照：补充说明 + 确认清单 + 阶段总结 */
   onStageSnapshot?: (snap: StageSnapshot | null) => void;
   /** 主动弹出对话抽屉（v1.14）：定义/澄清生成后让用户直接对话 */
-  onOpenConversation?: (convId?: string) => void;
   /**
    * 定义对话在 App 层发生变化（新建场景后直接开聊）的信号（自增计数）
    *
@@ -55,7 +54,6 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
   live,
   onProjectsChanged,
   onStageSnapshot,
-  onOpenConversation,
   definitionRefresh = 0,
 }) => {
   const { showToast } = useToast();
@@ -196,23 +194,20 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
   }, [busy, live, project.id, flow?.unlockedAll, showToast]);
 
   /** 演示态：确认 / 修改锚行（只改本地内存） */
-  const handleDemoAnchorAction = useCallback(
-    (item: string, action: "确认" | "修改", content?: string) => {
-      setDemoAnchor((prev) =>
-        prev.map((a) =>
-          a.item === item
-            ? {
-                ...a,
-                content: content ?? a.content,
-                source_type: action === "确认" ? "用户确认" : "用户补充",
-                confirm_state: action === "确认" ? "用户确认" : "用户修改",
-              }
-            : a,
-        ),
-      );
-    },
-    [],
-  );
+  /**
+   * 演示态：「确认无误」= 一次整表确认（与联真同义）
+   *
+   * 只写 `confirm_state`，不动 `source_type`——来源是溯源信息，用户认可不等于来源变了。
+   */
+  const handleDemoAnchorConfirmAll = useCallback(() => {
+    setDemoAnchor((prev) =>
+      prev.map((a) =>
+        String(a.content ?? "").trim() !== "" && a.content !== "未提供"
+          ? { ...a, confirm_state: "用户确认" }
+          : a,
+      ),
+    );
+  }, []);
 
   /** 演示态：就地编辑锚行内容（视为用户补充） */
   const handleDemoAnchorEdit = useCallback((index: number, content: string) => {
@@ -261,7 +256,6 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
             onChanged={onProjectsChanged}
             onFlowChanged={() => void reloadFlow()}
             onStageSnapshot={onStageSnapshot}
-            onOpenConversation={onOpenConversation}
             refreshToken={definitionRefresh}
           />
         );
@@ -307,7 +301,7 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
           anchor={demoAnchor}
           scenarioName={project.name}
           onConsolidated={handleDemoAnchorConsolidated}
-          onAnchorAction={handleDemoAnchorAction}
+          onConfirmAll={handleDemoAnchorConfirmAll}
           onAnchorEdit={handleDemoAnchorEdit}
           onStageSnapshot={onStageSnapshot}
         />

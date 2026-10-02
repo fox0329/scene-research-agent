@@ -26,8 +26,9 @@ export interface AnchorFoldPanelProps {
 }
 
 /** 标题右侧的说明（展开/折叠都在，位置不跳） */
-const HEAD_NOTE =
-  "全链唯一的场景定义；带 ✓ 的是需要你表态的项，其余项可选填、可留「待定」（右栏可表态）";
+const HEAD_NOTE_EDITABLE =
+  "智能体按业务角度写的场景画像（边界 / 生产对象 / 核心系统 / 买方 / 采购特征）；可直接改。只有「场景名称」是你输入的。";
+const HEAD_NOTE_READONLY = "全链唯一的场景定义；业务画像由智能体按业务角度写出。";
 
 export const AnchorFoldPanel: React.FC<AnchorFoldPanelProps> = ({
   rows,
@@ -43,8 +44,8 @@ export const AnchorFoldPanel: React.FC<AnchorFoldPanelProps> = ({
     <div className="pnl">
       <div className="pnl-h">
         <div>
-          <h2>表1-1 场景概述 · 场景锚{editable ? "（可就地编辑）" : "（常驻）"}</h2>
-          <p>{HEAD_NOTE}</p>
+          <h2>表1-1 场景概述{editable ? "（可就地编辑）" : ""}</h2>
+          <p>{editable ? HEAD_NOTE_EDITABLE : HEAD_NOTE_READONLY}</p>
         </div>
         <button
           type="button"

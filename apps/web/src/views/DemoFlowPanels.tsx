@@ -2,11 +2,11 @@
  * @scene/web — 演示模式第 1 步面板（无后端）
  *
  * 与联真态**同结构**（同一套类名、同一套文案）：
- *  定义状态行（表1-1 已填几项 / 待你表态几项 / 对话几条）+ 「开始/继续场景定义对话」入口
- *  + 常驻可就地编辑的表1-1（表态在右栏）+ 全流程完整度状态行
+ *  一句话状态（就绪由本地 flow 给）+ 「确认无误」+「开始/继续场景定义对话」入口
+ *  + 常驻可就地编辑的表1-1 + 全流程完整度状态行
  *
- * 口径与联真同义：**定义整理过就能往下走**（第 1 步就绪 = 定义已整理），
- * 需要表态的项按返回数组派生，前端不假设行数。
+ * 口径与联真同义：用户只输入场景名称，智能体写业务画像；**确认不卡推进**，
+ * 且**不显示待确认**。
  *
  * 对话在同一个 `ScenarioDefinitionDialog` 里跑，只是数据来自本地预置（`demo` 分支）。
  * 差别只在数据来源：联真走 API，演示走本地内存 + `mock/demo-flow.ts` 的示例数据。
@@ -16,16 +16,16 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FLOW_TOTAL, flowStep } from "@scene/contract";
 import { AnchorFoldPanel } from "../components/AnchorFoldPanel";
-import { anchorSummary, definitionProgress } from "../components/definition-progress";
+import {
+  anchorSummary,
+  isDefinitionConfirmed,
+  isDefinitionDrafted,
+} from "../components/definition-progress";
 import { FlowCompleteness } from "../components/FlowCompleteness";
 import { ScenarioDefinitionDialog } from "../components/ScenarioDefinitionDialog";
 import type { StageSnapshot } from "../components/stage-snapshot";
 import type { ApiAnchorRow, ApiCompleteness, ApiFlowStatus } from "../api";
-import {
-  DEMO_DEFINITION_MESSAGES,
-  demoChecklist,
-  demoStageSummary,
-} from "../mock/demo-flow";
+import { DEMO_DEFINITION_MESSAGES, demoStageSummary } from "../mock/demo-flow";
 
 /** 全流程底账 → 右栏完整度口径（与联真同形状） */
 function overallCompleteness(flow: ApiFlowStatus, stage: number): ApiCompleteness {
@@ -47,8 +47,8 @@ export interface DemoFirstStepProps {
   scenarioName: string;
   /** 整理成定义：演示态把本地表1-1 换成整理结果 */
   onConsolidated: (rows: ApiAnchorRow[]) => void;
-  /** 确认 / 修改一项（本地内存；右栏确认清单的落点） */
-  onAnchorAction: (item: string, action: "确认" | "修改", content?: string) => void;
+  /** 「确认无误」：演示态把本地表1-1 标为已确认（不卡推进） */
+  onConfirmAll: () => void;
   /** 就地编辑内容（本地内存，标为「用户补充」） */
   onAnchorEdit: (index: number, content: string) => void;
   onStageSnapshot?: (snap: StageSnapshot | null) => void;
@@ -57,45 +57,33 @@ export interface DemoFirstStepProps {
 /**
  * 第 1 步「场景定义与边界」（演示）
  *
- * 定义对话不占流程步：它属于「新建场景」，聊清楚后落成表1-1，需要表态的项在右栏；
- * 但**表态与否都不卡推进**——整理过就能往下走。
+ * 与联真**同结构同文案**：用户只输入场景名称，智能体写业务画像；
+ * 「确认无误」是一次整表确认、**不卡推进**；产品**不显示待确认**。
+ * 页面只留一句状态 + 表1-1 + 两个按钮（统计卡与逐项表态清单已删除）。
  */
 export const DemoFirstStep: React.FC<DemoFirstStepProps> = ({
   flow,
   anchor,
   scenarioName,
   onConsolidated,
-  onAnchorAction,
+  onConfirmAll,
   onAnchorEdit,
   onStageSnapshot,
 }) => {
   const step = flowStep(1);
   const [dialogOpen, setDialogOpen] = useState(false);
 
-  /* 确认清单与联真同源（领域层 buildChecklist）——行数按返回数组，不写死 */
-  const checklist = useMemo(() => demoChecklist(anchor), [anchor]);
-  const { filled, drafted, stanceTotal, stanceDone, stancePending } = useMemo(
-    () =>
-      definitionProgress(
-        anchor,
-        checklist.map((i) => ({ layer: i.layer, state: i.state })),
-      ),
-    [anchor, checklist],
-  );
+  const drafted = useMemo(() => isDefinitionDrafted(anchor), [anchor]);
+  const confirmed = useMemo(() => isDefinitionConfirmed(anchor), [anchor]);
   /* 演示态的对话是预置的：条数固定，入口恒为「继续」 */
   const messageCount = DEMO_DEFINITION_MESSAGES.length;
-  /** 就绪与原因与联真同口径：由本地 flow 状态给（第 1 步 = 定义已整理） */
+  /** 就绪与原因与联真同口径：由本地 flow 状态给 */
+  const ready = flow.steps.find((s) => s.id === step.id)?.ready ?? false;
   const readyHint = flow.steps.find((s) => s.id === step.id)?.readyHint ?? "";
 
   /** 回调经 ref 转发：快照 identity 只跟数据走（与联真同因） */
-  const latest = useRef({ anchor, onAnchorAction, onAnchorEdit });
-  latest.current = { anchor, onAnchorAction, onAnchorEdit };
-
-  const handleAnchorActionStable = useCallback(
-    (item: string, action: "确认" | "修改", content?: string) =>
-      latest.current.onAnchorAction(item, action, content),
-    [],
-  );
+  const latest = useRef({ onAnchorEdit });
+  latest.current = { onAnchorEdit };
 
   const handleCellChange = useCallback((rowId: string, _cell: string, value: string) => {
     const index = Number(rowId.replace("anchor-", ""));
@@ -113,14 +101,12 @@ export const DemoFirstStep: React.FC<DemoFirstStepProps> = ({
       summaryLoading: false,
       activeTable: "表1-1",
       supplements: [],
-      checklist,
       anchor: [...anchor],
       anchorSummary: anchorSummary(anchor),
       onRefreshSummary: () => undefined,
       onSupplementChange: () => undefined,
-      onAnchorAction: handleAnchorActionStable,
     }),
-    [flow, anchor, step.title, handleAnchorActionStable, checklist],
+    [flow, anchor, step.title],
   );
 
   useEffect(() => {
@@ -139,52 +125,32 @@ export const DemoFirstStep: React.FC<DemoFirstStepProps> = ({
             <p>{step.goal}（演示模式：对话与整理结果均为本地预置）</p>
           </div>
           <div className="pnl-actions">
+            <button
+              className="btn"
+              type="button"
+              disabled={!drafted || confirmed}
+              onClick={onConfirmAll}
+            >
+              {confirmed ? "已确认" : "确认无误"}
+            </button>
             <button className="btn primary" type="button" onClick={() => setDialogOpen(true)}>
               {messageCount > 0 ? "继续场景定义对话" : "开始场景定义对话"}
             </button>
           </div>
         </div>
         <div className="pnl-b">
-          <div className="definition-status">
-            <div className="definition-stat">
-              <span className="definition-stat-n">{filled}</span>
-              <span className="definition-stat-l">项已有内容</span>
-            </div>
-            <div className="definition-stat">
-              <span className="definition-stat-n">{stancePending}</span>
-              <span className="definition-stat-l">项场景本体待表态</span>
-            </div>
-            <div className="definition-stat">
-              <span className="definition-stat-n">{messageCount}</span>
-              <span className="definition-stat-l">条对话</span>
-            </div>
-          </div>
-
-          <p className="brief-hint">
-            在对话里把场景聊清楚，然后点「整理成定义」——系统只在那一刻把对话整理成表1-1，
-            不会自动改你已经确认过的行。说不准的项先空着或写「待定」都可以。
+          <p className="brief-hint" role="status" data-ready={ready ? "1" : "0"}>
+            {confirmed
+              ? "这份定义你看过了；改过哪一格，可以再点一次「确认无误」。"
+              : readyHint}
           </p>
-          <p className="brief-hint" role="status">
-            本步就绪（演示态与联真同口径）：{readyHint}；就绪后点上方流程轴的
-            「完成本步，进入下一步」。
-          </p>
-
-          {drafted ? (
-            <p className="definition-done" role="status">
-              <span className="badge success">已整理成定义</span>
-              <span className="brief-hint">
-                定义整理过就能往下走；需要你表态的是右栏那 {stanceTotal} 项（已表态 {stanceDone}/
-                {stanceTotal}），其余留「待定」，后续研究补全
-              </span>
-            </p>
-          ) : null}
         </div>
         <div className="pnl-b flush">
           <FlowCompleteness flow={flow} />
         </div>
       </div>
 
-      {/* 第 1 步 = 定义与表态步：表1-1 默认展开；演示态与联真同结构 */}
+      {/* 第 1 步 = 定义步：表1-1 默认展开；演示态与联真同结构 */}
       <AnchorFoldPanel
         rows={anchor as unknown as readonly Record<string, unknown>[]}
         summary={anchorSummary(anchor)}

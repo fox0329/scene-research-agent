@@ -3,30 +3,23 @@
  *
  * 对应 04 §4.2 的分工：
  *  - **Tab ① 补充说明**：中栏表格放不下的说明类信息（来源、证据级、权威性等
- *    右栏补充列）+ **确认清单**（L1 场景本体 / L2 环节与角色 / L3 待确认）
+ *    右栏补充列）
  *  - **Tab ② 阶段总结**：六段骨架 Markdown（可导出）
  *
- * 两条铁律的落点：
- *  - **不出现建议档位与"通过/不通过"**：右栏只呈现信息与缺口
- *  - 缺口清单只说明"还缺什么"，不阻断（用户决定先补还是先往下走）
- *
- * 信息密度口径（用户投诉"整个页面大量无效信息"后收紧）：
- *  - 确认清单**不再把整段内容抄一遍**：只给 层级 + 项名 + 状态 + 一行截断内容（≤40 字），
- *    完整内容在中栏表1-1 / 表1-2；超过 8 项时折叠，首屏不超过约 6 行
- *  - 阶段总结**默认收起**：只给首段 + 一句，点「展开全文（约 N 字）」再看
- *  - 完整度 100% 时**不再同时喊"缺口 N 项"**（那是自相矛盾）
+ * 三条铁律的落点：
+ *  - **不出现建议档位与"通过/不通过"**：右栏只呈现信息
+ *  - **同一信息不得两栏重复**：表1-1 的进度已在中栏（折叠行/表格）说清，
+ *    右栏页脚不再复述一遍（旧版这里重复了「已填 N 项」）
+ *  - v1.19 删除的两块（用户定调）：
+ *    ① **确认清单**——「用户确认就默认可以了」「不用显示待确认」，逐项表态概念整体取消
+ *    ② **缺口清单**——那 9 条缺口里没有一条是用户能回答的（"6 行无来源""未标推断"
+ *       是智能体的溯源文书，另几条属于第 2 步才产出的表）。缺口已改为**分属主**，
+ *       由智能体自己排补，用户界面不再呈现（见 `@scene/domain` 的 `userGaps`）
  */
 
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import { FoldSection } from "./FoldSection";
-import {
-  CHECKLIST_CLIP,
-  CONFIRM_STATE_BADGE,
-  checklistContentText,
-  type ChecklistViewItem,
-  type StageSnapshot,
-} from "./stage-snapshot";
-import { anchorFoldSummary, anchorSummary } from "./definition-progress";
+import type { StageSnapshot } from "./stage-snapshot";
 import { plainText } from "./text-display";
 
 export interface StageRightPanelProps {
@@ -36,11 +29,6 @@ export interface StageRightPanelProps {
 }
 
 type Tab = "supplement" | "summary";
-
-/** 确认清单超长时的折叠阈值（首屏目标 ≤ 6 行） */
-const CHECKLIST_COLLAPSE_OVER = 8;
-/** 折叠态最多显示几行 */
-const CHECKLIST_FOLDED_ROWS = 6;
 
 /** 极简 Markdown 渲染（标题/列表/引用/表格分隔）——避免引入第三方依赖 */
 export function renderMarkdown(md: string): React.ReactNode {
@@ -140,12 +128,6 @@ export function summarizeMarkdown(md: string): string {
 
 export const StageRightPanel: React.FC<StageRightPanelProps> = ({ snapshot, live }) => {
   const [tab, setTab] = useState<Tab>("supplement");
-  /** 确认清单折叠（超过阈值才出现该开关；同样只在组件 state，不持久化） */
-  const [checklistFolded, setChecklistFolded] = useState(true);
-  const stageKey = snapshot ? `${snapshot.stage}#${snapshot.title ?? ""}` : "";
-  useEffect(() => {
-    setChecklistFolded(true);
-  }, [stageKey]);
 
   // 注意顺序：有快照就渲染（演示态也会产生快照，走同一套结构），
   // 只有既无快照又非联真时才显示演示占位——否则演示态会被占位挡住。
@@ -179,71 +161,12 @@ export const StageRightPanel: React.FC<StageRightPanelProps> = ({ snapshot, live
     );
   }
 
-  const { completeness, checklist, anchor, supplements, rows } = snapshot;
-  const pending = checklist.filter((c) => c.state !== "用户确认" && c.state !== "用户修改");
-  /* 表态口径按返回数组派生（核心项 ∪ 模型填了/推断的项），不假设行数 */
-  const l1Items = checklist.filter((c) => c.layer === "L1");
-  const l1Total = l1Items.length;
-  const l1Done = l1Items.filter((c) => c.state === "用户确认" || c.state === "用户修改").length;
-  /** 表1-1 折叠摘要口径（与中栏折叠行同一句；快照没给就按锚行现算） */
-  const anchorStats = snapshot.anchorSummary ?? anchorSummary(anchor);
+  const { completeness, supplements, rows } = snapshot;
 
   const emptyMsg = "本步还没有产出——做完本步分析后这里会生成阶段总结";
   const full = snapshot.summary ?? "";
   const preview = summarizeMarkdown(full);
   const fullLength = plainText(full).replace(/\s/gu, "").length;
-
-  const foldChecklist = checklist.length > CHECKLIST_COLLAPSE_OVER;
-  const shownChecklist = foldChecklist && checklistFolded
-    ? checklist.slice(0, CHECKLIST_FOLDED_ROWS)
-    : checklist;
-  const hiddenChecklist = checklist.length - shownChecklist.length;
-
-  const anchorContent = (item: string): string =>
-    String(anchor.find((a) => a.item === item)?.content ?? "");
-
-  /** 清单一行：层级 + 项名 + 状态 + 截断内容（完整内容看中栏） */
-  const renderChecklistItem = (c: ChecklistViewItem): React.ReactElement => {
-    const badge = CONFIRM_STATE_BADGE[c.state] ?? CONFIRM_STATE_BADGE["待确认"]!;
-    const content = checklistContentText(c.tableCode, c.rowKey, c.content ?? "");
-    return (
-      <li key={`${c.layer}-${c.rowKey}`} className="confirm-item">
-        {/* 第一行：层级 + 项名 + 状态（项名只此一处，不再把整段内容抄一遍） */}
-        <div className="confirm-main">
-          <span className={`layer-tag layer-${c.layer}`}>{c.layer}</span>
-          <span className="confirm-label">{c.label}</span>
-          <span className={`state-badge state-badge--${badge.tone}`}>{badge.text}</span>
-        </div>
-        {/* 第二行：一行截断内容 + 就地表态（完整内容在中栏表格） */}
-        <div className="confirm-actions">
-          <span className="confirm-content" title={plainText(c.content ?? "") || "完整内容看中栏表格"}>
-            {content}
-          </span>
-          {c.layer === "L1" ? (
-            <>
-              <button
-                type="button"
-                className="btn-mini"
-                onClick={() => snapshot.onAnchorAction(c.label, "确认", anchorContent(c.label))}
-              >
-                确认
-              </button>
-              <button
-                type="button"
-                className="btn-mini"
-                onClick={() => {
-                  const next = window.prompt(`修改「${c.label}」`, anchorContent(c.label));
-                  if (next !== null) snapshot.onAnchorAction(c.label, "修改", next);
-                }}
-              >
-                修改
-              </button>
-            </>
-          ) : null}
-        </div>
-      </li>
-    );
-  };
 
   return (
     <>
@@ -253,21 +176,15 @@ export const StageRightPanel: React.FC<StageRightPanelProps> = ({ snapshot, live
         </h3>
       </div>
 
-      {/* 完整度状态行：只说明"还缺什么"，不给判定 */}
-      <div className="completeness-bar">
-        <span>
-          信息完整度 {completeness?.tablesWithData ?? 0}/{completeness?.expectedTables ?? 0} 张表
-          {completeness ? `（${completeness.percent}%）` : ""}
-        </span>
-        {/* 100% 时不再同时喊"缺口 N 项"——那是自相矛盾（缺口清单在同 Tab 下方） */}
-        {completeness && completeness.percent >= 100 ? (
-          <span className="gap-none">信息齐全</span>
-        ) : completeness && completeness.gaps.length > 0 ? (
-          <span className="gap-count">{completeness.gaps.length} 项缺口（不阻断）</span>
-        ) : (
-          <span className="gap-none">暂无缺口</span>
-        )}
-      </div>
+      {/* 完整度状态行：只说明本阶段表产出的进度，不虚报缺口（缺口已转智能体待办） */}
+      {completeness ? (
+        <div className="completeness-bar">
+          <span>
+            信息完整度 {completeness.tablesWithData}/{completeness.expectedTables} 张表（
+            {completeness.percent}%）
+          </span>
+        </div>
+      ) : null}
 
       <div className="det-tabs" role="tablist">
         <button
@@ -278,7 +195,6 @@ export const StageRightPanel: React.FC<StageRightPanelProps> = ({ snapshot, live
           onClick={() => setTab("supplement")}
         >
           补充说明
-          {checklist.length > 0 ? <span className="tab-count">{pending.length}</span> : null}
         </button>
         <button
           type="button"
@@ -294,41 +210,6 @@ export const StageRightPanel: React.FC<StageRightPanelProps> = ({ snapshot, live
       <div className="det-body">
         {tab === "supplement" ? (
           <>
-            {/* 确认清单（L1 选行由领域层给：核心项 ∪ 模型实际填了/推断的项） */}
-            {checklist.length > 0 ? (
-              <section className="det-sec">
-                <h4>
-                  确认清单 <span className="det-sec-sub">{pending.length} 项待你表态</span>
-                </h4>
-                <p className="brief-hint">
-                  只列需要你表态的项（核心项 + 系统实际填了/推断的项）；内容只给一行（≤{CHECKLIST_CLIP} 字），
-                  完整内容与就地编辑在中栏表1-1 / 表1-2。其余项可以先留「待定」，后续研究补全，不阻断往下走。
-                </p>
-                <ul className="confirm-list">
-                  {shownChecklist.map(renderChecklistItem)}
-                </ul>
-                {foldChecklist ? (
-                  <p className="fold-line">
-                    <button
-                      type="button"
-                      className="btn-mini fold-toggle"
-                      aria-expanded={!checklistFolded}
-                      onClick={() => setChecklistFolded((v) => !v)}
-                    >
-                      {checklistFolded
-                        ? `展开剩余 ${hiddenChecklist} 项表态`
-                        : `收起，只看需要我表态的 ${Math.min(CHECKLIST_FOLDED_ROWS, checklist.length)} 项`}
-                    </button>
-                    {checklistFolded ? (
-                      <span className="fold-hint">
-                        环节级表态在中栏表1-2，逐项可就地确认
-                      </span>
-                    ) : null}
-                  </p>
-                ) : null}
-              </section>
-            ) : null}
-
             {/* 中栏表格的补充说明列 */}
             {supplements.length === 0 ? (
               <div className="empty-state">
@@ -379,23 +260,6 @@ export const StageRightPanel: React.FC<StageRightPanelProps> = ({ snapshot, live
                 </section>
               ))
             )}
-
-            {/* 缺口清单 */}
-            {completeness && completeness.gaps.length > 0 ? (
-              <section className="det-sec">
-                <h4>
-                  信息缺口 <span className="det-sec-sub">不阻断，可先补或先往下走</span>
-                </h4>
-                <ul className="gap-list">
-                  {completeness.gaps.map((g, i) => (
-                    <li key={i}>
-                      <span className="gap-kind">{g.kind}</span>
-                      {g.detail}
-                    </li>
-                  ))}
-                </ul>
-              </section>
-            ) : null}
           </>
         ) : (
           <section className="det-sec">
@@ -423,7 +287,7 @@ export const StageRightPanel: React.FC<StageRightPanelProps> = ({ snapshot, live
                 <div className="empty-state-title">尚未生成阶段总结</div>
                 <div className="empty-state-desc">
                   点击「重新生成」按六段骨架生成：信息摘要 / 关键信息清单 / 说明与方法口径 /
-                  来源与抽查 / 信息缺口 / 上下游衔接。
+                  来源与抽查 / 待补齐信息 / 上下游衔接。
                 </div>
               </div>
             ) : (
@@ -437,15 +301,6 @@ export const StageRightPanel: React.FC<StageRightPanelProps> = ({ snapshot, live
             )}
           </section>
         )}
-      </div>
-
-      {/* 锚行状态提示：确认清单的 L1 就是「需要你表态的场景本体项」 */}
-      <div className="det-foot">
-        <span className="foot-hint">
-          {anchorFoldSummary(anchorStats)}
-          ｜ 场景本体 {l1Done}/{l1Total} 项已表态
-          ｜ 其余可留「待定」，状态由你表态后写入
-        </span>
       </div>
     </>
   );

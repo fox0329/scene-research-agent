@@ -1,32 +1,42 @@
 /**
  * @scene/web — 第 1 步「场景定义与边界」面板（联真）
  *
- * 这一步是**定义 + 表态合流**（v1.18 把用户可见流程收成 8 步）：
- *  - 定义：在独立的「场景定义」对话里把场景聊清楚，用户点「整理成定义」落成表1-1
- *    （对话属于「新建场景」的一部分，不占流程步）
- *  - 表态：表1-1 **常驻、可就地编辑**；右栏清单只列**需要用户表态的项**
- *    （核心必确认项 ∪ 模型实际填了/推断的项，按返回数组派生，前端不假设行数）
+ * 这一步的**属主划分**（2026-09-26 用户定稿，以「燃气场站」那份定义为准）：
+ *  - **用户只输入「场景名称」**；其余 5 项（场景边界 / 生产对象 / 核心生产系统 /
+ *    买方类型 / 采购特征）由智能体从业务角度写出——写成一份**场景业务画像**
+ *  - **「确认无误」是一次整表确认**，且**不卡推进**；产品**不显示"待确认"**
+ *  - 表1-1 常驻、**可就地改**：想改哪格改哪格
  *
- * 口径定调（用户拍板）：
- *  - 定义要抽象，允许说不准：除核心项外都是选填，可留「待定」
- *  - **定义不卡推进**：第 1 步就绪 = 「定义已整理」，不要求逐项确认
- *  - 就绪判定与提示由服务端给出（`/flow` 的 `readyHint`），前端只显示、不复述规则
+ * 页面只留三样东西：一句状态（服务端 `readyHint`）、表1-1、两个按钮。
+ * 统计卡 / 缺口清单 / 逐项表态清单全部删除——它们要么是零信息（"0 项待表态"），
+ * 要么是把智能体自己的活写成用户的待办（"6 行无来源"）。
+ *
+ * 就绪判定与提示由服务端给出（`/flow` 的 `readyHint`），前端只显示、不复述规则。
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FLOW_TOTAL, flowStep } from "@scene/contract";
-import { buildChecklist } from "@scene/domain";
 import { api, type ApiAnchorRow, type ApiFlowStatus } from "../api";
 import { AnchorFoldPanel } from "../components/AnchorFoldPanel";
-import { anchorSummary, definitionProgress } from "../components/definition-progress";
+import {
+  anchorSummary,
+  isDefinitionConfirmed,
+  isDefinitionDrafted,
+} from "../components/definition-progress";
 import { FlowCompleteness } from "../components/FlowCompleteness";
 import { ScenarioDefinitionDialog } from "../components/ScenarioDefinitionDialog";
-import { asSourceType, type StageSnapshot } from "../components/stage-snapshot";
+import type { StageSnapshot } from "../components/stage-snapshot";
 import { useToast } from "../components/Toast";
 import { useAsync } from "../hooks/useAsync";
 
 /** 空锚行常量：加载期复用同一引用，避免快照每次渲染都换 identity */
 const EMPTY_ANCHOR: ApiAnchorRow[] = [];
+
+/** 有内容即"说过话"的行（「未提供」不算） */
+function hasContent(row: ApiAnchorRow): boolean {
+  const text = String(row.content ?? "").trim();
+  return text !== "" && text !== "未提供";
+}
 
 export interface AnchorStepPanelProps {
   projectId: string;
@@ -36,8 +46,6 @@ export interface AnchorStepPanelProps {
   onChanged?: () => void;
   onFlowChanged?: () => void;
   onStageSnapshot?: (snap: StageSnapshot | null) => void;
-  /** 场景澄清：模型提出需要用户回答的问题后弹出对话抽屉 */
-  onOpenConversation?: (conversationId?: string) => void;
   /**
    * 外部刷新信号（自增计数）
    *
@@ -54,13 +62,11 @@ export const AnchorStepPanel: React.FC<AnchorStepPanelProps> = ({
   onChanged,
   onFlowChanged,
   onStageSnapshot,
-  onOpenConversation,
   refreshToken = 0,
 }) => {
   const { showToast } = useToast();
   const step = flowStep(1);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [clarifying, setClarifying] = useState(false);
   /** 本地即时生效的锚行（确认 / 编辑 / 整理成定义后不等下一次拉取） */
   const [anchorOverride, setAnchorOverride] = useState<ApiAnchorRow[] | null>(null);
 
@@ -76,33 +82,8 @@ export const AnchorStepPanel: React.FC<AnchorStepPanelProps> = ({
     setAnchorOverride(null);
   }, [projectId, refreshToken]);
 
-  /**
-   * 确认清单（右栏 Tab ① 的 L1 部分）
-   *
-   * 选行由领域层给（核心必确认项 ∪ 模型实际填了/推断的项）——前端只渲染返回数组，
-   * 不假设行数；下面的进度数字也从这份清单派生。
-   */
-  const checklist = useMemo(
-    () =>
-      buildChecklist({
-        anchorRows: anchor.map((a) => ({
-          item: a.item,
-          content: a.content,
-          source_type: asSourceType(a.source_type),
-        })),
-      }),
-    [anchor],
-  );
-
-  /** 第 1 步的两个数字口径：定义整理进度 + 需要用户表态的项（不写死行数） */
-  const { filled, drafted, stanceTotal, stanceDone, stancePending } = useMemo(
-    () =>
-      definitionProgress(
-        anchor,
-        checklist.items.map((i) => ({ layer: i.layer, state: i.state })),
-      ),
-    [anchor, checklist],
-  );
+  const drafted = useMemo(() => isDefinitionDrafted(anchor), [anchor]);
+  const confirmed = useMemo(() => isDefinitionConfirmed(anchor), [anchor]);
 
   const ready = flow.steps.find((s) => s.id === step.id)?.ready ?? false;
   /** 就绪原因由服务端给（前端不猜规则） */
@@ -132,24 +113,12 @@ export const AnchorStepPanel: React.FC<AnchorStepPanelProps> = ({
     }
   }, []);
 
-  const handleAnchorAction = useCallback(
-    (item: string, action: "确认" | "修改", content?: string) => {
-      const next = latest.current.anchor.map((a) =>
-        a.item === item
-          ? {
-              ...a,
-              content: content ?? a.content,
-              source_type: action === "确认" ? "用户确认" : "用户补充",
-              confirm_state: action === "确认" ? "用户确认" : "用户修改",
-            }
-          : a,
-      );
-      void writeAnchor(next);
-    },
-    [writeAnchor],
-  );
-
-  /** 就地编辑内容：用户改过的内容即用户补充（来源标记随内容变化） */
+  /**
+   * 就地编辑：改过的内容即用户补充
+   *
+   * 同时把该行的 `confirm_state` 记为「用户修改」——内容变了，之前的整表确认
+   * 对那一行不再成立（其余行不受影响）。
+   */
   const handleCellChange = useCallback(
     (rowId: string, _cell: string, value: string) => {
       const index = Number(rowId.replace("anchor-", ""));
@@ -166,24 +135,22 @@ export const AnchorStepPanel: React.FC<AnchorStepPanelProps> = ({
     [writeAnchor],
   );
 
-  const runClarify = useCallback(async () => {
-    setClarifying(true);
-    try {
-      const r = await api.clarifyScenario(projectId);
-      if (r.need_clarification) {
-        onOpenConversation?.(r.conversation_id);
-        showToast(`已在对话中提出 ${r.questions.length} 个场景澄清问题，请直接在对话里回答`);
-      } else {
-        showToast(r.note ?? "场景信息已充分，无需澄清");
-      }
-    } catch (err: unknown) {
-      showToast(`澄清失败：${err instanceof Error ? err.message : String(err)}`);
-    } finally {
-      setClarifying(false);
-    }
-  }, [projectId, showToast, onOpenConversation]);
+  /**
+   * 「确认无误」——一次整表确认
+   *
+   * 只写 `confirm_state`，**不动 `source_type`**：来源是溯源信息（AI提取 / AI推断 /
+   * 用户补充），用户认可不等于来源变了（G-R0 来源溯源铁律）。确认后这些行可被
+   * 下游当依据；下次智能体重写某行会把它退回未确认。
+   */
+  const handleConfirmAll = useCallback(() => {
+    const rows = latest.current.anchor;
+    void writeAnchor(
+      rows.map((r) => (hasContent(r) ? { ...r, confirm_state: "用户确认" } : r)),
+    );
+    showToast("已确认这份定义；随时可以就地修改");
+  }, [writeAnchor, showToast]);
 
-  /** 整理成定义成功：表1-1 即刻更新，本步就绪（服务端判定）随之变化 */
+  /** 整理成定义成功：表1-1 即刻更新，本步就绪随之变化 */
   const handleConsolidated = useCallback(
     (rows: ApiAnchorRow[]) => {
       setAnchorOverride(rows);
@@ -238,20 +205,12 @@ export const AnchorStepPanel: React.FC<AnchorStepPanelProps> = ({
       summaryLoading,
       activeTable: "表1-1",
       supplements: [],
-      checklist: checklist.items.map((i) => ({
-        layer: i.layer,
-        tableCode: i.tableCode,
-        rowKey: i.rowKey,
-        label: i.label,
-        state: i.state,
-      })),
       anchor,
       anchorSummary: anchorSummary(anchor),
       onRefreshSummary: () => void loadSummary(true),
       onSupplementChange: () => undefined,
-      onAnchorAction: handleAnchorAction,
     };
-  }, [anchor, checklist, step.title, handleAnchorAction, summary, summaryLoading, loadSummary]);
+  }, [anchor, step.title, summary, summaryLoading, loadSummary]);
 
   useEffect(() => {
     onStageSnapshot?.(snapshot);
@@ -272,20 +231,20 @@ export const AnchorStepPanel: React.FC<AnchorStepPanelProps> = ({
           </div>
           <div className="pnl-actions">
             <button
+              className="btn"
+              type="button"
+              disabled={!drafted || confirmed || def.status === "loading"}
+              onClick={handleConfirmAll}
+            >
+              {confirmed ? "已确认" : "确认无误"}
+            </button>
+            <button
               className="btn primary"
               type="button"
               disabled={def.status === "loading"}
               onClick={() => setDialogOpen(true)}
             >
               {dialogLabel}
-            </button>
-            <button
-              className="btn"
-              type="button"
-              disabled={clarifying}
-              onClick={() => void runClarify()}
-            >
-              {clarifying ? "生成问题中…" : "场景澄清"}
             </button>
           </div>
         </div>
@@ -303,46 +262,20 @@ export const AnchorStepPanel: React.FC<AnchorStepPanelProps> = ({
             <div className="loading-strip" role="status" aria-label="加载中" />
           ) : null}
 
-          <div className="definition-status">
-            <div className="definition-stat">
-              <span className="definition-stat-n">{filled}</span>
-              <span className="definition-stat-l">项已有内容</span>
-            </div>
-            <div className="definition-stat">
-              <span className="definition-stat-n">{stancePending}</span>
-              <span className="definition-stat-l">项场景本体待表态</span>
-            </div>
-            <div className="definition-stat">
-              <span className="definition-stat-n">{messageCount}</span>
-              <span className="definition-stat-l">条对话</span>
-            </div>
-          </div>
-
-          <p className="brief-hint">
-            在对话里把场景聊清楚，然后点「整理成定义」——系统只在那一刻把对话整理成表1-1，
-            不会自动改你已经确认过的行。说不准的项先空着或写「待定」都可以。
+          {/* 一句话状态：就绪由服务端判定并给话术；确认过就报"看过了"。
+              不再有统计卡、不再复述规则、不再暴露"服务端判定"这类实现细节。 */}
+          <p className="brief-hint" role="status" data-ready={ready ? "1" : "0"}>
+            {confirmed
+              ? "这份定义你看过了；改过哪一格，可以再点一次「确认无误」。"
+              : readyHint}
           </p>
-          <p className="brief-hint" role="status">
-            本步就绪（服务端判定）：{readyHint || (ready ? "已就绪" : "未就绪")}；就绪后点上方流程轴的
-            「完成本步，进入下一步」。
-          </p>
-
-          {drafted ? (
-            <p className="definition-done" role="status">
-              <span className="badge success">已整理成定义</span>
-              <span className="brief-hint">
-                定义整理过就能往下走；需要你表态的是右栏那 {stanceTotal} 项（已表态 {stanceDone}/
-                {stanceTotal}），其余留「待定」，后续研究补全
-              </span>
-            </p>
-          ) : null}
         </div>
         <div className="pnl-b flush">
           <FlowCompleteness flow={flow} />
         </div>
       </div>
 
-      {/* 第 1 步 = 定义与表态步：表1-1 默认展开，就地编辑/确认能力不变 */}
+      {/* 第 1 步 = 定义步：表1-1 默认展开，可就地编辑 */}
       <AnchorFoldPanel
         rows={anchor as unknown as readonly Record<string, unknown>[]}
         summary={anchorSummary(anchor)}

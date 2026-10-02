@@ -124,9 +124,6 @@ export const FlowRail: React.FC<FlowRailProps> = ({
       ) : null}
 
       <div className="flow-actions">
-        <span className="flow-actions-note">
-          缺口不阻断：可先补再走，也可直接推进，缺口在右栏随时回看
-        </span>
         <button
           className="btn primary"
           type="button"

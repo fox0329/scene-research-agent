@@ -100,6 +100,24 @@ if (done > 0) {
   ok("7 已完成步骤可点回看（当前无已完成步，跳过）", true);
 }
 
+// 7b. 第 1 步页面只留「一句状态 + 表1-1 + 两个按钮」：统计卡 / 待确认 / 缺口清单都不在
+//     （放在第 7 步之后：那时正停在「回看第 1 步」，断言的才是真正的第 1 步页面）
+if (done > 0) {
+  const wsText = await page.locator(".ws").innerText();
+  const junkSelectors = [".definition-stat", ".det .confirm-list", ".det .gap-list", ".det .det-foot"];
+  let junk = 0;
+  for (const sel of junkSelectors) junk += await page.locator(sel).count();
+  // 表1-1 只有「项 / 内容」两列，且只标出一个"用户输入"的项
+  const anchorTh = await page.locator(".ws .schema-table--anchor th").count();
+  const ownerTags = await page.locator(".ws .schema-table--anchor .owner-tag").count();
+  ok(
+    "7b 第 1 步无统计卡/待确认/缺口清单，表1-1 两列且只有一个「你的输入」",
+    junk === 0 && !/待确认|待表态|项已有内容/.test(wsText) && anchorTh === 2 && ownerTags === 1,
+    `残留 ${junk} 处 · 表头 ${anchorTh} 列 · 属主标签 ${ownerTags} 个`,
+  );
+  await rail.getByRole("button", { name: /回到当前步/ }).click().catch(() => undefined);
+}
+
 // 8. 流转一圈：完成本步 → 进度前移（在当前步 ready 时）
 const hint = await rail.innerText();
 if (!ALLOW_MUTATE) {

@@ -8,13 +8,12 @@ import {
   supplementColumns,
   type InfoStageId,
 } from "@scene/contract";
-import { buildChecklist, buildStageSummary, checkStageCompleteness, type InfoRow } from "@scene/domain";
+import { buildStageSummary, checkStageCompleteness, type InfoRow } from "@scene/domain";
 import { SchemaTable, tableBlocks, tableCategories } from "../components/SchemaTable";
 import { AnchorFoldPanel } from "../components/AnchorFoldPanel";
 import { anchorSummary } from "../components/definition-progress";
 import {
   asSourceType,
-  checklistContent,
   type StageSnapshot,
   type SupplementTable,
 } from "../components/stage-snapshot";
@@ -131,15 +130,6 @@ export const DemoStagePanel: React.FC<DemoStagePanelProps> = ({
       }
     }
     const checklistAnchor = anchorRows;
-    const checklist = buildChecklist({
-      anchorRows: checklistAnchor.map((a) => ({
-        item: a.item,
-        content: a.content,
-        source_type: asSourceType(a.source_type),
-      })),
-      linkRows: id === 1 ? (rowsByTable["表1-2"] ?? []) : [],
-      pendingCount: 2,
-    });
     return {
       stage,
       stageLabel: def?.name ?? "",
@@ -156,19 +146,10 @@ export const DemoStagePanel: React.FC<DemoStagePanelProps> = ({
       summaryLoading: false,
       activeTable,
       supplements,
-      checklist: checklist.items.map((i) => ({
-        layer: i.layer,
-        tableCode: i.tableCode,
-        rowKey: i.rowKey,
-        label: i.label,
-        state: i.state,
-        content: checklistContent(i.tableCode, i.rowKey, checklistAnchor),
-      })),
       anchor: [...checklistAnchor],
       anchorSummary: anchorSummary(checklistAnchor),
       onRefreshSummary: () => undefined,
       onSupplementChange: () => undefined,
-      onAnchorAction: () => undefined,
     };
   }, [stage, stepId, def, completeness, summary, activeTable, supplementsKey(activeTable, category), rowsByTable, id, anchorRows]);
 

@@ -95,10 +95,11 @@ export function tableCategories(tableCode: string): string[] {
 }
 
 /**
- * 场景锚（表1-1）：固定行**纵向**呈现（「项 / 内容」两列 + 确认状态）
+ * 场景锚（表1-1）：固定行**纵向**呈现（「项 / 内容」两列）
  *
- * 这是唯一常驻表，也是确认机制的 L1 对象（带 ✓ = 核心必确认项，
- * 选行由注册表的 `confirmRequired` 给，前端不假设项数）。
+ * 这是唯一常驻表。**不显示"待确认"状态列**——用户定调「表格用户自己可以修改，
+ * 不用显示待确认」：状态徽标既不复述信息，又暗示"这里有活等着你"，纯噪音。
+ * 哪些行是用户该给的，由项名后的一枚 `你的输入` 标签表达（注册表 `owner` 给）。
  */
 export function AnchorTable({
   rows,
@@ -110,19 +111,7 @@ export function AnchorTable({
   readOnly?: boolean;
 }): React.ReactElement {
   const def = tableDef("表1-1");
-  const confirmItems = new Set(
-    (def?.fixedRows ?? []).filter((r) => r.confirmRequired).map((r) => r.label),
-  );
   const byItem = new Map(rows.map((r) => [String(r.row["item"] ?? ""), r]));
-
-  const stateOf = (r: SchemaRow | undefined): { text: string; tone: string } => {
-    if (!r) return { text: "未填", tone: "muted" };
-    const st = String(r.source_type ?? "");
-    if (st === "用户确认") return { text: "已确认", tone: "ok" };
-    if (st === "用户补充") return { text: "已补充", tone: "ok" };
-    if (st === "AI推断") return { text: "待确认", tone: "warn" };
-    return { text: "待确认", tone: "warn" };
-  };
 
   return (
     <table className="schema-table schema-table--anchor">
@@ -130,20 +119,18 @@ export function AnchorTable({
         <tr>
           <th style={{ width: "32%" }}>项</th>
           <th>内容</th>
-          <th style={{ width: "88px" }}>状态</th>
         </tr>
       </thead>
       <tbody>
         {(def?.fixedRows ?? []).map((fixed) => {
           const r = byItem.get(fixed.label);
-          const state = stateOf(r);
-          const mustConfirm = confirmItems.has(fixed.label);
+          const mine = fixed.owner === "用户";
           return (
-            <tr key={fixed.key} className={mustConfirm ? "anchor-row--confirm" : undefined}>
+            <tr key={fixed.key}>
               <td>
                 {fixed.label}
                 {fixed.required ? <span className="req-dot" title="必填">*</span> : null}
-                {mustConfirm ? <span className="confirm-dot" title="需用户确认">✓</span> : null}
+                {mine ? <span className="owner-tag" title="这一项由你输入">你的输入</span> : null}
               </td>
               <td>
                 {readOnly || !r ? (
@@ -155,12 +142,9 @@ export function AnchorTable({
                     className="cell-input"
                     value={cellText(r.row["content"])}
                     onChange={(e) => onCellChange?.(r.id, "content", e.target.value)}
-                    placeholder="未提供"
+                    placeholder={mine ? "给个场景名，或直接写你想覆盖的范围" : "待智能体写"}
                   />
                 )}
-              </td>
-              <td>
-                <span className={`state-badge state-badge--${state.tone}`}>{state.text}</span>
               </td>
             </tr>
           );

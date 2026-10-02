@@ -11,15 +11,12 @@
 
 import { FLOW_STEPS, STAGE_DEFS, tablesOfStage, type InfoStageId } from "@scene/contract";
 import {
-  buildChecklist,
   buildFlowStatus,
   buildStageSummary,
   checkStageCompleteness,
-  l1Rows,
   type FlowReadiness,
   type InfoRow,
 } from "@scene/domain";
-import { asSourceType, type ChecklistViewItem } from "../components/stage-snapshot";
 import {
   definitionRowKey,
   definitionScopeLabels,
@@ -34,13 +31,14 @@ import type {
   ApiFlowStatus,
 } from "../api";
 
-/** 演示用的场景锚（表1-1）——有内容即视为「定义已整理」 */
+/**
+ * 演示用的场景锚（表1-1）初始态
+ *
+ * 与新口径一致：**用户只输入了场景名称**，业务画像是智能体在「整理成定义」时写的
+ * （见 `DEMO_DEFINITION_EXTRA_ROWS`）。所以初始态第 1 步未就绪——和联真的新场景一样。
+ */
 export const DEMO_ANCHOR: ApiAnchorRow[] = [
   { item: "场景名称", content: "智慧水务", source_type: "用户补充" },
-  { item: "客户类型/行业", content: "市政水务集团", source_type: "用户确认" },
-  { item: "覆盖什么", content: "只看出厂到管网", source_type: "AI提取" },
-  { item: "核心用途", content: "想搞清楚这个场景值不值得进", source_type: "用户确认" },
-  { item: "切入点", content: "存量泵站改造", source_type: "AI推断" },
 ];
 
 // ─── 场景定义对话（演示态：本地预置对话与本地「整理成定义」结果） ──
@@ -80,14 +78,47 @@ export const DEMO_DEFINITION_REPLY =
 
 /** 演示态仍需用户回答的场景本体问题（整理结果里的 open_questions） */
 const DEMO_DEFINITION_OPEN_QUESTIONS = [
-  "「只看出厂到管网」——原水取水与二次供水算不算在内？",
-  "切入点写的是「存量泵站改造」，是新建项目还是替换既有设备？",
+  "原水取水与二次供水算不算在这个场景里？",
+  "重点是新建水厂/泵站，还是存量泵站改造？",
 ];
 
-/** 演示态「整理成定义」补齐的表1-1 行（在预置锚上补两条推断行） */
+/**
+ * 演示态「整理成定义」补出的 5 项业务画像
+ *
+ * 这就是智能体的**本职工作**（用户定调「用户什么都知道还要我们干什么」）——
+ * 所以演示态里它们由"整理成定义"这一步产生，而不是让用户预先填。
+ */
 const DEMO_DEFINITION_EXTRA_ROWS: ApiAnchorRow[] = [
-  { item: "明确不含什么", content: "原水取水与二次供水", source_type: "AI推断" },
-  { item: "价值主张", content: "用漏损率下降换运维成本", source_type: "AI推断" },
+  {
+    item: "场景边界",
+    content: "制水厂、加压泵站、供水管网与二次供水；不含原水取水",
+    source_type: "AI推断",
+    source: "行业通例",
+  },
+  {
+    item: "生产对象",
+    content: "加药、混凝、沉淀、过滤、消毒、加压输送与管网调度；以及计量、水质监测、漏损分析与运维",
+    source_type: "AI推断",
+    source: "行业通例",
+  },
+  {
+    item: "核心生产系统",
+    content: "水厂工艺装置 + 泵站 SCADA/PLC + 管网 GIS 与调度平台 + 计量与水质在线监测 + 运维工单",
+    source_type: "AI推断",
+    source: "行业通例",
+  },
+  {
+    item: "买方类型",
+    content: "市政水务集团、地方自来水公司、水务投资运营公司、大型园区自备水厂",
+    source_type: "AI推断",
+    source: "行业通例",
+  },
+  {
+    item: "采购特征",
+    content: "集团技术规范 + 集采/供应商名录 + 项目制招标；泵站改造与漏损治理形成持续预算",
+    source_type: "AI推断",
+    source: "行业通例",
+  },
 ];
 
 /**
@@ -100,18 +131,11 @@ const DEMO_ALIGNMENT_BY_LABEL: Record<
   string,
   { content: string; alignment: ApiDefinitionAlignment["alignment"]; note?: string }
 > = {
-  "客户类型/行业": { content: "市政水务集团", alignment: "一致" },
-  "覆盖什么": {
-    content: "制水厂到管网末端",
-    alignment: "系统补充",
-    note: "来源：DEMO 水务场景资料",
-  },
-  /* 推断项不写 note：语气文案统一由 `ALIGN_LABEL` 给（"可以先留待定"），
-     免得演示态与联真态各说一套 */
-  "明确不含什么": { content: "原水取水与二次供水", alignment: "推断" },
-  "核心用途": { content: "判断这个场景值不值得进", alignment: "一致" },
-  "切入点": { content: "存量泵站改造", alignment: "推断" },
-  "价值主张": { content: "用漏损率下降换运维成本", alignment: "推断" },
+  "场景边界": { content: "制水厂、加压泵站、供水管网与二次供水；不含原水取水", alignment: "推断" },
+  "生产对象": { content: "加药、混凝、沉淀、过滤、消毒、加压输送与管网调度", alignment: "推断" },
+  "核心生产系统": { content: "水厂工艺装置 + 泵站 SCADA/PLC + 管网调度平台", alignment: "推断" },
+  "买方类型": { content: "市政水务集团、地方自来水公司", alignment: "推断" },
+  "采购特征": { content: "集团技术规范 + 集采 + 项目制招标", alignment: "推断" },
 };
 
 /** 演示态整理结果（与联真 `ApiDefinitionConsolidation` 同形状） */
@@ -242,24 +266,18 @@ export function demoProgress(tables: readonly string[]): {
 /**
  * 演示态第 1 步「场景定义与边界」就绪口径（与联真同义）
  *
- * 定义对话不占流程步，**整理过就能推进**——表1-1 除「场景名称」外任一项有内容即就绪，
- * 不再要求逐项确认（用户定调：定义要抽象，且不卡后续推进）。
+ * 就绪 = **智能体侧已写出业务画像**（不是"用户逐项确认完了"）：用户定调
+ * 「用户确认就默认可以了」+「不用显示待确认」，所以确认不参与就绪判定。
  * 联真的就绪由服务端算，这里用本地锚数据按同一语义推导。
  */
 export function demoAnchorReadiness(anchor: readonly ApiAnchorRow[]): FlowReadiness {
-  const drafted = isDefinitionDrafted(anchor);
   const filled = draftedItems(anchor).length;
-  /* 核心项进度只作提示（服务端同款口径），不参与就绪判定 */
-  const core = l1Rows();
-  const coreDone = core.filter((r) => {
-    const st = String(anchor.find((a) => a.item === r.label)?.source_type ?? "");
-    return st === "用户确认" || st === "用户补充";
-  }).length;
+  const drafted = isDefinitionDrafted(anchor);
   return {
     ready: drafted,
     readyHint: drafted
-      ? `定义已整理（表1-1 已填 ${filled} 项；核心 ${coreDone}/${core.length} 项已确认）`
-      : "先在「场景定义」对话里聊两句——说不准也没关系，聊完点「整理成定义」即可推进",
+      ? `场景业务画像已写出 ${filled} 项；看一眼，能直接改，没问题就继续`
+      : "先说一句场景名称，我来写这份场景业务画像（场景边界、生产对象、核心系统、买方与采购特征）",
     progress: {
       tablesWithData: filled > 0 ? 1 : 0,
       expectedTables: 1,
@@ -302,24 +320,6 @@ export function buildDemoFlowStatus(input: {
     unlockedAll: status.unlockedAll,
     finished: status.finished,
   };
-}
-
-/** 演示态确认清单（右栏 Tab ①，与联真同结构） */
-export function demoChecklist(anchor: readonly ApiAnchorRow[]): ChecklistViewItem[] {
-  return buildChecklist({
-    anchorRows: anchor.map((a) => ({
-      item: a.item,
-      content: a.content,
-      source_type: asSourceType(a.source_type),
-    })),
-    linkRows: DEMO_ROWS["表1-2"] ?? [],
-  }).items.map((i) => ({
-    layer: i.layer,
-    tableCode: i.tableCode,
-    rowKey: i.rowKey,
-    label: i.label,
-    state: i.state,
-  }));
 }
 
 /** 演示态阶段总结（六段骨架；右栏 Tab ② 与联真同结构） */

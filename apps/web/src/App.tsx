@@ -331,7 +331,6 @@ const AppShell: React.FC = () => {
             onProjectsChanged={() => void refreshProjects().catch(() => {})}
             onNewProject={() => void handleNewProject()}
             onStageSnapshot={setStageSnapshot}
-            onOpenConversation={live ? openConversation : undefined}
             definitionRefresh={definitionRefresh}
           />
         )}

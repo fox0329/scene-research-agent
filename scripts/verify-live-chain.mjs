@@ -93,8 +93,8 @@ const ingestLine = await page.evaluate(
 );
 ok("2b 真实白皮书 PDF 上传 → 解析入库 SSE 完成", !!ingestLine, ingestLine);
 
-/* 3. 项目创建（v2.2 对话式定义）：新建**只输名称** → 自动弹「场景定义」对话页
-      → 点「整理成定义」→ 对话落成表1-1（对照 6 行） */
+/* 3. 项目创建（对话式定义）：新建**只输名称** → 自动弹「场景定义」对话页
+      → 点「整理成定义」→ 智能体写出表1-1 的 6 项场景业务画像 */
 await page.click(".nbtn");
 const nameDlg = page.locator("[role='dialog'][aria-label='新建场景']");
 await nameDlg.waitFor({ state: "visible", timeout: 10_000 });
@@ -119,7 +119,7 @@ await page
   )
   .catch(() => undefined);
 
-/* 补一句用户回答（必须回答：就绪口径看 L1 场景本体是否有内容），
+/* 补一句用户回答（用户只说名字也行；写画像是智能体的活），
    再点「整理成定义」——写表由用户显式触发 */
 const chatInput = defDlg.locator("textarea").first();
 if ((await chatInput.count()) > 0) {
@@ -154,10 +154,13 @@ await page.waitForFunction(
 await defDlg.getByRole("button", { name: "整理成定义" }).click();
 await defDlg.locator(".schema-table").first().waitFor({ state: "visible", timeout: 180_000 });
 const l1Rows = await defDlg.locator(".schema-table tbody tr").count();
-// 对照表口径（2026-09-25 放松后）= 核心 2 项 ∪ 模型实际填了内容的项：
-// 不再要求 6/12 项齐全，但核心 2 项必须列出、且至少有一项真有内容
+// 对照表口径 = 用户侧的项（「场景名称」，永远列出）∪ 智能体写出来的项：
+// 行数按返回数组浮动，但业务画像（场景边界/生产对象/核心生产系统/买方类型/采购特征）
+// 至少要写出来一项——那是智能体的本职工作
 const coreLabels = await defDlg.locator(".align-table tbody tr td:first-child").allInnerTexts();
-const hasCore = coreLabels.some((t) => t.includes("客户类型")) && coreLabels.some((t) => t.includes("覆盖什么"));
+const hasPortrait = coreLabels.some((t) =>
+  /场景边界|生产对象|核心生产系统|买方类型|采购特征/.test(t),
+);
 // 注意：「与你说的不一致？」是徽标文案，「已由你确认/补充」在旁边的 .align-hint 里
 // （一开始数 .align-badge 得到 0，误判成"没填上"）
 const filled = await defDlg
@@ -167,25 +170,24 @@ const filled = await defDlg
 await defDlg.getByRole("button", { name: /完成，(回到第 1 步|去确认表格)/ }).click();
 await page.waitForSelector(".proj-hd:has-text('端到端实测项目')", { timeout: 8000 });
 ok(
-  "3b 整理成定义 → 对照表含核心 2 项且确有内容（不要求填满，写表由用户显式触发）",
-  l1Rows >= 2 && l1Rows <= 12 && hasCore && filled > 0,
-  `${l1Rows} 行 · 已填 ${filled} 项 · 核心项在列 ${hasCore}`,
+  "3b 整理成定义 → 智能体写出业务画像（用户只给名称也能有内容）",
+  l1Rows >= 2 && l1Rows <= 6 && hasPortrait && filled > 0,
+  `${l1Rows} 行 · 已由你确认/补充 ${filled} 项 · 画像在列 ${hasPortrait}`,
 );
 
-/* 就绪口径（放松版）：第 1 步 = **定义已整理**（不要求确认齐全）。
-   整理刚写完几项 → 提示应从"先去对话"变成"定义已整理（…核心 x/2 项已确认）"。
+/* 就绪口径：第 1 步 = **智能体已写出场景业务画像**（不要求用户逐项确认，也**不显示待确认**）。
    关闭弹窗后流程状态要重新拉取，**必须轮询等待**——立刻读会读到刷新前的旧 hint */
 await page
   .waitForFunction(
-    () => /定义已整理/.test(document.querySelector(".flow-rail .flow-hint")?.textContent ?? ""),
+    () => /场景业务画像已写出/.test(document.querySelector(".flow-rail .flow-hint")?.textContent ?? ""),
     null,
     { timeout: 20_000 },
   )
   .catch(() => undefined);
 const readyHint = await page.locator(".flow-rail .flow-hint").innerText();
 ok(
-  "3c 整理后第 1 步即可推进（定义已整理；核心项只在提示里点名）",
-  /定义已整理/.test(readyHint) && /核心 \d+\/2 项已确认/.test(readyHint),
+  "3c 整理后第 1 步即可推进（业务画像已写出；界面不出现「待确认」）",
+  /场景业务画像已写出/.test(readyHint) && !/待确认/.test(readyHint),
   readyHint.split("\n").pop(),
 );
 
@@ -212,12 +214,16 @@ if (await startBtn.count()) {
 }
 ok("4 阶段分析 SSE 链路（真实或降级）实时上屏", true, analysisNote);
 
-/* 5. 右栏双 Tab：补充说明（确认清单只列**需要表态的项**）/ 阶段总结（六段骨架） */
+/* 5. 右栏双 Tab：补充说明 / 阶段总结（六段骨架）
+      —— 确认清单与缺口清单已整块删除（用户定调「不用显示待确认」） */
 const detTabs = page.locator(".det .det-tab");
 await detTabs.first().waitFor({ state: "visible", timeout: 15_000 });
 const tabCount = await detTabs.count();
 await detTabs.nth(0).click();
-const l1Count = await page.locator(".det .layer-L1").count();
+const junkCount =
+  (await page.locator(".det .confirm-list").count()) +
+  (await page.locator(".det .gap-list").count()) +
+  (await page.locator(".det .layer-L1").count());
 await detTabs.nth(1).click();
 // 阶段总结默认**折叠**（页面瘦身）：先展开全文再断言六段骨架
 const expandBtn = page.locator(".det button.fold-toggle", { hasText: /展开全文/ });
@@ -226,37 +232,32 @@ if (await expandBtn.count()) {
   await page.waitForTimeout(300);
 }
 const mdText = (await page.locator(".det .md-body").innerText().catch(() => "")) || "";
-const hasSix = /信息摘要/.test(mdText) && /信息缺口与待补充/.test(mdText);
+const hasSix = /信息摘要/.test(mdText) && /待补齐信息/.test(mdText);
 /* 产品不产出判断：整页不得出现建议档位措辞 */
 const noAdvice = !/建议(通过|有条件通过|不通过|进)/.test(await page.locator(".shell").innerText());
-// 清单口径（放松后）：核心 2 项必有，且**不再把 12 项都摊给用户**（上限留点余量）
-ok("5 右栏双 Tab（补充说明 + 阶段总结）且不产出判断",
-  tabCount === 2 && l1Count >= 2 && l1Count <= 6 && hasSix && noAdvice,
-  `Tab ${tabCount} 个 · 待表态 ${l1Count} 项 · 六段 ${hasSix} · 无建议措辞 ${noAdvice}`);
+ok("5 右栏双 Tab（补充说明 + 阶段总结）且不产出判断、不出现确认/缺口清单",
+  tabCount === 2 && junkCount === 0 && hasSix && noAdvice,
+  `Tab ${tabCount} 个 · 清单残留 ${junkCount} 处 · 六段 ${hasSix} · 无建议措辞 ${noAdvice}`);
 
-/* 5b. 第 1 步（场景定义与边界）：右栏清单只列**需要表态的项**（核心 2 项 ∪ 推断项），
-   逐项确认后提示里的核心计数应变成 2/2（就绪本来就已经是 true，确认是"让它更可靠"） */
-await detTabs.nth(0).click();
-const confirmItems = page.locator(".det .confirm-item");
-const confirmCount = await confirmItems.count();
-for (let i = 0; i < confirmCount; i++) {
-  const btn = confirmItems.nth(i).getByRole("button", { name: "确认", exact: true });
-  if (await btn.count()) await btn.click();
+/* 5b. 第 1 步的**一次整表确认**：「确认无误」只写 confirm_state、不动来源，
+   点完提示变成"这份定义你看过了"；确认**不卡推进**（没点也不影响就绪） */
+const confirmAll = page.locator(".ws").getByRole("button", { name: "确认无误" });
+const hadConfirmAll = await confirmAll.count();
+if (hadConfirmAll) {
+  await confirmAll.first().click();
+  await page
+    .waitForFunction(
+      () => /这份定义你看过了/.test(document.body.innerText),
+      null,
+      { timeout: 20_000 },
+    )
+    .catch(() => undefined);
 }
-await page
-  .waitForFunction(
-    () => /核心 2\/2 项已确认/.test(document.querySelector(".flow-rail .flow-hint")?.textContent ?? ""),
-    null,
-    { timeout: 20_000 },
-  )
-  .catch(() => undefined);
-const confirmedHint = await page.locator(".flow-rail .flow-hint").innerText();
-// 清单长度**随模型产出浮动**（核心 2 项 ∪ 有内容但未表态的项）——不要写死上限，
-// 该断言真正要守的是：表态后核心计数归位（就绪本来就已经是 true，确认只是让它更可靠）
+const stepOneText = await page.locator(".ws .definition-step").innerText().catch(() => "");
 ok(
-  "5b 清单逐项表态后核心 2/2",
-  /核心 2\/2 项已确认/.test(confirmedHint),
-  `${confirmCount} 项待表态 · ${confirmedHint.split("\n").pop()}`,
+  "5b 「确认无误」一次整表确认（回执「这份定义你看过了」，页面不出现「待确认」）",
+  hadConfirmAll > 0 && /这份定义你看过了/.test(stepOneText) && !/待确认/.test(stepOneText),
+  `确认入口 ${hadConfirmAll} 个 · 回执 ${/这份定义你看过了/.test(stepOneText)}`,
 );
 
 /* 6. 交付物双口径导出：服务端落盘 md + toast 回显路径 */
@@ -310,7 +311,7 @@ await page.waitForFunction(
   { timeout: 20_000 },
 );
 const doneAfter = await page.locator(".flow-rail .flow-node--done").count();
-ok("7 「完成本步」真实推进流程（导航动作，缺口不阻断）", doneAfter > doneBefore, `已完成步 ${doneBefore} → ${doneAfter}`);
+ok("7 「完成本步」真实推进流程（导航动作，信息缺口不阻断）", doneAfter > doneBefore, `已完成步 ${doneBefore} → ${doneAfter}`);
 
 /* 8. 对话 converse 闭环存在性（细节覆盖见 M5-T5.5 验收） */
 await page.click(".conv-ta");

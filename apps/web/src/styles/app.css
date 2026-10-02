@@ -1884,18 +1884,14 @@ td.ed {
 .cell-input:hover { border-color: var(--cb); }
 .cell-input:focus-visible { outline: none; border-color: var(--cp); background: #fff; }
 
-/* 场景锚（表1-1）：必填与 L1 必确认标记 */
+/* 场景锚（表1-1）：必填标记 + 「你的输入」属主标签
+   注：状态徽标（待确认/已确认）与 ✓ 必确认标记已在 v1.19 随"逐项表态"整体删除 */
 .req-dot { color: var(--ce); margin-left: var(--s05, 2px); }
-.confirm-dot { color: var(--cp); margin-left: var(--s1); font-size: var(--txs); }
-.anchor-row--confirm td:first-child { font-weight: var(--fm2); }
-
-.state-badge {
-  display: inline-block; padding: 0 var(--s15, 6px);
-  font-size: var(--txs); border-radius: var(--r4); white-space: nowrap;
+.owner-tag {
+  display: inline-block; margin-left: var(--s1); padding: 0 var(--s15, 6px);
+  font-size: var(--txs); color: var(--cp); background: var(--cp-s, var(--cb));
+  border-radius: var(--r4); white-space: nowrap;
 }
-.state-badge--ok { color: var(--cs-h); background: var(--cs-s); }
-.state-badge--warn { color: var(--ct2); background: var(--cb); }
-.state-badge--muted { color: var(--ct3); background: transparent; }
 
 .empty-hint { margin: 0; padding: var(--s4); font-size: var(--ts); color: var(--ct3); }
 
@@ -1929,30 +1925,6 @@ td.ed {
 .det-sec h4 { margin: 0 0 var(--s2); font-size: var(--ts); color: var(--ct); display: flex; gap: var(--s2); align-items: baseline; }
 .det-sec-sub { font-size: var(--txs); color: var(--ct3); font-weight: normal; }
 
-.confirm-list, .gap-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: var(--s2); }
-.confirm-item { display: flex; flex-direction: column; gap: var(--s1); font-size: var(--ts); }
-.confirm-main { display: flex; align-items: center; gap: var(--s2); }
-.confirm-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.confirm-actions { display: flex; align-items: center; gap: var(--s1); min-width: 0; }
-/* 一行截断内容：右栏窄，给足宽度但绝不换行（完整内容看中栏表格） */
-.confirm-content {
-  flex: 1; min-width: 0;
-  font-size: var(--txs); color: var(--ct2);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-
-.layer-tag {
-  display: inline-block; min-width: 20px; text-align: center;
-  font-size: var(--txs); border-radius: var(--r4); border: 1px solid var(--cb); color: var(--ct2);
-}
-.layer-L1 { color: var(--cp); border-color: var(--cp); }
-
-.gap-list li { font-size: var(--txs); color: var(--ct2); line-height: 1.6; }
-.gap-kind {
-  display: inline-block; margin-right: var(--s1); padding: 0 var(--s1);
-  color: var(--ct2); background: var(--cb); border-radius: var(--r4); font-size: var(--txs);
-}
-
 .btn-mini {
   padding: 0 var(--s2); font-size: var(--txs); color: var(--ct2);
   background: transparent; border: 1px solid var(--cb); border-radius: var(--r4); cursor: pointer;
@@ -1975,11 +1947,9 @@ td.ed {
 .md-ul { margin: 0 0 var(--s2); padding-left: var(--s4); }
 .md-table { margin: var(--s2) 0; font-size: var(--txs); }
 
-.det-foot { padding: var(--s2) var(--s4); border-top: 1px solid var(--cb); }
-.foot-hint { font-size: var(--txs); color: var(--ct3); }
 
 /* ─────────────────────────────────────────────────────────────
-   折叠块（FoldSection / 中栏表1-1 / 确认清单）
+   折叠块（FoldSection / 中栏表1-1）
    口径：折叠只省信息量，不省能力——展开后照样可就地编辑/确认
    ───────────────────────────────────────────────────────────── */
 
@@ -2126,12 +2096,6 @@ td.ed {
 .definition-ta:focus { border-color: var(--cp); box-shadow: 0 0 0 2px var(--cp-s); }
 .definition-ta::placeholder { color: var(--ct3); }
 
-/* 第 1 步定义状态卡（联真/演示同一套结构与类名） */
-.definition-status { display: flex; gap: var(--s5); margin-bottom: var(--s3); }
-.definition-stat { display: flex; flex-direction: column; gap: var(--s05); }
-.definition-stat-n { font-size: var(--tl); font-weight: var(--fb); color: var(--ct); }
-.definition-stat-l { font-size: var(--txs); color: var(--ct3); }
-.definition-done { display: flex; align-items: center; gap: var(--s2); margin: var(--s3) 0 0; }
 
 /* 阶段头右侧动作组（分析 / 进入下一阶段）
    flex-shrink:0 —— 动作组不参与收缩：标题里的长说明换行就好；
@@ -2266,12 +2230,6 @@ td.ed {
   flex-wrap: wrap;
   align-items: center;
   gap: var(--s2);
-}
-
-.flow-actions-note {
-  margin-right: auto;
-  font-size: var(--t2x);
-  color: var(--ct3);
 }
 
 .flow-actions .btn:disabled {

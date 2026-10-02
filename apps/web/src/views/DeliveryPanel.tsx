@@ -82,11 +82,9 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
       summaryLoading: false,
       activeTable: null,
       supplements: [],
-      checklist: [],
       anchor: [],
       onRefreshSummary: () => undefined,
       onSupplementChange: () => undefined,
-      onAnchorAction: () => undefined,
     }),
     [step.title],
   );
