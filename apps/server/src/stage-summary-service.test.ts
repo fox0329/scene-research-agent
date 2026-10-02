@@ -18,6 +18,7 @@ import {
   getOrGenerateStageSummary,
   stageCompletenessOf,
 } from "./stage-summary-service.js";
+import { writeAnchorRows } from "./scenario-anchor.js";
 
 function mockDsh(events: FollowEvent[] = []): DshClient {
   return {
@@ -52,7 +53,7 @@ function seed(): { db: DbInstance; scenarioId: string; lineId: string } {
     scenario_id: sc.id,
     stage: 1,
     table_code: "表1-1",
-    row: { item: "客户类型/行业", content: "市政水务集团", source_type: "用户确认" },
+    row: { item: "场景边界", content: "制水厂到管网末端", source_type: "用户确认" },
     is_stale: false,
     source: "用户输入",
   });
@@ -84,6 +85,21 @@ describe("stage-summary-service — 读行", () => {
     expect(Object.keys(rows)).toContain("表1-2");
     expect(rows["表1-2"]).toHaveLength(1);
     expect(rows["表1-1"]).toHaveLength(1);
+  });
+
+  it("只带注册表里的锚行：存量旧 12 项残项不进总结（用户投诉过的无效信息）", () => {
+    const { db, scenarioId } = seed();
+    writeAnchorRows(db, scenarioId, [
+      { item: "场景名称", content: "智慧水务", source_type: "用户补充" },
+      { item: "场景边界", content: "制水厂到管网末端", source_type: "AI推断" },
+      // 旧 12 项制残项（迁移脚本执行前会躺在库里）
+      { item: "价值主张", content: "用漏损率下降换运维成本", source_type: "AI推断" },
+      { item: "核心业务流程", content: "取水-制水-输配", source_type: "AI推断" },
+    ]);
+    const items = readStageRowsByTable(db, scenarioId, 1)["表1-1"]!.map((r) => String(r["item"]));
+    expect(items).toContain("场景边界");
+    expect(items).not.toContain("价值主张");
+    expect(items).not.toContain("核心业务流程");
   });
 });
 

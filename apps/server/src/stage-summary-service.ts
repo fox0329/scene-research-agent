@@ -10,6 +10,7 @@
  */
 
 import {
+  ANCHOR_TABLE_CODE,
   STAGE_DEFS,
   tablesOfStage,
   type InfoStageId,
@@ -18,6 +19,7 @@ import {
 } from "@scene/contract";
 import type { DbInstance } from "@scene/infra";
 import {
+  anchorFixedRows,
   buildStageSummary,
   checkStageCompleteness,
   type InfoRow,
@@ -45,11 +47,26 @@ export function readStageRowsByTable(
     const rows = db.stageDataRepo
       .list({ where: "scenario_id = ? AND table_code = ?", params: [scenarioId, t.code] })
       .map((r) => r.row as InfoRow);
-    out[t.code] = rows;
+    out[t.code] = t.code === ANCHOR_TABLE_CODE ? keepAnchorRows(rows) : rows;
   }
   // 场景锚（表1-1）始终带上：它是全链唯一场景定义，总结里要以它为准
-  if (!out["表1-1"]) out["表1-1"] = readAnchorRows(db, scenarioId) as unknown as InfoRow[];
+  if (!out[ANCHOR_TABLE_CODE]) {
+    out[ANCHOR_TABLE_CODE] = keepAnchorRows(
+      readAnchorRows(db, scenarioId) as unknown as InfoRow[],
+    );
+  }
   return out;
+}
+
+/**
+ * 只保留注册表里定义过的锚行
+ *
+ * 存量库可能还躺着旧 12 项制的残项（表定义收敛后它们既不渲染、也不该出现在总结里），
+ * 这是迁移脚本执行前的兜底——用户投诉过的"无效信息"不能再从总结里冒出来。
+ */
+function keepAnchorRows(rows: readonly InfoRow[]): InfoRow[] {
+  const labels = new Set(anchorFixedRows().map((r) => r.label));
+  return rows.filter((r) => labels.has(String(r["item"] ?? "").trim()));
 }
 
 export interface StageSummaryResult {

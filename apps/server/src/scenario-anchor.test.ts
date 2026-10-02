@@ -72,7 +72,32 @@ describe("scenario-anchor — 锚骨架", () => {
     ]);
     // 幂等：再次调用不新增
     expect(ensureAnchorRows(db, scenarioId, "智慧水务")).toHaveLength(6);
-    expect(readAnchorRows(db, scenarioId)).toHaveLength(6);
+  });
+
+  it("存量旧 12 项场景：ensureAnchorRows 补齐缺失的新行（否则前端渲染成不可编辑的「—」）", () => {
+    const { db, scenarioId } = setup();
+    // 旧口径留下的 12 行（只有其中 2 行有内容）
+    writeAnchorRows(db, scenarioId, [
+      { item: "场景名称", content: "智慧水务", source_type: "用户补充" },
+      { item: "客户类型/行业", content: "市政水务集团", source_type: "用户补充" },
+      { item: "价值主张", content: "旧项", source_type: "AI推断" },
+    ]);
+    const rows = ensureAnchorRows(db, scenarioId, "智慧水务");
+    // 新表定义里的 6 行都在库里（前端才能逐格编辑）
+    for (const label of ["场景名称", "场景边界", "生产对象", "核心生产系统", "买方类型", "采购特征"]) {
+      expect(rows.some((r) => r.item === label)).toBe(true);
+    }
+    // 已有内容不被覆盖；旧项原样留着（清理是迁移脚本的事，读操作不删数据）
+    expect(rows.find((r) => r.item === "客户类型/行业")?.content).toBe("市政水务集团");
+    // 真的落库了（不是只在返回值里补齐）
+    const persisted = db.stageDataRepo
+      .listByScenarioStage(scenarioId, 1)
+      .filter((r) => r.table_code === "表1-1")
+      .map((r) => String(r.row["item"]));
+    expect(persisted).toContain("生产对象");
+    expect(persisted).toContain("采购特征");
+    // 旧项仍留着（读操作不删数据）→ 库里是 8 行，但注册表的 6 行一定齐
+    expect(readAnchorRows(db, scenarioId).length).toBeGreaterThanOrEqual(6);
   });
 
   it("锚行落在 stage_data 的 stage=1 / table_code=表1-1", () => {

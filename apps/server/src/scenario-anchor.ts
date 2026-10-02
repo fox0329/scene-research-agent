@@ -64,8 +64,15 @@ export function readAnchorRows(db: DbInstance, scenarioId: string): AnchorRow[] 
 /** 建锚骨架（幂等）：只在没有任何锚行时创建 12 行框架 */
 export function ensureAnchorRows(db: DbInstance, scenarioId: string, sceneName: string): AnchorRow[] {
   const existing = readAnchorRows(db, scenarioId);
-  if (existing.length > 0) return existing;
-  return writeAnchorRows(db, scenarioId, buildAnchorSkeleton(sceneName));
+  // 不只"空库才建骨架"：**缺哪行补哪行**。
+  //
+  // 存量场景是旧 12 项制，表定义后来新增的行（生产对象/核心生产系统/采购特征）
+  // 在库里没有对应记录；只补空库的话，前端拿不到这些行，只能渲染成不可编辑的「—」
+  // ——用户想自己填也填不进去。补齐是幂等的。
+  const known = new Set(existing.map((r) => String(r.item ?? "").trim()));
+  const missing = buildAnchorSkeleton(sceneName).filter((r) => !known.has(r.item));
+  if (missing.length === 0) return existing;
+  return writeAnchorRows(db, scenarioId, [...existing, ...missing]);
 }
 
 /** 写锚行（按 `item` upsert；返回写后的全量锚行） */

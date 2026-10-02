@@ -110,10 +110,19 @@ if (done > 0) {
   // 表1-1 只有「项 / 内容」两列，且只标出一个"用户输入"的项
   const anchorTh = await page.locator(".ws .schema-table--anchor th").count();
   const ownerTags = await page.locator(".ws .schema-table--anchor .owner-tag").count();
+  // 6 行**都可以就地编辑**：存量旧 12 项场景如果只补空库不补缺行，
+  // 表定义新增的行会渲染成不可编辑的「—」，用户想填也填不进去
+  const anchorRows = await page.locator(".ws .schema-table--anchor tbody tr").count();
+  const anchorInputs = await page.locator(".ws .schema-table--anchor input.cell-input").count();
   ok(
-    "7b 第 1 步无统计卡/待确认/缺口清单，表1-1 两列且只有一个「你的输入」",
-    junk === 0 && !/待确认|待表态|项已有内容/.test(wsText) && anchorTh === 2 && ownerTags === 1,
-    `残留 ${junk} 处 · 表头 ${anchorTh} 列 · 属主标签 ${ownerTags} 个`,
+    "7b 第 1 步无统计卡/待确认/缺口清单，表1-1 六行两列且每行都能改",
+    junk === 0 &&
+      !/待确认|待表态|项已有内容/.test(wsText) &&
+      anchorTh === 2 &&
+      ownerTags === 1 &&
+      anchorRows === 6 &&
+      anchorInputs === 6,
+    `残留 ${junk} 处 · 表头 ${anchorTh} 列 · ${anchorRows} 行 / ${anchorInputs} 个可编辑格 · 属主标签 ${ownerTags} 个`,
   );
   await rail.getByRole("button", { name: /回到当前步/ }).click().catch(() => undefined);
 }
