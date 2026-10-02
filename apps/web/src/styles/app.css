@@ -294,9 +294,13 @@ body {
 }
 
 /* ── 表格 ── */
-/* 列宽之和超过中栏宽时在这里横向滚动（表宽跟着中栏走，不压缩列） */
+/* 表宽恒等于中栏宽（末列承接余量），横滚只是极端窄容器下的兜底 */
 .tw {
   overflow-x: auto;
+}
+
+.tw > table {
+  box-sizing: border-box;
 }
 
 /* 单元格内容换行 + 行高随内容长（用户定调 2026-09-26）
@@ -307,11 +311,6 @@ body {
   overflow-wrap: anywhere;
 }
 
-/* 拖拽调宽后用于承接余量的填充列：不画线、不可选、不参与交互 */
-.tw .col-fill {
-  border-right: none;
-  padding: 0;
-}
 
 table {
   width: 100%;
@@ -372,11 +371,6 @@ td:last-child {
   cursor: col-resize;
   user-select: none;
   touch-action: none;
-}
-
-/* 末列（右边没有下一列可分割）：热区往里收，不探出表缘 */
-.th-resize--last {
-  right: 0;
 }
 
 .th-resize:hover {

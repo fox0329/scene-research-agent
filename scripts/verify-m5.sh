@@ -333,14 +333,31 @@ check_contains "04-业务过程重定义.md" "v1.14" "业务过程 v1.14（中�
 check_contains "04-业务过程重定义.md" "每列独立可拖" "逐列独立拖宽口径登记"
 check_contains "04-业务过程重定义.md" "内容换行 + 行高随内容长" "换行与行高口径登记"
 check_contains "docs/项目变更表.md" "| 70 |" "变更表 #70 中栏表格优化登记"
-# 正向守卫：只改被拖那一列的像素模型 + 填充列 + 多行编辑器
-if grep -q "col-fill" "$ROOT/apps/web/src/components/SceneTable.tsx" && \
+check_contains "04-业务过程重定义.md" "v1.15" "业务过程 v1.15（去掉隐形填充列、表宽恒等于中栏宽）"
+check_contains "04-业务过程重定义.md" "表宽恒等于中栏宽" "不出横向滚动的口径登记"
+check_contains "docs/项目变更表.md" "| 71 |" "变更表 #71 中栏表格修正登记"
+# 正向守卫：只改被拖那一列的像素模型 + 表宽恒等于中栏宽（末列承接余量）+ 多行编辑器
+if grep -qF "末列不给宽" "$ROOT/apps/web/src/components/SceneTable.tsx" && \
    grep -q "scene.colwidths.v3" "$ROOT/apps/web/src/components/SceneTable.tsx" && \
    grep -q "AutoGrowTextarea" "$ROOT/apps/web/src/components/SceneTable.tsx" && \
    grep -q "multiline: true" "$ROOT/apps/web/src/components/SchemaTable.tsx"; then
-  echo "✅ 中栏表格：像素列宽 + 填充列 + 多行编辑器（只改被拖那一列）"
+  echo "✅ 中栏表格：像素列宽（末列承接余量）+ 多行编辑器（只改被拖那一列）"
 else
-  echo "❌ 中栏表格缺少填充列/多行编辑器（用户定调：拖一条线只动这一列、内容要换行）"
+  echo "❌ 中栏表格缺少末列承接余量/多行编辑器（用户定调：拖一条线只动这一列、内容要换行）"
+  FAIL=1
+fi
+# 负向守卫：不得再有隐形的填充列（用户："明明只有 2 列有内容，表格却有 3 列"）
+if grep -q "col-fill" "$ROOT/apps/web/src/components/SceneTable.tsx" "$ROOT/apps/web/src/styles/app.css"; then
+  echo "❌ 表格又出现隐形填充列（用户定调：表里只有业务列）"
+  FAIL=1
+else
+  echo "✅ 表格只有业务列（无隐形填充列）"
+fi
+# 负向守卫：末列右缘就是表右缘，不该再给它装拖宽手柄
+if grep -qF "ci < columns.length - 1 ? resizeHandle(col) : null" "$ROOT/apps/web/src/components/SceneTable.tsx"; then
+  echo "✅ 只在列与列之间装拖宽手柄（末列不装）"
+else
+  echo "❌ 拖宽手柄的安装位置变了（末列不该有手柄）"
   FAIL=1
 fi
 # 负向守卫：旧实现（两项交换）的调用点是 startResize(本列, 下一列, e)——必须只剩单列参数

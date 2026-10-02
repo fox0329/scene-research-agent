@@ -179,6 +179,11 @@ export function SceneTable<T extends Record<string, unknown>>({
   /** 选中行（右栏详情联动高亮） */
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
   const tableRef = useRef<HTMLTableElement>(null);
+  /** RO 回调里读最新列定义/列宽（effect 不随它们重建，避免反复解绑观察器） */
+  const columnsRef = useRef(columns);
+  const widthsRef = useRef(widths);
+  columnsRef.current = columns;
+  widthsRef.current = widths;
   const wrapRef = useRef<HTMLDivElement>(null);
   /** 各列自然宽缓存 */
   const naturalsRef = useRef<NaturalWidth[]>([]);
@@ -189,6 +194,8 @@ export function SceneTable<T extends Record<string, unknown>>({
     key: string;
     startX: number;
     startW: number;
+    /** 被拖列允许的最大宽（末列让到可读下限为止） */
+    maxW: number;
     base: Widths;
   } | null>(null);
 
@@ -237,7 +244,25 @@ export function SceneTable<T extends Record<string, unknown>>({
     if (!wrap) return;
     const sync = () => {
       setContainerW(wrap.clientWidth);
-      if (!manualRef.current) fitToContainer();
+      if (!manualRef.current) {
+        fitToContainer();
+        return;
+      }
+      /* 手动列宽遇到中栏变窄：末列最多让到可读下限，再不够就按比例收（绝不出横滚） */
+      const cols = columnsRef.current;
+      const last = cols[cols.length - 1]?.key;
+      const sumOthers = cols
+        .filter((c) => c.key !== last)
+        .reduce((a, c) => a + (widthsRef.current?.[c.key] ?? 0), 0);
+      const room = wrap.clientWidth - sumOthers;
+      if (room >= MIN_COL_WIDTH) return;
+      const scale = Math.max(0.1, (wrap.clientWidth - MIN_COL_WIDTH) / Math.max(1, sumOthers));
+      const next: Widths = {};
+      for (const c of cols) {
+        const w = widthsRef.current?.[c.key];
+        if (typeof w === "number") next[c.key] = Math.max(FIT_MIN_COL_WIDTH, Math.round(w * scale));
+      }
+      setWidths(next);
     };
     sync();
     const ro = new ResizeObserver(sync);
@@ -289,14 +314,20 @@ export function SceneTable<T extends Record<string, unknown>>({
       e.preventDefault();
       const base = { ...(widths ?? {}) };
       const startW = base[key] ?? FALLBACK_COL_WIDTH;
-      dragRef.current = { key, startX: e.clientX, startW, base };
+      /* 末列不设固定宽（承接余量）：它能让出的最多是"降到可读下限"那点，
+         所以被拖列的加宽上限 = 自身宽 + 末列余量。表宽因此恒等于中栏宽，不出横滚。 */
+      const lastTh = tableRef.current?.querySelector("th:last-child");
+      const lastW = lastTh ? lastTh.getBoundingClientRect().width : 0;
+      const maxW = startW + Math.max(0, lastW - MIN_COL_WIDTH);
+      dragRef.current = { key, startX: e.clientX, startW, maxW, base };
       setIsResizing(true);
       manualRef.current = true;
 
       const onMove = (ev: MouseEvent) => {
         const drag = dragRef.current;
         if (!drag) return;
-        const next = Math.max(MIN_COL_WIDTH, Math.round(drag.startW + (ev.clientX - drag.startX)));
+        const raw = Math.round(drag.startW + (ev.clientX - drag.startX));
+        const next = Math.min(Math.max(raw, MIN_COL_WIDTH), Math.round(drag.maxW));
         setWidths({ ...drag.base, [drag.key]: next });
       };
       const onUp = () => {
@@ -323,15 +354,13 @@ export function SceneTable<T extends Record<string, unknown>>({
     }
   }, [storageKey]);
 
-  const sum = columns.reduce((a, c) => a + (widths?.[c.key] ?? 0), 0);
-  /** 表宽 = 中栏内容宽与各列宽之和的较大者（超出则横向滚动） */
-  const tableW = Math.max(sum, containerW);
-  const fillW = Math.max(0, tableW - sum);
+  /** 末列宽不写死：它承接各列宽之和与中栏宽之间的余量（表宽恒等于中栏宽，不出横向滚动） */
+  const lastKey = columns.length > 0 ? columns[columns.length - 1]!.key : undefined;
   const placeholderOf = (col: ColumnDef<T>, row: T): string =>
     typeof col.placeholder === "function" ? col.placeholder(row) : (col.placeholder ?? "");
-  const resizeHandle = (col: ColumnDef<T>, isLast: boolean): React.ReactElement => (
+  const resizeHandle = (col: ColumnDef<T>): React.ReactElement => (
     <span
-      className={`th-resize${isLast ? " th-resize--last" : ""}`}
+      className="th-resize"
       title="拖拽调整这一列的宽度（只动这一列）；双击恢复按内容自适应"
       role="separator"
       aria-orientation="vertical"
@@ -346,18 +375,21 @@ export function SceneTable<T extends Record<string, unknown>>({
       <table
         ref={tableRef}
         className={measuring ? "measure" : tableClassName}
-        style={measuring ? undefined : { tableLayout: "fixed", width: `${tableW}px` }}
+        style={measuring ? undefined : { tableLayout: "fixed", width: "100%" }}
       >
         {!measuring && (
           <colgroup>
             {columns.map((col) => (
               <col
                 key={col.key}
-                style={{ width: `${widths?.[col.key] ?? FALLBACK_COL_WIDTH}px` }}
+                /* 末列不给宽：余量归它，表宽才恒等于中栏宽 */
+                style={
+                  col.key === lastKey && columns.length > 1
+                    ? undefined
+                    : { width: `${widths?.[col.key] ?? FALLBACK_COL_WIDTH}px` }
+                }
               />
             ))}
-            {/* 填充列：承接「列宽之和 < 中栏宽」的那点余量，保证整表仍铺满中栏 */}
-            <col style={{ width: `${fillW}px` }} />
           </colgroup>
         )}
         <thead>
@@ -365,11 +397,10 @@ export function SceneTable<T extends Record<string, unknown>>({
             {columns.map((col, ci) => (
               <th key={col.key} data-col-key={col.key}>
                 {col.label}
-                {/* 末列的柄不能探出表右缘（探出去会凭空多出几像素横向滚动） */}
-                {resizeHandle(col, ci === columns.length - 1)}
+                {/* 只在"列与列之间"装手柄：末列右缘就是表右缘，无边界可移 */}
+                {ci < columns.length - 1 ? resizeHandle(col) : null}
               </th>
             ))}
-            <th className="col-fill" aria-hidden="true" />
           </tr>
         </thead>
         <tbody>
@@ -454,7 +485,6 @@ export function SceneTable<T extends Record<string, unknown>>({
                   </td>
                 );
               })}
-              <td className="col-fill" />
             </tr>
           ))}
         </tbody>

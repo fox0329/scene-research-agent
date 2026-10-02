@@ -191,40 +191,59 @@ test("右栏双 Tab：补充说明 / 阶段总结（确认清单与缺口清单�
   await expect(md).not.toContainText("上下游衔接");
 });
 
-test("中栏表格：拖一条列分割线只改这一列，其他列宽纹丝不动", async ({ page }) => {
-  await page.locator(".side .proj-hd").first().click();
-  const anchor = page.locator(".ws .schema-table--anchor").first();
-  await expect(anchor).toBeVisible();
+test("中栏表格：拖列间分割线只改这一列，末列承接余量，表宽不变、无横向滚动", async ({ page }) => {
+  await gotoStep2(page);
+  const table = page.locator(".ws table").first();
+  const geo = () =>
+    table.evaluate((el) => {
+      const wrap = el.parentElement as HTMLElement;
+      return {
+        cols: el.querySelectorAll("th").length,
+        handles: el.querySelectorAll(".th-resize").length,
+        ths: [...el.querySelectorAll("th")].map((th) => Math.round(th.getBoundingClientRect().width)),
+        tableW: Math.round(el.getBoundingClientRect().width),
+        wrapW: wrap.clientWidth,
+        scrollW: wrap.scrollWidth,
+      };
+    });
 
-  const thWidths = () =>
-    anchor.evaluate((t) =>
-      [...t.querySelectorAll("th")].map((th) => Math.round(th.getBoundingClientRect().width)),
-    );
-  const [w0a, w0b] = await thWidths();
+  const g0 = await geo();
+  expect(g0.cols).toBeGreaterThanOrEqual(3);
+  // 手柄只装在"列与列之间"：末列右缘就是表右缘，没有边界可移
+  expect(g0.handles).toBe(g0.cols - 1);
+  // 表宽恒等于中栏宽 —— 不出现横向滚动条
+  expect(Math.abs(g0.tableW - g0.wrapW)).toBeLessThanOrEqual(1);
+  expect(g0.scrollW).toBeLessThanOrEqual(g0.wrapW);
 
-  // 拖第 1 列右缘 +80px
-  const rz = (await anchor.locator("th").first().locator(".th-resize").boundingBox())!;
+  // 拖第 1 条分割线 +70：只有第 1 列变宽，中间各列纹丝不动，末列承接余量
+  const rz = (await table.locator("th").first().locator(".th-resize").boundingBox())!;
   await page.mouse.move(rz.x + rz.width / 2, rz.y + 6);
   await page.mouse.down();
-  await page.mouse.move(rz.x + rz.width / 2 + 80, rz.y + 6, { steps: 5 });
+  await page.mouse.move(rz.x + rz.width / 2 + 70, rz.y + 6, { steps: 6 });
   await page.mouse.up();
+  const g1 = await geo();
+  expect(g1.ths[0]!).toBeGreaterThan(g0.ths[0]! + 50);
+  for (let i = 1; i < g1.ths.length - 1; i += 1) {
+    expect(Math.abs(g1.ths[i]! - g0.ths[i]!)).toBeLessThanOrEqual(1);
+  }
+  expect(g1.ths[g1.ths.length - 1]!).toBeLessThan(g0.ths[g0.ths.length - 1]!);
+  expect(Math.abs(g1.tableW - g0.tableW)).toBeLessThanOrEqual(1);
+  expect(g1.scrollW).toBeLessThanOrEqual(g1.wrapW);
 
-  const [w1a, w1b] = await thWidths();
-  expect(w1a).toBeGreaterThan(w0a + 50);
-  // 关键：右边那一列一点没动（旧行为是"两侧列交换宽度"，会把右列挤窄）
-  expect(Math.abs(w1b - w0b)).toBeLessThanOrEqual(1);
-  // 列宽之和超出中栏宽 → 在该区域出现横向滚动（表宽跟着中栏走，但不压缩列）
-  const scrolled = await anchor.evaluate(
-    (t) => (t.parentElement as HTMLElement).scrollWidth > (t.parentElement as HTMLElement).clientWidth,
-  );
-  expect(scrolled).toBe(true);
+  // 拖到极限：末列让到可读下限就停住，表宽不涨、仍无横向滚动
+  const rz2 = (await table.locator("th").first().locator(".th-resize").boundingBox())!;
+  await page.mouse.move(rz2.x + rz2.width / 2, rz2.y + 6);
+  await page.mouse.down();
+  await page.mouse.move(rz2.x + 1200, rz2.y + 6, { steps: 8 });
+  await page.mouse.up();
+  const g2 = await geo();
+  expect(Math.abs(g2.tableW - g0.tableW)).toBeLessThanOrEqual(1);
+  expect(g2.scrollW).toBeLessThanOrEqual(g2.wrapW);
 
-  // 双击分割线 → 回到按内容自适应（列变宽后手柄跟着移，坐标要重新取）
-  const rz2 = (await anchor.locator("th").first().locator(".th-resize").boundingBox())!;
-  await page.mouse.dblclick(rz2.x + rz2.width / 2, rz2.y + 6);
-  await expect
-    .poll(async () => (await thWidths())[0])
-    .toBeLessThan(w1a);
+  // 双击分割线 → 回到按内容自适应
+  const rz3 = (await table.locator("th").first().locator(".th-resize").boundingBox())!;
+  await page.mouse.dblclick(rz3.x + rz3.width / 2, rz3.y + 6);
+  await expect.poll(async () => (await geo()).ths[0]!).toBeLessThan(g2.ths[0]!);
 });
 
 test("中栏表格：长内容换行显示，行高随内容长（表1-1 内容格是多行编辑器）", async ({ page }) => {
@@ -232,6 +251,9 @@ test("中栏表格：长内容换行显示，行高随内容长（表1-1 内容�
   const anchor = page.locator(".ws .schema-table--anchor").first();
   await expect(anchor).toBeVisible();
 
+  // 就是两列（表头与表体都不该有第三个格子）
+  await expect(anchor.locator("th")).toHaveCount(2);
+  await expect(anchor.locator("tbody tr").first().locator("td")).toHaveCount(2);
   // 内容格是 <textarea>：单行输入框显示不了换行，行高也永远只有一行
   const ta = anchor.locator("textarea.cell-input").nth(1);
   await expect(ta).toBeVisible();
@@ -261,8 +283,9 @@ test("中栏表格：长内容换行显示，行高随内容长（表1-1 内容�
 test("表1-1 只有「项 / 内容」两列：无状态列、无 ✓、无待确认", async ({ page }) => {
   const anchor = page.locator(".ws .schema-table--anchor").first();
   await expect(anchor).toBeVisible();
-  // 业务列两列（末尾的填充列不算列）
-  await expect(anchor.locator("th:not(.col-fill)")).toHaveCount(2);
+  await expect(anchor.locator("th")).toHaveCount(2);
+  // 表体每行也只有两个格子（曾经有个隐形的"填充列"，用户一眼就看出来了）
+  await expect(anchor.locator("tbody tr").first().locator("td")).toHaveCount(2);
   await expect(anchor.locator("th").first()).toHaveText("项");
   await expect(anchor.locator("th").nth(1)).toHaveText("内容");
   await expect(anchor.locator(".confirm-dot")).toHaveCount(0);
