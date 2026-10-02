@@ -261,7 +261,8 @@ ok(
 );
 
 /* 5c. 阶段分析 SSE 链路：密钥在 → 真实落库；密钥缺 → 流内降级【错误】
-   顺序说明：本步（第 1 步）中栏只有表1-1，没有分析按钮——分析按钮属于第 2 步起，
+   顺序说明：本步（第 1 步）中栏只有表1-1，没有分析入口；v1.20 起**分析入口统一在
+   流程轴**（「下一步」的位置：本步没产出时它就是「开始本步分析」），
    所以这里**先推进到下一步**再发起，否则这一整段会被静默跳过
    （旧版按「开始本阶段分析」找按钮，改名成「开始本步分析」后一直静默跳过）。 */
 const railAdvance = page.locator(".flow-rail .flow-actions button:has-text('下一步')");
@@ -270,11 +271,14 @@ if ((await railAdvance.count()) > 0 && (await railAdvance.first().isEnabled())) 
 }
 // 等第 2 步的面板真的挂上（流程状态是异步重取的，立刻找按钮会找不到）
 await page
-  .locator(".ws .table-chips, .ws button:has-text('开始本步分析')")
+  .locator(".ws .table-chips, .flow-actions button:has-text('开始本步分析')")
   .first()
   .waitFor({ state: "visible", timeout: 30_000 })
   .catch(() => undefined);
-const startBtn = page.locator("button:has-text('开始本步分析'), button:has-text('开始本阶段分析')");
+// v1.20：分析入口在流程轴的按钮位（本步没产出时它就是「开始本步分析」）
+const startBtn = page.locator(
+  ".flow-actions button:has-text('开始本步分析'), .flow-actions button:has-text('重算本步'), button:has-text('开始本阶段分析')",
+);
 if ((await startBtn.count()) === 0) {
   throw new Error("第 2 步没有找到「开始本步分析」按钮——分析段无法验证（不允许静默跳过）");
 }

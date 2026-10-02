@@ -628,35 +628,31 @@ async function gotoStep2(page: Page) {
   await expect(page.locator(".ws .table-chips").first()).toBeVisible();
 }
 
-test("中栏表1-1：分析步默认折叠成一行摘要，展开后仍可就地编辑", async ({ page }) => {
-  await draftDefinition(page); // 先让智能体写出画像，摘要才有内容可说
+test("分析步中栏：只有一行表名 + 表格，且不出现上一步的表1-1、不出现动作按钮", async ({ page }) => {
+  await draftDefinition(page); // 先让智能体写出画像，才走得到第 2 步
   await gotoStep2(page);
 
-  // 第 2 步默认折叠：整张表**不挂载**，只给一行摘要
-  const anchorTable = page.locator(".ws .schema-table--anchor");
-  await expect(anchorTable).toHaveCount(0);
-  const summary = page.locator(".ws .fold-summary");
-  await expect(summary).toBeVisible();
-  await expect(summary).toContainText("表1-1 场景概述 · 业务画像已写 5/5 项");
+  // ① 上一步的表1-1 场景概述不在这一步出现（要回看自己回去看）
+  await expect(page.locator(".ws .schema-table--anchor")).toHaveCount(0);
+  await expect(page.locator(".ws .fold-summary")).toHaveCount(0);
+  await expect(page.locator(".ws .fold-toggle")).toHaveCount(0);
 
-  // 折叠/展开一律 <button> 且 aria-expanded 正确（键盘可达）
-  // 注意：按钮文案会随状态变（展开⇄收起），断言要按类名定位而不是按文案
-  const toggle = page.locator(".ws .fold-toggle");
-  await expect(toggle).toHaveAttribute("aria-expanded", "false");
-  await toggle.click();
-  await expect(toggle).toHaveAttribute("aria-expanded", "true");
+  // ② 「本步信息表」这种小标题不要；表名一行放下，且不带表号
+  await expect(page.getByText("本步信息表")).toHaveCount(0);
+  const chips = page.locator(".ws .table-chips").first().locator(".chip");
+  await expect(chips.first()).toBeVisible();
+  const names = await chips.allInnerTexts();
+  expect(names.length).toBeGreaterThan(0);
+  for (const n of names) {
+    expect(n).not.toMatch(/表\d+-\d+/); // 表号什么的不需要
+    expect(n.trim()).not.toMatch(/^\d+$/);
+  }
 
-  // 展开后能力不丢：表1-1 全文可见（六项业务画像，两列，无状态列）
-  await expect(anchorTable).toBeVisible();
-  await expect(anchorTable.locator("th").first()).toHaveText("项");
-  await expect(anchorTable.locator("tbody tr")).toHaveCount(6);
-  await expect(anchorTable.locator(".confirm-dot")).toHaveCount(0);
-
-  // 收起回摘要态，避免影响后续用例
-  await toggle.click();
-  await expect(toggle).toHaveAttribute("aria-expanded", "false");
-  await expect(anchorTable).toHaveCount(0);
+  // ③ 中栏没有动作按钮：分析与推进都在流程轴上
+  await expect(page.locator(".ws").getByRole("button", { name: /开始本步分析|重算本步分析|完成本步/ })).toHaveCount(0);
+  await expect(page.locator(".flow-actions").getByRole("button", { name: /下一步|开始本步分析|重算本步/ })).toHaveCount(1);
 });
+
 
 
 test("右栏不再有确认清单/缺口清单（智能体的待办不进用户界面）", async ({ page }) => {

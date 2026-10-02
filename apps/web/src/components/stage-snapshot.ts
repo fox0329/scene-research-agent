@@ -54,8 +54,13 @@ export interface StageSnapshot {
   activeTable: string | null;
   /** 右栏 Tab ①：当前表的补充说明列 */
   supplements: SupplementTable[];
-  /** 场景锚（表1-1）当前内容 */
-  anchor: ApiAnchorRow[];
+  /**
+   * 场景锚（表1-1）当前内容
+   *
+   * 可选：v1.20 起第 2–8 步中栏不再显示表1-1（用户定调「上一步的信息不用在这一步显示」），
+   * 右栏也不消费它；只有第 1 步的锚面板还会带。
+   */
+  anchor?: ApiAnchorRow[];
   /** 表1-1 折叠态摘要口径（中栏折叠行与右栏页脚同源；缺省由右栏按 anchor 现算） */
   anchorSummary?: AnchorSummary;
   /** 重新生成阶段总结 */

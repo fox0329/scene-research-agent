@@ -337,7 +337,7 @@ check_contains "04-业务过程重定义.md" "v1.15" "业务过程 v1.15（去�
 check_contains "04-业务过程重定义.md" "表宽恒等于中栏宽" "不出横向滚动的口径登记"
 check_contains "docs/项目变更表.md" "| 71 |" "变更表 #71 中栏表格修正登记"
 # 正向守卫：本步分析的进度必须读服务端的 message（只读 text 会每条都显示同一句"分析中…"）
-if grep -qF "ev.message ?? ev.text" "$ROOT/apps/web/src/views/RealStagePanel.tsx" && \
+if grep -qF "ev.message ?? ev.text" "$ROOT/apps/web/src/hooks/useStageAnalysis.ts" && \
    grep -qF "模型已输出" "$ROOT/apps/server/src/advance-stage.ts"; then
   echo "✅ 本步分析进度：读 message 字段 + 生成过程有心跳（不再一直显示「分析中」）"
 else
@@ -353,6 +353,23 @@ else
   FAIL=1
 fi
 check_contains "docs/项目变更表.md" "| 73 |" "变更表 #73 分析中修正登记"
+# 正向守卫：v1.16 中栏只剩信息（表名一行、无表号）+ 分析入口在流程轴按钮位
+check_contains "04-业务过程重定义.md" "v1.16" "业务过程 v1.16（分析步中栏只剩信息）"
+check_contains "docs/项目变更表.md" "| 74 |" "变更表 #74 中栏信息口径登记"
+if grep -qE "AnchorFoldPanel|本步信息表|完成本步，进入下一步|重算本步分析" "$ROOT/apps/web/src/views/RealStagePanel.tsx"; then
+  echo "❌ 中栏又冒出表1-1／小标题／动作按钮（用户定调：上一步的信息不要在这一步显示、上面有下一步）"
+  FAIL=1
+else
+  echo "✅ 分析步中栏只剩信息（无表1-1、无小标题、无动作按钮）"
+fi
+if grep -qF "开始本步分析" "$ROOT/apps/web/src/components/FlowRail.tsx" && \
+   grep -qF "useStageAnalysis" "$ROOT/apps/web/src/views/ProjectView.tsx" && \
+   grep -qF "{t.name}" "$ROOT/apps/web/src/views/RealStagePanel.tsx"; then
+  echo "✅ 分析入口在流程轴按钮位 + 表名一行（不带表号）"
+else
+  echo "❌ 分析入口或表名行被改动（没产出时必须能发起分析；表名不带表号）"
+  FAIL=1
+fi
 # 正向守卫：只改被拖那一列的像素模型 + 表宽恒等于中栏宽（末列承接余量）+ 多行编辑器
 if grep -qF "末列不给宽" "$ROOT/apps/web/src/components/SceneTable.tsx" && \
    grep -q "scene.colwidths.v3" "$ROOT/apps/web/src/components/SceneTable.tsx" && \

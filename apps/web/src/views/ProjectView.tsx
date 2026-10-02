@@ -8,6 +8,7 @@ import { DemoFirstStep } from "./DemoFlowPanels";
 import { FlowRail } from "../components/FlowRail";
 import { api, type ApiAnchorRow, type ApiFlowStatus } from "../api";
 import { useAsync } from "../hooks/useAsync";
+import { useStageAnalysis } from "../hooks/useStageAnalysis";
 import { useToast } from "../components/Toast";
 import { MaterialUpload } from "../components/MaterialUpload";
 import { MaterialSourcesBar } from "./MaterialSourcesBar";
@@ -111,6 +112,28 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
     void reloadFlow();
   }, [reloadFlow]);
 
+  /** 本步数据刷新令牌：分析落库后 +1，面板据此重取本步数据与阶段总结 */
+  const [analysisRefresh, setAnalysisRefresh] = useState(0);
+
+  /**
+   * 本步分析的运行态（v1.20）
+   *
+   * 用户定调「中栏只放信息，动作都在上面」：触发布钮上移到流程轴，
+   * 进度流仍在中栏——两边都要这份状态，所以放在共同父级这里。
+   */
+  const analysis = useStageAnalysis({
+    projectId: project.id,
+    stage: stepStage,
+    stepId: step,
+    onDone: () => {
+      setAnalysisRefresh((n) => n + 1);
+      onProjectsChanged?.();
+      // 就绪是服务端按数据算的：分析刚落库时必须重取，否则上面那个按钮不会变回「下一步」
+      void reloadFlow(true);
+    },
+    onError: (message) => showToast(`本步分析失败：${message}`),
+  });
+
   /**
    * 场景定义对话整理/关闭后，**流程状态必须重取**
    *
@@ -213,6 +236,26 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
     }
   }, [live, exporting, project.id, showToast]);
 
+  /**
+   * 顶部按钮位（用户定调「中栏不放按钮，上面有下一步」）
+   *
+   *  - 本步还没产出（服务端 ready=false）→ 这个位置是「开始本步分析」
+   *  - 已产出但有资料因上游改动失效    → 这个位置是「重算本步」
+   *  - 其余                            → 「下一步」（完成本步并前进）
+   * 只在「当前步 + 模型分析步」上接管，回看历史步与交付步不受影响。
+   */
+  const stepStale = (stale.data?.stages ?? []).includes(stepStage);
+  const analysisAction =
+    live && stepDef?.state === "当前" && stepDef.kind === "分析" && (!stepDef.ready || stepStale)
+      ? {
+          running: analysis.running,
+          elapsedLabel: analysis.elapsedLabel,
+          onStart: analysis.start,
+          hint: stepDef.readyHint,
+          recompute: stepDef.ready,
+        }
+      : undefined;
+
   const renderStepBody = (): React.ReactNode => {
     if (!flow) return null;
     if (live) {
@@ -248,14 +291,10 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
           stageLabel={STAGE_DEFS.find((s) => s.id === stepStage)?.name ?? def.title}
           tables={def.tables}
           stepId={step}
-          ready={isCurrent ? (stepDef?.ready ?? false) : false}
-          readyHint={
-            isCurrent
-              ? (stepDef?.readyHint ?? "")
-              : "本步已完成：如需重跑请点上方「回到这一步重跑」"
-          }
+          running={isCurrent ? analysis.running : false}
+          streamLines={isCurrent ? analysis.streamLines : []}
+          refreshToken={isCurrent ? analysisRefresh : 0}
           onChanged={onProjectsChanged}
-          onFlowChanged={() => void reloadFlow(true)}
           onStageSnapshot={onStageSnapshot}
         />
       );
@@ -378,6 +417,7 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
           busy={busy}
           onSelectStep={setActiveStep}
           onComplete={() => void handleComplete()}
+          analysis={analysisAction}
         />
       ) : (
         <div className="flow-rail">

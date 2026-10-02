@@ -13,7 +13,10 @@
  *  - **只放关键词**：节点显示 `short`（场景定义 / 认识场景 / 能力匹配 …），
  *    完整标题进 `title` 与 `aria-label`——**不要圆点**（"不要只有原点，保留比如
  *    场景定义、能力匹配这些关键词"／"圆点可以不用"），位置与状态靠顺序、颜色与高亮表达
- *  - 就绪提示不单独占一行，改为「下一步」按钮的悬停提示
+ *  - 就绪提示不单独占一行，改为按钮的悬停提示
+ *  - **按钮位按数据换语义**（v1.20，用户定调「中栏不放按钮，上面有下一步」）：
+ *    本步还没产出 → 这个位置是「开始本步分析」（跑完停在原步，看完再点「下一步」）；
+ *    已产出但资料失效 → 「重算本步」；其余 → 「下一步」
  *  - 中栏调窄：关键词**永不隐藏**，先收紧间距，实在放不下时节点条横向可滚（按钮固定在最右）
  *
  * 无障碍：`role="tablist"` + `role="tab"` + `aria-selected`，左右方向键可移动；
@@ -32,6 +35,20 @@ export interface FlowRailProps {
   onComplete: () => void;
   /** 请求进行中：动作按钮禁用，避免重复提交 */
   busy?: boolean;
+  /**
+   * 本步还没产出/资料失效时，主按钮改为「跑分析」而不是「下一步」
+   *
+   * 中栏不再放分析按钮（用户定调），触发点就在这里。
+   */
+  analysis?: {
+    running: boolean;
+    elapsedLabel: string;
+    onStart: () => void;
+    /** 就绪提示（服务端给的人话） */
+    hint: string;
+    /** true = 已有产出，这次是重算 */
+    recompute: boolean;
+  };
 }
 
 /** 步骤状态 → 节点样式后缀 */
@@ -48,6 +65,7 @@ export const FlowRail: React.FC<FlowRailProps> = ({
   onSelectStep,
   onComplete,
   busy = false,
+  analysis,
 }) => {
   const nodeRefs = useRef<Record<number, HTMLButtonElement | null>>({});
 
@@ -101,19 +119,39 @@ export const FlowRail: React.FC<FlowRailProps> = ({
 
       {/* 行末动作：就绪提示进 title（不占第二行）；按钮不进 tablist，也不随节点滚动 */}
       <div className="flow-actions">
-          <button
-            className="btn primary"
-            type="button"
-            disabled={busy || reviewing || !current?.ready}
-            title={
-              reviewing
-                ? `正在回看第 ${activeStep} 步；先回到当前步再推进`
-                : (current?.readyHint ?? "")
-            }
-            onClick={onComplete}
-          >
-            下一步
-          </button>
+          {analysis ? (
+            <button
+              className="btn primary"
+              type="button"
+              disabled={busy || analysis.running}
+              title={
+                analysis.recompute
+                  ? `本步资料因上游改动失效：${analysis.hint}`
+                  : `${analysis.hint}——跑完停在这一步，看完结果再点「下一步」`
+              }
+              onClick={analysis.onStart}
+            >
+              {analysis.running
+                ? `分析中 ${analysis.elapsedLabel}`
+                : analysis.recompute
+                  ? "重算本步"
+                  : "开始本步分析"}
+            </button>
+          ) : (
+            <button
+              className="btn primary"
+              type="button"
+              disabled={busy || reviewing || !current?.ready}
+              title={
+                reviewing
+                  ? `正在回看第 ${activeStep} 步；先回到当前步再推进`
+                  : (current?.readyHint ?? "")
+              }
+              onClick={onComplete}
+            >
+              下一步
+            </button>
+          )}
           {reviewing ? (
             <button className="btn" type="button" onClick={() => onSelectStep(status.currentStep)}>
               回到当前步

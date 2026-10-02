@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   FLOW_TOTAL,
   STAGE_DEFS,
@@ -8,17 +8,9 @@ import {
   tablesOfStage,
   type InfoStageId,
 } from "@scene/contract";
-import {
-  api,
-  advanceStageStream,
-  type ApiAnchorRow,
-  type ApiStagePanel,
-  type ApiStageRow,
-} from "../api";
+import { api, type ApiStagePanel, type ApiStageRow } from "../api";
 import { useAsync } from "../hooks/useAsync";
 import { SchemaTable, tableBlocks, tableCategories } from "../components/SchemaTable";
-import { AnchorFoldPanel } from "../components/AnchorFoldPanel";
-import { anchorSummary } from "../components/definition-progress";
 import {
   asSourceType,
   type StageSnapshot,
@@ -29,11 +21,12 @@ import { useToast } from "../components/Toast";
 /**
  * 阶段面板（联真，v1.4 信息版）
  *
- * 中栏（本组件的职责）——**只显示重要信息表格**：
- *  - 阶段头 + 信息完整度状态行（只说明缺口，不给判定）
- *  - **表1-1 场景锚常驻**（全链唯一场景定义，不随阶段切换消失）
- *  - 阶段表清单（chips 切换）+ SchemaTable（列来自注册表，默认无横向滚动）
- *  - 单元格编辑落库、阶段分析 SSE 进度
+ * 中栏（本组件的职责）——**只有信息，没有动作**（v1.20 用户定调）：
+ *  - 一行表名（本步有哪些表，一行放下，不带表号）+ SchemaTable
+ *  - 本步分析的进度流（只显示；触发按钮在流程轴的「下一步」位）
+ *  - 单元格编辑落库
+ *
+ *  不在中栏：表1-1 场景锚（上一步的事，要回看自己回去看）、步标题、完整度、推进按钮
  *
  * 右栏（由 App 渲染 StageRightPanel）——补充说明 + 确认清单 + 阶段总结：
  *  本组件把 `StageSnapshot` 冒泡给父级，右栏不重复计算。
@@ -48,13 +41,14 @@ interface RealStagePanelProps {
   onStageSnapshot?: (snap: StageSnapshot | null) => void;
   /** 本步表集（流程定义给出，如 `flowStep(4).tables`）；缺省 = 该阶段全部表 */
   tables?: readonly string[];
-  /** 流程步骤号：头部与右栏显示「第 n/FLOW_TOTAL 步」，推进按钮也按流程步走 */
+  /** 流程步骤号：右栏标题与后续动作按流程步走 */
   stepId?: number;
-  /** 本步是否就绪（与流程轴同一判定，避免两处按钮一个可点一个不可点） */
-  ready?: boolean;
-  readyHint?: string;
-  /** 完成本步后通知父级重取 /flow（流程状态变化的唯一出口） */
-  onFlowChanged?: () => void;
+  /** 本步分析是否在跑（状态在父级：触发点在流程轴） */
+  running?: boolean;
+  /** 本步分析进度行 */
+  streamLines?: readonly string[];
+  /** 分析落库后自增：本组件收到变化就重取本步数据与阶段总结 */
+  refreshToken?: number;
 }
 
 export const RealStagePanel: React.FC<RealStagePanelProps> = ({
@@ -65,9 +59,9 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
   onStageSnapshot,
   tables,
   stepId,
-  ready,
-  readyHint,
-  onFlowChanged,
+  running = false,
+  streamLines = [],
+  refreshToken,
 }) => {
   // 右栏（完整度 / 补充说明 / 阶段总结）一律带上本步：**只针对当前步骤**
   const { status, data, error, reload } = useAsync<ApiStagePanel>(
@@ -75,29 +69,6 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
     [projectId, stage, stepId],
   );
   const { showToast } = useToast();
-
-  /** 完成本步并前进：**导航动作**，不是判断——信息不齐备也不阻断（缺口只在右栏提示） */
-  const completeStep = useCallback(async () => {
-    try {
-      if (stepId !== undefined) {
-        const next = await api.completeFlowStep(projectId, stepId);
-        showToast(`已完成第 ${stepId} 步，进入第 ${next.currentStep} 步`);
-        onFlowChanged?.();
-        return;
-      }
-      const project = await api.decide(projectId, stage, "继续");
-      showToast(`已进入阶段 ${project.current_stage}（信息缺口可在右栏随时回看）`);
-      onChanged?.();
-    } catch (err: unknown) {
-      showToast(`推进失败：${err instanceof Error ? err.message : String(err)}`);
-    }
-  }, [projectId, stage, stepId, showToast, onChanged, onFlowChanged]);
-
-  const [streamLines, setStreamLines] = useState<string[]>([]);
-  const [running, setRunning] = useState(false);
-  const runningRef = useRef(false);
-  /** 本次分析已用秒数（跑起来每秒 +1）：长跑时"还在动"要看得见，别让人以为卡死 */
-  const [elapsedSec, setElapsedSec] = useState(0);
 
   /* 单元格编辑：本地即时更新 + 落库 */
   const [patched, setPatched] = useState<Record<string, ApiStageRow>>({});
@@ -129,23 +100,6 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
     setCategory(categories[0] ?? null);
   }, [blocks, categories]);
 
-  /* 场景锚（表1-1）：常驻，独立于阶段表 */
-  const [anchor, setAnchor] = useState<ApiAnchorRow[]>([]);
-  useEffect(() => {
-    let alive = true;
-    void api
-      .getBrief(projectId)
-      .then((r) => {
-        if (alive) setAnchor(r.anchor);
-      })
-      .catch(() => {
-        /* 诉求未填时静默：中栏仍可用 */
-      });
-    return () => {
-      alive = false;
-    };
-  }, [projectId, stage]);
-
   /* 阶段总结 */
   const [summary, setSummary] = useState<string | null>(null);
   const [summaryLoading, setSummaryLoading] = useState(false);
@@ -166,6 +120,13 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
   useEffect(() => {
     void loadSummary(false);
   }, [loadSummary]);
+
+  /* 分析落库后父级把 refreshToken +1：重取本步数据与阶段总结（分析刚写完时本地还是旧快照） */
+  useEffect(() => {
+    if (refreshToken === undefined || refreshToken === 0) return;
+    reload();
+    void loadSummary(true);
+  }, [refreshToken, reload, loadSummary]);
 
   const handleCellChange = useCallback(
     async (rowId: string, cell: string, value: string) => {
@@ -213,9 +174,6 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
       }
     }
 
-    /** 中栏表1-1 折叠态摘要 */
-    const anchorStats = anchorSummary(anchor);
-
     return {
       stage,
       stageLabel,
@@ -228,15 +186,12 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
       summaryLoading,
       activeTable,
       supplements,
-      anchor,
-      anchorSummary: anchorStats,
       onRefreshSummary: () => void loadSummary(true),
       onSupplementChange: (rowId, cell, value) => void handleCellChange(rowId, cell, value),
     };
   }, [
     data,
     rows,
-    anchor,
     summary,
     summaryLoading,
     activeTable,
@@ -252,57 +207,6 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
     onStageSnapshot?.(snapshot);
     return () => onStageSnapshot?.(null);
   }, [snapshot, onStageSnapshot]);
-
-  useEffect(() => {
-    if (!running) return;
-    setElapsedSec(0);
-    const timer = setInterval(() => setElapsedSec((n) => n + 1), 1000);
-    return () => clearInterval(timer);
-  }, [running]);
-
-  /** 秒 → m:ss（只在跑分析时用） */
-  const elapsedLabel = `${Math.floor(elapsedSec / 60)}:${String(elapsedSec % 60).padStart(2, "0")}`;
-
-  const startAnalysis = useCallback(async () => {
-    if (runningRef.current) return;
-    runningRef.current = true;
-    setRunning(true);
-    setStreamLines(["已发起阶段分析…"]);
-    try {
-      for await (const ev of advanceStageStream(projectId, stage, stepId)) {
-        if (ev.type === "progress") {
-          // 服务端 progress 事件用的是 `message`（上传链路才用 `text`）：
-          // 只读 text 会让每一条进度都渲染成同一句「分析中…」，看着像一直卡在这一句。
-          setStreamLines((prev) =>
-            [...prev, String(ev.message ?? ev.text ?? "分析中…")].slice(-8),
-          );
-        } else if (ev.type === "error") {
-          setStreamLines((prev) => [...prev, `【错误】${String(ev.message ?? "")}`].slice(-8));
-        } else if (ev.type === "done") {
-          setStreamLines((prev) => [...prev, "【完成】分析结果已落库，右栏已生成阶段总结"].slice(-8));
-          reload();
-          void loadSummary(true);
-          void api
-            .getBrief(projectId)
-            .then((r) => setAnchor(r.anchor))
-            .catch(() => undefined);
-          onChanged?.();
-          // **必须重取流程状态**：本步就绪是服务端按数据算的，分析刚落库时父级那份
-          // flow 还是旧的（ready=false）——不刷的话「完成本步」会一直禁用，
-          // 用户只能刷新页面才能往下走（存量 bug，一直藏在"走查静默跳过分析段"后面）。
-          onFlowChanged?.();
-        }
-      }
-    } catch (err: unknown) {
-      setStreamLines((prev) => [
-        ...prev,
-        `【错误】${err instanceof Error ? err.message : String(err)}`,
-      ]);
-    } finally {
-      runningRef.current = false;
-      setRunning(false);
-    }
-  }, [projectId, stage, stepId, reload, loadSummary, onChanged, onFlowChanged]);
 
   /* ── 三态渲染 ── */
 
@@ -341,55 +245,18 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
   const completeness = data?.completeness;
   const activeDef = activeTable ? tableDef(activeTable) : undefined;
   const activeRows = rows.filter((r) => r.table_code === activeTable);
-  const stageDefRow = STAGE_DEFS.find((s) => s.id === (stage === 8 ? 7 : stage));
-  const staleCount = rows.filter((r) => r.is_stale).length;
-  const isModel = stageDefRow?.producedBy === "模型分析";
 
   return (
     <>
-      {/* 本步只有「本步的表格 + 该步的动作」：步标题与就绪提示在流程轴，完整度在右栏 */}
-      <div className="pnl">
-        <div className="pnl-h">
-          <div className="pnl-actions">
-            {isModel ? (
-              <button
-                className="btn primary"
-                type="button"
-                onClick={() => void startAnalysis()}
-                disabled={running}
-              >
-                {running
-                  ? `分析进行中 ${elapsedLabel}`
-                  : activeRows.length > 0
-                    ? "重算本步分析"
-                    : "开始本步分析"}
-              </button>
-            ) : null}
-            {/* 导航动作（与流程轴同一判定：缺口不阻断，但"本步还没有产出"不该被跳过） */}
-            <button
-              className="btn"
-              type="button"
-              onClick={() => void completeStep()}
-              disabled={running || ready === false}
-              title={readyHint ?? "导航动作：信息缺口不阻断，缺口可在右栏随时回看"}
-            >
-              完成本步，进入下一步
-            </button>
-            {/* 资料失效提示留在这里（它只跟本步数据有关；完整度与缺口清单在右栏） */}
-            {staleCount > 0 ? <span className="badge warning">{staleCount} 行资料待重算</span> : null}
-          </div>
-        </div>
-      </div>
-
       {/* 分析进度流 */}
       {streamLines.length > 0 ? (
         <div className="pnl">
           <div className="pnl-h">
             <div>
-              <h2>阶段分析进度</h2>
+              <h2>本步分析</h2>
               <p>
                 {running
-                  ? `分析进行中 · 已用 ${elapsedLabel}（整步一次生成，通常 1–3 分钟；可离开本页，结果会落库）`
+                  ? "分析进行中（整步一次生成，通常 1–3 分钟；可离开本页，结果会落库）"
                   : "本步分析输出"}
               </p>
             </div>
@@ -408,38 +275,21 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
         </div>
       ) : null}
 
-      {/* 表1-1 场景锚：常驻但第 2–8 步默认折叠（一行摘要，点开才铺全文） */}
-      {anchor.length > 0 ? (
-        <AnchorFoldPanel
-          rows={anchor as unknown as readonly Record<string, unknown>[]}
-          summary={anchorSummary(anchor)}
-        />
-      ) : null}
-
-      {/* 阶段表：chips 切换 + SchemaTable */}
+      {/* 本步的表：表名一行（不带表号/条数）+ SchemaTable */}
       {stageTables.length > 0 ? (
         <div className="pnl">
-          <div className="pnl-h">
-            <div>
-              <h2>{stepId !== undefined ? "本步信息表" : "本阶段信息表"}</h2>
-            </div>
-          </div>
           <div className="pnl-b">
             <div className="table-chips">
-              {stageTables.map((t) => {
-                const n = rows.filter((r) => r.table_code === t.code).length;
-                return (
-                  <button
-                    key={t.code}
-                    type="button"
-                    className={`chip${activeTable === t.code ? " active" : ""}`}
-                    onClick={() => setActiveTable(t.code)}
-                  >
-                    {t.code} {t.name}
-                    <span className="chip-n">{n}</span>
-                  </button>
-                );
-              })}
+              {stageTables.map((t) => (
+                <button
+                  key={t.code}
+                  type="button"
+                  className={`chip${activeTable === t.code ? " active" : ""}`}
+                  onClick={() => setActiveTable(t.code)}
+                >
+                  {t.name}
+                </button>
+              ))}
             </div>
 
             {blocks.length > 1 ? (

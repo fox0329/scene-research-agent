@@ -10,7 +10,6 @@ import {
 } from "@scene/contract";
 import { buildStageSummary, checkStageCompleteness, type InfoRow } from "@scene/domain";
 import { SchemaTable, tableBlocks, tableCategories } from "../components/SchemaTable";
-import { AnchorFoldPanel } from "../components/AnchorFoldPanel";
 import { anchorSummary } from "../components/definition-progress";
 import {
   asSourceType,
@@ -161,19 +160,10 @@ export const DemoStagePanel: React.FC<DemoStagePanelProps> = ({
   return (
     <>
       {/* 步标题与完整度都不进中栏：标题在流程轴，完整度在右栏 */}
-      {/* 表1-1 与联真同结构：第 2–8 步默认折叠成一行摘要 */}
-      <AnchorFoldPanel
-        rows={anchorRows as unknown as readonly Record<string, unknown>[]}
-        summary={anchorSummary(anchorRows)}
-      />
+      {/* 表1-1 不在这一步显示（v1.20 与联真同口径：上一步的信息要回看自己回去看） */}
 
       {stageTables.length > 0 ? (
         <div className="pnl">
-          <div className="pnl-h">
-            <div>
-              <h2>本步信息表</h2>
-            </div>
-          </div>
           <div className="pnl-b">
             <div className="table-chips">
               {stageTables.map((t) => (
@@ -183,8 +173,7 @@ export const DemoStagePanel: React.FC<DemoStagePanelProps> = ({
                   className={`chip${activeTable === t.code ? " active" : ""}`}
                   onClick={() => setActiveTable(t.code)}
                 >
-                  {t.code} {t.name}
-                  <span className="chip-n">{(rowsByTable[t.code] ?? []).length}</span>
+                  {t.name}
                 </button>
               ))}
             </div>
