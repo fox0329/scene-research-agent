@@ -229,10 +229,13 @@ const AppShell: React.FC = () => {
     setDefinitionRefresh((n) => n + 1);
   }, []);
 
-  /** 项目 ⋯ 菜单动作（仅联真模式落地） */
+  /** 项目 ⋯ 菜单动作（仅联真模式落地；演示模式显式说明，不做无声无息的空操作） */
   const handleProjectAction = useCallback(
     async (project: Project, action: "重命名" | "归档" | "删除") => {
-      if (!live) return;
+      if (!live) {
+        showToast(`演示模式：${action}不会落库（连上后端才生效）`);
+        return;
+      }
       try {
         if (action === "重命名") {
           const name = window.prompt("重命名项目", project.name);
@@ -266,7 +269,10 @@ const AppShell: React.FC = () => {
       convName: string,
       action: "重命名" | "归档" | "删除",
     ) => {
-      if (!live) return;
+      if (!live) {
+        showToast(`演示模式：${action}不会落库（连上后端才生效）`);
+        return;
+      }
       try {
         if (action === "重命名") {
           const title = window.prompt("重命名会话", convName);
@@ -312,9 +318,9 @@ const AppShell: React.FC = () => {
         onSelectProject={handleSelectProject}
         onSelectConversation={handleSelectConversation}
         onNewProject={live ? () => void handleNewProject() : undefined}
-        onProjectAction={live ? (p, a) => void handleProjectAction(p, a) : undefined}
+        onProjectAction={(p, a) => void handleProjectAction(p, a)}
         onConversationAction={
-          live ? (p, cid, cname, a) => void handleConversationAction(p, cid, cname, a) : undefined
+          (p, cid, cname, a) => void handleConversationAction(p, cid, cname, a)
         }
         libraryCount={lineCount}
         knowledgeCount={knowledgeCount}

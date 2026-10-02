@@ -750,27 +750,41 @@ function createOwnLineForScenario(db: UiRoutesDeps["db"], scenarioName: string):
 
 /** 删场景：手动级联（无外键级联），知识库条目保留；引用关联清理，专属库及其资料保留 */
 function deleteScenarioCascade(db: DbInstance, scenarioId: string) {
-  db.scenarioLinkedLineRepo
-    .list({ where: "scenario_id = ?", params: [scenarioId] })
-    .forEach((l) => db.scenarioLinkedLineRepo.deleteById(l.id));
-  const conversations = db.conversationRepo.list({
-    where: "scenario_id = ?",
-    params: [scenarioId],
-  });
-  for (const conv of conversations) {
-    db.messageRepo.deleteByConversation(conv.id);
-    db.conversationRepo.deleteById(conv.id);
+  db.db.transaction(() => {
+    /* 消息挂在 conversation 上（不直接指向 scenario），先清掉 */
+    for (const conv of db.conversationRepo.list({
+      where: "scenario_id = ?",
+      params: [scenarioId],
+    })) {
+      db.messageRepo.deleteByConversation(conv.id);
+    }
+    /* 其余子表统一按外键清扫；最后删场景本身 */
+    sweepScenarioChildren(db, scenarioId);
+    db.scenarioRepo.deleteById(scenarioId);
+  })();
+}
+
+/**
+ * 兜底清扫：凡外键指向 `scenario(id)` 的表，按 `scenario_id` 清干净。
+ *
+ * 为什么不能只写几张表：漏掉任何一张（踩过 `scenario_step` / `scenario_brief`）
+ * 整个删除都会因外键约束失败——用户看到的就是「场景怎么都删不掉」。
+ * 从系统表里读依赖关系，以后新增子表不必再回来改这里。
+ * （只扫「直接子表」：它们的列名都是 scenario_id；孙子表挂的是别的列，另行处理。）
+ */
+function sweepScenarioChildren(db: DbInstance, scenarioId: string) {
+  const children = db.db
+    .prepare(
+      `SELECT m.name AS tbl, f."from" AS col
+         FROM sqlite_master m
+         JOIN pragma_foreign_key_list(m.name) f
+        WHERE m.type = 'table' AND f."table" = 'scenario'`,
+    )
+    .all() as { tbl: string; col: string }[];
+  for (const child of children) {
+    if (child.tbl === "scenario") continue;
+    db.db.prepare(`DELETE FROM "${child.tbl}" WHERE "${child.col}" = ?`).run(scenarioId);
   }
-  for (let stage = 0; stage <= 8; stage += 1) {
-    db.stageDataRepo.deleteByScenarioStage(scenarioId, stage as StageId);
-    db.stageSummaryRepo.remove(scenarioId, stage === 8 ? 7 : (stage as StageId));
-  }
-  const refs = db.scenarioMaterialRepo.list({
-    where: "scenario_id = ?",
-    params: [scenarioId],
-  });
-  for (const ref of refs) db.scenarioMaterialRepo.deleteById(ref.id);
-  db.scenarioRepo.deleteById(scenarioId);
 }
 
 // ─── 会话路由 ──────────────────────────────────────────────

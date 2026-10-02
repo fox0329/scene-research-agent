@@ -179,6 +179,47 @@ describe("项目路由", () => {
     expect(h.db.stageDataRepo.listByScenarioStage(scenarioId, 0 as StageId)).toHaveLength(0);
   });
 
+  it("DELETE /projects 能删掉已推进过的场景（步进记录/场景诉求/质量关一并清）", async () => {
+    const { scenarioId } = seedScenario(h.db);
+    // 用户真实路径：让智能体写出画像并推进 → scenario_step / scenario_brief 有行
+    h.db.scenarioStepRepo.complete(scenarioId, 1);
+    h.db.scenarioBriefRepo.upsert(scenarioId, {
+      scene_name: "某水厂漏损治理",
+      intent: "把夜间最小流量异常定位到分区",
+      raw_text: "某水厂漏损治理：把夜间最小流量异常定位到分区",
+    });
+    h.db.qualityGateRepo.insert({
+      scenario_id: scenarioId,
+      stage: 1 as StageId,
+      item_no: "1",
+      title: "来源可溯",
+      result: "通过",
+      detail: "x",
+      evidence_refs: { refs: [] },
+    });
+    h.db.stageSummaryRepo.upsert(scenarioId, 1 as StageId, "总结");
+
+    const res = await h.app.inject({
+      method: "DELETE",
+      url: `/api/v1/projects/${scenarioId}`,
+    });
+    // 回归：曾经漏删 scenario_step，外键约束让整个删除 500 ——
+    // 表现是"左栏的场景怎么都删不掉"（步进过的场景全中）
+    expect(res.statusCode).toBe(200);
+    expect(h.db.scenarioRepo.getById(scenarioId)).toBeUndefined();
+    expect(h.db.scenarioStepRepo.completedSteps(scenarioId)).toHaveLength(0);
+    expect(h.db.scenarioBriefRepo.get(scenarioId)).toBeUndefined();
+    expect(h.db.qualityGateRepo.listByScenarioStage(scenarioId, 1 as StageId)).toHaveLength(0);
+    expect(h.db.stageSummaryRepo.listByScenario(scenarioId)).toHaveLength(0);
+
+    // 再删一次：已经不存在 → 404（而不是 500）
+    const again = await h.app.inject({
+      method: "DELETE",
+      url: `/api/v1/projects/${scenarioId}`,
+    });
+    expect(again.statusCode).toBe(404);
+  });
+
   it("GET /projects/:id/stale 返回受影响阶段与横幅文案", async () => {
     const { scenarioId } = seedScenario(h.db);
     h.db.stageDataRepo.insert({
