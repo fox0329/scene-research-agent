@@ -336,6 +336,23 @@ check_contains "docs/项目变更表.md" "| 70 |" "变更表 #70 中栏表格优
 check_contains "04-业务过程重定义.md" "v1.15" "业务过程 v1.15（去掉隐形填充列、表宽恒等于中栏宽）"
 check_contains "04-业务过程重定义.md" "表宽恒等于中栏宽" "不出横向滚动的口径登记"
 check_contains "docs/项目变更表.md" "| 71 |" "变更表 #71 中栏表格修正登记"
+# 正向守卫：本步分析的进度必须读服务端的 message（只读 text 会每条都显示同一句"分析中…"）
+if grep -qF "ev.message ?? ev.text" "$ROOT/apps/web/src/views/RealStagePanel.tsx" && \
+   grep -qF "模型已输出" "$ROOT/apps/server/src/advance-stage.ts"; then
+  echo "✅ 本步分析进度：读 message 字段 + 生成过程有心跳（不再一直显示「分析中」）"
+else
+  echo "❌ 本步分析进度线断了（用户定调：不认「一直分析中」）"
+  FAIL=1
+fi
+# 正向守卫：模型流必须有超时，供应商卡死不能把页面永远挂在"分析中"
+if grep -qF "LLM_IDLE_TIMEOUT_MS" "$ROOT/packages/infra/src/dsh-client.ts" && \
+   grep -qF "超时" "$ROOT/packages/infra/src/dsh-client.ts"; then
+  echo "✅ 模型流空闲超时（卡死会报超时并可重试）"
+else
+  echo "❌ 模型流没有超时，供应商卡死会永远显示「分析中」"
+  FAIL=1
+fi
+check_contains "docs/项目变更表.md" "| 73 |" "变更表 #73 分析中修正登记"
 # 正向守卫：只改被拖那一列的像素模型 + 表宽恒等于中栏宽（末列承接余量）+ 多行编辑器
 if grep -qF "末列不给宽" "$ROOT/apps/web/src/components/SceneTable.tsx" && \
    grep -q "scene.colwidths.v3" "$ROOT/apps/web/src/components/SceneTable.tsx" && \

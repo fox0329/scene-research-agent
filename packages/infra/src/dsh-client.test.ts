@@ -103,6 +103,42 @@ describe("createDshClient", () => {
     expect(String((events.at(-1)! as Record<string, unknown>).message)).toMatch(/无法连接到模型服务|设置页/);
   });
 
+  it("模型流中途卡住不再吐字节 → 报超时错误（不静默挂住，用户不会永远看到「分析中」）", async () => {
+    seedRegistry();
+    process.env["LLM_IDLE_TIMEOUT_MS"] = "80";
+    const origFetch = globalThis.fetch;
+    const enc = new TextEncoder();
+    globalThis.fetch = (async () => {
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          // 先吐一个字，然后**既不 enqueue 也不 close**：模拟供应商卡死
+          controller.enqueue(
+            enc.encode('data: {"choices":[{"delta":{"content":"好"}}]}\n\n'),
+          );
+        },
+      });
+      return new Response(body, {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+      });
+    }) as typeof fetch;
+    try {
+      const client = createDshClient();
+      const h = await client.createSession({ title: "卡住" });
+      const events: FollowEvent[] = [];
+      for await (const e of client.prompt(h, { system: "s", user: "u", outputContract: {} })) {
+        events.push(e);
+      }
+      expect(events.some((e) => e.type === "text")).toBe(true);
+      const last = events.at(-1)!;
+      expect(last.type).toBe("error");
+      expect(String((last as Record<string, unknown>).message)).toContain("超时");
+    } finally {
+      globalThis.fetch = origFetch;
+      delete process.env["LLM_IDLE_TIMEOUT_MS"];
+    }
+  });
+
   it("cancel 对不存在的会话不应抛错", async () => {
     const client = createDshClient();
     await client.cancel({ sessionId: "nonexistent-id" });

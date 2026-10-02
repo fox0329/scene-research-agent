@@ -96,6 +96,8 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
   const [streamLines, setStreamLines] = useState<string[]>([]);
   const [running, setRunning] = useState(false);
   const runningRef = useRef(false);
+  /** 本次分析已用秒数（跑起来每秒 +1）：长跑时"还在动"要看得见，别让人以为卡死 */
+  const [elapsedSec, setElapsedSec] = useState(0);
 
   /* 单元格编辑：本地即时更新 + 落库 */
   const [patched, setPatched] = useState<Record<string, ApiStageRow>>({});
@@ -251,6 +253,16 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
     return () => onStageSnapshot?.(null);
   }, [snapshot, onStageSnapshot]);
 
+  useEffect(() => {
+    if (!running) return;
+    setElapsedSec(0);
+    const timer = setInterval(() => setElapsedSec((n) => n + 1), 1000);
+    return () => clearInterval(timer);
+  }, [running]);
+
+  /** 秒 → m:ss（只在跑分析时用） */
+  const elapsedLabel = `${Math.floor(elapsedSec / 60)}:${String(elapsedSec % 60).padStart(2, "0")}`;
+
   const startAnalysis = useCallback(async () => {
     if (runningRef.current) return;
     runningRef.current = true;
@@ -259,7 +271,11 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
     try {
       for await (const ev of advanceStageStream(projectId, stage, stepId)) {
         if (ev.type === "progress") {
-          setStreamLines((prev) => [...prev, String(ev.text ?? "分析中…")].slice(-8));
+          // 服务端 progress 事件用的是 `message`（上传链路才用 `text`）：
+          // 只读 text 会让每一条进度都渲染成同一句「分析中…」，看着像一直卡在这一句。
+          setStreamLines((prev) =>
+            [...prev, String(ev.message ?? ev.text ?? "分析中…")].slice(-8),
+          );
         } else if (ev.type === "error") {
           setStreamLines((prev) => [...prev, `【错误】${String(ev.message ?? "")}`].slice(-8));
         } else if (ev.type === "done") {
@@ -342,7 +358,11 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
                 onClick={() => void startAnalysis()}
                 disabled={running}
               >
-                {running ? "分析进行中…" : activeRows.length > 0 ? "重算本步分析" : "开始本步分析"}
+                {running
+                  ? `分析进行中 ${elapsedLabel}`
+                  : activeRows.length > 0
+                    ? "重算本步分析"
+                    : "开始本步分析"}
               </button>
             ) : null}
             {/* 导航动作（与流程轴同一判定：缺口不阻断，但"本步还没有产出"不该被跳过） */}
@@ -367,7 +387,11 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
           <div className="pnl-h">
             <div>
               <h2>阶段分析进度</h2>
-              <p>{running ? "分析进行中，流式输出…" : "本步分析输出"}</p>
+              <p>
+                {running
+                  ? `分析进行中 · 已用 ${elapsedLabel}（整步一次生成，通常 1–3 分钟；可离开本页，结果会落库）`
+                  : "本步分析输出"}
+              </p>
             </div>
           </div>
           <div className="pnl-b">

@@ -167,9 +167,16 @@ async function* executeAdvanceStage(
   });
 
   // 6. DSH 流式调用
-  yield emit({ type: "progress", stage, message: "正在调用 AI 分析..." });
+  yield emit({
+    type: "progress",
+    stage,
+    message: "正在调用 AI 分析...（本步一次生成整步的表格，通常 1–3 分钟；可离开本页，结果会落库）",
+  });
 
   let fullText = "";
+  /** 生成过程的心跳：模型连上后可能几十秒不吐字，没有心跳用户会以为卡死 */
+  let lastBeatAt = 0;
+  let lastBeatChars = 0;
   try {
     const stream = dshClient.prompt(session, {
       system: stagePrompt.system,
@@ -180,6 +187,16 @@ async function* executeAdvanceStage(
     for await (const event of stream) {
       if (event.type === "text") {
         fullText += (event as { type: "text"; text: string }).text;
+        const now = Date.now();
+        if (now - lastBeatAt >= 1500 && fullText.length - lastBeatChars >= 80) {
+          lastBeatAt = now;
+          lastBeatChars = fullText.length;
+          yield emit({
+            type: "progress",
+            stage,
+            message: `模型已输出 ${fullText.length} 字，正在生成…`,
+          });
+        }
       }
       if (event.type === "error") {
         yield emit({

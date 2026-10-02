@@ -644,6 +644,25 @@ describe("createAdvanceStageCommand", () => {
       expect(types).not.toContain("advice");
     });
 
+    it("生成过程中持续发进度心跳（否则页面长跑时看着像卡死在「分析中」）", async () => {
+      const cmd = createAdvanceStageCommand(deps);
+      const events = await collectEvents(
+        cmd.execute({ scenarioId: "sc-1", stage: 2 }),
+      );
+
+      const beats = events.filter(
+        (e) =>
+          e.type === "progress" &&
+          /模型已输出 \d+ 字/.test(String((e as { message?: string }).message ?? "")),
+      );
+      expect(beats.length).toBeGreaterThanOrEqual(1);
+      // 心跳必须排在"正在调用 AI 分析"之后、写库之前
+      const types = events.map((e) => String((e as { message?: string }).message ?? ""));
+      expect(types.findIndex((m) => /模型已输出/.test(m))).toBeGreaterThan(
+        types.findIndex((m) => /正在调用 AI 分析/.test(m)),
+      );
+    });
+
     it("应将 3 条行写入 stageDataRepo", async () => {
       const cmd = createAdvanceStageCommand(deps);
       await collectEvents(cmd.execute({ scenarioId: "sc-1", stage: 2 }));

@@ -23,6 +23,44 @@ interface SessionState {
 
 const sessions = new Map<string, SessionState>();
 
+/**
+ * 模型流超时（毫秒）——治的是"页面一直显示分析中"：
+ * 供应商卡住不回字节时，fetch/read 会**永远**等下去，进度条就永远转。
+ * 空闲超时：这么久没有新字节 → 中止本次生成并报错（可重试）。
+ * 连接超时：这么久还没拿到响应头 → 同上。
+ * 环境变量可覆盖（自建慢模型可调大）。
+ */
+const llmIdleTimeoutMs = (): number => Number(process.env["LLM_IDLE_TIMEOUT_MS"] ?? 120_000);
+const llmConnectTimeoutMs = (): number => Number(process.env["LLM_CONNECT_TIMEOUT_MS"] ?? 60_000);
+
+/** 模型流空闲超时（区别于用户主动取消：这条要报错，不能静默当成功） */
+class LlmTimeoutError extends Error {
+  constructor(ms: number, what: string) {
+    super(`${what}超时（${Math.round(ms / 1000)} 秒无响应），已中止本步分析，可直接重试`);
+    this.name = "LlmTimeoutError";
+  }
+}
+
+/** 读一块，超时即抛（首字节也走这条，覆盖"连上但不吐字"） */
+type StreamChunk = Awaited<ReturnType<ReadableStreamDefaultReader<Uint8Array>["read"]>>;
+
+async function readWithIdleTimeout(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  idleMs: number,
+): Promise<StreamChunk> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      reader.read(),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new LlmTimeoutError(idleMs, "模型响应")), idleMs);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 // ─── 创建客户端工厂 ──────────────────────────────────────
 
 export interface DshClientOptions {
@@ -87,6 +125,9 @@ class DshClientImpl implements DshClient {
 
     const abortController = new AbortController();
     session.abortController = abortController;
+    /** 连接超时（区别于用户主动取消） */
+    let timedOut = false;
+    let connectTimeoutMs = llmConnectTimeoutMs();
 
     try {
       // 实时解析登记表：设置页改动无需重启即生效
@@ -116,17 +157,28 @@ class DshClientImpl implements DshClient {
         Authorization: `Bearer ${resolved.provider.api_key}`,
       };
 
+      const connectTimeout = AbortSignal.timeout(connectTimeoutMs);
+      connectTimeout.addEventListener("abort", () => {
+        timedOut = true;
+      });
       const response = await fetchWithLlmCheck(url, {
         method: "POST",
         headers,
         body: JSON.stringify(body),
-        signal: abortController.signal,
+        signal: AbortSignal.any([abortController.signal, connectTimeout]),
       });
 
       // 流式读取 SSE
       yield* this.consumeStream(response, abortController);
     } catch (err: unknown) {
+      // 用户主动取消（cancel）静默收尾；超时中止要报错，否则会被当成"分析完成但没结果"
       if (isAbortError(err)) {
+        if (timedOut) {
+          yield makeErrorEvent(
+            `模型连接超时（${Math.round(connectTimeoutMs / 1000)} 秒无响应），已中止本步分析，可直接重试`,
+          );
+          return;
+        }
         yield { type: "done" };
         return;
       }
@@ -163,7 +215,7 @@ class DshClientImpl implements DshClient {
 
     try {
       while (true) {
-        const { done, value } = await reader.read();
+        const { done, value } = await readWithIdleTimeout(reader, llmIdleTimeoutMs());
         if (done) break;
 
         buffer += decoder.decode(value, { stream: true });
@@ -201,13 +253,24 @@ class DshClientImpl implements DshClient {
       // 流结束但没收到 [DONE]
       yield { type: "done" };
     } catch (err: unknown) {
+      if (err instanceof LlmTimeoutError) {
+        // 中止底层请求，别让连接挂着；错误事件让 UI 退出"分析中"
+        _abortController.abort();
+        await reader.cancel().catch(() => undefined);
+        yield makeErrorEvent(err.message);
+        return;
+      }
       if (isAbortError(err)) {
         yield { type: "done" };
         return;
       }
       yield makeErrorEvent(formatError(err));
     } finally {
-      reader.releaseLock();
+      try {
+        reader.releaseLock();
+      } catch {
+        /* 超时路径已 cancel，挂起的 read 收尾中——release 失败可忽略 */
+      }
     }
   }
 }
