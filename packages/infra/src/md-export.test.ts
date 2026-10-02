@@ -55,13 +55,13 @@ function makeInput(): DeliverableInput {
       {
         stage: 1,
         title: "认识场景（含门槛与合规）",
-        markdown: "# 阶段 1 · 认识场景（含门槛与合规） — 总结\n\n## 五、信息缺口与待补充\n\n- 表1-2 尚无数据",
+        markdown: "# 阶段 1 · 认识场景（含门槛与合规） — 总结\n\n## 五、待补齐信息\n\n- 表1-2 尚无数据",
       },
     ],
     stageData: [
       row("表1-1", { item: "场景名称", content: "智慧水务" }),
-      row("表1-1", { item: "客户类型/行业", content: "市政水务集团" }),
-      row("表1-1", { item: "覆盖什么", content: "制水到输配" }),
+      row("表1-1", { item: "场景边界", content: "制水到输配" }),
+      row("表1-1", { item: "买方类型", content: "市政水务集团" }),
       row("表1-2", {
         link: "制水",
         is_digital: "可以联网采集",
@@ -132,7 +132,8 @@ describe("exportDeliverables — 内部调研报告", () => {
     expect(internal_report).toContain("**生成日期**：2026-09-25");
     expect(internal_report).toContain("不含任何建议或判断");
     // 场景锚派生副标题
-    expect(internal_report).toContain("市政水务集团 ｜ 制水到输配");
+    // 场景锚派生副标题：场景边界 ｜ 买方类型（新口径里"客户类型"已不在表1-1）
+    expect(internal_report).toContain("制水到输配 ｜ 市政水务集团");
   });
 
   it("正文由阶段总结装配（逐阶段标题 + 总结内容）", async () => {

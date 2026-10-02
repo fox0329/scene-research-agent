@@ -3,10 +3,8 @@ import {
   confirmStateOf,
   usableDownstream,
   applyConfirmation,
-  buildChecklist,
+  anchorRows1_1,
   alignmentWithBrief,
-  pendingConfirmationCount,
-  l1Rows,
   ALIGNMENT_CONFLICT_NOTE,
   type InfoRow,
 } from "./confirmation.js";
@@ -34,91 +32,63 @@ describe("confirmation — 状态机", () => {
   });
 
   it("applyConfirmation：确认 → 用户确认；修改 → 用户补充并覆盖内容；否决 → 用户否决", () => {
-    const base: InfoRow = { item: "客户类型", content: "水务集团", source_type: "AI提取", source: "《招标》p.2" };
+    const base: InfoRow = { item: "场景边界", content: "门站、调压站/箱", source_type: "AI推断" };
     expect(applyConfirmation(base, "确认").source_type).toBe("用户确认");
-    const edited = applyConfirmation(base, "修改", { content: "市政水务集团（含排水）" });
+    const edited = applyConfirmation(base, "修改", { content: "门站、调压站/箱（含 LNG 储备站）" });
     expect(edited.source_type).toBe("用户补充");
-    expect(edited.content).toBe("市政水务集团（含排水）");
+    expect(edited.content).toBe("门站、调压站/箱（含 LNG 储备站）");
     const vetoed = applyConfirmation(base, "否决");
     expect(vetoed.confirm_state).toBe("用户否决");
     expect(vetoed.source_type).toBeNull();
     // 纯函数：不改原行
-    expect(base.source_type).toBe("AI提取");
+    expect(base.source_type).toBe("AI推断");
   });
 });
 
-describe("confirmation — L1 必确认项来自注册表", () => {
-  it("表1-1 的必确认行为**核心 2 项**且与注册表一致", () => {
-    const keys = l1Rows().map((r) => r.key);
-    expect(keys).toEqual(["customer_type", "scope_in"]);
+describe("confirmation — 表1-1 固定行来自注册表", () => {
+  it("收敛到 6 项业务画像，且不再有「必确认项」这个概念", () => {
+    expect(anchorRows1_1().map((r) => r.key)).toEqual([
+      "scene_name",
+      "scene_boundary",
+      "production_object",
+      "core_systems",
+      "buyer_type",
+      "procurement",
+    ]);
+    // @ts-expect-error confirmRequired 字段已删除（属主改为 owner）
+    expect(anchorRows1_1()[0]?.confirmRequired).toBeUndefined();
   });
 });
 
-describe("confirmation — 确认清单", () => {
-  it("空输入时：只有核心 2 项进清单（不再把 12 项都摊给用户）", () => {
-    const c = buildChecklist({});
-    expect(c.required).toBe(2);
-    expect(c.confirmed).toBe(0);
-    expect(c.allDone).toBe(false);
-    expect(c.items.every((i) => i.layer === "L1")).toBe(true);
-  });
-
-  it("L2 按环节拆出「能否参与」「我方角色」两项", () => {
-    const c = buildChecklist({
-      linkRows: [extracted({ link: "制水" }), extracted({ link: "输配" })],
-    });
-    const l2 = c.items.filter((i) => i.layer === "L2");
-    expect(l2).toHaveLength(4);
-    expect(l2[0]?.rowKey).toBe("制水 · 能否参与");
-    expect(l2[1]?.rowKey).toBe("制水 · 我方角色");
-    // L1 2 + L2 4 = 6
-    expect(c.required).toBe(6);
-  });
-
-  it("待确认清单作为 L3 聚合项计入", () => {
-    const c = buildChecklist({ pendingCount: 3 });
-    const l3 = c.items.filter((i) => i.layer === "L3");
-    expect(l3).toHaveLength(1);
-    expect(l3[0]?.label).toContain("3 项");
-    expect(c.required).toBe(3); // 核心 2 项 + 1 个 L3 聚合项
-  });
-
-  it("核心 2 项确认后即 allDone（不再要求 6 项）", () => {
-    const labels = l1Rows().map((r) => r.label);
-    const anchorRows = labels.map((label) => confirmed({ item: label, content: "x" }));
-    const c = buildChecklist({ anchorRows });
-    expect(c.confirmed).toBe(2);
-    expect(c.allDone).toBe(true);
-  });
-
-  it("内容为「未提供」的行不算已确认", () => {
-    const anchorRows = l1Rows().map((r) => confirmed({ item: r.label, content: "未提供" }));
-    const c = buildChecklist({ anchorRows });
-    expect(c.confirmed).toBe(0);
-  });
-});
-
-describe("confirmation — 对照式确认（以用户诉求为基准）", () => {
-  it("四态分类：一致 / 系统补充 / 推断；没内容的非核心项不打扰", () => {
+describe("confirmation — 对照（以用户诉求为基准）", () => {
+  it("四态分类：一致 / 系统补充 / 推断", () => {
     const items = alignmentWithBrief([
-      confirmed({ item: "客户类型/行业", content: "市政水务集团" }),
-      extracted({ item: "覆盖什么", content: "制水到输配" }),
-      inferred({ item: "核心用途", content: "漏损监测" }),
-      confirmed({ item: "明确不含什么", content: "未提供" }),
+      confirmed({ item: "场景名称", content: "智慧水务" }),
+      extracted({ item: "场景边界", content: "制水到输配" }),
+      inferred({ item: "生产对象", content: "自来水" }),
     ]);
     const byKey = Object.fromEntries(items.map((i) => [i.rowKey, i]));
-    expect(byKey["customer_type"]?.alignment).toBe("一致");
-    expect(byKey["scope_in"]?.alignment).toBe("系统补充");
-    expect(byKey["use_case"]?.alignment).toBe("推断"); // 有内容 → 列出来让用户核对
-    // 「明确不含什么」内容是「未提供」且已非核心项 → 不进对照表（可留待定）
-    expect(byKey["scope_out"]).toBeUndefined();
-    // 核心 2 项永远在表里（覆盖什么 有内容；客户类型/行业 已确认）
-    expect(items.map((i) => i.rowKey).slice(0, 2)).toEqual(["customer_type", "scope_in"]);
+    expect(byKey["scene_name"]?.alignment).toBe("一致");
+    expect(byKey["scene_boundary"]?.alignment).toBe("系统补充");
+    expect(byKey["production_object"]?.alignment).toBe("推断");
   });
 
-  it("对照表只列核心 2 项（空输入时），不扩散到全表", () => {
-    // 空锚行 → 只有核心必确认 2 项（其余项没内容就不打扰）
-    expect(alignmentWithBrief([])).toHaveLength(2);
+  it("用户负责的行永远列出（空着就提示是他的活）", () => {
+    const items = alignmentWithBrief([]);
+    expect(items.map((i) => i.rowKey)).toEqual(["scene_name"]);
+    expect(items[0]?.alignment).toBe("待补充");
+  });
+
+  it("智能体侧没内容的行不打扰用户", () => {
+    const items = alignmentWithBrief([inferred({ item: "买方类型", content: "城燃集团" })]);
+    expect(items.map((i) => i.rowKey)).toEqual(["scene_name", "buyer_type"]);
+  });
+
+  it("推断态不再写成「需要用户确认」，而是「可直接改」", () => {
+    const items = alignmentWithBrief([inferred({ item: "买方类型", content: "城燃集团" })]);
+    const it = items.find((i) => i.rowKey === "buyer_type");
+    expect(it?.note).toContain("可直接改");
+    expect(it?.note).not.toContain("需用户确认");
   });
 
   it("指出「冲突」需语义判断，不由纯函数假定", () => {
@@ -127,36 +97,8 @@ describe("confirmation — 对照式确认（以用户诉求为基准）", () =>
   });
 
   it("系统补充态带来源说明", () => {
-    const items = alignmentWithBrief([extracted({ item: "切入点", content: "存量改造" })]);
-    const it = items.find((i) => i.rowKey === "entry_point");
+    const items = alignmentWithBrief([extracted({ item: "采购特征", content: "集团集采" })]);
+    const it = items.find((i) => i.rowKey === "procurement");
     expect(it?.note).toContain("来源");
-  });
-});
-
-describe("confirmation — 待确认清单计数", () => {
-  it("统计有内容但未确认的行", () => {
-    const n = pendingConfirmationCount({
-      "表1-1": [confirmed({ item: "客户类型", content: "x" }), extracted({ item: "覆盖什么", content: "y" })],
-      "表1-2": [inferred({ link: "制水", can_touch: "可以碰" })],
-    });
-    expect(n).toBe(2); // extracted + inferred；confirmed 不计
-  });
-
-  it("空内容行不计入", () => {
-    const n = pendingConfirmationCount({ "表1-1": [extracted({ item: "客户类型", content: "" })] });
-    expect(n).toBe(0);
-  });
-
-  it("只有结构键（标识列）不算有内容——规则取自注册表", () => {
-    // 表1-2 的第一个中栏列是 link；表7-1 的第一个中栏列是 target
-    expect(pendingConfirmationCount({ "表1-2": [extracted({ link: "制水" })] })).toBe(0);
-    expect(pendingConfirmationCount({ "表7-1": [extracted({ target: "产品路线图" })] })).toBe(0);
-    // 补上任意一个数据列即计入
-    expect(pendingConfirmationCount({ "表1-2": [extracted({ link: "制水", can_touch: "可以碰" })] })).toBe(1);
-  });
-
-  it("与完整度检查联动：计数可作为 pendingConfirmations 传入", () => {
-    const rows = { "表7-1": [extracted({ target: "产品路线图", content: "需求 A", basis: "阶段 2" })] };
-    expect(pendingConfirmationCount(rows)).toBe(1);
   });
 });

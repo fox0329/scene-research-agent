@@ -89,13 +89,25 @@ export interface TableColumn {
   note?: string;
 }
 
+/**
+ * 固定行的内容属主
+ *
+ * 用户定调（2026-09-26）：「用户只负责输入场景名称，智能体负责从业务角度说清楚
+ * 场景的范围」——**谁最该知道这件事，谁负责产出**。把智能体本该调研/推断的项
+ * 摆成用户的填空题，等于把智能体的活推给用户（用户原话：都让用户填，要我们干什么）。
+ *
+ *  - `用户`：只有用户知道，必须由他输入（表1-1 仅「场景名称」）
+ *  - `智能体`：行业通例/可由名称与材料推出，智能体先给内容，用户只需看与改
+ */
+export type FixedRowOwner = "用户" | "智能体";
+
 /** 表内固定行（用于「项 / 内容」纵向呈现的单例表，如表1-1 场景概述） */
 export interface FixedRow {
   key: string;
   label: string;
   required?: boolean;
-  /** 是否属于必须由用户确认的 L1 项（见 04 §4.7） */
-  confirmRequired?: boolean;
+  /** 内容属主；缺省视为「智能体」（见 `FixedRowOwner`） */
+  owner?: FixedRowOwner;
   longText?: boolean;
   note?: string;
 }
@@ -303,7 +315,12 @@ export const SUMMARY_DOC_SECTIONS: readonly SummarySection[] = [
     brief: "怎么展开的、采用什么口径与假设；C 级假设与 AI推断条目集中列在此处",
   },
   { key: "sources", title: "四、来源与抽查", brief: "T1-T4 分布 + 已抽查条目（文件名:页码）" },
-  { key: "gaps", title: "五、信息缺口与待补充", brief: "还缺什么、补什么最有价值（表 / 列 / 类别 / 行）" },
+  {
+    key: "gaps",
+    title: "五、待补齐信息",
+    brief:
+      "分两栏：需要用户补充的（极少，通常为空）+ 智能体将自行补齐的（含来源/推断留痕）——缺口不是「用户的缺口」",
+  },
   { key: "links", title: "六、上下游衔接", brief: "上游依据哪些表、下游引用哪些表" },
 ];
 
@@ -507,32 +524,35 @@ const TABLES_STAGE_1: readonly TableDef[] = [
     tier: "重要",
     pinned: true,
     rowUnit: "本场景（单行，纵向 项/内容 呈现）",
-    purpose: "场景锚——全链唯一场景定义；**允许抽象与待定**（用户常常还说不准，后续阶段会研究补全）",
+    purpose:
+      "场景锚——**用户给场景名称，智能体从业务角度写出一份场景业务画像**（边界/生产对象/核心系统/买方/采购特征）；允许抽象与待定",
     columns: [
       mid("item", "项", { required: true }),
       mid("content", "内容", { required: true, type: "longText", truncate: TRUNCATE_DEFAULT }),
     ],
     fixedRows: [
-      { key: "scene_name", label: "场景名称", required: true },
-      // 只有「核心 2 项」需要用户确认（2026-09-25 由 6 项降到 2 项）：
-      // 用户定调「场景定义要求太细了，要抽象一点，很多时候也没说要定义那么准确」。
-      // 其余项都是**选填、可待定**——它们更适合在后续行业/商业研究之后再回填。
-      { key: "customer_type", label: "客户类型/行业", required: true, confirmRequired: true },
-      { key: "scope_in", label: "覆盖什么", required: true, confirmRequired: true },
-      { key: "scope_out", label: "明确不含什么" },
+      // 2026-09-26 定稿（用户给的参考形态，燃气场站为例）：
+      //  场景名称        燃气场站（Gas Stations / City-Gate & Distribution Stations）  ← 用户输入
+      //  场景边界        城市燃气门站、调压站/箱、LNG 储备站、CNG/LNG 加气站…
+      //  生产对象        天然气的接收、过滤、计量、调压、储存/气化、输送或充装…
+      //  核心生产系统     工艺装置 + 站控(PLC/RTU/SCADA) + 安全仪表与消防 + 调度/信息化平台 + 运维作业
+      //  买方类型        城燃集团 / 地方燃气公司 / 长输管网企业 / 大型工业用户自管站【检索·B】
+      //  采购特征        集团技术规范 + 集采/供应商名录 + 区域项目实施…
+      //
+      // 两条定调：① 只有「场景名称」是用户的活（`owner: "用户"`），其余由智能体从业务角度写；
+      // ② 拍板者/使用者/付费者**不进表1-1**（参考里没有）——那是"研究出来才知道"的，
+      //    留在表3-3 购买路径与采购机制里按客户类型一行行查。
+      { key: "scene_name", label: "场景名称", required: true, owner: "用户" },
+      { key: "scene_boundary", label: "场景边界", required: true },
+      { key: "production_object", label: "生产对象" },
+      { key: "core_systems", label: "核心生产系统" },
       { key: "buyer_type", label: "买方类型" },
-      { key: "decision_maker", label: "拍板者" },
-      { key: "user_role", label: "使用者" },
-      { key: "payer", label: "付费者" },
-      { key: "core_process", label: "核心业务流程" },
-      { key: "use_case", label: "核心用途" },
-      { key: "entry_point", label: "切入点" },
-      { key: "value_proposition", label: "价值主张" },
+      { key: "procurement", label: "采购特征" },
     ],
     completeness: [
-      "核心 2 项（客户类型/行业、覆盖什么）建议由用户确认",
-      "其余项选填、可留「待定」——后续阶段研究会回填",
-      "『未提供』≥2 行则退回场景梳理",
+      "场景名称由用户给出（唯一必填的用户输入）",
+      "其余 5 项由智能体从业务角度写出；买方/采购类应带来源",
+      "允许抽象、可留「待定」——不阻断后续阶段",
     ],
     consumedBy: [2, 3, 4, 5, 6, 7],
   },
@@ -735,13 +755,18 @@ const TABLES_STAGE_2: readonly TableDef[] = [
     stage: 2,
     tier: "支撑",
     rowUnit: "一类客户",
-    purpose: "客户怎么买、钱从哪出、决策多久、怎么撬动",
+    purpose: "客户怎么买、钱从哪出、谁拍板谁用、决策多久、怎么撬动",
     columns: [
       mid("customer_type", "客户类型", { required: true }),
+      mid("decision_maker", "决策角色", { note: "哪类岗位拍板（写角色不写人名）——表1-1 只给画像，明细在这里查" }),
+      mid("user_role", "使用角色", { note: "谁日常用" }),
+      mid("payer", "付费方", { note: "钱从谁的预算出" }),
       mid("default_choice", "默认选择", { required: true }),
       mid("budget_item", "预算科目", { required: true }),
-      mid("procurement_method", "采购方式"),
-      mid("decision_cycle", "决策周期"),
+      // 中栏预算上限 6 列：采购方式/决策周期属于"怎么操作"的说明类信息，放右栏补充列，
+      // 中栏只留"谁买、默认选谁、钱从哪出"这三件主信息。
+      sup("procurement_method", "采购方式"),
+      sup("decision_cycle", "决策周期"),
       sup("decision_basis", "决策依据"),
       sup("in_path", "我方是否在路径中"),
       sup("leverage", "需撬动什么"),

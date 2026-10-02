@@ -115,10 +115,10 @@ function renderTable(t: TableDef): string {
   if (t.fixedRows) {
     L.push("- **固定行（「项 / 内容」纵向呈现）**");
     L.push("");
-    L.push("| 项 | 必填 | L1 必确认 | 说明 |");
+    L.push("| 项 | 必填 | 内容属主 | 说明 |");
     L.push("|---|---|---|---|");
     for (const r of t.fixedRows) {
-      L.push(`| ${r.label} | ${r.required ? "✔" : ""} | ${r.confirmRequired ? "**是**" : ""} | ${r.note ?? ""} |`);
+      L.push(`| ${r.label} | ${r.required ? "✔" : ""} | ${r.owner ?? "智能体"} | ${r.note ?? ""} |`);
     }
     L.push("");
     L.push("- **列**");

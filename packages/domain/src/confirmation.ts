@@ -5,16 +5,19 @@
  * 系统理解的场景未必是用户要的——必须有"确认"闭环，且**基准是用户原始诉求**，
  * 不能是系统起草的场景锚（拿它当基准等于自己验证自己）。
  *
- * 确认对象分三层（不逐格校对 8 张表）：
- *  L1 场景本体：表1-1 的 6 个必确认行
- *  L2 结构判断：表1-2 每个业务环节的 can_touch 与 our_role
- *  L3 事实与枚举：其余表抽查 + 右栏待确认清单
+ * 口径变更（2026-09-26，用户定调）：
+ *  「用户只负责输入场景名称，智能体负责从业务角度说清楚场景的范围」
+ *  「用户确认就默认可以了，表格用户自己可以修改，**不用显示待确认**」
  *
- * 状态机：系统推断 → 待确认 → 用户确认 / 用户修改 / 用户否决
+ * 因此本模块**不再产出逐项"待确认清单"**（那等于把智能体的活变成用户的填空题）：
+ *  - 逐项清单（L1/L2/L3）与待确认计数已删除；表1-1 的确认是**一次整表确认**（不卡推进）
+ *  - 保留**数据语义**的状态机：`来源标记` 决定一行能否被下游当依据
+ *  - 保留**对照**能力（`alignmentWithBrief`）：把"智能体理解的范围"摆出来，用户看一眼改不改
+ *
  * 铁律：**只有『用户确认』『用户补充』可被下游当依据**；其余引用时带"未确认"标记。
  */
 
-import { TABLES_BY_CODE, middleColumns, type FixedRow } from "@scene/contract";
+import { TABLES_BY_CODE, type FixedRow } from "@scene/contract";
 import { isEmptyValue, type InfoRow } from "./completeness.js";
 
 export type { InfoRow } from "./completeness.js";
@@ -75,112 +78,11 @@ export function applyConfirmation(
   }
 }
 
-// ─── 确认清单 ──────────────────────────────────────────────
+// ─── 表1-1 固定行 ──────────────────────────────────────────
 
-export interface ChecklistItem {
-  layer: "L1" | "L2" | "L3";
-  tableCode: string;
-  /** 行标识（L1 为固定行 key；L2 为环节名；L3 为聚合项） */
-  rowKey: string;
-  label: string;
-  state: ConfirmState;
-}
-
-export interface ConfirmationChecklist {
-  /** 必须确认项数 */
-  required: number;
-  /** 已确认项数（用户确认 / 用户修改） */
-  confirmed: number;
-  /** 待处理项数 */
-  pending: number;
-  items: readonly ChecklistItem[];
-  allDone: boolean;
-}
-
-/** 表1-1 的 L1 必确认固定行 */
 /** 表1-1 的全部固定行（含选填项） */
 export function anchorRows1_1(): readonly FixedRow[] {
   return TABLES_BY_CODE["表1-1"]?.fixedRows ?? [];
-}
-
-export function l1Rows(): readonly FixedRow[] {
-  return (TABLES_BY_CODE["表1-1"]?.fixedRows ?? []).filter((r) => r.confirmRequired);
-}
-
-/**
- * 组装确认清单（右栏 Tab ① 顶部常驻）
- *
- * @param input.anchorRows 表1-1 的行（键 `item` = 项名，`content` = 内容）
- * @param input.linkRows 表1-2 的行（键 `link` = 业务环节）
- * @param input.pendingCount 右栏待确认清单条数
- */
-export function buildChecklist(input: {
-  anchorRows?: readonly InfoRow[];
-  linkRows?: readonly InfoRow[];
-  pendingCount?: number;
-}): ConfirmationChecklist {
-  const items: ChecklistItem[] = [];
-  const anchorRows = input.anchorRows ?? [];
-  const linkRows = input.linkRows ?? [];
-
-  // L1：**只看需要用户表态的项**——核心必确认项（2 项）＋ 模型填了但还不能直接用的项
-  // （如 `AI推断`）。空着的非核心项不进清单：用户说不准是正常的，不该被 12 项追着问。
-  for (const fixed of anchorRows1_1()) {
-    if (fixed.key === "scene_name") continue;
-    const row = anchorRows.find((r) => String(r["item"] ?? "").trim() === fixed.label);
-    const content = row ? String(row["content"] ?? "").trim() : "";
-    const hasContent = Boolean(row) && !isEmptyValue(content);
-    const needsUserWord = hasContent && !usableDownstream(row!);
-    if (!fixed.confirmRequired && !needsUserWord) continue;
-    const state: ConfirmState = !hasContent ? "系统推断" : confirmStateOf(row!);
-    items.push({
-      layer: "L1",
-      tableCode: "表1-1",
-      rowKey: fixed.key,
-      label: fixed.label,
-      state,
-    });
-  }
-
-  // L2：环节的能否参与 + 我方角色
-  for (const row of linkRows) {
-    const link = String(row["link"] ?? "").trim() || "(未命名环节)";
-    items.push({
-      layer: "L2",
-      tableCode: "表1-2",
-      rowKey: `${link} · 能否参与`,
-      label: `${link}——我方可参与程度`,
-      state: confirmStateOf(row),
-    });
-    items.push({
-      layer: "L2",
-      tableCode: "表1-2",
-      rowKey: `${link} · 我方角色`,
-      label: `${link}——我方角色`,
-      state: confirmStateOf(row),
-    });
-  }
-
-  // L3：待确认清单（聚合一项）
-  const pendingCount = input.pendingCount ?? 0;
-  if (pendingCount > 0) {
-    items.push({
-      layer: "L3",
-      tableCode: "",
-      rowKey: "pending-list",
-      label: `待确认清单 ${pendingCount} 项`,
-      state: "待确认",
-    });
-  }
-
-  const confirmed = items.filter((i) => i.state === "用户确认" || i.state === "用户修改").length;
-  return {
-    required: items.length,
-    confirmed,
-    pending: items.length - confirmed,
-    items,
-    allDone: items.length > 0 && confirmed === items.length,
-  };
 }
 
 // ─── 对照式确认（「用户说过的」vs「系统理解的」） ───────────
@@ -208,26 +110,26 @@ export interface AlignmentItem {
  * 该行是否该进「对照表」
  *
  * 用户定调：**场景定义要求太细了，要抽象一点**（很多时候用户也说不准，
- * 更需要的是对行业的全面了解）。因此对照表不再要求 12 项齐全，只拿
- * **核心必确认项（2 项）＋ 模型实际填了内容的项** 出来让用户对照：
- *   - 核心 2 项永远列出（空着就显示「待补充」，提示这是最该说的两件事）
- *   - 其余项只在模型确实填了时才列出——填了就该让用户核对，没填的不打扰
- *   - 「场景名称」是建场景时用项目名预填的，不属于"对场景的理解"，排除
+ * 更需要的是对行业的全面了解）。因此对照表只拿两类行出来：
+ *   - **用户负责输入的行**（表1-1 的「场景名称」）永远列出——空着就提示这是他的活
+ *   - **智能体写出内容的行**（覆盖什么 / 明确不含什么）只在确实写了时列出，
+ *     写了就让用户看一眼（可改），没写的不打扰
  */
 function shouldAlign(fixed: FixedRow, anchorRows: readonly InfoRow[]): boolean {
-  if (fixed.key === "scene_name") return false;
-  if (fixed.confirmRequired) return true;
+  if (fixed.owner === "用户") return true;
   const row = anchorRows.find((r) => String(r["item"] ?? "").trim() === fixed.label);
   return Boolean(row) && !isEmptyValue(String(row!["content"] ?? "").trim());
 }
 
 /**
- * 以**用户原始诉求**为基准，对表1-1 的核心项与已知项做对照
+ * 以**用户原始诉求**为基准，对表1-1 的各行做对照
  *
- * - `一致`：已由用户确认或补充
- * - `系统补充`：有来源且内容非空（来自材料/检索，用户没说过）
- * - `推断`：`source_type = AI推断`（用户没说，系统猜的 → 建议确认，但不阻断推进）
+ * - `一致`：已由用户确认或补充（用户自己的话）
+ * - `系统补充`：有来源且内容非空（来自材料/检索）
+ * - `推断`：`source_type = AI推断`（智能体的理解——摆出来让用户看一眼，可直接改）
  * - `待补充`：内容为空或「未提供」
+ *
+ * 注意：`推断` **不是**"待用户表态"——产品不显示待确认；用户想改就地改，不想改就过。
  */
 export function alignmentWithBrief(anchorRows: readonly InfoRow[]): readonly AlignmentItem[] {
   return anchorRows1_1()
@@ -247,7 +149,7 @@ export function alignmentWithBrief(anchorRows: readonly InfoRow[]): readonly Ali
         label: fixed.label,
         content,
         alignment: "推断" as const,
-        note: "系统推断，需用户确认",
+        note: "智能体的理解，可直接改",
       };
     }
       return {
@@ -260,42 +162,10 @@ export function alignmentWithBrief(anchorRows: readonly InfoRow[]): readonly Ali
     });
 }
 
-// ─── 待确认清单计数（供完整度检查使用） ─────────────────────
-
-const META_KEYS = new Set(["source", "source_type", "confirm_state"]);
-
-/**
- * 该表的「结构键」列——只有它被填不算"有内容"
- *
- * 规则取自注册表，避免把"行标签已填、数据还空着"的行误算成待确认：
- *  - 分组维度（`groupBy`）
- *  - 第一个中栏列（行的标识，如 表1-2 的 `link`、M1 的 `model`）
- *  - 「项/内容」纵向表的 `item`
- */
-function structuralKeys(code: string): ReadonlySet<string> {
-  const t = TABLES_BY_CODE[code];
-  const keys = new Set<string>();
-  if (!t) return keys;
-  if (t.groupBy) keys.add(t.groupBy);
-  const first = middleColumns(t)[0];
-  if (first) keys.add(first.key);
-  if (t.fixedRows) keys.add("item");
-  return keys;
-}
-
-/** 统计"有内容但尚未确认"的行数——即待确认清单条数 */
-export function pendingConfirmationCount(
-  rowsByTable: Readonly<Record<string, readonly InfoRow[] | undefined>>,
-): number {
-  let n = 0;
-  for (const [code, rows] of Object.entries(rowsByTable)) {
-    const structural = structuralKeys(code);
-    for (const row of rows ?? []) {
-      const hasContent = Object.entries(row).some(
-        ([k, v]) => !META_KEYS.has(k) && !structural.has(k) && !isEmptyValue(v),
-      );
-      if (hasContent && !usableDownstream(row)) n += 1;
-    }
-  }
-  return n;
-}
+// ─── 待确认清单计数：已删除 ─────────────────────────────────
+//
+// 曾经这里统计"有内容但未经用户逐格确认"的行数（真机上曾算出 **49 项**），
+// 并以「右栏待确认清单还有 N 项未处理」出现在缺口清单里。用户定调：
+// 「不用显示待确认」+「用户确认就默认可以了」——把智能体产出的每一格都
+// 拿去要用户签字，既不是用户能回答的问题，也不是产品该提的要求。
+// 逐项确认概念整体删除；表1-1 只保留**一次整表确认**（且不阻断推进）。

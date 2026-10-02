@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
 import {
   checkStageCompleteness,
+  userGaps,
+  agentGaps,
   gapsToSummaryLines,
   gapsBrief,
   isEmptyValue,
@@ -44,11 +46,45 @@ describe("completeness — 阶段级", () => {
     expect(r.percent).toBe(50);
   });
 
-  it("待确认未处理作为阶段级缺口列出（不阻断，仅提示）", () => {
-    const r = checkStageCompleteness({ stage: 6, rowsByTable: {}, pendingConfirmations: 3 });
-    const g = r.gaps.find((x) => x.kind === "待确认未处理");
-    expect(g?.detail).toContain("3 项");
-    expect(g?.tableCode).toBe("");
+  it("缺口全部带属主（用户 / 智能体）——没有属主的缺口不允许产生", () => {
+    const r = checkStageCompleteness({ stage: 1, rowsByTable: {} });
+    expect(r.gaps.length).toBeGreaterThan(0);
+    for (const g of r.gaps) {
+      expect(["用户", "智能体"]).toContain(g.owner);
+    }
+  });
+});
+
+describe("completeness — 缺口分属主（智能体的欠账不找用户）", () => {
+  it("表1-1 逐固定行判必填，并标出属主", () => {
+    const r = checkStageCompleteness({
+      stage: 1,
+      rowsByTable: { "表1-1": [{ item: "场景名称", content: "智慧水务" }] },
+    });
+    const boundary = r.gaps.find((g) => g.detail.includes("场景边界"));
+    expect(boundary?.owner).toBe("智能体"); // 智能体该写的业务画像
+    // 场景名称已给 → 不该冒出"用户欠场景名称"
+    expect(r.gaps.some((g) => g.detail.includes("场景名称"))).toBe(false);
+  });
+
+  it("场景名称空着才产生「用户」属主的缺口", () => {
+    const r = checkStageCompleteness({
+      stage: 1,
+      rowsByTable: { "表1-1": [{ item: "场景边界", content: "门站、调压站/箱" }] },
+    });
+    const mine = userGaps(r);
+    expect(mine.map((g) => g.detail).join(" ")).toContain("场景名称");
+    expect(agentGaps(r).every((g) => g.owner === "智能体")).toBe(true);
+  });
+
+  it("来源/推断留痕这类文书缺口一律算智能体的（不给用户看）", () => {
+    const r = checkStageCompleteness({
+      stage: 0,
+      rowsByTable: { M3: [{ domain: "接入", name: "Modbus", maturity: "已交付" }] },
+    });
+    const kinds = agentGaps(r).map((g) => g.kind);
+    expect(kinds).toContain("推断未标注");
+    expect(userGaps(r)).toEqual([]);
   });
 });
 
@@ -145,19 +181,30 @@ describe("completeness — 单表规则", () => {
 });
 
 describe("completeness — 输出到总结文档", () => {
-  it("gapsToSummaryLines 逐条输出；无缺口时给一句友好文案", () => {
+  it("gapsToSummaryLines 分「需要你补充 / 我将补充」两栏", () => {
     const withGaps = checkStageCompleteness({ stage: 6, rowsByTable: {} });
     const lines = gapsToSummaryLines(withGaps);
-    expect(lines[0]).toMatch(/^- /);
+    // 阶段 6 的缺口全是智能体侧的 → 只出现「我将补充」，不向用户要东西
+    expect(lines.some((l) => l.includes("我将补充"))).toBe(true);
+    expect(lines.some((l) => l.includes("需要你补充"))).toBe(false);
     const clean = checkStageCompleteness({ stage: 7, rowsByTable: {} });
     expect(gapsToSummaryLines(clean)[0]).toContain("齐备");
   });
 
+  it("只有用户属主的缺口才写成「需要你补充」", () => {
+    const r = checkStageCompleteness({
+      stage: 1,
+      rowsByTable: { "表1-1": [{ item: "场景边界", content: "门站" }] },
+    });
+    const text = gapsToSummaryLines(r).join("\n");
+    expect(text).toContain("需要你补充");
+    expect(text).toContain("场景名称");
+  });
+
   it("gapsBrief 给出完整度与缺口分类计数", () => {
-    const r = checkStageCompleteness({ stage: 0, rowsByTable: {}, pendingConfirmations: 2 });
+    const r = checkStageCompleteness({ stage: 0, rowsByTable: {} });
     expect(gapsBrief(r)).toContain("信息完整度 0%");
     expect(gapsBrief(r)).toContain("缺表");
-    expect(gapsBrief(r)).toContain("待确认未处理 1 项");
   });
 
   it("缺口清单不含任何判定措辞（产品不产出判断）", () => {

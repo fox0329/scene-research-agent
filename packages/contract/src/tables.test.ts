@@ -124,16 +124,19 @@ describe("表定义注册表 — 关键结构", () => {
     expect(pinnedTables().map((t) => t.code)).toEqual(["表1-1"]);
   });
 
-  it("表1-1 有 12 个固定行，其中**核心 2 项**需用户确认（其余选填可待定）", () => {
+  it("表1-1 收敛到 6 项业务画像，只有「场景名称」的属主是用户", () => {
     const rows = tableDef("表1-1").fixedRows ?? [];
-    expect(rows).toHaveLength(12);
-    // 2026-09-25 由 6 项降到 2 项：用户定调「定义要求太细了，要抽象一点」
-    expect(rows.filter((r) => r.confirmRequired).map((r) => r.key)).toEqual([
-      "customer_type",
-      "scope_in",
+    expect(rows.map((r) => r.key)).toEqual([
+      "scene_name",
+      "scene_boundary",
+      "production_object",
+      "core_systems",
+      "buyer_type",
+      "procurement",
     ]);
-    // 其余项选填、可「待定」——后续阶段研究后再回填
-    expect(rows.filter((r) => !r.confirmRequired).map((r) => r.key)).toContain("value_proposition");
+    // 属主划分：用户只输入场景名称，其余由智能体从业务角度写
+    expect(rows.filter((r) => r.owner === "用户").map((r) => r.key)).toEqual(["scene_name"]);
+    expect(rows.filter((r) => (r.owner ?? "智能体") === "智能体")).toHaveLength(5);
   });
 
   it("表1-1 用「项 / 内容」两列纵向呈现", () => {
@@ -200,7 +203,7 @@ describe("表定义注册表 — 输入与总结文档骨架", () => {
       "二、关键信息清单",
       "三、说明与方法口径",
       "四、来源与抽查",
-      "五、信息缺口与待补充",
+      "五、待补齐信息",
       "六、上下游衔接",
     ]);
   });

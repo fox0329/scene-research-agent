@@ -46,12 +46,24 @@ describe("文档生成 — 内容完整性", () => {
     expect(body.match(/- \*\*完整度规则\*\*/g)?.length).toBe(34);
   });
 
-  it("表1-1 渲染固定行并标出核心 2 项需用户确认", () => {
+  it("表1-1 渲染 6 行固定项，并标出唯一由用户输入的那一项", () => {
     const section = body.slice(body.indexOf("### 表1-1 "), body.indexOf("### 表1-2 "));
     expect(section).toContain("**= 场景锚**");
     expect(section).toContain("固定行");
-    const l1 = section.match(/\*\*是\*\*/g) ?? [];
-    expect(l1).toHaveLength(2); // 核心 2 项（客户类型/行业、覆盖什么）
+    expect(section).toContain("| 项 | 必填 | 内容属主 | 说明 |");
+    for (const label of [
+      "场景名称",
+      "场景边界",
+      "生产对象",
+      "核心生产系统",
+      "买方类型",
+      "采购特征",
+    ]) {
+      expect(section, label).toContain(`| ${label} |`);
+    }
+    // 只有「场景名称」的内容属主是用户——这是产品设计反转后的核心事实
+    const mine = section.match(/\| 用户 \|/g) ?? [];
+    expect(mine).toHaveLength(1);
   });
 
   it("跨阶段填写的表标出所属阶段", () => {

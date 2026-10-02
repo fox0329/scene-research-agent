@@ -69,7 +69,8 @@ function anchorLine(stageData: readonly StageData[]): string {
   const rows = stageData.filter((r) => r.table_code === "表1-1");
   const get = (item: string): string =>
     String(rows.find((r) => String(r.row["item"]) === item)?.row["content"] ?? "").trim();
-  const parts = [get("客户类型/行业"), get("覆盖什么")].filter((s) => s && s !== "未提供");
+  // 副标题用业务画像里最能定位场景的两项（新口径：客户类型已不在表1-1）
+  const parts = [get("场景边界"), get("买方类型")].filter((s) => s && s !== "未提供");
   return parts.join(" ｜ ");
 }
 

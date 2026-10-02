@@ -88,7 +88,7 @@ function labelOf(entry: RowEntry): string {
  * 生成阶段总结文档（Markdown，六段骨架）
  *
  * 六段：一、信息摘要 ｜ 二、关键信息清单 ｜ 三、说明与方法口径
- *       四、来源与抽查 ｜ 五、信息缺口与待补充 ｜ 六、上下游衔接
+ *       四、来源与抽查 ｜ 五、待补齐信息 ｜ 六、上下游衔接
  */
 export function buildStageSummary(input: StageSummaryInput): string {
   const def = stageDef(input.stage);
@@ -132,7 +132,7 @@ export function buildStageSummary(input: StageSummaryInput): string {
   L.push("## 二、关键信息清单");
   L.push("");
   if (rows.length === 0) {
-    L.push("（本阶段尚无信息，见第五节缺口清单）");
+    L.push("（本阶段尚无信息，见第五节待补清单）");
   } else {
     for (const t of tables) {
       const tRows = input.rowsByTable[t.code] ?? [];
@@ -179,7 +179,7 @@ export function buildStageSummary(input: StageSummaryInput): string {
   L.push("");
   const sources = [...new Set(rows.map((r) => String(r["source"] ?? "").trim()).filter((s) => s !== ""))];
   if (sources.length === 0) {
-    L.push("（本阶段尚无带来源的信息——来源是硬要求，见第五节缺口）");
+    L.push("（本阶段尚无带来源的信息——来源是硬要求，见第五节待补清单）");
   } else {
     L.push(
       `- 来源分布：T1 ${dist["T1"]} 条 / T2 ${dist["T2"]} 条 / T3 ${dist["T3"]} 条 / T4 ${dist["T4"]} 条`,
@@ -189,8 +189,8 @@ export function buildStageSummary(input: StageSummaryInput): string {
   }
   L.push("");
 
-  // 五、信息缺口与待补充
-  L.push("## 五、信息缺口与待补充");
+  // 五、待补齐信息（缺口分属主：用户的活 vs 智能体的待办）
+  L.push("## 五、待补齐信息");
   L.push("");
   for (const line of gapsToSummaryLines(input.completeness)) L.push(line);
   L.push("");

@@ -26,13 +26,28 @@ export function anchorRequiredRows(): readonly FixedRow[] {
   return anchorFixedRows().filter((r) => r.required === true);
 }
 
-/** 表1-1 的 L1 必确认行（§4.7.1） */
-export function anchorConfirmRows(): readonly FixedRow[] {
-  return anchorFixedRows().filter((r) => r.confirmRequired === true);
+/**
+ * 表1-1 中**必须由用户输入**的固定行（`owner === "用户"`）
+ *
+ * 用户定调（2026-09-26）：表1-1 收成 3 项，**只有「场景名称」是他的活**。
+ * 其余项（覆盖什么 / 明确不含什么）是智能体从业务角度写的范围说明，用户只需看与改。
+ */
+export function anchorUserRows(): readonly FixedRow[] {
+  return anchorFixedRows().filter((r) => r.owner === "用户");
 }
 
 /**
- * 生成锚骨架（12 行，内容留空）
+ * 表1-1 中**由智能体产出内容**的固定行（`owner` 缺省视为智能体）
+ *
+ * 这一步的口径是「智能体负责从业务角度说清楚场景的范围」——写不写得出来是
+ * **智能体自己的事**，不该变成用户的填空题（见 `FixedRowOwner`）。
+ */
+export function anchorAgentRows(): readonly FixedRow[] {
+  return anchorFixedRows().filter((r) => (r.owner ?? "智能体") === "智能体");
+}
+
+/**
+ * 生成锚骨架（3 行，内容留空）
  *
  * `scene_name` 直接用场景名填入并标 `用户补充`（这是用户给的，不是系统猜的）。
  */
@@ -48,27 +63,24 @@ export function buildAnchorSkeleton(sceneName: string): readonly AnchorRow[] {
 /**
  * 把用户诉求映射成已有的锚行预填（仅在起草前使用）
  *
- * 只做**可直接对应**的三项：客户类型、覆盖什么、核心用途。
- * 其余行必须由起草（读材料）产出——直接猜就退化成"系统自说自话"。
+ * 表1-1 现在只有「场景名称 + 业务画像（5 项）」，其中能直接从诉求里拿的只有
+ * `场景边界`：用户写了想覆盖的范围就用范围，只写了意图（intent）就用意图兜底。
+ * 生产对象/核心系统/买方/采购这四项**必须由智能体从行业知识 + 材料写**——
+ * 直接拿诉求里的词去猜就退化成"系统自说自话"。
  */
 export function anchorFromBrief(brief: ScenarioBrief): readonly AnchorRow[] {
-  const map: [string, string | null | undefined][] = [
-    ["customer_type", brief.customer_hint],
-    ["scope_in", brief.scope_hint],
-    ["use_case", brief.intent],
-  ];
-  const rows: AnchorRow[] = [];
-  for (const [key, hint] of map) {
-    const fixed = anchorFixedRows().find((r) => r.key === key);
-    if (!fixed || isEmptyValue(hint)) continue;
-    rows.push({
+  const boundary = !isEmptyValue(brief.scope_hint) ? brief.scope_hint : brief.intent;
+  if (isEmptyValue(boundary)) return [];
+  const fixed = anchorFixedRows().find((r) => r.key === "scene_boundary");
+  if (!fixed) return [];
+  return [
+    {
       item: fixed.label,
-      content: String(hint).trim(),
+      content: String(boundary).trim(),
       source: "用户诉求",
       source_type: "用户补充",
-    });
-  }
-  return rows;
+    },
+  ];
 }
 
 /** 起草时给模型的用户线索（一段人话，不含系统推测） */
@@ -99,7 +111,7 @@ export function descriptionFromAnchor(rows: readonly AnchorRow[]): string {
   return parts.join("\n");
 }
 
-/** 锚的填写完成度（右栏「确认清单」与阶段完整度检查共用） */
+/** 锚的填写完成度（阶段完整度检查与展示摘要共用） */
 export interface AnchorCompletion {
   /** 必填行数 */
   required: number;
@@ -107,8 +119,12 @@ export interface AnchorCompletion {
   filled: number;
   /** 仍空着的必填行项名 */
   missing: readonly string[];
-  /** L1 必确认行中尚未用户确认的项名 */
-  unconfirmed: readonly string[];
+  /**
+   * 用户该给但还空着的项名
+   *
+   * 只有这一项算「用户欠的」；其余空项是智能体待补的（不再以"缺口"名义问用户）。
+   */
+  userInputMissing: readonly string[];
 }
 
 /** 统计锚的完成度（"未提供" 视为空） */
@@ -122,15 +138,14 @@ export function anchorCompletion(rows: readonly AnchorRow[]): AnchorCompletion {
     if (row && !isEmptyValue(row.content)) filled += 1;
     else missing.push(r.label);
   }
-  const unconfirmed = anchorConfirmRows()
+  const userInputMissing = anchorUserRows()
     .filter((r) => {
       const row = byItem.get(r.label);
-      if (!row) return true;
-      return row.source_type !== "用户确认" && row.source_type !== "用户补充";
+      return !row || isEmptyValue(row.content);
     })
     .map((r) => r.label);
 
-  return { required: required.length, filled, missing, unconfirmed };
+  return { required: required.length, filled, missing, userInputMissing };
 }
 
 /**

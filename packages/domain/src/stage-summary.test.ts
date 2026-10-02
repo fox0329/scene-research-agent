@@ -51,7 +51,7 @@ describe("stage-summary — 六段骨架", () => {
   });
 
   it("六段标题齐全且顺序固定", () => {
-    const titles = ["## 一、信息摘要", "## 二、关键信息清单", "## 三、说明与方法口径", "## 四、来源与抽查", "## 五、信息缺口与待补充", "## 六、上下游衔接"];
+    const titles = ["## 一、信息摘要", "## 二、关键信息清单", "## 三、说明与方法口径", "## 四、来源与抽查", "## 五、待补齐信息", "## 六、上下游衔接"];
     const positions = titles.map((t) => md.indexOf(t));
     expect(positions.every((p) => p >= 0)).toBe(true);
     expect([...positions].sort((a, b) => a - b)).toEqual(positions);
@@ -82,7 +82,7 @@ describe("stage-summary — 六段骨架", () => {
     expect(md).toContain("《白皮书》p.3");
   });
 
-  it("五、信息缺口来自完整度报告", () => {
+  it("五、待补齐信息来自完整度报告", () => {
     expect(md).toContain("尚无数据");
     expect(md).toContain("表2-2 场景要素清单：尚无数据");
   });
@@ -106,7 +106,7 @@ describe("stage-summary — 信息版口径", () => {
   it("空阶段也能生成（不报错，缺口清单占位）", () => {
     const md = summaryFor({});
     expect(md).toContain("信息完整度：0/8");
-    expect(md).toContain("（本阶段尚无信息，见第五节缺口清单）");
+    expect(md).toContain("（本阶段尚无信息，见第五节待补清单）");
     expect(md).toContain("表1-1 场景概述：尚无数据");
   });
 });
