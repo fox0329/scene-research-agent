@@ -222,10 +222,12 @@ test("场景定义对话（联真）：新建只输名称 → 自动开「场景
   await dlg.getByRole("button", { name: "完成，回到第 1 步" }).click();
   await expect(dlg).toBeHidden();
 
-  // 中栏第 1 步「场景定义与边界」：出现「继续场景定义对话」入口 + 常驻表1-1
-  await expect(
-    page.locator(".ws").getByRole("button", { name: "继续场景定义对话" }),
-  ).toBeVisible({ timeout: 20_000 });
+  // 中栏第 1 步「场景定义与边界」：只有常驻的表1-1（表头右侧一个对话入口）
+  await expect(page.locator(".ws").getByRole("button", { name: /场景定义对话/ })).toBeVisible({
+    timeout: 20_000,
+  });
+  await expect(page.locator(".ws .definition-step")).toHaveCount(0);
+  await expect(page.locator(".ws .completeness-bar")).toHaveCount(0);
   const anchor = page.locator(".ws .schema-table--anchor").first();
   await expect(anchor).toBeVisible({ timeout: 20_000 });
   // 表1-1 只有「项 / 内容」两列：无状态列、无 ✓、无待确认

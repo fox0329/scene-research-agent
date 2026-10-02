@@ -37,8 +37,20 @@ import type {
  * 与新口径一致：**用户只输入了场景名称**，业务画像是智能体在「整理成定义」时写的
  * （见 `DEMO_DEFINITION_EXTRA_ROWS`）。所以初始态第 1 步未就绪——和联真的新场景一样。
  */
+/**
+ * 演示态表1-1 骨架（6 行都给出来）
+ *
+ * 只给「场景名称」一行的话，表定义里新增的 5 行在演示态没有对应记录，
+ * 会被渲染成不可编辑的「—」——用户想自己填也填不进去（联真的存量场景同理，
+ * 靠 `ensureAnchorRows` 补缺行解决）。
+ */
 export const DEMO_ANCHOR: ApiAnchorRow[] = [
   { item: "场景名称", content: "智慧水务", source_type: "用户补充" },
+  { item: "场景边界", content: "" },
+  { item: "生产对象", content: "" },
+  { item: "核心生产系统", content: "" },
+  { item: "买方类型", content: "" },
+  { item: "采购特征", content: "" },
 ];
 
 // ─── 场景定义对话（演示态：本地预置对话与本地「整理成定义」结果） ──

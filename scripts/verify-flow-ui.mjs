@@ -100,11 +100,25 @@ if (done > 0) {
   ok("7 已完成步骤可点回看（当前无已完成步，跳过）", true);
 }
 
-// 7b. 第 1 步页面只留「一句状态 + 表1-1 + 两个按钮」：统计卡 / 待确认 / 缺口清单都不在
-//     （放在第 7 步之后：那时正停在「回看第 1 步」，断言的才是真正的第 1 步页面）
-if (done > 0) {
+// 7b. 第 1 步中栏**只有表1-1**：步标题 / 引导语 / 状态行 / 完整度条 / 确认按钮
+//     都不在（放在第 7 步之后：那时正停在「回看第 1 步」，断言的才是真正的第 1 步页面）
+// 先确保视图落在第 1 步：已完成步存在时点第一个节点是「回看」，
+// 当前步就是第 1 步时点它是原地不动——两种情况下中栏都应该是同一张表
+const firstNode = rail.locator(".flow-node").first();
+if (await firstNode.isEnabled().catch(() => false)) {
+  await firstNode.click().catch(() => undefined);
+  await page.waitForTimeout(400);
+}
+if ((await page.locator(".ws .schema-table--anchor").count()) > 0) {
   const wsText = await page.locator(".ws").innerText();
-  const junkSelectors = [".definition-stat", ".det .confirm-list", ".det .gap-list", ".det .det-foot"];
+  const junkSelectors = [
+    ".definition-stat",
+    ".definition-step",
+    ".ws .completeness-bar",
+    ".det .confirm-list",
+    ".det .gap-list",
+    ".det .det-foot",
+  ];
   let junk = 0;
   for (const sel of junkSelectors) junk += await page.locator(sel).count();
   // 表1-1 只有「项 / 内容」两列，且只标出一个"用户输入"的项
@@ -114,15 +128,17 @@ if (done > 0) {
   // 表定义新增的行会渲染成不可编辑的「—」，用户想填也填不进去
   const anchorRows = await page.locator(".ws .schema-table--anchor tbody tr").count();
   const anchorInputs = await page.locator(".ws .schema-table--anchor input.cell-input").count();
+  const midStrip = !/要获得的信息|信息完整度 \d+\/\d+ 张表/.test(wsText);
   ok(
-    "7b 第 1 步无统计卡/待确认/缺口清单，表1-1 六行两列且每行都能改",
+    "7b 第 1 步中栏只剩表1-1（无步标题/引导语/完整度/确认按钮），六行两列且每行都能改",
     junk === 0 &&
+      midStrip &&
       !/待确认|待表态|项已有内容/.test(wsText) &&
       anchorTh === 2 &&
       ownerTags === 1 &&
       anchorRows === 6 &&
       anchorInputs === 6,
-    `残留 ${junk} 处 · 表头 ${anchorTh} 列 · ${anchorRows} 行 / ${anchorInputs} 个可编辑格 · 属主标签 ${ownerTags} 个`,
+    `残留 ${junk} 处 · 中栏无引导语 ${midStrip} · 表头 ${anchorTh} 列 · ${anchorRows} 行 / ${anchorInputs} 个可编辑格 · 属主标签 ${ownerTags} 个`,
   );
   await rail.getByRole("button", { name: /回到当前步/ }).click().catch(() => undefined);
 }

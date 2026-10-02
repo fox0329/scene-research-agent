@@ -341,13 +341,9 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
       {/* 阶段头 + 完整度 */}
       <div className="pnl">
         <div className="pnl-h">
+          {/* 步标题 + 引导语不再重复：流程轴上已经写了"第 n/8 步 · 标题"与就绪提示 */}
           <div>
             <h2>{headTitle}</h2>
-            <p>
-              {isModel
-                ? `${stepId !== undefined ? "本步" : "本阶段"}要获得的信息：${stageDefRow?.goal ?? ""}`
-                : `本步信息由「${stageDefRow?.producedBy ?? ""}」产生，不需要模型分析`}
-            </p>
           </div>
           <div className="pnl-actions">
             {isModel ? (

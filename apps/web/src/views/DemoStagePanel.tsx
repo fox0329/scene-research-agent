@@ -169,7 +169,6 @@ export const DemoStagePanel: React.FC<DemoStagePanelProps> = ({
               {stepId ? `第 ${stepId}/${FLOW_TOTAL} 步 · ` : `阶段 ${stage} · `}
               {stepId ? (FLOW_STEPS.find((s) => s.id === stepId)?.title ?? def?.name ?? "") : def?.name ?? ""}
             </h2>
-            <p>演示模式：结构、列定义与完整度口径与联真一致（数据为示例）</p>
           </div>
         </div>
         <div className="pnl-b flush">
@@ -201,7 +200,6 @@ export const DemoStagePanel: React.FC<DemoStagePanelProps> = ({
           <div className="pnl-h">
             <div>
               <h2>本步信息表</h2>
-              <p>{stageTables.length} 张表；列由表定义注册表给出，中栏只放重要信息</p>
             </div>
           </div>
           <div className="pnl-b">

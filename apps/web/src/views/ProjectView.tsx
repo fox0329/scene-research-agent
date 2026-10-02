@@ -199,16 +199,6 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
    *
    * 只写 `confirm_state`，不动 `source_type`——来源是溯源信息，用户认可不等于来源变了。
    */
-  const handleDemoAnchorConfirmAll = useCallback(() => {
-    setDemoAnchor((prev) =>
-      prev.map((a) =>
-        String(a.content ?? "").trim() !== "" && a.content !== "未提供"
-          ? { ...a, confirm_state: "用户确认" }
-          : a,
-      ),
-    );
-  }, []);
-
   /** 演示态：就地编辑锚行内容（视为用户补充） */
   const handleDemoAnchorEdit = useCallback((index: number, content: string) => {
     setDemoAnchor((prev) =>
@@ -252,7 +242,6 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
           <AnchorStepPanel
             projectId={project.id}
             scenarioName={project.name}
-            flow={flow}
             onChanged={onProjectsChanged}
             onFlowChanged={() => void reloadFlow()}
             onStageSnapshot={onStageSnapshot}
@@ -301,7 +290,6 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
           anchor={demoAnchor}
           scenarioName={project.name}
           onConsolidated={handleDemoAnchorConsolidated}
-          onConfirmAll={handleDemoAnchorConfirmAll}
           onAnchorEdit={handleDemoAnchorEdit}
           onStageSnapshot={onStageSnapshot}
         />
@@ -356,15 +344,6 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
         </div>
       </div>
 
-      {/* 资料来源（v1.10）：专属库 + 引用通用库，分析时合并 */}
-      {live && (
-        <MaterialSourcesBar
-          projectId={project.id}
-          ownLineId={project.product_line_id}
-          onChanged={onProjectsChanged}
-        />
-      )}
-
       {/* 本场景资料：与主资料库隔离，分析时合并、来源可区分 */}
       {materialsOpen ? (
         <div className="pnl material-panel">
@@ -391,6 +370,15 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
                 <span className="brief-hint">演示模式不上传入库；连接后端后落到本场景专属库</span>
               </div>
             )}
+            {/* 引用通用资料库（v1.11）：原先常驻页头的「资料来源」条搬到这里，
+                用户点开本场景资料时勾选即可 */}
+            {live ? (
+              <MaterialSourcesBar
+                projectId={project.id}
+                ownLineId={project.product_line_id}
+                onChanged={onProjectsChanged}
+              />
+            ) : null}
           </div>
         </div>
       ) : null}

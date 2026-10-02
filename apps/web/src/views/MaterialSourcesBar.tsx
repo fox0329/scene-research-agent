@@ -4,8 +4,14 @@ import { useAsync } from "../hooks/useAsync";
 import { useToast } from "../components/Toast";
 
 /**
- * 场景资料来源条（v1.10）：专属库（场景内上传落这里）+ 勾选引用通用资料库
- * （引用不拷贝，通用库更新即时生效；阶段分析时两路合并）。
+ * 引用通用资料库（v1.11）
+ *
+ * v1.10 把它做成了常驻页头的「资料来源」条（专属库 + 引用勾选 + 保存按钮）。
+ * 用户定调**不需要这一行常驻信息**：点开「本场景资料」时勾选就行。
+ * 因此它从页头搬进本场景资料面板，并去掉「专属库：—（场景内上传落这里）」这类
+ * 复述性文案——面板本身已经在说这件事。
+ *
+ * 口径不变：引用不拷贝，通用库更新即时生效；阶段分析时两路合并。
  */
 export const MaterialSourcesBar: React.FC<{
   projectId: string;
@@ -44,7 +50,7 @@ export const MaterialSourcesBar: React.FC<{
     setSaving(true);
     try {
       await api.linkMaterialSources(projectId, [...checked]);
-      showToast("资料来源已更新");
+      showToast("引用已更新");
       sources.reload();
       onChanged?.();
     } catch (err: unknown) {
@@ -55,17 +61,14 @@ export const MaterialSourcesBar: React.FC<{
   }, [checked, projectId, sources, onChanged, showToast]);
 
   if (sources.status !== "ok") return null;
-  const own = sources.data?.own ?? null;
 
   return (
-    <div className="material-sources" role="group" aria-label="资料来源">
-      <span className="badge primary">资料来源</span>
-      <span className="provider-item-meta">
-        专属库：{own ? own.name : "—"}（场景内上传落这里）
-      </span>
-      {sharedLines.length > 0 && (
+    <div className="material-sources" role="group" aria-label="引用通用资料库">
+      <span className="provider-item-meta">引用通用资料库（分析时合并，不复制）：</span>
+      {sharedLines.length === 0 ? (
+        <span className="provider-item-meta">暂无通用资料库可引用</span>
+      ) : (
         <>
-          <span className="provider-item-meta">引用通用库：</span>
           {sharedLines.map((l: ApiProductLine) => (
             <label key={l.id} className="ms-check">
               <input

@@ -191,29 +191,6 @@ ok(
   readyHint.split("\n").pop(),
 );
 
-/* 4. 阶段分析 SSE 链路：密钥在 → 真实落库；密钥缺 → 流内降级【错误】 */
-const startBtn = page.locator("button:has-text('开始本阶段分析')");
-let analysisNote = "面板已有结果（跳过发起）";
-if (await startBtn.count()) {
-  await startBtn.click();
-  if (HAS_KEY) {
-    await page.waitForFunction(
-      () => /【完成】分析结果已落库/.test(document.body.innerText),
-      null,
-      { timeout: 300_000 },
-    );
-    analysisNote = "真实分析落库完成";
-  } else {
-    await page.waitForFunction(
-      () => /【错误】/.test(document.body.innerText),
-      null,
-      { timeout: 60_000 },
-    );
-    analysisNote = "无密钥降级：流内【错误】上屏（SSE 通路验证）";
-  }
-}
-ok("4 阶段分析 SSE 链路（真实或降级）实时上屏", true, analysisNote);
-
 /* 5. 右栏双 Tab：补充说明 / 阶段总结（六段骨架）
       —— 确认清单与缺口清单已整块删除（用户定调「不用显示待确认」） */
 const detTabs = page.locator(".det .det-tab");
@@ -239,26 +216,58 @@ ok("5 右栏双 Tab（补充说明 + 阶段总结）且不产出判断、不出�
   tabCount === 2 && junkCount === 0 && hasSix && noAdvice,
   `Tab ${tabCount} 个 · 清单残留 ${junkCount} 处 · 六段 ${hasSix} · 无建议措辞 ${noAdvice}`);
 
-/* 5b. 第 1 步的**一次整表确认**：「确认无误」只写 confirm_state、不动来源，
-   点完提示变成"这份定义你看过了"；确认**不卡推进**（没点也不影响就绪） */
-const confirmAll = page.locator(".ws").getByRole("button", { name: "确认无误" });
-const hadConfirmAll = await confirmAll.count();
-if (hadConfirmAll) {
-  await confirmAll.first().click();
-  await page
-    .waitForFunction(
-      () => /这份定义你看过了/.test(document.body.innerText),
-      null,
-      { timeout: 20_000 },
-    )
-    .catch(() => undefined);
-}
-const stepOneText = await page.locator(".ws .definition-step").innerText().catch(() => "");
+/* 5b. 中栏第 1 步只留表1-1：步标题/引导语/状态行/完整度条/确认按钮都不再出现，
+   整页不出现「待确认」；就绪提示只在流程轴上出现一次 */
+const stepOneText = await page
+  .locator(".ws")
+  .innerText()
+  .catch(() => "");
+const anchorRows = await page.locator(".ws .schema-table--anchor tbody tr").count();
+const anchorInputs = await page.locator(".ws .schema-table--anchor input.cell-input").count();
+const goneFromMid =
+  (await page.locator(".ws .definition-step").count()) === 0 &&
+  (await page.locator(".ws .completeness-bar").count()) === 0 &&
+  (await page.locator(".ws").getByRole("button", { name: "确认无误" }).count()) === 0;
 ok(
-  "5b 「确认无误」一次整表确认（回执「这份定义你看过了」，页面不出现「待确认」）",
-  hadConfirmAll > 0 && /这份定义你看过了/.test(stepOneText) && !/待确认/.test(stepOneText),
-  `确认入口 ${hadConfirmAll} 个 · 回执 ${/这份定义你看过了/.test(stepOneText)}`,
+  "5b 中栏只剩表1-1（无步标题/引导语/完整度/确认按钮），且六行都能就地改",
+  goneFromMid &&
+    !/待确认/.test(stepOneText) &&
+    anchorRows === 6 &&
+    anchorInputs === 6 &&
+    /场景概述/.test(stepOneText),
+  `中栏已瘦身 ${goneFromMid} · ${anchorRows} 行 / ${anchorInputs} 个可编辑格`,
 );
+
+/* 5c. 阶段分析 SSE 链路：密钥在 → 真实落库；密钥缺 → 流内降级【错误】
+   顺序说明：本步（第 1 步）中栏只有表1-1，没有分析按钮——分析按钮属于第 2 步起，
+   所以这里**先推进到下一步**再发起，否则这一整段会被静默跳过
+   （旧版按「开始本阶段分析」找按钮，改名成「开始本步分析」后一直静默跳过）。 */
+const railAdvance = page.locator(".flow-rail button:has-text('完成本步')");
+if ((await railAdvance.count()) > 0 && (await railAdvance.first().isEnabled())) {
+  await railAdvance.first().click();
+  await page.waitForTimeout(1200);
+}
+const startBtn = page.locator("button:has-text('开始本步分析'), button:has-text('开始本阶段分析')");
+let analysisNote = "面板已有结果（跳过发起）";
+if (await startBtn.count()) {
+  await startBtn.click();
+  if (HAS_KEY) {
+    await page.waitForFunction(
+      () => /【完成】分析结果已落库/.test(document.body.innerText),
+      null,
+      { timeout: 300_000 },
+    );
+    analysisNote = "真实分析落库完成";
+  } else {
+    await page.waitForFunction(
+      () => /【错误】/.test(document.body.innerText),
+      null,
+      { timeout: 60_000 },
+    );
+    analysisNote = "无密钥降级：流内【错误】上屏（SSE 通路验证）";
+  }
+}
+ok("5c 本步分析 SSE 链路（真实或降级）实时上屏", true, analysisNote);
 
 /* 6. 交付物双口径导出：服务端落盘 md + toast 回显路径 */
 const filesBefore = existsSync(EXPORT_DIR) ? readdirSync(EXPORT_DIR).length : 0;

@@ -102,7 +102,6 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
             <h2>
               第 {FLOW_TOTAL}/{FLOW_TOTAL} 步 · {step.title}
             </h2>
-            <p>{step.goal}；本步由系统按「章节 ← 表映射」装配，不需要模型分析</p>
           </div>
           <div className="pnl-actions">
             <button className="btn primary" type="button" disabled={busy} onClick={() => void handleExport()}>

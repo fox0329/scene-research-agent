@@ -147,6 +147,8 @@ test("项目与会话均有 ⋯ 菜单（重命名/归档/删除）", async ({ p
 /* ────────────── §4.2 信息版：完整度提示 + 双 Tab（替代旧建议卡） ────────────── */
 
 test("信息完整度状态行：只说产出进度，不出现建议档位与判定", async ({ page }) => {
+  // 第 1 步中栏只有表1-1（用户定调），完整度状态行从第 2 步起才出现
+  await gotoStep2(page);
   const bar = page.locator(".ws .completeness-bar").first();
   await expect(bar).toBeVisible();
   await expect(bar).toContainText(/信息完整度 \d+\/\d+ 张表/);
@@ -277,35 +279,34 @@ test("解锁全部步骤：未解锁节点可点，可直接跳到任一步", as
 
 /* ────── 第 1 步「场景定义与边界」：定义对话（不占步） + 表1-1（用户给名字，智能体写画像） ────── */
 
-test("第 1 步：一句状态 + 表1-1 + 两个按钮；统计卡/待确认/缺口全部消失", async ({ page }) => {
+test("第 1 步：中栏只有表1-1；步标题/引导语/状态行/完整度/确认按钮全部消失", async ({ page }) => {
   const ws = page.locator(".ws");
-  const step = ws.locator(".definition-step");
-  await expect(step).toBeVisible();
+  const anchor = ws.locator(".schema-table--anchor").first();
 
-  // 页面只留三样东西：一句状态、表1-1、两个按钮
-  await expect(step.locator(".definition-status")).toHaveCount(0); // 统计卡已删
-  await expect(step.locator(".definition-stat")).toHaveCount(0);
-  await expect(step.locator(".brief-hint")).toHaveCount(1); // 只剩一句状态
-  await expect(step).not.toContainText("待确认");
-  await expect(step).not.toContainText("待表态");
-  await expect(step).not.toContainText("项已有内容");
+  // 中栏只有这一张表：没有步标题卡、没有引导语、没有完整度条、没有「确认无误」
+  await expect(ws.locator(".definition-step")).toHaveCount(0);
+  await expect(ws.locator(".completeness-bar")).toHaveCount(0);
+  await expect(ws.getByRole("button", { name: "确认无误" })).toHaveCount(0);
+  await expect(ws).not.toContainText("要获得的信息");
+  await expect(ws).not.toContainText("待确认");
+  await expect(ws).not.toContainText("待表态");
+  await expect(ws).not.toContainText("项已有内容");
+  await expect(ws.locator(".definition-status")).toHaveCount(0);
+  await expect(ws.locator(".definition-stat")).toHaveCount(0);
 
-  // 这个场景只输过名字 → 画像还没写出 → 未就绪，「确认无误」不可点
-  await expect(step).toContainText("先说一句场景名称");
-  await expect(step.locator(".brief-hint")).toHaveAttribute("data-ready", "0");
-  const confirmBtn = ws.getByRole("button", { name: "确认无误" });
-  await expect(confirmBtn).toBeDisabled();
+  // 就绪提示只在流程轴上出现一次（不再在中栏复述）
+  await expect(page.locator(".flow-rail .flow-hint")).toContainText("先说一句场景名称");
 
   // 不是表单：三段式字段已删除
   await expect(ws.locator(".brief-input")).toHaveCount(0);
 
-  // 表1-1 常驻、可就地编辑：唯一由用户输入的项有标记
-  const anchor = ws.locator(".schema-table--anchor").first();
+  // 表1-1 常驻、可就地编辑：6 行都可改，只有一项由用户输入
   await expect(anchor).toBeVisible();
-  await expect(anchor.locator("input.cell-input").first()).toBeVisible();
+  await expect(anchor.locator("tbody tr")).toHaveCount(6);
+  await expect(anchor.locator("input.cell-input")).toHaveCount(6);
   await expect(anchor.locator(".owner-tag")).toHaveCount(1);
 
-  // 独立弹窗（不是中栏、不是右下角抽屉）
+  // 独立弹窗（不是中栏、不是右下角抽屉）：入口是表头右侧那个按钮
   const entry = ws.getByRole("button", { name: /场景定义对话/ });
   await entry.click();
   const dlg = page.getByRole("dialog", { name: "场景定义" });
@@ -328,33 +329,26 @@ test("第 1 步：一句状态 + 表1-1 + 两个按钮；统计卡/待确认/缺
   // 「完成，回到第 1 步」关闭弹窗：表1-1 就地更新，画像写出 → 就绪
   await dlg.getByRole("button", { name: "完成，回到第 1 步" }).click();
   await expect(dlg).toBeHidden();
-  await expect(ws.locator(".schema-table--anchor")).toBeVisible();
-  await expect(step.locator(".brief-hint")).toContainText("场景业务画像已写出");
-  await expect(step.locator(".brief-hint")).toHaveAttribute("data-ready", "1");
+  await expect(anchor).toBeVisible();
+  await expect(page.locator(".flow-rail .flow-hint")).toContainText("场景业务画像已写出");
 
   // 就绪即可推进：**不要求用户逐项确认**
   const completeBtn = page.locator(".flow-rail").getByRole("button", {
     name: "完成本步，进入下一步",
   });
   await expect(completeBtn).toBeEnabled();
-
-  // 「确认无误」是一次整表确认（不卡推进）：点一次 → 变成「已确认」并给出"看过了"的回执
-  await expect(confirmBtn).toBeEnabled();
-  await confirmBtn.click();
-  await expect(ws.getByRole("button", { name: "已确认" })).toBeDisabled();
-  await expect(step.locator(".brief-hint")).toContainText("这份定义你看过了");
-  await expect(step).not.toContainText("待确认");
+  await expect(ws).not.toContainText("待确认");
 });
 
 
-test("场景定义弹窗：Esc 关闭，且关闭后第 1 步仍是一句状态 + 表1-1", async ({ page }) => {
+test("场景定义弹窗：Esc 关闭，且关闭后第 1 步仍只剩表1-1", async ({ page }) => {
   await page.locator(".ws").getByRole("button", { name: /场景定义对话/ }).click();
   const dlg = page.getByRole("dialog", { name: "场景定义" });
   await expect(dlg).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(dlg).toHaveCount(0);
-  await expect(page.locator(".ws .definition-step .brief-hint")).toHaveCount(1);
   await expect(page.locator(".ws .schema-table--anchor")).toBeVisible();
+  await expect(page.locator(".ws .definition-step")).toHaveCount(0);
 });
 
 test("随时回编辑：关键表格单元格可逐格编辑，失焦后值保留", async ({ page }) => {
