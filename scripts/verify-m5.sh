@@ -457,6 +457,37 @@ else
   echo "❌ 缺少列宽自动适配的 E2E 用例"
   FAIL=1
 fi
+# v1.20 守卫：进度不进中栏（中栏只放信息），进度只留在流程轴按钮上
+check_contains "04-业务过程重定义.md" "v1.20" "业务过程 v1.20（进度不进中栏）"
+check_contains "docs/项目变更表.md" "| 78 |" "变更表 #78 进度只留流程轴登记"
+# 反向守卫：中栏不许再出现进度块（跑完留一屏"模型已输出…/完成"就是用户报的残留）
+if grep -qF "本步分析输出" "$ROOT/apps/web/src/views/RealStagePanel.tsx"; then
+  echo "❌ 中栏又出现进度块了：跑完会留下「本步分析／模型已输出…」的残留（用户实测反馈）"
+  FAIL=1
+else
+  echo "✅ 中栏不含进度块（进度只在流程轴按钮上）"
+fi
+if grep -qF "streamLines" "$ROOT/apps/web/src/views/RealStagePanel.tsx"; then
+  echo "❌ 中栏又在渲染进度行（streamLines）"
+  FAIL=1
+else
+  echo "✅ 中栏不渲染进度行"
+fi
+# 正向守卫：运行中按钮 title 要能显示最新一行进度（否则只剩一个静止的计时）
+check_contains "apps/web/src/components/FlowRail.tsx" "analysis.progress" "运行中按钮 title 显示最新进度"
+check_contains "apps/web/src/components/FlowRail.tsx" "recompute.progress" "重算按钮运行中显示最新进度"
+check_contains "apps/web/src/views/ProjectView.tsx" "analysis.streamLines.at(-1)" "最新一行进度喂给流程轴"
+# 非致命情况（续连没接回来）必须有可见出口：进度行不显示了，只能靠提示
+check_contains "apps/web/src/hooks/useStageAnalysis.ts" "onWarn" "非致命情况有可见提示出口"
+# 正向守卫：失败要有**常驻**出口（进度区没了以后，几秒就消失的提示条不能是唯一出口）
+if grep -qF "analysisNotice" "$ROOT/apps/web/src/views/ProjectView.tsx" && \
+   grep -qF "本步分析失败" "$ROOT/apps/web/src/views/ProjectView.tsx"; then
+  echo "✅ 分析失败有常驻横幅（进度区不再进中栏，失败仍看得见）"
+else
+  echo "❌ 分析失败只剩几秒的提示条：用户不知道为什么没结果"
+  FAIL=1
+fi
+
 # v1.19 守卫：进度通道断线要能自己接回来，收尾必须无条件对账（不许停在「分析中」）
 check_contains "04-业务过程重定义.md" "v1.19" "业务过程 v1.19（断线续连 + 收尾对账）"
 check_contains "docs/项目变更表.md" "| 77 |" "变更表 #77 断线续连登记"

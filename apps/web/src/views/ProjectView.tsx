@@ -121,12 +121,23 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
    * 用户定调「中栏只放信息，动作都在上面」：触发布钮上移到流程轴，
    * 进度流仍在中栏——两边都要这份状态，所以放在共同父级这里。
    */
+  /**
+   * 本步分析的收尾说明（常驻横幅）
+   *
+   * 进度区从 v1.20 起不进中栏了，跑完不留任何残留；但**失败**不能只靠一条几秒后
+   * 就消失的提示——那样用户只看到按钮变回「开始本步分析」、不知道发生了什么。
+   * 这里沿用已有的状态横幅样式，成功时不留痕（数据出现本身就是信号）。
+   */
+  const [analysisNotice, setAnalysisNotice] = useState<{ kind: "error" | "info"; text: string } | null>(null);
   const analysis = useStageAnalysis({
     projectId: project.id,
     stage: stepStage,
     stepId: step,
     // done 只是"更快知道成功了"：真正决定界面收敛的是下面的 onSettled
-    onDone: () => onProjectsChanged?.(),
+    onDone: () => {
+      setAnalysisNotice(null);
+      onProjectsChanged?.();
+    },
     /**
      * 运行结束（成功 / 失败 / 连接续连失败）都对账一次
      *
@@ -139,7 +150,14 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
       onProjectsChanged?.();
       void reloadFlow(true);
     },
-    onError: (message) => showToast(`本步分析失败：${message}`),
+    onError: (message) => {
+      setAnalysisNotice({ kind: "error", text: `本步分析失败：${message}（本步原有内容已保留，可直接重试）` });
+      showToast(`本步分析失败：${message}`);
+    },
+    onWarn: (message) => {
+      setAnalysisNotice({ kind: "info", text: message });
+      showToast(message);
+    },
   });
 
   /**
@@ -260,9 +278,13 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
       ? {
           running: analysis.running,
           elapsedLabel: analysis.elapsedLabel,
-          onStart: analysis.start,
           hint: stepDef.readyHint,
           recompute: stepDef.ready,
+          progress: flow?.currentStep === step ? analysis.streamLines.at(-1) : undefined,
+          onStart: () => {
+            setAnalysisNotice(null);
+            analysis.start();
+          },
         }
       : undefined;
   // 已产出且没失效：主按钮位还给「下一步」，另给一个次级「重算本步」入口
@@ -271,7 +293,11 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
       ? {
           running: analysis.running,
           elapsedLabel: analysis.elapsedLabel,
-          onStart: analysis.start,
+          onStart: () => {
+            setAnalysisNotice(null);
+            analysis.start();
+          },
+          progress: flow?.currentStep === step ? analysis.streamLines.at(-1) : undefined,
         }
       : undefined;
 
@@ -310,8 +336,6 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
           stageLabel={STAGE_DEFS.find((s) => s.id === stepStage)?.name ?? def.title}
           tables={def.tables}
           stepId={step}
-          running={isCurrent ? analysis.running : false}
-          streamLines={isCurrent ? analysis.streamLines : []}
           refreshToken={isCurrent ? analysisRefresh : 0}
           onChanged={onProjectsChanged}
           onStageSnapshot={onStageSnapshot}
@@ -425,6 +449,16 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
         <div className="stale-banner" role="status">
           <span className="badge warning">资料更新</span>
           {stale.data.banner}
+        </div>
+      )}
+
+      {/* 本步分析收尾说明（失败/进度降级才出现；成功不留痕） */}
+      {live && analysisNotice && (
+        <div className="stale-banner" role="status">
+          <span className={`badge ${analysisNotice.kind === "error" ? "error" : "warning"}`}>
+            {analysisNotice.kind === "error" ? "分析失败" : "进度提示"}
+          </span>
+          {analysisNotice.text}
         </div>
       )}
 

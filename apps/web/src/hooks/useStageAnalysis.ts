@@ -42,10 +42,17 @@ export function useStageAnalysis(opts: {
    * 收尾一律对账（重取流程状态 + 本步数据），界面才不会停在「分析中」。
    */
   onSettled?: () => void;
-  /** 失败回调（父级负责提示；中栏仍保留错误行） */
+  /** 失败回调（父级负责弹出提示；中栏不再有进度区，提示是唯一可见出口） */
   onError?: (message: string) => void;
+  /**
+   * 非致命提示（如"进度连接没能恢复，已按服务端结果对账"）
+   *
+   * 进度行从 v1.20 起不进中栏了，这类情况只能靠提示让用户知道，
+   * 否则界面上只是一个不再变化的按钮。
+   */
+  onWarn?: (message: string) => void;
 }): StageAnalysisState {
-  const { projectId, stage, stepId, onDone, onSettled, onError } = opts;
+  const { projectId, stage, stepId, onDone, onSettled, onError, onWarn } = opts;
   const [running, setRunning] = useState(false);
   const [elapsedSec, setElapsedSec] = useState(0);
   const [streamLines, setStreamLines] = useState<string[]>([]);
@@ -104,7 +111,10 @@ export function useStageAnalysis(opts: {
           },
         });
         terminal = result.terminal;
-        if (!terminal) push("【提示】进度连接没能恢复，已按服务端结果对账本步数据");
+        if (!terminal) {
+          push("【提示】进度连接没能恢复，已按服务端结果对账本步数据");
+          onWarn?.("进度连接没能恢复，已按服务端结果刷新本步数据（结果可能已经落库）");
+        }
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err);
         push(`【错误】${message}`);
@@ -116,7 +126,7 @@ export function useStageAnalysis(opts: {
         setRunning(false);
       }
     })();
-  }, [projectId, stage, stepId, push, onDone, onSettled, onError]);
+  }, [projectId, stage, stepId, push, onDone, onSettled, onError, onWarn]);
 
   const elapsedLabel = `${Math.floor(elapsedSec / 60)}:${String(elapsedSec % 60).padStart(2, "0")}`;
   return { running, elapsedLabel, streamLines, start };

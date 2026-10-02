@@ -1,7 +1,7 @@
 /* T5.6 真实链路端到端走查（构建产物单端口 · 独立 DB · 密钥感知）
  *
  * 覆盖确定性真实链路：实时模式 → 产品线/白皮书上传入库（doc-parser 无密钥依赖）
- * → 项目 CRUD → 阶段面板（有密钥走真实分析落库；无密钥断言流内降级【错误】）
+ * → 项目 CRUD → 阶段面板（有密钥走真实分析落库；无密钥断言降级横幅）
  * → 右栏决策支撑真实快照 → 双口径导出落盘 md → decide 推进 → 对话 converse。
  * 由 scripts/verify-m5.sh 拉起配套服务后调用；也可手动：
  *   APP_PORT=4098 DB_PATH=... EXPORT_DIR=... WEB_DIST=apps/web/dist node apps/server/dist/index.js &
@@ -260,7 +260,7 @@ ok(
   `中栏已瘦身 ${goneFromMid} · ${anchorRows} 行 / ${anchorInputs} 个可编辑格`,
 );
 
-/* 5c. 阶段分析 SSE 链路：密钥在 → 真实落库；密钥缺 → 流内降级【错误】
+/* 5c. 阶段分析 SSE 链路：密钥在 → 真实落库；密钥缺 → 降级横幅
    顺序说明：本步（第 1 步）中栏只有表1-1，没有分析入口；v1.20 起**分析入口统一在
    流程轴**（「下一步」的位置：本步没产出时它就是「开始本步分析」），
    所以这里**先推进到下一步**再发起，否则这一整段会被静默跳过
@@ -285,17 +285,25 @@ if ((await startBtn.count()) === 0) {
 await startBtn.first().click();
 let analysisNote = "";
 if (HAS_KEY) {
+  /* v1.20：进度不再进中栏（跑完不留残留），收尾的可见信号是
+     「流程轴按钮从『分析中 m:ss』收回『重算本步』+ 本步表格渲染出来」 */
   await page.waitForFunction(
-    () => /【完成】分析结果已落库/.test(document.body.innerText),
+    () => {
+      const labels = [...document.querySelectorAll(".flow-actions button")].map((b) => b.textContent ?? "");
+      return labels.some((t) => /重算本步/.test(t)) && !!document.querySelector(".ws table");
+    },
     null,
     { timeout: 300_000 },
   );
-  analysisNote = "真实分析落库完成";
+  analysisNote = "真实分析落库完成（按钮收回「重算本步」，本步表格已渲染）";
 } else {
-  await page.waitForFunction(() => /【错误】/.test(document.body.innerText), null, {
-    timeout: 60_000,
-  });
-  analysisNote = "无密钥降级：流内【错误】上屏（SSE 通路验证）";
+  /* 无密钥：失败要在**常驻横幅**上可见（提示条几秒后消失，不能只靠它） */
+  await page.waitForFunction(
+    () => /本步分析失败/.test(document.querySelector(".stale-banner")?.textContent ?? ""),
+    null,
+    { timeout: 60_000 },
+  );
+  analysisNote = "无密钥降级：常驻横幅上屏「本步分析失败」（SSE 通路验证）";
 }
 ok("5c 本步分析 SSE 链路（真实或降级）实时上屏", true, analysisNote);
 

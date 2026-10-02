@@ -48,6 +48,8 @@ export interface FlowRailProps {
     hint: string;
     /** true = 已有产出，这次是重算 */
     recompute: boolean;
+    /** 最新一行进度（运行中挂在按钮 title 上，鼠标悬停可见） */
+    progress?: string;
   };
   /**
    * 「本步已产出、但用户想重跑一次」的次级入口（当前模型步专属）
@@ -59,6 +61,8 @@ export interface FlowRailProps {
     running: boolean;
     elapsedLabel: string;
     onStart: () => void;
+    /** 最新一行进度（运行中挂在按钮 title 上） */
+    progress?: string;
   };
 }
 
@@ -136,7 +140,11 @@ export const FlowRail: React.FC<FlowRailProps> = ({
               className="btn"
               type="button"
               disabled={busy || recompute.running}
-              title="本步已经跑过一次：想换一版就重算（结果会覆盖本步表格）"
+              title={
+                recompute.running
+                  ? (recompute.progress ?? "分析进行中…")
+                  : "本步已经跑过一次：想换一版就重算（结果会覆盖本步表格）"
+              }
               onClick={recompute.onStart}
             >
               {recompute.running ? `分析中 ${recompute.elapsedLabel}` : "重算本步"}
@@ -148,9 +156,11 @@ export const FlowRail: React.FC<FlowRailProps> = ({
               type="button"
               disabled={busy || analysis.running}
               title={
-                analysis.recompute
-                  ? `本步资料因上游改动失效：${analysis.hint}`
-                  : `${analysis.hint}——跑完停在这一步，看完结果再点「下一步」`
+                analysis.running
+                  ? (analysis.progress ?? "分析进行中…")
+                  : analysis.recompute
+                    ? `本步资料因上游改动失效：${analysis.hint}`
+                    : `${analysis.hint}——跑完停在这一步，看完结果再点「下一步」`
               }
               onClick={analysis.onStart}
             >

@@ -23,7 +23,8 @@ import { useToast } from "../components/Toast";
  *
  * 中栏（本组件的职责）——**只有信息，没有动作**（v1.20 用户定调）：
  *  - 一行表名（本步有哪些表，一行放下，不带表号）+ SchemaTable
- *  - 本步分析的进度流（只显示；触发按钮在流程轴的「下一步」位）
+ *  - 只放信息：进度不再进中栏（用户定调：进度看流程轴按钮上的「分析中 m:ss」，
+ *    悬停可看最新一行进度），跑完自然没有任何残留
  *  - 单元格编辑落库
  *
  *  不在中栏：表1-1 场景锚（上一步的事，要回看自己回去看）、步标题、完整度、推进按钮
@@ -43,10 +44,7 @@ interface RealStagePanelProps {
   tables?: readonly string[];
   /** 流程步骤号：右栏标题与后续动作按流程步走 */
   stepId?: number;
-  /** 本步分析是否在跑（状态在父级：触发点在流程轴） */
-  running?: boolean;
-  /** 本步分析进度行 */
-  streamLines?: readonly string[];
+
   /** 分析落库后自增：本组件收到变化就重取本步数据与阶段总结 */
   refreshToken?: number;
 }
@@ -59,8 +57,7 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
   onStageSnapshot,
   tables,
   stepId,
-  running = false,
-  streamLines = [],
+
   refreshToken,
 }) => {
   // 右栏（完整度 / 补充说明 / 阶段总结）一律带上本步：**只针对当前步骤**
@@ -248,33 +245,6 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
 
   return (
     <>
-      {/* 分析进度流 */}
-      {streamLines.length > 0 ? (
-        <div className="pnl">
-          <div className="pnl-h">
-            <div>
-              <h2>本步分析</h2>
-              <p>
-                {running
-                  ? "分析进行中（整步一次生成，通常 1–3 分钟；可离开本页，结果会落库）"
-                  : "本步分析输出"}
-              </p>
-            </div>
-          </div>
-          <div className="pnl-b">
-            <ul className="cl">
-              {streamLines.map((line, i) => (
-                <li key={i} className="cli">
-                  <div>
-                    <div className="cd">{line}</div>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </div>
-        </div>
-      ) : null}
-
       {/* 本步的表：表名一行（不带表号/条数）+ SchemaTable */}
       {stageTables.length > 0 ? (
         <div className="pnl">
