@@ -294,8 +294,23 @@ body {
 }
 
 /* ── 表格 ── */
+/* 列宽之和超过中栏宽时在这里横向滚动（表宽跟着中栏走，不压缩列） */
 .tw {
   overflow-x: auto;
+}
+
+/* 单元格内容换行 + 行高随内容长（用户定调 2026-09-26）
+   注：`.measure` 阶段要量单行自然宽，所以那里仍然 nowrap（选择器更具体，见下） */
+.tw th,
+.tw td {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+/* 拖拽调宽后用于承接余量的填充列：不画线、不可选、不参与交互 */
+.tw .col-fill {
+  border-right: none;
+  padding: 0;
 }
 
 table {
@@ -304,7 +319,7 @@ table {
   font-size: var(--txs);
 }
 
-/* 测量阶段：整表单行自然宽渲染（量完即切百分比布局，绘制前完成无闪烁） */
+/* 测量阶段：整表单行自然宽渲染（量完即切像素列宽，绘制前完成无闪烁） */
 table.measure {
   table-layout: auto;
   width: max-content;
@@ -357,6 +372,11 @@ td:last-child {
   cursor: col-resize;
   user-select: none;
   touch-action: none;
+}
+
+/* 末列（右边没有下一列可分割）：热区往里收，不探出表缘 */
+.th-resize--last {
+  right: 0;
 }
 
 .th-resize:hover {
@@ -436,13 +456,13 @@ tr:hover {
 }
 
 /* ── 可编辑单元格 ── */
-/* 单行省略：表格已是 table-layout: fixed，配合 nowrap + ellipsis 即可在
-   不横向滚动的前提下压住行高；全文靠 title 悬浮查看 */
+/* 内容换行 + 行高随内容长（用户定调 2026-09-26）：
+   以前这里是 nowrap + ellipsis（"压住行高，全文悬浮看"），用户明确不要——
+   长内容要在格子里换行显示，行高跟着内容长。 */
 td.ed {
   cursor: text;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .ed:hover {
@@ -1868,12 +1888,30 @@ td.ed {
 .schema-table th { font-weight: var(--fm2); color: var(--ct2); background: var(--cis); }
 .schema-table tbody tr:hover { background: var(--cis); }
 
-/* 单行省略：控件行高，全文靠 title 悬浮查看 */
-.cell-truncate {
-  display: inline-block; max-width: 100%;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  vertical-align: bottom;
+/* 单元格文本：换行显示（长文本不再截断省略——用户定调 2026-09-26） */
+.cell-text {
+  display: block;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
+
+/* 不可写单元格的灰字提示（如固定行尚未落库） */
+.cell-hint {
+  display: block;
+  color: var(--ct3);
+}
+
+/* 多行长文本就地编辑：高度由脚本按 scrollHeight 长（行高随内容长） */
+.cell-input--multi {
+  display: block;
+  width: 100%;
+  overflow: hidden;
+  resize: none;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.cell-input::placeholder { color: var(--ct3); }
 
 .cell-input {
   width: 100%; box-sizing: border-box;

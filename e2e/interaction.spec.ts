@@ -191,10 +191,78 @@ test("右栏双 Tab：补充说明 / 阶段总结（确认清单与缺口清单�
   await expect(md).not.toContainText("上下游衔接");
 });
 
+test("中栏表格：拖一条列分割线只改这一列，其他列宽纹丝不动", async ({ page }) => {
+  await page.locator(".side .proj-hd").first().click();
+  const anchor = page.locator(".ws .schema-table--anchor").first();
+  await expect(anchor).toBeVisible();
+
+  const thWidths = () =>
+    anchor.evaluate((t) =>
+      [...t.querySelectorAll("th")].map((th) => Math.round(th.getBoundingClientRect().width)),
+    );
+  const [w0a, w0b] = await thWidths();
+
+  // 拖第 1 列右缘 +80px
+  const rz = (await anchor.locator("th").first().locator(".th-resize").boundingBox())!;
+  await page.mouse.move(rz.x + rz.width / 2, rz.y + 6);
+  await page.mouse.down();
+  await page.mouse.move(rz.x + rz.width / 2 + 80, rz.y + 6, { steps: 5 });
+  await page.mouse.up();
+
+  const [w1a, w1b] = await thWidths();
+  expect(w1a).toBeGreaterThan(w0a + 50);
+  // 关键：右边那一列一点没动（旧行为是"两侧列交换宽度"，会把右列挤窄）
+  expect(Math.abs(w1b - w0b)).toBeLessThanOrEqual(1);
+  // 列宽之和超出中栏宽 → 在该区域出现横向滚动（表宽跟着中栏走，但不压缩列）
+  const scrolled = await anchor.evaluate(
+    (t) => (t.parentElement as HTMLElement).scrollWidth > (t.parentElement as HTMLElement).clientWidth,
+  );
+  expect(scrolled).toBe(true);
+
+  // 双击分割线 → 回到按内容自适应（列变宽后手柄跟着移，坐标要重新取）
+  const rz2 = (await anchor.locator("th").first().locator(".th-resize").boundingBox())!;
+  await page.mouse.dblclick(rz2.x + rz2.width / 2, rz2.y + 6);
+  await expect
+    .poll(async () => (await thWidths())[0])
+    .toBeLessThan(w1a);
+});
+
+test("中栏表格：长内容换行显示，行高随内容长（表1-1 内容格是多行编辑器）", async ({ page }) => {
+  await page.locator(".side .proj-hd").first().click();
+  const anchor = page.locator(".ws .schema-table--anchor").first();
+  await expect(anchor).toBeVisible();
+
+  // 内容格是 <textarea>：单行输入框显示不了换行，行高也永远只有一行
+  const ta = anchor.locator("textarea.cell-input").nth(1);
+  await expect(ta).toBeVisible();
+  const row = anchor.locator("tbody tr").nth(1);
+  const h0 = (await row.boundingBox())!.height;
+
+  await ta.fill(
+    "客户的水厂漏损率长期偏高，夜间最小流量异常，分区计量不完整，管网台账与现场不一致；" +
+      "这一格专门用来验证长内容会在格子里换行显示，而不是被截断成一行省略号。",
+  );
+  await ta.blur();
+  await expect.poll(async () => Math.round((await row.boundingBox())!.height)).toBeGreaterThan(h0 + 20);
+
+  // 换行显示：不横向溢出，也不在框内滚（高度按内容长满）
+  const box = await ta.evaluate((el) => ({
+    whiteSpace: getComputedStyle(el).whiteSpace,
+    scrollW: el.scrollWidth,
+    clientW: el.clientWidth,
+    scrollH: el.scrollHeight,
+    clientH: el.clientHeight,
+  }));
+  expect(box.whiteSpace).toBe("pre-wrap");
+  expect(box.scrollW).toBeLessThanOrEqual(box.clientW + 1);
+  expect(Math.abs(box.scrollH - box.clientH)).toBeLessThanOrEqual(2);
+});
+
 test("表1-1 只有「项 / 内容」两列：无状态列、无 ✓、无待确认", async ({ page }) => {
   const anchor = page.locator(".ws .schema-table--anchor").first();
   await expect(anchor).toBeVisible();
-  await expect(anchor.locator("th")).toHaveCount(2);
+  // 业务列两列（末尾的填充列不算列）
+  await expect(anchor.locator("th:not(.col-fill)")).toHaveCount(2);
   await expect(anchor.locator("th").first()).toHaveText("项");
   await expect(anchor.locator("th").nth(1)).toHaveText("内容");
   await expect(anchor.locator(".confirm-dot")).toHaveCount(0);
@@ -336,7 +404,9 @@ test("第 1 步：中栏只有表1-1；步标题/引导语/状态行/完整度/�
   // 表1-1 常驻、可就地编辑：6 行都可改，只有一项由用户输入
   await expect(anchor).toBeVisible();
   await expect(anchor.locator("tbody tr")).toHaveCount(6);
-  await expect(anchor.locator("input.cell-input")).toHaveCount(6);
+  // 内容格是**可换行**的多行编辑器（textarea）：长内容不截断、行高随内容长
+  await expect(anchor.locator(".cell-input")).toHaveCount(6);
+  await expect(anchor.locator("textarea.cell-input")).toHaveCount(6);
   await expect(anchor.locator(".owner-tag")).toHaveCount(1);
 
   // 独立弹窗（不是中栏、不是右下角抽屉）：入口是表头右侧那个按钮

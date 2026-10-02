@@ -1,9 +1,22 @@
-import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 
 export interface ColumnDef<T> {
   key: keyof T & string;
   label: string;
   editable?: boolean;
+  /**
+   * 多行编辑（内容可能很长）：单元格用 textarea 就地编辑——
+   * **内容换行显示、行高随内容长**（用户定调 2026-09-26）
+   */
+  multiline?: boolean;
+  /** 空值占位文案（可按行给不同提示） */
+  placeholder?: string | ((row: T) => string);
   /** 自定义渲染，如 Badge / 来源标签。value 使用 unknown，调用方自行 narrow */
   render?: (value: unknown, row: T) => React.ReactNode;
 }
@@ -16,14 +29,25 @@ interface SceneTableProps<T> {
   storageKey?: string;
   /** 点击行（含单元格）时上报：右栏详情联动用 */
   onRowClick?: (rowIndex: number) => void;
+  /** 表格自身的类名（如 `schema-table--anchor`） */
+  tableClassName?: string;
+  /**
+   * 行级可编辑判定（缺省整行可编辑）
+   *
+   * 场景锚里有"表定义有、库里没有"的固定行——写了也没处落，
+   * 渲染成灰字提示，而不是给一个存不下去的控件。
+   */
+  rowEditable?: (row: T) => boolean;
 }
 
 /** 拖拽列宽下限（px）：再窄内容与标题都不可读 */
 const MIN_COL_WIDTH = 64;
+/** 自适应时允许压到的下限（比拖拽下限更小，避免窄容器被撑出横向滚动） */
+const FIT_MIN_COL_WIDTH = 24;
 /** 量不到自然宽时的兜底列宽（px） */
 const FALLBACK_COL_WIDTH = 120;
 
-/** 列宽 = 占表宽百分比（总和 100；拖分割线时两侧列交换，其余不动） */
+/** 列宽（px，`key` → 宽）。用像素而非百分比：拖一条分割线只改它左边那一列 */
 type Widths = Record<string, number>;
 
 /** 每列的自然宽（单行内容宽，px） */
@@ -52,28 +76,22 @@ function fitWidths(naturals: NaturalWidth[], container: number): number[] {
 }
 
 /**
- * 读留存列宽并归一化到总和 100（百分比）。归一化对旧记录（px 绝对值）
- * 同样成立——等比缩放即回百分比。键集与当前列不一致或垃圾值返回 null
+ * 读留存列宽（px）。键集与当前列不一致或垃圾值返回 null
  * （调用方按内容重新量宽）。
  */
 function loadWidths(storageKey: string | undefined, colKeys: string[]): Widths | null {
   if (!storageKey) return null;
   try {
-    const raw = window.localStorage.getItem(`scene.colwidths.v2.${storageKey}`);
+    const raw = window.localStorage.getItem(`scene.colwidths.v3.${storageKey}`);
     const parsed: unknown = raw ? JSON.parse(raw) : null;
     if (typeof parsed !== "object" || parsed === null) return null;
     const out: Widths = {};
-    let sum = 0;
     for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
-      if (typeof v === "number" && v > 0) {
-        out[k] = v;
-        sum += v;
-      }
+      if (typeof v === "number" && v > 0) out[k] = v;
     }
-    if (sum <= 0) return null;
+    if (Object.keys(out).length === 0) return null;
     const storedKeys = Object.keys(out).sort().join(",");
     if (storedKeys !== [...colKeys].sort().join(",")) return null;
-    for (const k of colKeys) out[k] = (out[k]! / sum) * 100;
     return out;
   } catch {
     return null;
@@ -81,14 +99,67 @@ function loadWidths(storageKey: string | undefined, colKeys: string[]): Widths |
 }
 
 /**
- * 通用场景表格组件
- * 支持：逐单元格编辑（contenteditable）、来源/状态自定义渲染、
- *       列分割线、表头右缘热区拖拽调列宽。
+ * 自适应高度的多行编辑器（用户定调：内容换行 + 行高随内容长）
  *
- * 列宽策略（用户定稿）：
- * - 表宽恒 = 中栏内容宽（width:100%）
- * - 默认态：按各列实际内容的自然宽适配（整体高度最紧凑）；中栏拖宽时自动重新适配
- * - 拖两列之间的分割线：只有这条线移动——左右两列交换宽度，其余分割线纹丝不动
+ * 为什么不是 `<input>`：单行输入框既显示不了换行，行高也永远只有一行。
+ * 为什么不用固定 `rows={4}`：内容短时留白、内容长时框内滚动，都不叫"行高随内容"。
+ * 这里按 scrollHeight 长高，并用 ResizeObserver 跟随列宽变化重算
+ * （列被拖窄 → 换行变多 → 行随之变高）。
+ */
+const AutoGrowTextarea: React.FC<{
+  value: string;
+  placeholder: string;
+  ariaLabel: string;
+  onCommit: (value: string) => void;
+}> = ({ value, placeholder, ariaLabel, onCommit }) => {
+  const ref = useRef<HTMLTextAreaElement>(null);
+
+  const grow = useCallback(() => {
+    const el = ref.current;
+    if (!el) return;
+    const next = `${el.scrollHeight}px`;
+    if (el.style.height !== next) el.style.height = next;
+  }, []);
+
+  useLayoutEffect(() => {
+    grow();
+  }, [grow]);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => grow());
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [grow]);
+
+  return (
+    <textarea
+      ref={ref}
+      className="cell-input cell-input--multi"
+      rows={1}
+      defaultValue={value}
+      placeholder={placeholder}
+      aria-label={ariaLabel}
+      onInput={grow}
+      onBlur={(e) => {
+        const next = e.currentTarget.value;
+        if (next !== value) onCommit(next);
+      }}
+    />
+  );
+};
+
+/**
+ * 通用场景表格组件
+ * 支持：逐单元格编辑（短文本 contenteditable / 长文本 textarea）、来源与状态自定义渲染、
+ *       表头右缘热区拖拽调列宽（**只动这一列**）、内容换行 + 行高随内容长。
+ *
+ * 列宽策略（用户定稿 2026-09-26）：
+ * - 表宽跟着中栏走（表宽 ≥ 中栏内容宽；列宽之和超出时才出现横向滚动）
+ * - 默认态：按各列实际内容的自然宽适配（整体高度最紧凑）
+ * - 拖某列右缘：**只有这一列变宽/变窄**，其他列的宽与它们的分割线纹丝不动
+ * - 双击分割线：该表回到「按内容自适应」
  * - 宽度按 storageKey 本地留存（留存后不再自动重排）
  */
 export function SceneTable<T extends Record<string, unknown>>({
@@ -97,10 +168,13 @@ export function SceneTable<T extends Record<string, unknown>>({
   onCellChange,
   storageKey,
   onRowClick,
+  tableClassName,
+  rowEditable,
 }: SceneTableProps<T>) {
   const colKeys = columns.map((c) => c.key);
   const colKeysSig = colKeys.join(",");
   const [widths, setWidths] = useState<Widths | null>(() => loadWidths(storageKey, colKeys));
+  const [containerW, setContainerW] = useState(0);
   const [isResizing, setIsResizing] = useState(false);
   /** 选中行（右栏详情联动高亮） */
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
@@ -110,30 +184,35 @@ export function SceneTable<T extends Record<string, unknown>>({
   const naturalsRef = useRef<NaturalWidth[]>([]);
   /** 用户手动拖过（或读到留存值）后不再自动重排 */
   const manualRef = useRef(widths !== null);
-  /** 拖拽基线：起点 X、分割线两侧列的起点百分比、冻结的全表百分比 */
+  /** 拖拽基线：起点 X、被拖列的起点宽、冻结的全表宽 */
   const dragRef = useRef<{
     key: string;
-    nextKey: string;
     startX: number;
-    startA: number;
-    startB: number;
+    startW: number;
     base: Widths;
   } | null>(null);
 
   /* 测量阶段（无留存宽度）：整表单行自然宽渲染，量完立即适配容器（绘制前完成，无闪烁） */
   const measuring = widths === null;
 
-  /** 默认态：按内容自然宽适配到当前容器宽（存百分比，表宽恒 100%） */
+  /** 默认态：按内容自然宽适配到当前容器宽（px） */
   const fitToContainer = useCallback(() => {
     const naturals = naturalsRef.current;
-    const container = wrapRef.current?.clientWidth ?? 0;
+    /* 留 1px 余量：border-collapse 的表在宽度刚好等于容器时，最右那条边框会探出
+       半像素，浏览器就认为"内容比容器宽 1px"（凭空多一条横向滚动条） */
+    const container = Math.max(0, (wrapRef.current?.clientWidth ?? 0) - 1);
     if (naturals.length === 0 || container <= 0) return;
     const fitted = fitWidths(naturals, container);
-    const sum = fitted.reduce((a, b) => a + b, 0) || 1;
     const next: Widths = {};
     naturals.forEach((n, i) => {
-      next[n.key] = ((fitted[i] ?? FALLBACK_COL_WIDTH) / sum) * 100;
+      next[n.key] = Math.max(FIT_MIN_COL_WIDTH, Math.round(fitted[i] ?? FALLBACK_COL_WIDTH));
     });
+    // 取整可能让总和比容器宽几个像素——那会凭空多一条横向滚动条，把这点余量从最宽的列抹掉
+    const total = naturals.reduce((a, n) => a + next[n.key]!, 0);
+    if (total > container) {
+      const widest = naturals.reduce((a, n) => (next[n.key]! > next[a.key]! ? n : a), naturals[0]!);
+      next[widest.key] = Math.max(FIT_MIN_COL_WIDTH, next[widest.key]! - (total - container));
+    }
     setWidths(next);
   }, []);
 
@@ -152,21 +231,37 @@ export function SceneTable<T extends Record<string, unknown>>({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [measuring, colKeysSig]);
 
-  /* 中栏（壳层）拖宽 → 未手动调过列宽时按内容重新适配 */
+  /* 容器宽变化：记下来（算填充列宽）；未手动调过列宽时按内容重新适配 */
   useEffect(() => {
     const wrap = wrapRef.current;
-    if (!wrap || measuring) return;
-    const ro = new ResizeObserver(() => {
+    if (!wrap) return;
+    const sync = () => {
+      setContainerW(wrap.clientWidth);
       if (!manualRef.current) fitToContainer();
-    });
+    };
+    sync();
+    const ro = new ResizeObserver(sync);
     ro.observe(wrap);
     return () => ro.disconnect();
   }, [measuring, fitToContainer]);
 
+  /* 同一实例切换表（storageKey 或列集变了）：重新读留存宽度；读不到就回测量态——
+     否则会把上一张表的列宽套到新表上（列 key 对不上 → 宽度全是 0） */
+  const sigRef = useRef(`${storageKey ?? ""}|${colKeysSig}`);
+  useEffect(() => {
+    const sig = `${storageKey ?? ""}|${colKeysSig}`;
+    if (sigRef.current === sig) return;
+    sigRef.current = sig;
+    const loaded = loadWidths(storageKey, colKeys);
+    manualRef.current = loaded !== null;
+    setWidths(loaded);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [storageKey, colKeysSig]);
+
   useEffect(() => {
     if (!storageKey || widths === null) return;
     try {
-      window.localStorage.setItem(`scene.colwidths.v2.${storageKey}`, JSON.stringify(widths));
+      window.localStorage.setItem(`scene.colwidths.v3.${storageKey}`, JSON.stringify(widths));
     } catch {
       /* 本地存储不可用时仅本次会话生效 */
     }
@@ -183,35 +278,26 @@ export function SceneTable<T extends Record<string, unknown>>({
   );
 
   /**
-   * 拖两列之间的分割线：只有这条线移动——左列与右列交换宽度，
-   * 其余列（分割线）纹丝不动；表宽恒 100%。
+   * 拖某列右缘的分割线：**只有这一列变宽/变窄**。
+   *
+   * 不做「左右两列交换宽度」——那会把右边那一列一起挪动（用户明确不要）。
+   * 变宽到超过中栏宽时由 `.tw` 出横向滚动；变窄时空出的宽由填充列承接，
+   * 所以其他列既不变宽也不变窄。
    */
   const startResize = useCallback(
-    (key: string, nextKey: string, e: React.MouseEvent) => {
+    (key: string, e: React.MouseEvent) => {
       e.preventDefault();
-      const tableW = tableRef.current?.getBoundingClientRect().width || 1;
       const base = { ...(widths ?? {}) };
-      const startA = base[key] ?? 50;
-      const startB = base[nextKey] ?? 50;
-      dragRef.current = { key, nextKey, startX: e.clientX, startA, startB, base };
+      const startW = base[key] ?? FALLBACK_COL_WIDTH;
+      dragRef.current = { key, startX: e.clientX, startW, base };
       setIsResizing(true);
       manualRef.current = true;
 
       const onMove = (ev: MouseEvent) => {
         const drag = dragRef.current;
         if (!drag) return;
-        const dPct = ((ev.clientX - drag.startX) / tableW) * 100;
-        const minPct = (MIN_COL_WIDTH / tableW) * 100;
-        // 左右列交换：合计不变；两侧都不低于最小列宽
-        const a = Math.max(
-          minPct,
-          Math.min(drag.startA + dPct, drag.startA + drag.startB - minPct),
-        );
-        setWidths({
-          ...drag.base,
-          [drag.key]: a,
-          [drag.nextKey]: drag.startA + drag.startB - a,
-        });
+        const next = Math.max(MIN_COL_WIDTH, Math.round(drag.startW + (ev.clientX - drag.startX)));
+        setWidths({ ...drag.base, [drag.key]: next });
       };
       const onUp = () => {
         dragRef.current = null;
@@ -225,21 +311,53 @@ export function SceneTable<T extends Record<string, unknown>>({
     [widths],
   );
 
+  /** 双击分割线：该表回到「按内容自适应」（撤销手动列宽） */
+  const resetWidths = useCallback(() => {
+    manualRef.current = false;
+    setWidths(null);
+    if (!storageKey) return;
+    try {
+      window.localStorage.removeItem(`scene.colwidths.v3.${storageKey}`);
+    } catch {
+      /* 忽略 */
+    }
+  }, [storageKey]);
+
+  const sum = columns.reduce((a, c) => a + (widths?.[c.key] ?? 0), 0);
+  /** 表宽 = 中栏内容宽与各列宽之和的较大者（超出则横向滚动） */
+  const tableW = Math.max(sum, containerW);
+  const fillW = Math.max(0, tableW - sum);
+  const placeholderOf = (col: ColumnDef<T>, row: T): string =>
+    typeof col.placeholder === "function" ? col.placeholder(row) : (col.placeholder ?? "");
+  const resizeHandle = (col: ColumnDef<T>, isLast: boolean): React.ReactElement => (
+    <span
+      className={`th-resize${isLast ? " th-resize--last" : ""}`}
+      title="拖拽调整这一列的宽度（只动这一列）；双击恢复按内容自适应"
+      role="separator"
+      aria-orientation="vertical"
+      aria-label={`调整「${col.label}」列宽（只影响这一列）`}
+      onMouseDown={(e) => startResize(col.key, e)}
+      onDoubleClick={resetWidths}
+    />
+  );
+
   return (
     <div className={`tw${isResizing ? " is-resizing" : ""}`} ref={wrapRef}>
       <table
         ref={tableRef}
-        className={measuring ? "measure" : undefined}
-        style={measuring ? undefined : { tableLayout: "fixed", width: "100%" }}
+        className={measuring ? "measure" : tableClassName}
+        style={measuring ? undefined : { tableLayout: "fixed", width: `${tableW}px` }}
       >
         {!measuring && (
           <colgroup>
             {columns.map((col) => (
               <col
                 key={col.key}
-                style={{ width: `${widths?.[col.key] ?? 100 / Math.max(1, columns.length)}%` }}
+                style={{ width: `${widths?.[col.key] ?? FALLBACK_COL_WIDTH}px` }}
               />
             ))}
+            {/* 填充列：承接「列宽之和 < 中栏宽」的那点余量，保证整表仍铺满中栏 */}
+            <col style={{ width: `${fillW}px` }} />
           </colgroup>
         )}
         <thead>
@@ -247,18 +365,11 @@ export function SceneTable<T extends Record<string, unknown>>({
             {columns.map((col, ci) => (
               <th key={col.key} data-col-key={col.key}>
                 {col.label}
-                {ci < columns.length - 1 ? (
-                  <span
-                    className="th-resize"
-                    title="拖拽调整列宽（只动这条分割线两侧列）"
-                    role="separator"
-                    aria-orientation="vertical"
-                    aria-label={`调整「${col.label}」与「${columns[ci + 1]!.label}」分隔线`}
-                    onMouseDown={(e) => startResize(col.key, columns[ci + 1]!.key, e)}
-                  />
-                ) : null}
+                {/* 末列的柄不能探出表右缘（探出去会凭空多出几像素横向滚动） */}
+                {resizeHandle(col, ci === columns.length - 1)}
               </th>
             ))}
+            <th className="col-fill" aria-hidden="true" />
           </tr>
         </thead>
         <tbody>
@@ -276,13 +387,44 @@ export function SceneTable<T extends Record<string, unknown>>({
 
                 // 自定义渲染（Badge / 来源标签等）
                 if (col.render) {
+                  return <td key={col.key}>{col.render(value, row)}</td>;
+                }
+
+                /* 是否可编辑只看列定义与行（与旧行为一致）；
+                   多行编辑在**测量阶段**先渲染纯文本，否则 textarea 会把自然宽量歪 */
+                const canEdit =
+                  Boolean(col.editable) &&
+                  !(col.multiline && measuring) &&
+                  (rowEditable ? rowEditable(row) : true);
+
+                // 长文本：换行显示 + 行高随内容长
+                if (col.multiline) {
+                  if (canEdit) {
+                    return (
+                      <td key={col.key} className="ed ed-multi">
+                        <AutoGrowTextarea
+                          value={String(value ?? "")}
+                          placeholder={placeholderOf(col, row)}
+                          ariaLabel={`${col.label}（第 ${ri + 1} 行）`}
+                          onCommit={(next) => onCellChange?.(ri, col.key, next)}
+                        />
+                      </td>
+                    );
+                  }
+                  const text = String(value ?? "");
                   return (
-                    <td key={col.key}>{col.render(value, row)}</td>
+                    <td key={col.key}>
+                      {text !== "" ? (
+                        <span className="cell-text">{text}</span>
+                      ) : (
+                        <span className="cell-hint">{placeholderOf(col, row) || "—"}</span>
+                      )}
+                    </td>
                   );
                 }
 
-                // 可编辑单元格
-                if (col.editable) {
+                // 可编辑单元格（短文本；超出列宽即换行，行高随内容长）
+                if (canEdit) {
                   return (
                     <td
                       key={col.key}
@@ -290,9 +432,15 @@ export function SceneTable<T extends Record<string, unknown>>({
                       contentEditable
                       suppressContentEditableWarning
                       title={String(value ?? "")}
-                      onBlur={(e) =>
-                        handleBlur(ri, col.key, e.currentTarget)
-                      }
+                      onKeyDown={(e) => {
+                        // 短文本格是单段落值：Enter 当作"改完了"（回车换行会以块级子元素落进 DOM，
+                        // blur 时读 textContent 会把两行粘成一行）
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          e.currentTarget.blur();
+                        }
+                      }}
+                      onBlur={(e) => handleBlur(ri, col.key, e.currentTarget)}
                     >
                       {String(value ?? "")}
                     </td>
@@ -301,11 +449,12 @@ export function SceneTable<T extends Record<string, unknown>>({
 
                 // 只读文本
                 return (
-                  <td key={col.key} style={{ fontSize: "var(--t2x)", color: "var(--ct2)" }}>
-                    {String(value ?? "")}
+                  <td key={col.key}>
+                    <span className="cell-text">{String(value ?? "")}</span>
                   </td>
                 );
               })}
+              <td className="col-fill" />
             </tr>
           ))}
         </tbody>

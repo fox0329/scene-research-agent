@@ -117,7 +117,7 @@ test.describe("上传入库（联真）", () => {
     await page.getByRole("button", { name: "产品资料库" }).click();
     await page.locator(".stab", { hasText: "M1" }).click();
     /* 降维：7 列含「溯源」徽标列，来源四列与曾用名不再占列（等表格异步加载完） */
-    await expect(page.locator("table th")).toHaveCount(7);
+    await expect(page.locator("table th:not(.col-fill)")).toHaveCount(7);
     const ths = await page.locator("table th").allTextContents();
     expect(ths).toContain("溯源");
     expect(ths).not.toContain("来源标注");
@@ -231,15 +231,15 @@ test("场景定义对话（联真）：新建只输名称 → 自动开「场景
   const anchor = page.locator(".ws .schema-table--anchor").first();
   await expect(anchor).toBeVisible({ timeout: 20_000 });
   // 表1-1 只有「项 / 内容」两列：无状态列、无 ✓、无待确认
-  await expect(anchor.locator("th")).toHaveCount(2);
+  await expect(anchor.locator("th:not(.col-fill)")).toHaveCount(2);
   await expect(anchor.locator(".state-badge")).toHaveCount(0);
   // 智能体确实把业务画像写出来了（这正是"只输名称"路径要验证的东西）
-  const written = await anchor.locator("input.cell-input").evaluateAll((els) =>
-    els.filter((el) => (el as HTMLInputElement).value.trim() !== "").length,
+  const written = await anchor.locator(".cell-input").evaluateAll((els) =>
+    els.filter((el) => (el as HTMLTextAreaElement).value.trim() !== "").length,
   );
   expect(written).toBeGreaterThanOrEqual(2);
-  // 表1-1 在第 1 步**可就地编辑**：有内容的行渲染成输入框（不是只读文本）
-  await expect(anchor.locator("input.cell-input").first()).not.toHaveValue("");
+  // 表1-1 在第 1 步**可就地编辑**：有内容的行渲染成可换行的多行编辑器（不是只读文本）
+  await expect(anchor.locator(".cell-input").first()).not.toHaveValue("");
 
   // 回归：**新建路径**（弹窗由 App 打开）整理完成后，流程状态必须跟着刷新——
   // 曾经漏了这一步，表现为聊完/整理完/关掉弹窗后流程轴仍拿着旧状态。

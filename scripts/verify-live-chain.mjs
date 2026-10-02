@@ -245,7 +245,7 @@ const stepOneText = await page
   .innerText()
   .catch(() => "");
 const anchorRows = await page.locator(".ws .schema-table--anchor tbody tr").count();
-const anchorInputs = await page.locator(".ws .schema-table--anchor input.cell-input").count();
+const anchorInputs = await page.locator(".ws .schema-table--anchor .cell-input").count();
 const goneFromMid =
   (await page.locator(".ws .definition-step").count()) === 0 &&
   (await page.locator(".ws .completeness-bar").count()) === 0 &&

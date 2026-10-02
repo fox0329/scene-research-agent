@@ -136,12 +136,13 @@ if ((await page.locator(".ws .schema-table--anchor").count()) > 0) {
   let junk = 0;
   for (const sel of junkSelectors) junk += await page.locator(sel).count();
   // 表1-1 只有「项 / 内容」两列，且只标出一个"用户输入"的项
-  const anchorTh = await page.locator(".ws .schema-table--anchor th").count();
+  // 末尾的填充列不算业务列
+  const anchorTh = await page.locator(".ws .schema-table--anchor th:not(.col-fill)").count();
   const ownerTags = await page.locator(".ws .schema-table--anchor .owner-tag").count();
   // 6 行**都可以就地编辑**：存量旧 12 项场景如果只补空库不补缺行，
   // 表定义新增的行会渲染成不可编辑的「—」，用户想填也填不进去
   const anchorRows = await page.locator(".ws .schema-table--anchor tbody tr").count();
-  const anchorInputs = await page.locator(".ws .schema-table--anchor input.cell-input").count();
+  const anchorInputs = await page.locator(".ws .schema-table--anchor .cell-input").count();
   const midStrip = !/要获得的信息|信息完整度 \d+\/\d+ 张表/.test(wsText);
   ok(
     "7b 第 1 步中栏只剩表1-1（无步标题/引导语/完整度/确认按钮），六行两列且每行都能改",

@@ -328,6 +328,39 @@ check_contains "03-数据契约与API.md" "?step=N" "总结/完整度的 step �
 check_contains "04-业务过程重定义.md" "v1.13" "业务过程 v1.13（右栏只讲当前步骤）"
 check_contains "04-业务过程重定义.md" "右栏只针对当前步骤" "右栏步骤级口径登记"
 check_contains "docs/项目变更表.md" "| 69 |" "变更表 #69 右栏只讲当前步骤登记"
+# ── v1.14 中栏表格：逐列独立拖宽 + 内容换行 + 行高随内容 ──────
+check_contains "04-业务过程重定义.md" "v1.14" "业务过程 v1.14（中栏表格三项优化）"
+check_contains "04-业务过程重定义.md" "每列独立可拖" "逐列独立拖宽口径登记"
+check_contains "04-业务过程重定义.md" "内容换行 + 行高随内容长" "换行与行高口径登记"
+check_contains "docs/项目变更表.md" "| 70 |" "变更表 #70 中栏表格优化登记"
+# 正向守卫：只改被拖那一列的像素模型 + 填充列 + 多行编辑器
+if grep -q "col-fill" "$ROOT/apps/web/src/components/SceneTable.tsx" && \
+   grep -q "scene.colwidths.v3" "$ROOT/apps/web/src/components/SceneTable.tsx" && \
+   grep -q "AutoGrowTextarea" "$ROOT/apps/web/src/components/SceneTable.tsx" && \
+   grep -q "multiline: true" "$ROOT/apps/web/src/components/SchemaTable.tsx"; then
+  echo "✅ 中栏表格：像素列宽 + 填充列 + 多行编辑器（只改被拖那一列）"
+else
+  echo "❌ 中栏表格缺少填充列/多行编辑器（用户定调：拖一条线只动这一列、内容要换行）"
+  FAIL=1
+fi
+# 负向守卫：旧实现（两项交换）的调用点是 startResize(本列, 下一列, e)——必须只剩单列参数
+if grep -qF "startResize(col.key, columns[ci + 1]" "$ROOT/apps/web/src/components/SceneTable.tsx"; then
+  echo "❌ 列宽拖拽又变回两侧列交换宽度（用户定调：不影响其他列）"
+  FAIL=1
+elif grep -qF "startResize(col.key, e)" "$ROOT/apps/web/src/components/SceneTable.tsx"; then
+  echo "✅ 拖分割线只改被拖的那一列（不再交换两侧宽度）"
+else
+  echo "❌ 找不到单列拖拽调用点（SceneTable 的列宽机制被改动过？）"
+  FAIL=1
+fi
+if grep -q "td.ed" "$ROOT/apps/web/src/styles/app.css" && \
+   awk '/^td\.ed \{/,/\}/' "$ROOT/apps/web/src/styles/app.css" | grep -q "nowrap"; then
+  echo "❌ 可编辑单元格仍是单行截断（用户定调：内容换行、行高随内容）"
+  FAIL=1
+else
+  echo "✅ 可编辑单元格允许换行（行高随内容长）"
+fi
+
 # 负向守卫：右栏的步骤级总结不得再引用诉求全文与上下游衔接
 if grep -q "briefRawText" "$ROOT/packages/domain/src/stage-summary.ts" &&    grep -q 'scope !== "step" && input.briefRawText' "$ROOT/packages/domain/src/stage-summary.ts" &&    grep -q 'scope !== "step"' "$ROOT/packages/domain/src/stage-summary.ts"; then
   echo "✅ 步骤级总结已隔离诉求全文与上下游衔接（只在阶段级/交付物出现）"

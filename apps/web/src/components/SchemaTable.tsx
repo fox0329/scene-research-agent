@@ -2,14 +2,14 @@
  * @scene/web — SchemaTable：由**表定义注册表**驱动的表格渲染
  *
  * 为什么是适配器而不是新表格组件：
- *  - `SceneTable` 已实现自动列宽适配（单行优先）+ 列宽拖拽 + 宽度留存，
+ *  - `SceneTable` 已实现自动列宽适配（单行优先）+ 逐列拖拽（只动这一列）+ 宽度留存，
  *    这两项是已批准的偏离项（变更表 #2/#19），不能另起一套
  *  - 前端原先把列名手写在 `stage-field-labels.ts`（177 行）里，与契约、提示词
  *    各写一份必然漂移；本组件改为**从注册表取列**，表定义只有唯一事实源
  *
  * 列预算约束（04 §4.3）的执行点：
  *  - 只渲染**中栏列**（元信息与长文本说明在右栏补充列，不进表格）
- *  - 长文本列默认截断 + `title` 悬浮看全文，控件行高
+ *  - 长文本列**换行显示、行高随内容长**（用户定调 2026-09-26；不再截断省略）
  *  - 多子块表**按块**渲染（块间列不同，不能拼成一张表）
  *  - 「项 / 内容」纵向表（表1-1 场景锚）单独渲染，带确认状态
  */
@@ -55,7 +55,7 @@ export function cellText(value: unknown): string {
  * 由注册表列定义生成 SceneTable 的 ColumnDef
  *
  * 注意：**不能给可编辑列设 `render`**——`SceneTable` 里 render 分支优先于 editable，
- * 设了 render 单元格就不再可编辑（踩过一次）。单行省略改由样式 + `title` 承担。
+ * 设了 render 单元格就不再可编辑（踩过一次）。
  */
 function toColumnDefs(cols: readonly TableColumn[]): ColumnDef<Record<string, unknown>>[] {
   return cols.map((c) => ({
@@ -112,45 +112,68 @@ export function AnchorTable({
 }): React.ReactElement {
   const def = tableDef("表1-1");
   const byItem = new Map(rows.map((r) => [String(r.row["item"] ?? ""), r]));
+  const editable = Boolean(onCellChange) && !readOnly;
+
+  /**
+   * 固定 6 行一律列出（注册表为准），每行带上"能不能写"的标记：
+   * 库里没有对应行的（`rowId === null`）只给灰字提示，不给存不下去的控件。
+   */
+  const data = (def?.fixedRows ?? []).map((fixed) => {
+    const r = byItem.get(fixed.label);
+    return {
+      rowId: (r?.id ?? null) as string | null,
+      item: fixed.label,
+      required: Boolean(fixed.required),
+      mine: fixed.owner === "用户",
+      content: cellText(r?.row["content"]),
+    };
+  });
+
+  const columns: ColumnDef<(typeof data)[number]>[] = [
+    {
+      key: "item",
+      label: "项",
+      render: (_value, row) => (
+        <>
+          {row.item}
+          {row.required ? (
+            <span className="req-dot" title="必填">
+              *
+            </span>
+          ) : null}
+          {row.mine ? (
+            <span className="owner-tag" title="这一项由你输入">
+              你的输入
+            </span>
+          ) : null}
+        </>
+      ),
+    },
+    {
+      key: "content",
+      label: "内容",
+      editable,
+      multiline: true,
+      placeholder: (row) => (row.mine ? "给个场景名，或直接写你想覆盖的范围" : "待智能体写"),
+    },
+  ];
 
   return (
-    <table className="schema-table schema-table--anchor">
-      <thead>
-        <tr>
-          <th style={{ width: "32%" }}>项</th>
-          <th>内容</th>
-        </tr>
-      </thead>
-      <tbody>
-        {(def?.fixedRows ?? []).map((fixed) => {
-          const r = byItem.get(fixed.label);
-          const mine = fixed.owner === "用户";
-          return (
-            <tr key={fixed.key}>
-              <td>
-                {fixed.label}
-                {fixed.required ? <span className="req-dot" title="必填">*</span> : null}
-                {mine ? <span className="owner-tag" title="这一项由你输入">你的输入</span> : null}
-              </td>
-              <td>
-                {readOnly || !r ? (
-                  <span className="cell-truncate" title={plainText(cellText(r?.row["content"]))}>
-                    {plainText(cellText(r?.row["content"])) || "—"}
-                  </span>
-                ) : (
-                  <input
-                    className="cell-input"
-                    value={cellText(r.row["content"])}
-                    onChange={(e) => onCellChange?.(r.id, "content", e.target.value)}
-                    placeholder={mine ? "给个场景名，或直接写你想覆盖的范围" : "待智能体写"}
-                  />
-                )}
-              </td>
-            </tr>
-          );
-        })}
-      </tbody>
-    </table>
+    <SceneTable
+      columns={columns}
+      data={data}
+      tableClassName="schema-table schema-table--anchor"
+      storageKey="anchor:表1-1"
+      rowEditable={(row) => editable && row.rowId !== null}
+      {...(editable
+        ? {
+            onCellChange: (rowIndex, _key, value) => {
+              const target = data[rowIndex];
+              if (target?.rowId) onCellChange?.(target.rowId, "content", value);
+            },
+          }
+        : {})}
+    />
   );
 }
 
