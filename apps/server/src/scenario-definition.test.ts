@@ -54,45 +54,57 @@ function setup(): { db: DbInstance; scenarioId: string } {
   return { db, scenarioId: sc.id };
 }
 
+/**
+ * 模型整理输出夹具（新口径）
+ *
+ * 三条规则同时被验证：
+ *  - **智能体侧的 5 项业务画像收 `AI推断`**（这是本职工作，不再当噪音丢掉）
+ *  - **用户侧的项（场景名称）不许替用户编** → 模型猜的一律丢弃
+ *  - 空内容不落行；对不上的项名显式记为 dropped
+ */
 const consolidation = JSON.stringify({
   items: [
-    { item: "客户类型/行业", content: "市政水务集团", source_type: "用户补充" },
-    { item: "覆盖什么", content: "制水到管网", source_type: "用户补充" },
-    { item: "核心用途", content: "漏损监测", source_type: "AI推断" },
-    { item: "不存在的项", content: "应被丢弃", source_type: "用户补充" },
-    { item: "明确不含什么", content: "", source_type: "AI推断" },
+    { item: "场景名称", content: "模型编的名字", source_type: "AI推断" },
+    { item: "场景边界", content: "制水厂到管网末端", source_type: "AI推断" },
+    { item: "生产对象", content: "加药、过滤、加压输送", source_type: "AI推断" },
+    { item: "不存在的项", content: "应被丢弃", source_type: "AI推断" },
+    { item: "买方类型", content: "", source_type: "AI推断" },
   ],
   intent: "这个场景值不值得进",
   open_questions: ["含不含二次供水？", "第二问", "第三问", "第四问应被截断"],
 });
 
 describe("scenario-definition — 系统提示词与上下文", () => {
-  it("提示词约束：允许抽象说不准、只问核心 2 项、不追问边界、不给判断", () => {
-    // 用户定调："定义要抽象一点，用户常常说不准，更需要的是对行业的全面了解"
+  it("提示词约束：先替用户写画像、只问只有用户才知道的取舍、不给判断", () => {
+    // 用户定调："用户只负责输入场景名称，智能体只负责从业务角度说清楚场景的范围"
+    //          "用户什么都知道还要我们干什么？"
     expect(DEFINITION_SYSTEM).toContain("最多 2 个");
     expect(DEFINITION_SYSTEM).toContain("允许抽象、允许说不准");
     expect(DEFINITION_SYSTEM).toContain("不要追问边界");
-    expect(DEFINITION_SYSTEM).toContain("行业与场景");
+    expect(DEFINITION_SYSTEM).toContain("把画像直接写出来");
+    expect(DEFINITION_SYSTEM).toContain("禁止");
     expect(DEFINITION_SYSTEM).toContain("只谈行业与场景本体");
     expect(DEFINITION_SYSTEM).toContain("不要给判断");
     expect(DEFINITION_SYSTEM).toContain("输出任何 JSON");
+    // 参考写法要点名"燃气场站"，这是验收标准
+    expect(DEFINITION_SYSTEM).toContain("燃气场站");
   });
 
-  it("上下文列出表1-1 全部固定项与状态标记（含必确认标记）", () => {
+  it("上下文列出表1-1 全部固定项与属主/状态标记（不再有「待确认」）", () => {
     const { db, scenarioId } = setup();
     ensureAnchorRows(db, scenarioId, "智慧水务");
     writeAnchorRows(db, scenarioId, [
-      { item: "客户类型/行业", content: "市政水务集团", source_type: "用户确认" },
-      { item: "核心用途", content: "漏损监测", source_type: "AI推断" },
+      { item: "场景边界", content: "制水厂到管网末端", source_type: "用户确认" },
+      { item: "生产对象", content: "加药、过滤、加压输送", source_type: "AI推断" },
     ]);
     const ctx = buildDefinitionContext(db, db.scenarioRepo.getById(scenarioId)!);
-    expect(ctx).toContain("场景名称：智慧水务");
-    expect(ctx).toContain("客户类型/行业（必确认）：市政水务集团 【用户已确认】");
-    // 核心用途已不是必确认项（放松定义口径），但它有内容，仍要告诉模型"这项是猜的"
-    expect(ctx).toContain("核心用途：漏损监测 【系统推断·待确认】");
+    expect(ctx).toContain("场景名称（用户输入）：智慧水务");
+    expect(ctx).toContain("场景边界（你负责写）：制水厂到管网末端 【用户已确认】");
+    // 智能体自己写的画像标明"是推断"，但不是"待确认"（那个概念已取消）
+    expect(ctx).toContain("生产对象（你负责写）：加药、过滤、加压输送 【智能体推断】");
+    expect(ctx).not.toContain("待确认");
     // 未提及的项标「还空着」，提示模型只补空缺
-    expect(ctx).toContain("【还空着】");
-    expect(ctx).toContain("明确不含什么：（空） 【还空着】"); // 已非必确认，但仍提示模型"还空着"
+    expect(ctx).toContain("采购特征（你负责写）：（空） 【还空着】");
   });
 });
 
@@ -118,22 +130,26 @@ describe("scenario-definition — 正文去噪（用户投诉「大量无效信�
     expect(compressCell("市政水务集团")).toBe("市政水务集团");
   });
 
-  it("重新整理会**清掉上次的推断残留**（否则旧噪音永远洗不掉）", async () => {
+  it("重新整理：业务画像留着（不再「这次没提就抹掉」），旧 12 项制的残项被清空", async () => {
     const { db, scenarioId } = setup();
     ensureAnchorRows(db, scenarioId, "智慧水务");
-    // 上次整理留下的推断行（用户从未说过）
     writeAnchorRows(db, scenarioId, [
+      // 上次整理写出的画像（带元说明注解 → 要剥掉，但内容要留）
       { item: "买方类型", content: "园区开发主体（用户未明说，按行业通行情况推断）", source_type: "AI推断" },
-      { item: "客户类型/行业", content: "市政水务集团", source_type: "用户补充" },
+      // 旧 12 项制残项：已不在表定义里 → 清空
+      { item: "价值主张", content: "用漏损率下降换运维成本", source_type: "AI推断" },
     ]);
     const dsh = mockDsh(consolidation);
     const convId = await ensureDefinitionConversation(db, dsh, db.scenarioRepo.getById(scenarioId)!);
     await consolidateDefinition(db, dsh, db.scenarioRepo.getById(scenarioId)!, convId);
 
     const rows = readAnchorRows(db, scenarioId);
-    // 旧推断行被清空；用户持有行保留且元说明被剥掉
-    expect(rows.find((r) => r.item === "买方类型")?.content ?? "").toBe("");
-    expect(rows.find((r) => r.item === "客户类型/行业")?.content).toBe("市政水务集团");
+    // 画像本体是交付物，不能因为"这次没再产出"就洗掉；元说明注解要剥掉
+    expect(rows.find((r) => r.item === "买方类型")?.content).toBe("园区开发主体");
+    // 历史残项（表1-1 已经没有「价值主张」这一项）清空
+    expect(rows.find((r) => r.item === "价值主张")?.content ?? "").toBe("");
+    // 本次整理新写出的内容也在
+    expect(rows.find((r) => r.item === "场景边界")?.content).toBe("制水厂到管网末端");
   });
 });
 
@@ -141,14 +157,14 @@ describe("scenario-definition — 整理结果收敛", () => {
   it("优先 item_key 匹配；空内容不落行；丢弃项被显式记录（不静默）", () => {
     const { rows, dropped } = normalizeConsolidatedItems({
       items: [
-        { item_key: "customer_type", content: "x", source_type: "用户确认" },
-        { item: "覆盖什么", content: "y", source_type: "用户补充" },
+        { item_key: "scene_boundary", content: "制水到管网", source_type: "用户确认" },
+        { item: "采购特征", content: "集采 + 项目制", source_type: "AI推断" },
         { item: "乱写的项", content: "z", source_type: "用户补充" },
-        { item: "核心用途", content: "  ", source_type: "AI推断" },
-        { item: "明确不含什么", content: "未提供", source_type: "AI推断" },
+        { item: "生产对象", content: "  ", source_type: "AI推断" },
+        { item: "买方类型", content: "未提供", source_type: "AI推断" },
       ],
     });
-    expect(rows.map((r) => r.item)).toEqual(["客户类型/行业", "覆盖什么"]);
+    expect(rows.map((r) => r.item)).toEqual(["场景边界", "采购特征"]);
     // 模型自称「用户确认」→ 降级为推断（保留内容，但绝不落成用户确认）
     expect(rows[0]?.source_type).toBe("AI推断");
     // 匹配不到的项名被列出来（真机上曾因标签对不上而静默丢失）
@@ -160,24 +176,20 @@ describe("scenario-definition — 整理结果收敛", () => {
     // 早期精确匹配把它们全丢掉，导致"整理后 L1 全空"而 used_llm=true
     const { rows, dropped } = normalizeConsolidatedItems({
       items: [
-        { item: "客户类型", content: "市政水务集团", source_type: "用户补充" },
-        { item: "不含什么", content: "不含二次供水", source_type: "用户补充" },
-        { item: "覆盖范围", content: "出厂到管网", source_type: "用户补充" },
+        { item: "边界", content: "制水厂到管网末端", source_type: "AI推断" },
+        { item: "覆盖范围", content: "出厂到管网（近义改写，与上一项同项 → 先到先得）", source_type: "AI推断" },
+        { item: "采购方式", content: "集团集采 + 项目制招标", source_type: "AI推断" },
       ],
     });
     expect(dropped).toEqual([]);
-    expect(rows.map((r) => r.item)).toEqual([
-      "客户类型/行业",
-      "明确不含什么",
-      "覆盖什么",
-    ]);
+    expect(rows.map((r) => r.item)).toEqual(["场景边界", "采购特征"]);
   });
 
   it("同项重复输出时先到先得（不产生重复行）", () => {
     const { rows } = normalizeConsolidatedItems({
       items: [
-        { item_key: "use_case", content: "第一版", source_type: "AI推断" },
-        { item: "核心用途", content: "第二版", source_type: "AI推断" },
+        { item_key: "scene_boundary", content: "第一版", source_type: "AI推断" },
+        { item: "边界", content: "第二版", source_type: "AI推断" },
       ],
     });
     expect(rows).toHaveLength(1);
@@ -194,13 +206,14 @@ describe("scenario-definition — 整理成定义", () => {
 
     const out = await consolidateDefinition(db, dsh, db.scenarioRepo.getById(scenarioId)!, convId);
     expect(out.usedLlm).toBe(true);
-    expect(out.openQuestions).toHaveLength(2); // 最多 2 个（只围绕客户/行业与覆盖什么）
+    expect(out.openQuestions).toHaveLength(2); // 最多 2 个
     const rows = readAnchorRows(db, scenarioId);
-    expect(rows.find((r) => r.item === "客户类型/行业")?.content).toBe("市政水务集团");
-    expect(rows.find((r) => r.item === "客户类型/行业")?.source_type).toBe("用户补充");
-    // **只收用户说过的**：模型顺手推断的「核心用途」不落表（用户投诉过表格里的推断噪音）
-    expect(rows.find((r) => r.item === "核心用途")?.content ?? "").toBe("");
-    expect(out.inferredDropped).toBeGreaterThan(0);
+    // 智能体写的业务画像照收（这就是交付物）
+    expect(rows.find((r) => r.item === "场景边界")?.content).toBe("制水厂到管网末端");
+    expect(rows.find((r) => r.item === "场景边界")?.source_type).toBe("AI推断");
+    // 用户侧的项不许替用户编：模型给「场景名称」猜的名字被丢弃，保留用户给的
+    expect(rows.find((r) => r.item === "场景名称")?.content).toBe("智慧水务");
+    expect(out.inferredDropped).toBe(1);
     expect(rows.some((r) => r.item === "不存在的项")).toBe(false);
     expect(readBrief(db, scenarioId)?.intent).toBe("这个场景值不值得进");
     expect(hasDefinition(db, scenarioId)).toBe(true);
@@ -210,13 +223,13 @@ describe("scenario-definition — 整理成定义", () => {
     const { db, scenarioId } = setup();
     ensureAnchorRows(db, scenarioId, "智慧水务");
     writeAnchorRows(db, scenarioId, [
-      { item: "客户类型/行业", content: "市政水务集团（含排水）", source_type: "用户确认" },
+      { item: "场景边界", content: "只做排水，不含供水", source_type: "用户确认" },
     ]);
     const dsh = mockDsh(consolidation);
     const convId = await ensureDefinitionConversation(db, dsh, db.scenarioRepo.getById(scenarioId)!);
     await consolidateDefinition(db, dsh, db.scenarioRepo.getById(scenarioId)!, convId);
-    const row = readAnchorRows(db, scenarioId).find((r) => r.item === "客户类型/行业");
-    expect(row?.content).toBe("市政水务集团（含排水）");
+    const row = readAnchorRows(db, scenarioId).find((r) => r.item === "场景边界");
+    expect(row?.content).toBe("只做排水，不含供水");
     expect(row?.source_type).toBe("用户确认");
   });
 
@@ -309,7 +322,7 @@ describe("scenario-definition — 路由", () => {
     // 读操作不产生副作用：看一眼第 1 步不该在左栏凭空多出一个会话
     expect(body.conversation_id).toBeNull();
     expect(body.messages).toEqual([]);
-    expect(body.anchor).toHaveLength(12);
+    expect(body.anchor).toHaveLength(6);
 
     // 真正发第一条消息时才建会话，此后 GET 能读到它
     await app.inject({
@@ -362,12 +375,11 @@ describe("scenario-definition — 路由", () => {
       used_llm: boolean;
     };
     expect(body.used_llm).toBe(true);
-    expect(body.rows.some((r) => r.content === "市政水务集团")).toBe(true);
-    // 对照表 = 核心 2 项 ∪ 模型填了内容的项（不再要求 12 项齐全）
+    expect(body.rows.some((r) => r.content === "制水厂到管网末端")).toBe(true);
+    // 对照表 = 用户侧的项（永远列出）∪ 模型写出来的项（不再要求 6 项齐全）
     const keys = body.alignment.map((a) => a.rowKey);
-    expect(keys).toContain("customer_type");
-    expect(keys).toContain("scope_in");
-    expect(keys.length).toBeLessThanOrEqual(12);
+    expect(keys).toContain("scene_boundary");
+    expect(keys.length).toBeLessThanOrEqual(6);
     expect(body.updated).toBeGreaterThan(0);
   });
 
@@ -382,7 +394,7 @@ describe("scenario-definition — 路由", () => {
     expect(nf.statusCode).toBe(404);
   });
 
-  it("回归：经路由新建场景后第 1 步**仍未就绪**（锚骨架只填了「场景名称」，不算定义已整理）", async () => {
+  it("回归：经路由新建场景后第 1 步**仍未就绪**（锚骨架只填了「场景名称」，不算画像已写出）", async () => {
     const created = await app.inject({
       method: "POST",
       url: "/api/v1/projects",
@@ -400,10 +412,10 @@ describe("scenario-definition — 路由", () => {
       await app.inject({ method: "GET", url: `/api/v1/projects/${id}/flow` })
     ).json() as { steps: { id: number; ready: boolean; readyHint: string }[] };
     expect(flow.steps[0]!.ready).toBe(false);
-    expect(flow.steps[0]!.readyHint).toContain("场景定义");
+    expect(flow.steps[0]!.readyHint).toContain("场景业务画像");
   });
 
-  it("整理后第 1 步即可推进（就绪=定义已整理，不再要求确认齐全）", async () => {
+  it("整理后第 1 步即可推进（就绪=业务画像已写出，不要求用户逐项确认）", async () => {
     const before = await app.inject({ method: "GET", url: `/api/v1/projects/${scenarioId}/flow` });
     expect(
       (before.json() as { steps: { id: number; ready: boolean }[] }).steps[0]!.ready,
@@ -422,9 +434,10 @@ describe("scenario-definition — 路由", () => {
     const after = await app.inject({ method: "GET", url: `/api/v1/projects/${scenarioId}/flow` });
     const first = (after.json() as { steps: { id: number; ready: boolean; readyHint: string }[] })
       .steps[0]!;
-    // 整理过 → 即可推进；提示里点名核心项确认进度（提醒但不阻断）
+    // 画像写出 → 即可推进；提示只是"看一眼，能改"，不再点名"待确认/已确认"
     expect(first.ready).toBe(true);
-    expect(first.readyHint).toContain("定义已整理");
-    expect(first.readyHint).toContain("核心");
+    expect(first.readyHint).toContain("场景业务画像已写出");
+    expect(first.readyHint).toContain("没问题就继续");
+    expect(first.readyHint).not.toContain("待确认");
   });
 });

@@ -532,7 +532,7 @@ describe("createAdvanceStageCommand", () => {
       const call = (db.stageSummaryRepo.upsert as ReturnType<typeof vi.fn>).mock.calls[0]!;
       expect(call[0]).toBe("sc-1");
       expect(call[1]).toBe(1);
-      expect(String(call[2])).toContain("## 五、信息缺口与待补充");
+      expect(String(call[2])).toContain("## 五、待补齐信息");
     });
 
     it("应产出 completeness 事件含缺口清单（不含判定）", async () => {

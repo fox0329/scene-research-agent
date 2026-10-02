@@ -24,7 +24,7 @@ import type {
   StageData,
 } from "@scene/contract";
 import { FLOW_LAST_STEP, type InfoStageId } from "@scene/contract";
-import { alignmentWithBrief, buildFlowStatus } from "@scene/domain";
+import { alignmentWithBrief, anchorFixedRows, buildFlowStatus } from "@scene/domain";
 import type { DbInstance } from "@scene/infra";
 import {
   parseDocument,
@@ -480,7 +480,7 @@ function registerProjectRoutes(app: FastifyInstance, deps: UiRoutesDeps) {
     };
   });
 
-  /** 锚行批量写入（表1-1 逐格确认/编辑；也可只传部分行） */
+  /** 锚行批量写入（表1-1 逐格编辑 / 整表确认；也可只传部分行） */
   app.put("/api/v1/projects/:id/anchor", async (request, reply) => {
     const { id } = request.params as { id: string };
     if (!db.scenarioRepo.getById(id)) return notFound(reply, `场景 ${id} 不存在`);
@@ -493,6 +493,13 @@ function registerProjectRoutes(app: FastifyInstance, deps: UiRoutesDeps) {
       source_type: (r["source_type"] as never) ?? null,
       confirm_state: (r["confirm_state"] as string | undefined) ?? null,
     }));
+    // 只认表1-1 注册表里的固定项：旧客户端还可能推 12 项制的残项（拍板者/价值主张…），
+    // 写进去就是界面上永远看不见却一直躺在库里、还参与派生的脏数据。
+    const known = new Set(anchorFixedRows().map((r) => r.label));
+    const unknown = rows.map((r) => r.item).filter((item) => item !== "" && !known.has(item));
+    if (unknown.length > 0) {
+      return badRequest(reply, `表1-1 没有这些项：${unknown.join("、")}`);
+    }
     const written = writeAnchorRows(db, id, rows);
     syncDerivedDescription(db, id);
     return { rows: written, description: db.scenarioRepo.getById(id)?.description ?? "" };

@@ -12,7 +12,7 @@ import { buildStagePrompt, getStageOutputContract, renderTableSpec, stageMeta } 
 const scenario = { name: "智慧水务", description: "客户：市政水务集团", brief: "想搞清楚值不值得进" };
 const anchor = [
   { item: "场景名称", content: "智慧水务" },
-  { item: "客户类型/行业", content: "市政水务集团" },
+  { item: "场景边界", content: "制水厂到管网末端" },
 ];
 
 describe("stage-prompts — 阶段覆盖（8 阶段口径）", () => {
@@ -58,14 +58,14 @@ describe("stage-prompts — 内容由注册表派生", () => {
     expect(p.system).toContain("枚举 can_touch");
   });
 
-  it("表1-1 的固定行逐个列出，且只给核心 2 项打「需用户确认」", () => {
+  it("表1-1 的固定行逐个列出，且只给「场景名称」标「用户输入」", () => {
     const p = buildStagePrompt(1, {}, scenario);
     expect(p.system).toContain("固定行");
-    expect(p.system).toContain("客户类型/行业（必填）（需用户确认）");
-    expect(p.system).toContain("覆盖什么（必填）（需用户确认）");
-    // 其余项是选填/可待定（用户常说不准），不该再要求逐个确认
-    expect(p.system).not.toContain("价值主张（必填）（需用户确认）");
-    expect(p.system).toContain("价值主张");
+    expect(p.system).toContain("场景名称（必填）（用户输入）");
+    // 其余 5 项是智能体该写的业务画像 —— 不能反过来标成"等用户确认"
+    expect(p.system).toContain("场景边界（必填）");
+    expect(p.system).toContain("采购特征");
+    expect(p.system).not.toContain("需用户确认");
   });
 
   it("renderTableSpec 对可选材料列出 6 种 payload", () => {
@@ -116,7 +116,7 @@ describe("stage-prompts — 信息版口径（不产出判断）", () => {
     expect(p.user).toContain("场景诉求（第一输入，唯一基准）");
     expect(p.user).toContain("想搞清楚值不值得进");
     expect(p.user).toContain("场景锚（表1-1");
-    expect(p.user).toContain("客户类型/行业：市政水务集团");
+    expect(p.user).toContain("场景边界：制水厂到管网末端");
   });
 
   it("场景锚为空时给出明确提示而非留白", () => {

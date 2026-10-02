@@ -9,9 +9,9 @@
  *  3. **已完成的步骤可随时回去重跑**——重跑清掉该步及其后的完成标记，数据保留
  *
  * 就绪判定（按步骤类型）：
- *  - 输入（第 1 步）：`scenario_brief.intent` 非空
- *  - 确认（第 1 步）：**定义已整理**即可推进（不要求逐项确认；用户常说不准）
- *  - 分析（第 3-8 步）：本步表集中至少 1 张有数据（**只要求有产出，不要求齐备**）
+ *  - 确认（第 1 步）：**智能体已写出场景业务画像**（表1-1 的智能体侧行至少一项有内容）；
+ *    「确认无误」是用户的一次整表确认，**不卡推进**，也不做逐项表态
+ *  - 分析（第 2-7 步）：本步表集中至少 1 张有数据（**只要求有产出，不要求齐备**）
  *  - 组装（第 8 步）：随时可生成交付物
  */
 
@@ -23,8 +23,9 @@ import {
 } from "@scene/contract";
 import type { DbInstance } from "@scene/infra";
 import {
+  anchorAgentRows,
   buildFlowStatus,
-  l1Rows,
+  isEmptyValue,
   type FlowReadiness,
   type FlowStatus,
 } from "@scene/domain";
@@ -65,37 +66,27 @@ function tableProgress(
 export function getFlowState(db: DbInstance, scenario: Scenario): FlowStatus {
   const completed = db.scenarioStepRepo.completedSteps(scenario.id);
   const anchor = readAnchorRows(db, scenario.id);
-  const byItem = new Map(anchor.map((a) => [a.item, a]));
   const readiness: Record<number, FlowReadiness> = {};
 
   for (const step of FLOW_STEPS) {
     switch (step.kind) {
       case "确认": {
-        // 第 1 步「场景定义与边界」：**门槛降到"整理过就算"**
+        // 第 1 步「场景定义与边界」：**用户给场景名称，智能体写业务画像**
+        // （场景边界 / 生产对象 / 核心生产系统 / 买方类型 / 采购特征）。
         //
-        // 用户定调："场景定义要求太细了，要抽象一点，用户很多时候也没有说要定义那么准确，
-        // 更多的是要对行业有个比较全面的了解"，且明确"定义不影响后面的业务流程"。
-        // 因此这里不再要求 6 项 L1 全部确认，只看**定义是否整理过**
-        // （表1-1 里除预填的「场景名称」外，至少一项有内容）。
-        // 核心 2 项（客户类型/行业、覆盖什么）只在 hint 里提示，不阻断推进。
-        const filledRows = anchor.filter(
-          (r) =>
-            r.item !== "场景名称" &&
-            String(r.content).trim() !== "" &&
-            r.content !== "未提供",
+        // 就绪口径 = **智能体那一侧已经写出东西**（不是"用户逐项确认完了"）：
+        // 用户定调「用户确认就默认可以了」+「表格用户自己可以修改，不用显示待确认」，
+        // 所以这里既不做逐项表态，也不因为"用户没点确认"卡住推进。
+        const agentLabels = new Set(anchorAgentRows().map((r) => r.label));
+        const written = anchor.filter(
+          (r) => agentLabels.has(r.item) && !isEmptyValue(r.content),
         );
-        const core = l1Rows();
-        const coreDone = core.filter((r) => {
-          const row = byItem.get(r.label);
-          const st = String(row?.source_type ?? "");
-          return st === "用户确认" || st === "用户补充";
-        }).length;
-        const ok = filledRows.length > 0;
+        const ok = written.length > 0;
         readiness[step.id] = readinessOf(
           ok,
           ok
-            ? `定义已整理（表1-1 已填 ${filledRows.length} 项；核心 ${coreDone}/${core.length} 项已确认）`
-            : "先在「场景定义」对话里聊两句——说不准也没关系，聊完点「整理成定义」即可推进",
+            ? `场景业务画像已写出 ${written.length} 项；看一眼，能直接改，没问题就继续`
+            : "先说一句场景名称，我来写这份场景业务画像（场景边界、生产对象、核心系统、买方与采购特征）",
           tableProgress(db, scenario.id, step.tables, step.stage),
         );
         break;

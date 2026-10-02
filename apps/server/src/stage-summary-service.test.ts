@@ -94,7 +94,7 @@ describe("stage-summary-service — 生成与落库", () => {
     const r = generateStageSummary(db, sc, 1);
     expect(r.stage).toBe(1);
     expect(r.markdown).toContain("# 阶段 1 · 认识场景（含门槛与合规） — 总结");
-    expect(r.markdown).toContain("## 五、信息缺口与待补充");
+    expect(r.markdown).toContain("## 五、待补齐信息");
     expect(r.markdown).toContain("用户诉求（第一输入，唯一基准）");
     expect(r.completeness.expectedTables).toBe(8);
     const stored = db.stageSummaryRepo.get(scenarioId, 1);

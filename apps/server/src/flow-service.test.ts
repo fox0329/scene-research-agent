@@ -40,66 +40,51 @@ function setup(): { db: DbInstance; scenarioId: string } {
   return { db, scenarioId: sc.id };
 }
 
-/** 把表1-1 的 6 项 L1 全标为用户确认 */
-function confirmAllL1(db: DbInstance, scenarioId: string): void {
-  ensureAnchorRows(db, scenarioId, "智慧水务");
-  writeAnchorRows(
-    db,
-    scenarioId,
-    [
-      "客户类型/行业",
-      "覆盖什么",
-      "明确不含什么",
-      "核心用途",
-      "切入点",
-      "价值主张",
-    ].map((item) => ({ item, content: `${item}值`, source_type: "用户确认" as const })),
-  );
-}
+/** 智能体侧 5 项业务画像（就绪判定只看这 5 项写没写出来） */
+const BUSINESS_PORTRAIT = ["场景边界", "生产对象", "核心生产系统", "买方类型", "采购特征"];
 
 const state = (db: DbInstance, scenarioId: string, step: number) =>
   getFlowState(db, db.scenarioRepo.getById(scenarioId)!).steps.find((s) => s.id === step)!;
 
 describe("flow-service — 锁步与就绪", () => {
-  it("全新场景：第 1 步当前且未就绪（定义还没整理），其余全锁", () => {
+  it("全新场景：第 1 步当前且未就绪（业务画像还没写出），其余全锁", () => {
     const { db, scenarioId } = setup();
     const flow = getFlowState(db, db.scenarioRepo.getById(scenarioId)!);
     expect(flow.currentStep).toBe(1);
     expect(flow.completedCount).toBe(0);
     expect(flow.steps[0]!.state).toBe("当前");
     expect(flow.steps[0]!.ready).toBe(false);
-    expect(flow.steps[0]!.readyHint).toContain("场景定义"); // 指向对话与「整理成定义」
+    // 用户只需要给个场景名，写画像的是智能体——提示是"我来写"，不是"你来填"
+    expect(flow.steps[0]!.readyHint).toContain("场景名称");
+    expect(flow.steps[0]!.readyHint).toContain("画像");
     expect(flow.steps.slice(1).every((s) => s.state === "未解锁")).toBe(true);
   });
 
-  it("第 1 步（场景定义与边界）：定义没整理时未就绪，且提示指向「场景定义」对话", () => {
+  it("第 1 步（场景定义与边界）：画像没写出时未就绪，提示是智能体主动领活", () => {
     const { db, scenarioId } = setup();
     ensureAnchorRows(db, scenarioId, "智慧水务");
     const s = state(db, scenarioId, 1);
     expect(s.ready).toBe(false);
-    // 定义对话属「新建场景」，不占流程步；这里必须把用户引到对话去
-    expect(s.readyHint).toContain("场景定义");
-    expect(s.readyHint).toContain("整理成定义");
+    // 只有「场景名称」（骨架预填）不算画出画像
+    expect(s.readyHint).toContain("先说一句场景名称");
+    // 提示里点名的是**智能体要写的 5 项**，不能反过来问用户要细节
+    expect(s.readyHint).toContain("场景边界");
+    expect(s.readyHint).toContain("采购特征");
   });
 
-  it("第 1 步就绪 = 定义已整理（**不要求确认齐全**，核心项只在提示里点名）", () => {
+  it("第 1 步就绪 = 智能体写出业务画像（**不要求用户逐项确认**）", () => {
     const { db, scenarioId } = setup();
     ensureAnchorRows(db, scenarioId, "智慧水务");
     expect(state(db, scenarioId, 1).ready).toBe(false);
 
-    // 整理成定义：模型只填了 1 项 → 已整理 → **即可推进**（用户定调：定义不卡后面的流程）
+    // 智能体只写出 1 项 → 已写出画像 → **即可推进**（用户定调：定义不卡后面的流程）
     writeAnchorRows(db, scenarioId, [
-      { item: "客户类型/行业", content: "市政水务集团", source_type: "用户补充" },
+      { item: "场景边界", content: "市政水厂、加压泵站、二次供水", source_type: "AI推断" },
     ]);
     const partial = state(db, scenarioId, 1);
     expect(partial.ready).toBe(true);
-    expect(partial.readyHint).toContain("定义已整理");
-    expect(partial.readyHint).toContain("核心 1/2 项已确认"); // 提示但不阻断
-
-    confirmAllL1(db, scenarioId);
-    const ready = state(db, scenarioId, 1);
-    expect(ready.ready).toBe(true);
-    expect(ready.readyHint).toContain("核心 2/2 项已确认");
+    expect(partial.readyHint).toContain("场景业务画像已写出 1 项");
+    expect(partial.readyHint).toContain("没问题就继续");
 
     const flow = completeFlowStep(db, db.scenarioRepo.getById(scenarioId)!, 1);
     expect(flow.currentStep).toBe(2);
@@ -108,20 +93,24 @@ describe("flow-service — 锁步与就绪", () => {
     expect(flow.steps[1]!.title).toBe("认识场景");
   });
 
-  it("AI 推断不改变就绪（定义已整理即可推进），但会进右栏清单等用户表态", () => {
+  it("没点「确认无误」也照样就绪（确认不卡推进），且提示里不出现「待确认」", () => {
     const { db, scenarioId } = setup();
     ensureAnchorRows(db, scenarioId, "智慧水务");
     writeAnchorRows(
       db,
       scenarioId,
-      ["客户类型/行业", "覆盖什么", "明确不含什么", "核心用途", "切入点", "价值主张"].map(
-        (item) => ({ item, content: "x", source_type: "AI推断" as const }),
-      ),
+      BUSINESS_PORTRAIT.map((item) => ({
+        item,
+        content: "x",
+        source_type: "AI推断" as const,
+      })),
     );
-    // 定义已整理 → 就绪（AI 推断也算"整理过"，用户可以选择直接往下走）
     const s1 = state(db, scenarioId, 1);
     expect(s1.ready).toBe(true);
-    expect(s1.readyHint).toContain("核心 0/2 项已确认"); // 提醒还没表态，但不拦
+    expect(s1.readyHint).toContain("已写出 5 项");
+    // 用户定调「不用显示待确认」——就绪话术里也不许出现这个词
+    expect(s1.readyHint).not.toContain("待确认");
+    expect(s1.readyHint).not.toContain("已确认");
   });
 
   it("第 2 步（认识场景）只要求有产出，不要求齐备", () => {

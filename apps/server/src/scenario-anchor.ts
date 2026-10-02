@@ -319,14 +319,10 @@ export async function draftAnchor(
     // 降级：用场景名 + 用户线索预填能直接对应的项，其余留空待用户补
     incoming = [
       { item: "场景名称", content: scenario.name, source: "用户输入", source_type: "用户补充" },
-      ...(brief.customer_hint
-        ? [{ item: "客户类型/行业", content: brief.customer_hint, source: "用户诉求", source_type: "用户补充" as const }]
-        : []),
+      // 线索能直接对上的只有「场景边界」（新口径下用户只说场景名，客户/用途已不是表1-1 的项；
+      // 客户与用途分别落在表3-3 客户类型、表1-1 之外的诉求里）
       ...(brief.scope_hint
-        ? [{ item: "覆盖什么", content: brief.scope_hint, source: "用户诉求", source_type: "用户补充" as const }]
-        : []),
-      ...(brief.intent
-        ? [{ item: "核心用途", content: brief.intent, source: "用户诉求", source_type: "用户补充" as const }]
+        ? [{ item: "场景边界", content: brief.scope_hint, source: "用户诉求", source_type: "用户补充" as const }]
         : []),
     ];
   }

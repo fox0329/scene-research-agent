@@ -65,7 +65,9 @@ export function renderTableSpec(t: TableDef, category?: string): string {
   if (t.fixedRows) {
     lines.push("固定行（项 / 内容，逐行填写）：");
     for (const r of t.fixedRows) {
-      lines.push(`  - ${r.label}${r.required ? "（必填）" : ""}${r.confirmRequired ? "（需用户确认）" : ""}`);
+      lines.push(
+        `  - ${r.label}${r.required ? "（必填）" : ""}${r.owner === "用户" ? "（用户输入）" : ""}`,
+      );
     }
   }
   const mid = middleColumns(t, category);

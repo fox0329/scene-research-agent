@@ -20,7 +20,6 @@ import type { DbInstance } from "@scene/infra";
 import {
   buildStageSummary,
   checkStageCompleteness,
-  pendingConfirmationCount,
   type InfoRow,
   type StageCompleteness,
 } from "@scene/domain";
@@ -71,11 +70,7 @@ export function generateStageSummary(
 ): StageSummaryResult {
   const id = normalizeStage(stage);
   const rowsByTable = readStageRowsByTable(db, scenario.id, id);
-  const completeness = checkStageCompleteness({
-    stage: id,
-    rowsByTable,
-    pendingConfirmations: pendingConfirmationCount(rowsByTable),
-  });
+  const completeness = checkStageCompleteness({ stage: id, rowsByTable });
   const brief = readBrief(db, scenario.id);
   const productLine = db.productLineRepo.getById(scenario.product_line_id);
   const markdown = buildStageSummary({
@@ -101,11 +96,7 @@ export function getOrGenerateStageSummary(
   if (existing) {
     // 缓存命中也要给出最新完整度（缺口可能因编辑而变化）
     const rowsByTable = readStageRowsByTable(db, scenario.id, id);
-    const completeness = checkStageCompleteness({
-      stage: id,
-      rowsByTable,
-      pendingConfirmations: pendingConfirmationCount(rowsByTable),
-    });
+    const completeness = checkStageCompleteness({ stage: id, rowsByTable });
     return { markdown: existing.content, completeness, stage: id, cached: true };
   }
   return { ...generateStageSummary(db, scenario, id), cached: false };
@@ -119,11 +110,7 @@ export function stageCompletenessOf(
 ): StageCompleteness {
   const id = normalizeStage(stage);
   const rowsByTable = readStageRowsByTable(db, scenarioId, id);
-  return checkStageCompleteness({
-    stage: id,
-    rowsByTable,
-    pendingConfirmations: pendingConfirmationCount(rowsByTable),
-  });
+  return checkStageCompleteness({ stage: id, rowsByTable });
 }
 
 /**

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import type { DshClient, FollowEvent, ScenarioBrief } from "@scene/contract";
 import { createDb } from "@scene/infra";
-import { anchorConfirmRows } from "@scene/domain";
+import { anchorAgentRows } from "@scene/domain";
 import {
   readAnchorRows,
   ensureAnchorRows,
@@ -55,22 +55,31 @@ const brief = (scenarioId: string): ScenarioBrief => ({
 // ─── 锚行读写 ──────────────────────────────────────────────
 
 describe("scenario-anchor — 锚骨架", () => {
-  it("ensureAnchorRows 建 12 行骨架且幂等", () => {
+  it("ensureAnchorRows 建 6 行骨架（场景名称 + 5 项业务画像）且幂等", () => {
     const { db, scenarioId } = setup();
     const rows = ensureAnchorRows(db, scenarioId, "智慧水务");
-    expect(rows).toHaveLength(12);
+    expect(rows).toHaveLength(6);
     expect(rows[0]?.item).toBe("场景名称");
     expect(rows[0]?.content).toBe("智慧水务");
+    // 业务画像是智能体的活 → 建骨架时全空，等"整理成定义"时写
+    expect(rows.slice(1).every((r) => String(r.content ?? "") === "")).toBe(true);
+    expect(rows.slice(1).map((r) => r.item)).toEqual([
+      "场景边界",
+      "生产对象",
+      "核心生产系统",
+      "买方类型",
+      "采购特征",
+    ]);
     // 幂等：再次调用不新增
-    expect(ensureAnchorRows(db, scenarioId, "智慧水务")).toHaveLength(12);
-    expect(readAnchorRows(db, scenarioId)).toHaveLength(12);
+    expect(ensureAnchorRows(db, scenarioId, "智慧水务")).toHaveLength(6);
+    expect(readAnchorRows(db, scenarioId)).toHaveLength(6);
   });
 
   it("锚行落在 stage_data 的 stage=1 / table_code=表1-1", () => {
     const { db, scenarioId } = setup();
     ensureAnchorRows(db, scenarioId, "智慧水务");
     const stored = db.stageDataRepo.listByScenarioStage(scenarioId, 1);
-    expect(stored).toHaveLength(12);
+    expect(stored).toHaveLength(6);
     expect(stored.every((r) => r.table_code === "表1-1")).toBe(true);
   });
 });
@@ -79,11 +88,11 @@ describe("scenario-anchor — 锚行写入与派生缓存", () => {
   it("按 item upsert（不重复插入），并按固定行顺序返回", () => {
     const { db, scenarioId } = setup();
     ensureAnchorRows(db, scenarioId, "智慧水务");
-    writeAnchorRows(db, scenarioId, [{ item: "覆盖什么", content: "制水到输配" }]);
-    writeAnchorRows(db, scenarioId, [{ item: "覆盖什么", content: "制水到输配（含二次供水）" }]);
+    writeAnchorRows(db, scenarioId, [{ item: "场景边界", content: "制水到输配" }]);
+    writeAnchorRows(db, scenarioId, [{ item: "场景边界", content: "制水到输配（含二次供水）" }]);
     const rows = readAnchorRows(db, scenarioId);
-    expect(rows).toHaveLength(12);
-    expect(rows.find((r) => r.item === "覆盖什么")?.content).toBe("制水到输配（含二次供水）");
+    expect(rows).toHaveLength(6);
+    expect(rows.find((r) => r.item === "场景边界")?.content).toBe("制水到输配（含二次供水）");
   });
 
   it("内容被清空时，来源/确认态一并清掉（不留「空内容 + AI推断」的自相矛盾行）", () => {
@@ -108,12 +117,12 @@ describe("scenario-anchor — 锚行写入与派生缓存", () => {
     const { db, scenarioId } = setup();
     ensureAnchorRows(db, scenarioId, "智慧水务");
     writeAnchorRows(db, scenarioId, [
-      { item: "客户类型/行业", content: "市政水务集团" },
-      { item: "核心用途", content: "漏损监测" },
+      { item: "场景边界", content: "制水厂到管网末端" },
+      { item: "生产对象", content: "漏损监测与调度" },
     ]);
     const text = syncDerivedDescription(db, scenarioId);
-    expect(text).toContain("客户类型/行业：市政水务集团");
-    expect(text).toContain("核心用途：漏损监测");
+    expect(text).toContain("场景边界：制水厂到管网末端");
+    expect(text).toContain("生产对象：漏损监测与调度");
     expect(db.scenarioRepo.getById(scenarioId)?.description).toBe(text);
   });
 
@@ -163,9 +172,9 @@ describe("scenario-anchor — 场景诉求", () => {
 describe("scenario-anchor — 起草", () => {
   const draftJson = JSON.stringify({
     items: [
-      { item: "客户类型/行业", content: "市政水务集团", source_type: "AI提取", source: "《招标》p.2" },
-      { item: "覆盖什么", content: "制水到输配", source_type: "AI提取" },
-      { item: "核心用途", content: "漏损监测", source_type: "AI推断" },
+      { item: "场景边界", content: "制水厂到管网末端", source_type: "AI提取", source: "《招标》p.2" },
+      { item: "生产对象", content: "加药、过滤、加压输送", source_type: "AI提取" },
+      { item: "买方类型", content: "市政水务集团", source_type: "AI推断" },
       { item: "不存在的项", content: "应被丢弃", source_type: "AI提取" },
     ],
     open_questions: ["你说的智慧水务是供水还是排水？", "客户是集团还是市政部门？", "第三问", "第四问应被截断"],
@@ -174,7 +183,7 @@ describe("scenario-anchor — 起草", () => {
   it("normalizeDraftItems 丢弃非固定项，且 source_type 只接受 AI提取/AI推断", () => {
     const rows = normalizeDraftItems({
       items: [
-        { item: "客户类型/行业", content: "x", source_type: "用户确认" },
+        { item: "买方类型", content: "x", source_type: "用户确认" },
         { item: "乱写的项", content: "y", source_type: "AI提取" },
       ],
     });
@@ -194,13 +203,13 @@ describe("scenario-anchor — 起草", () => {
     expect(out.usedLlm).toBe(true);
     expect(out.openQuestions).toHaveLength(3);
     const rows = readAnchorRows(db, scenarioId);
-    expect(rows).toHaveLength(12);
-    expect(rows.find((r) => r.item === "客户类型/行业")?.content).toBe("市政水务集团");
-    expect(rows.find((r) => r.item === "客户类型/行业")?.source_type).toBe("AI提取");
-    expect(rows.find((r) => r.item === "核心用途")?.source_type).toBe("AI推断");
+    expect(rows).toHaveLength(6);
+    expect(rows.find((r) => r.item === "场景边界")?.content).toBe("制水厂到管网末端");
+    expect(rows.find((r) => r.item === "场景边界")?.source_type).toBe("AI提取");
+    expect(rows.find((r) => r.item === "买方类型")?.source_type).toBe("AI推断");
     expect(rows.some((r) => r.item === "不存在的项")).toBe(false);
     // 派生缓存已写入
-    expect(db.scenarioRepo.getById(scenarioId)?.description).toContain("市政水务集团");
+    expect(db.scenarioRepo.getById(scenarioId)?.description).toContain("制水厂到管网末端");
     // 对话与消息落库
     const conv = db.conversationRepo.getById(out.conversationId);
     expect(conv?.title).toBe("场景梳理");
@@ -213,14 +222,14 @@ describe("scenario-anchor — 起草", () => {
     const { db, scenarioId } = setup();
     ensureAnchorRows(db, scenarioId, "智慧水务");
     writeAnchorRows(db, scenarioId, [
-      { item: "客户类型/行业", content: "市政水务集团（含排水）", source_type: "用户确认" },
+      { item: "场景边界", content: "只做排水，不含供水", source_type: "用户确认" },
     ]);
     const scenario = db.scenarioRepo.getById(scenarioId)!;
     const dsh = mockDsh([{ type: "text", text: draftJson }, { type: "done" }]);
     await draftAnchor(db, dsh, scenario, brief(scenarioId));
     const rows = readAnchorRows(db, scenarioId);
-    expect(rows.find((r) => r.item === "客户类型/行业")?.content).toBe("市政水务集团（含排水）");
-    expect(rows.find((r) => r.item === "客户类型/行业")?.source_type).toBe("用户确认");
+    expect(rows.find((r) => r.item === "场景边界")?.content).toBe("只做排水，不含供水");
+    expect(rows.find((r) => r.item === "场景边界")?.source_type).toBe("用户确认");
   });
 
   it("LLM 失败时降级为按用户线索预填，不阻断", async () => {
@@ -236,10 +245,11 @@ describe("scenario-anchor — 起草", () => {
     const out = await draftAnchor(db, dsh, scenario, brief(scenarioId));
     expect(out.usedLlm).toBe(false);
     const rows = readAnchorRows(db, scenarioId);
-    expect(rows).toHaveLength(12);
+    expect(rows).toHaveLength(6);
     expect(rows.find((r) => r.item === "场景名称")?.content).toBe("智慧水务");
-    expect(rows.find((r) => r.item === "客户类型/行业")?.content).toBe("市政水务集团");
-    expect(rows.find((r) => r.item === "覆盖什么")?.source_type).toBe("用户补充");
+    // 降级只预填能从诉求直接对上的项：范围线索 → 场景边界（客户/用途已不是表1-1 的项）
+    expect(rows.find((r) => r.item === "场景边界")?.content).toBe("只看出厂到管网");
+    expect(rows.find((r) => r.item === "场景边界")?.source_type).toBe("用户补充");
     // 对话消息提示是降级态
     const msgs = db.messageRepo.list({ where: "conversation_id = ?", params: [out.conversationId] });
     expect(msgs[0]?.content).toContain("起草暂时不可用");
@@ -254,15 +264,15 @@ describe("scenario-anchor — 起草", () => {
     expect(b.conversationId).toBe(a.conversationId);
   });
 
-  it("起草后 L1 六项仍未被确认（起草不等于确认）", async () => {
+  it("起草后智能体写的 5 项仍不算用户确认（起草不等于确认）", async () => {
     const { db, scenarioId } = setup();
     const scenario = db.scenarioRepo.getById(scenarioId)!;
     const dsh = mockDsh([{ type: "text", text: draftJson }, { type: "done" }]);
     await draftAnchor(db, dsh, scenario, brief(scenarioId));
     const rows = readAnchorRows(db, scenarioId);
-    const l1 = anchorConfirmRows().map((r) => r.label);
-    const l1Rows = rows.filter((r) => l1.includes(r.item));
-    expect(l1Rows.length).toBeGreaterThan(0);
-    expect(l1Rows.every((r) => r.source_type !== "用户确认")).toBe(true);
+    const agentLabels = anchorAgentRows().map((r) => r.label);
+    const agentRows = rows.filter((r) => agentLabels.includes(r.item));
+    expect(agentRows.length).toBeGreaterThan(0);
+    expect(agentRows.every((r) => r.source_type !== "用户确认")).toBe(true);
   });
 });

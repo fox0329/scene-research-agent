@@ -60,7 +60,7 @@ describe("POST /projects — 场景诉求随建场景写入", () => {
     expect(res.statusCode).toBe(200);
     const body = res.json() as { brief: { intent: string } | null; anchor: unknown[] };
     expect(body.brief?.intent).toBe("想搞清楚这个场景值不值得进");
-    expect(body.anchor).toHaveLength(12);
+    expect(body.anchor).toHaveLength(6);
   });
 
   it("不带 intent 时不建诉求（保持旧调用兼容），但仍预建锚骨架", async () => {
@@ -68,7 +68,7 @@ describe("POST /projects — 场景诉求随建场景写入", () => {
     const res = await app.inject({ method: "GET", url: `/api/v1/projects/${id}/brief` });
     const body = res.json() as { brief: unknown; anchor: unknown[] };
     expect(body.brief).toBeNull();
-    expect(body.anchor).toHaveLength(12);
+    expect(body.anchor).toHaveLength(6);
   });
 });
 
@@ -112,16 +112,27 @@ describe("PUT /projects/:id/anchor — 逐格写入与派生缓存", () => {
       url: `/api/v1/projects/${id}/anchor`,
       payload: {
         rows: [
-          { item: "客户类型/行业", content: "市政水务集团", source_type: "用户确认" },
-          { item: "核心用途", content: "漏损监测", source_type: "AI提取" },
+          { item: "场景边界", content: "制水厂到管网末端", source_type: "用户确认" },
+          { item: "生产对象", content: "漏损监测与调度", source_type: "AI提取" },
         ],
       },
     });
     expect(res.statusCode).toBe(200);
     const body = res.json() as { rows: unknown[]; description: string };
-    expect(body.rows).toHaveLength(12);
-    expect(body.description).toContain("客户类型/行业：市政水务集团");
-    expect(db.scenarioRepo.getById(id)?.description).toContain("核心用途：漏损监测");
+    expect(body.rows).toHaveLength(6);
+    expect(body.description).toContain("场景边界：制水厂到管网末端");
+    expect(db.scenarioRepo.getById(id)?.description).toContain("生产对象：漏损监测与调度");
+  });
+
+  it("推表1-1 里没有的项 → 400（旧 12 项制的残项不许再落库）", async () => {
+    const id = await createProject({ name: "智慧水务" });
+    const res = await app.inject({
+      method: "PUT",
+      url: `/api/v1/projects/${id}/anchor`,
+      payload: { rows: [{ item: "价值主张", content: "x" }] },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toContain("价值主张");
   });
 
   it("rows 非数组返回 400", async () => {
@@ -148,12 +159,14 @@ describe("POST /projects/:id/brief/draft", () => {
       name: "智慧水务",
       intent: "看值不值得进",
       customer_hint: "市政水务集团",
+      scope_hint: "只看出厂到管网",
     });
     const res = await app.inject({ method: "POST", url: `/api/v1/projects/${id}/brief/draft` });
     expect(res.statusCode).toBe(200);
     const body = res.json() as { rows: { item: string; content: string }[]; used_llm: boolean };
-    expect(body.rows).toHaveLength(12);
+    expect(body.rows).toHaveLength(6);
     expect(body.used_llm).toBe(false); // mock 无 JSON 输出 → 降级
-    expect(body.rows.find((r) => r.item === "客户类型/行业")?.content).toBe("市政水务集团");
+    // 降级预填只对得上「场景边界」（客户/用途已不是表1-1 的项，客户在表3-3 查）
+    expect(body.rows.find((r) => r.item === "场景边界")?.content).toBe("只看出厂到管网");
   });
 });

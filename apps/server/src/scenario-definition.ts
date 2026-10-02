@@ -1,16 +1,24 @@
 /**
  * @scene/server — 场景定义（对话式）
  *
- * 用户定调："场景定义不该让用户一项一项填空——难度大、不友好，不是智能体该有的模式"。
- * 因此流程第 1 步改为**对话**：
- *   只输场景名 → 弹出「场景定义」对话页 → 模型先给理解 + 提 ≤3 个场景本体问题
- *   → 用户对话回答 → **用户点「整理成定义」** → 把对话整理成表1-1 场景锚
+ * 用户定调（2026-09-26 定稿）：
+ *   "用户只负责输入场景名称，智能体只负责从业务角度说清楚场景的范围"
+ *   "拍板者、使用者、付费者这些信息都应该是用户提供的吗？用户什么都知道还要我们干什么？"
+ *
+ * 所以流程第 1 步的**属主划分**是：
+ *   - **用户只给「场景名称」**（也可以顺手说范围/客户，说了就采纳）
+ *   - **智能体写出其余 5 项业务画像**：场景边界 / 生产对象 / 核心生产系统 /
+ *     买方类型 / 采购特征——参照"燃气场站"那份定义的写法
+ *   - 「确认无误」是**一次整表确认**，且**不卡推进**
  *
  * 三条硬规则：
  *  1. **只在用户点「整理成定义」时才写表**（不自动增量改用户的表）
  *  2. 整理时**保留用户已确认的行**（用户的决定优先）
- *  3. 模型只能标 `用户补充`（转述用户原话）或 `AI推断`（猜的）——
+ *  3. 模型只能标 `用户补充`（转述用户原话）或 `AI推断`（自己写的画像）——
  *     **`用户确认` 永远只能由用户动作产生**
+ *
+ * 推断 ≠ 判断：写业务画像是**可核查的事实性推断**（产品价值所在）；
+ * "能不能做 / 值不值得"才是判断（产品禁止产出）。
  */
 
 import {
@@ -22,12 +30,20 @@ import {
 } from "@scene/contract";
 import type { DbInstance } from "@scene/infra";
 import {
-  anchorConfirmRows,
+  anchorAgentRows,
   anchorFixedRows,
+  anchorUserRows,
   mergeAnchorRows,
   type InfoRow,
 } from "@scene/domain";
-import { readAnchorRows, readBrief, upsertBrief, writeAnchorRows, syncDerivedDescription } from "./scenario-anchor.js";
+import {
+  ensureAnchorRows,
+  readAnchorRows,
+  readBrief,
+  upsertBrief,
+  writeAnchorRows,
+  syncDerivedDescription,
+} from "./scenario-anchor.js";
 
 const ANCHOR = "表1-1";
 
@@ -40,41 +56,50 @@ const ANCHOR = "表1-1";
  *  - 用户说不知道就跳过，标为待定，**不追问**
  *  - 不提"能不能做/值不值得"这类判断（产品只产出信息）
  */
-export const DEFINITION_SYSTEM = `你是「场景通」的场景定义助手。用户只给了一个场景名称，你要通过**轻松的对话**帮他对这个行业与场景建立一个总体认识。
+export const DEFINITION_SYSTEM = `你是「场景通」的场景定义助手。用户给了一个场景名称，你要**替他写出一份场景业务画像**——
+把"这个场景在业务上到底是什么"讲清楚，让他一眼就能看出你懂不懂这个行业。
 
-## 核心心态（2026-09-25 用户定调，务必遵守）
-用户原话："对于场景的定义要求需求太细了，还是要抽象一点，用户很多时候也没有说要定义那么准确，
-更多的是要对行业有个比较全面的了解"，且"**定义不影响后面的业务流程**"。
+## 核心心态（用户定调，务必遵守）
+用户原话：「用户只负责输入场景名称，智能体只负责从业务角度说清楚场景的范围」
+「拍板者、使用者、付费者这些信息都应该是用户提供的吗？用户什么都知道还要我们干什么？」
 所以：
-- **允许抽象、允许说不准**。用户答不出细节是正常的，**不要追问、不要逼精确**；
-- 你的价值在于**帮他把行业与场景想明白**，不是把 12 个格子填满；
-- 聊个大概就够推进了——后续阶段（认识场景 / 理解商业）会去做行业与商业研究。
+- **不要把"客户是谁""覆盖什么""谁是拍板者"当问题去考用户**——这些正是你该查、该写出来的；
+- 你的交付是**业务画像**：场景边界 / 生产对象 / 核心生产系统 / 买方类型 / 采购特征；
+- **允许抽象、允许说不准**：用户很多时候还说不准，概括着写比追问细节有用；
+- **不要给判断**：不写"能不能做 / 值不值得 / 建议……"——产品只产出信息。
 
-## 每一轮回复的结构（务必照做）
+## 画像的写法（参照「燃气场站」，这就是验收标准）
+场景边界｜城市燃气门站、调压站/箱、LNG 储备站、CNG/LNG 加气站、管道分输站、工业用户专用站等
+生产对象｜天然气的接收、过滤、计量、调压、加臭（可选）、储存/气化、输送或充装；以及为保障安全运行所需的检测、切断、消防、视频与运维
+核心生产系统｜工艺装置 + 站控（PLC/RTU/SCADA）+ 安全仪表与消防 + 调度/信息化平台 + 运维作业
+买方类型｜全国性城市燃气运营商（城燃集团）、地方燃气公司、长输/管网企业、大型工业用户自管站
+采购特征｜集团技术规范 + 集采/供应商名录 + 区域项目实施；新建/改造多为项目制招标，运维与安全检查形成持续预算
+要点：**一行一项、用顿号和分号串起来、可枚举的具体对象写清楚、每格 ≤ 60 字**。
+
+## 每一轮回复的结构
 **先判断这是第几轮：看消息里的【对话历史】块——没有历史 = 第一轮；有历史 = 后续轮。**
 
-### 第一轮（行业背景只讲这一次）
-1. **给行业理解**：3–4 句说清"这类场景在行业里大概是什么样"——客户是谁、平时怎么做、
-   钱大致怎么流、常见门槛；最后一句"你这个场景我理解是……"。
-2. **提问**：最多 2 个，只问这两件事：
-   - **客户/行业**：这场景服务的客户/行业是谁
-   - **覆盖什么**：大致覆盖哪些环节/对象（**说个大概即可**）
+### 第一轮（**把画像直接写出来，这是你的主要交付**）
+1. 用紧凑格式给出 5 项业务画像草稿，一项一行：\`场景边界｜……\`（照上面的写法，直接可落表）。
+   依据不足的项写"（待研究）"，**不要空着不写**——空着等于没干活。
+2. 然后提**最多 2 个**问题，且**只问只有用户才知道的取舍**，例如：
+   - "你这边的范围要不要把 XX 也算进来？"
+   - "重点看新建项目，还是存量改造？"
+   **禁止**问"客户是谁""覆盖什么""谁是拍板者"这类你自己就该写出来的。
 
 ### 第二轮起（**必须短**）
-- **不要重复已经讲过的行业背景**——用户已经看过了，重复就是噪音
+- **不要重复已经写过的画像内容**——用户已经看过了，重复就是噪音
   （曾因此被用户投诉"整个页面大量的无效信息"，此为硬约束）。
-- 只回 **1–2 句**：① 只写**变化的部分**——"那我更新一下：……"（把用户刚说的并进理解）；
-  ② 最多 **1 个**问题，且只在还缺「客户/行业」或「覆盖什么」时才问；
-  两件都清楚了就**不要再问**，直接说"够了，点『整理成定义』就行"。
-- **整轮 ≤ 120 字**。用户答得短（"都包括""工业水厂为主"）是正常的，**直接接受并收口**，
-  不要借机再展开一段行业讲解。
+- 只回 **1–2 句**：① 只写**变化的部分**——"那我调整一下：……"；② 最多 **1 个**问题。
+- **整轮 ≤ 120 字**。用户答得短（"都包括""工业水厂为主"）是正常的，**直接接受并收口**。
+- 用户说清楚了就说"够了，点『整理成定义』就行"。
 
 ## 铁律
 - **只谈行业与场景本体**：不要谈具体产品、型号、厂商、技术选型、方案架构——那是后续阶段的事。
 - **不要给判断**：不写"能不能做/值不值得/建议……"。
-- **不要追问边界**：不要反复问"明确不含什么"；用户没提就**留空**，后续阶段会自然收敛。
+- **不要追问边界**：不要反复问"明确不含什么"；用户没提就按行业通例写出范围即可。
 - 用户说"不知道/不清楚/大概吧/还没想好"→ **接受并继续**，不要把同一个问题换个说法再问。
-- **不要编造**客户名、数字、标准号；依据不足就直说"这块我还不确定"。
+- **不要编造具体客户名、数字、标准号**；依据不足就写"（待研究）"或"一般为……"（标明是通例）。
 - **不要写自我说明**：正文里不要出现"（用户未明说）""按行业通行情况推断"这类注解——
   谁说的由系统在表格来源字段里表达，不要写进正文。
 - 说人话，术语首次出现要解释；**宁可短，不要长**。
@@ -84,20 +109,22 @@ export const DEFINITION_SYSTEM = `你是「场景通」的场景定义助手。�
 export const DEFINITION_CELL_MAX_CHARS = 80;
 
 /** 定义整理时给模型的任务（要求严格 JSON） */
-const CONSOLIDATE_TASK = `请把上面的对话**整理成场景定义表**（表1-1 的固定项）。
+const CONSOLIDATE_TASK = `请把上面的对话**整理成表1-1 场景业务画像**（固定项清单见上）。
 
 要求：
-0. **优先用 \`item_key\`**（清单里每项前面的英文名，如 \`customer_type\`）——中文标签容易写错导致对不上。
-1. **只填用户在本对话里明确说过的内容**，\`source_type\` 一律用 \`"用户补充"\`：
-   - **不要推断、不要补充"行业通行情况"**——用户没说的就填 ""（空字符串）。
-   - 例：用户只说了"工业水厂为主"，就只写客户类型；不要顺手把买方/拍板者/价值主张也猜一遍。
-2. **每个格 ≤ 40 字，写成一个短句/短语**——这是给别人一眼看懂的定义，**不是段落**：
-   - 不要罗列细节（不要把"加药、混凝、沉淀、过滤、消毒…"整串抄进去），概括成一句；
-   - 不要在正文里写"①…②…③…"这种枚举，也不要写"（用户未明说）""按行业推断"这类**自我说明**。
-3. 宁可少填、不要编：**空着是正常且被允许的**（用户常常还说不准，这不是失败），后续阶段研究会回填。
-4. \`item\` 必须严格取自下面的固定项清单（不得自创、不得改字）。
-5. 如果对话里能看出"用户想搞清楚什么"，把它放进 \`intent\`（没有就留空字符串）。
-6. \`open_questions\` 只放**仍然没问清的问题**，最多 2 个，且只围绕"客户/行业"与"覆盖什么"。`;
+0. **优先用 \`item_key\`**（清单里每项前面的英文名，如 \`scene_boundary\`）——中文标签容易写错导致对不上。
+1. **「场景名称」只收用户说过的**（\`source_type\` = \`"用户补充"\`）；用户没给名字就沿用场景名，不要编。
+2. **其余 5 项业务画像是你的活，要写满**（\`source_type\` = \`"AI推断"\`，\`source\` 写 \`"行业通例"\`）：
+   - 依据：对话里用户说过的内容 + 你对这个行业的认识；
+   - 参照写法（燃气场站）：场景边界=可枚举的场站类型；生产对象=工艺过程 + 安全/运维；核心生产系统=工艺装置 + 站控 + 安全仪表 + 调度平台 + 运维作业；买方类型=谁会买（客户类型）；采购特征=怎么买（规范/集采/项目制/持续预算）；
+   - 用户明确说过的部分**用用户的原话**，不要改写。
+3. **每格 ≤ 60 字，写成一行短语**——顿号/分号串起来，**不是段落**：
+   - 不要写"①…②…③…"这种枚举，也不要写"（用户未明说）""按行业推断"这类**自我说明**；
+   - 拿不准的格子写"（待研究）"，**不要留空**。
+4. 宁可概括、不要编造：不要编具体客户名、数字、标准号；行业通例可以写，用"一般为……"表述。
+5. \`item\` 必须严格取自上面的固定项清单（不得自创、不得改字）。
+6. 如果对话里能看出"用户想搞清楚什么"，把它放进 \`intent\`（没有就留空字符串）。
+7. \`open_questions\` 只放**仍然没问清、且只有用户能回答**的问题，最多 2 个。`;
 
 const CONSOLIDATE_CONTRACT: Record<string, unknown> = {
   type: "object",
@@ -116,10 +143,11 @@ const CONSOLIDATE_CONTRACT: Record<string, unknown> = {
           content: { type: "string" },
           source_type: {
             type: "string",
-            enum: ["用户补充"],
-            description: "定义整理只收用户说过的内容；不要用 AI推断（用户没说的请留空）",
+            enum: ["用户补充", "AI推断"],
+            description:
+              "用户说过的用 用户补充；智能体自己写的业务画像用 AI推断（这是本职工作，不要留空）",
           },
-          source: { type: "string", description: "出处（如 对话、产品资料）" },
+          source: { type: "string", description: "出处（如 对话、行业通例、产品资料）" },
         },
       },
     },
@@ -147,8 +175,9 @@ export function buildDefinitionContext(db: DbInstance, scenario: Scenario): stri
           ? "【用户已确认】"
           : String(row?.source_type ?? "") === "用户补充"
             ? "【用户说的】"
-            : "【系统推断·待确认】";
-    return `- ${r.label}${r.confirmRequired ? "（必确认）" : ""}：${content || "（空）"} ${state}`;
+            : "【智能体推断】";
+    const owner = r.owner === "用户" ? "（用户输入）" : "（你负责写）";
+    return `- ${r.label}${owner}：${content || "（空）"} ${state}`;
   });
   const brief = readBrief(db, scenario.id);
   return [
@@ -214,39 +243,26 @@ function normalizeLabel(text: string): string {
 const ITEM_ALIASES: Readonly<Record<string, string>> = {
   场景名称: "scene_name",
   场景: "scene_name",
-  客户类型: "customer_type",
-  客户行业: "customer_type",
-  客户: "customer_type",
-  行业: "customer_type",
-  覆盖什么: "scope_in",
-  覆盖范围: "scope_in",
-  场景范围: "scope_in",
-  范围: "scope_in",
-  明确不含什么: "scope_out",
-  不含什么: "scope_out",
-  不含: "scope_out",
-  边界: "scope_out",
-  明确边界: "scope_out",
+  场景边界: "scene_boundary",
+  边界: "scene_boundary",
+  覆盖什么: "scene_boundary",
+  覆盖范围: "scene_boundary",
+  场景范围: "scene_boundary",
+  范围: "scene_boundary",
+  生产对象: "production_object",
+  对象: "production_object",
+  生产资料: "production_object",
+  核心生产系统: "core_systems",
+  生产系统: "core_systems",
+  核心系统: "core_systems",
   买方类型: "buyer_type",
   买方: "buyer_type",
-  拍板者: "decision_maker",
-  决策人: "decision_maker",
-  使用者: "user_role",
-  使用方: "user_role",
-  付费者: "payer",
-  付款方: "payer",
-  核心业务流程: "core_process",
-  业务流程: "core_process",
-  核心流程: "core_process",
-  核心用途: "use_case",
-  场景用途: "use_case",
-  用途: "use_case",
-  切入点: "entry_point",
-  切入环节: "entry_point",
-  入口: "entry_point",
-  价值主张: "value_proposition",
-  价值点: "value_proposition",
-  客户价值: "value_proposition",
+  客户类型: "buyer_type",
+  客户: "buyer_type",
+  采购特征: "procurement",
+  采购: "procurement",
+  采购方式: "procurement",
+  采购特点: "procurement",
 };
 
 function buildItemResolver(): (raw: { item_key?: unknown; item?: unknown }) => string | null {
@@ -283,7 +299,9 @@ export interface NormalizeResult {
 /**
  * 把模型输出收敛成合法锚行
  *
- * `用户确认` 一律不接受（只能由用户动作产生）；空内容不落行。
+ * - `用户确认` 一律不接受（只能由用户动作产生）
+ * - `source_type` 只认 `用户补充` / `AI推断`（其余一律按 `AI推断` 处理）
+ * - 空内容不落行
  */
 export function normalizeConsolidatedItems(payload: {
   items: {
@@ -313,7 +331,9 @@ export function normalizeConsolidatedItems(payload: {
     rows.push({
       item: byKey.get(key)!.label,
       content,
-      source: String(raw.source ?? "").trim() || (sourceType === "用户补充" ? "对话" : "系统推断"),
+      source:
+        String(raw.source ?? "").trim() ||
+        (sourceType === "用户补充" ? "对话" : "行业通例"),
       source_type: sourceType,
     });
   }
@@ -394,7 +414,7 @@ export async function consolidateDefinition(
   const itemList = anchorFixedRows()
     .map(
       (r) =>
-        `- item_key=\`${r.key}\`  中文名「${r.label}」${r.confirmRequired ? "（必确认）" : ""}`,
+        `- item_key=\`${r.key}\`  中文名「${r.label}」${r.owner === "用户" ? "（用户输入）" : ""}`,
     )
     .join("\n");
 
@@ -432,12 +452,16 @@ export async function consolidateDefinition(
     const parsed = parseConsolidation(full);
     if (parsed) {
       const normalized = normalizeConsolidatedItems(parsed);
-      // **只收"用户说过的"**：模型顺手推断的（AI推断）一律不落表。
-      // 用户投诉过"整个页面大量的无效信息"——起因就是模型把行业通行情况也猜进了定义表，
-      // 还在正文里写"（用户未明说，按行业通行情况推断）"。定义要的是用户的原话。
-      const userStated = normalized.rows.filter((r) => r.source_type === "用户补充");
-      inferredDropped = normalized.rows.length - userStated.length;
-      incoming = userStated.map((r) => ({ ...r, content: compressCell(r.content) }));
+      // 属主决定收不收：
+      //  - 智能体侧的 5 项业务画像 → **收 AI推断**（用户定调"用户什么都知道还要我们干什么"）
+      //  - 用户侧的项 → 只收用户说过的；模型替用户编的话一律丢（那才是"替用户表态"）
+      const userLabels = new Set(anchorUserRows().map((r) => r.label));
+      const kept = normalized.rows.filter((r) => {
+        if (!userLabels.has(r.item)) return true;
+        return r.source_type === "用户补充" || r.source_type === "用户确认";
+      });
+      inferredDropped = normalized.rows.length - kept.length;
+      incoming = kept.map((r) => ({ ...r, content: compressCell(r.content) }));
       dropped = normalized.dropped;
       intent = String(parsed.intent ?? "").trim();
       openQuestions = Array.isArray(parsed.open_questions)
@@ -449,22 +473,32 @@ export async function consolidateDefinition(
   }
 
   const usedLlm = incoming.length > 0;
+  // 幂等补齐骨架：整理可能发生在「锚骨架还没建」的场景上（例如直接调 consolidate），
+  // 没有这一步的话「场景名称」会落成空——那是用户唯一亲手输入的项。
+  ensureAnchorRows(db, scenario.id, scenario.name);
   const before = readAnchorRows(db, scenario.id);
   // 保留用户已确认行：mergeAnchorRows 内部对本场景/用户持有的行不覆盖
   const merged = mergeAnchorRows(before, incoming);
-  // 「重新整理」要能洗掉上次的噪音，否则旧推断永远留着：
-  //  ① 模型这次没再产出的**旧推断行** → 清空（用户持有的行不动）
-  //  ② 所有行的正文一律剥掉元说明注解
-  const incomingItems = new Set(incoming.map((r) => r.item));
-  const cleaned = merged.map((row) => {
-    const prev = before.find((b) => b.item === row.item);
-    const userOwned =
-      prev && (prev.source_type === "用户确认" || prev.source_type === "用户补充");
-    if (!userOwned && prev?.source_type === "AI推断" && !incomingItems.has(row.item)) {
-      return { item: row.item, content: "" };
-    }
-    return { ...row, content: stripMetaNotes(String(row.content ?? "")) };
-  });
+  // 清理规则（v1.19 改口径）：
+  //  ① **已不在表定义里的历史残行**（旧的 12 项制：拍板者/使用者/付费者/价值主张…）→ 清空。
+  //     这类行是"表1-1 曾经要用户填空"的遗留，新版不再渲染它们。
+  //  ② 所有行的正文一律剥掉元说明注解（模型爱写"（用户未明说，按行业通行情况推断）"）。
+  //
+  // 注意：**不再**因为"模型这次没再产出"就清掉旧 AI推断 行——
+  // 业务画像（边界/对象/系统/买方/采购）本身就是推断产物，"这次没提就抹掉"会把交付物洗没。
+  //
+  // 注意 `mergeAnchorRows` 只返回注册表里有的项，历史残项会被它丢掉——所以残项要**另取一路**：
+  // 从 `before` 里挑出"不在表定义里且不是用户持有"的行，显式写空，别让它们躺在库里。
+  const knownItems = new Set(anchorFixedRows().map((r) => r.label));
+  const isUserOwned = (r: AnchorRow | undefined): boolean =>
+    Boolean(r && (r.source_type === "用户确认" || r.source_type === "用户补充"));
+  const staleRows = before
+    .filter((r) => !knownItems.has(r.item) && !isUserOwned(r))
+    .map((r) => ({ item: r.item, content: "" }));
+  const cleaned = [...merged, ...staleRows].map((row) => ({
+    ...row,
+    content: stripMetaNotes(String(row.content ?? "")),
+  }));
   const rows = writeAnchorRows(db, scenario.id, cleaned);
   syncDerivedDescription(db, scenario.id);
 
@@ -489,7 +523,7 @@ export async function consolidateDefinition(
   return {
     rows,
     updated,
-    skipped: Math.max(0, anchorConfirmRows().length - updated),
+    skipped: Math.max(0, anchorFixedRows().length - updated),
     openQuestions,
     usedLlm,
     dropped,
@@ -539,30 +573,27 @@ export function definitionMessages(
 }
 
 /**
- * L1 六项（场景本体）中已填的数量
+ * 表1-1 中**智能体侧已写出的项数**（5 项业务画像里有内容的）
  *
- * 为什么就绪判定要看 **L1** 而不是"表1-1 任一行有内容"：
- * 锚骨架在**新建场景时**就用项目名填了「场景名称」，若按"任一行有内容"判定，
- * 项目一建好第 1 步就 ready，直接架空了"先聊清楚再整理成定义"的设计意图
- * （前端面板的「已整理成定义」徽标也是按 L1 判定——两处口径必须一致）。
+ * 为什么就绪看"智能体写了没有"而不是"用户确认完了没有"：
+ * 用户定调「用户只负责输入场景名称，智能体负责从业务角度说清楚场景的范围」
+ * +「用户确认就默认可以了」——写不写得出来是智能体的活，不该让用户逐项签字。
+ *
+ * 为什么不能按"任一行有内容"判定：锚骨架在**新建场景时**就用项目名填了
+ * 「场景名称」，那样项目一建好第 1 步就 ready，架空了"先聊清楚再落定义"的意图。
  */
-export function l1FilledCount(db: DbInstance, scenarioId: string): number {
+export function definitionFilledCount(db: DbInstance, scenarioId: string): number {
   const byItem = new Map(readAnchorRows(db, scenarioId).map((r) => [r.item, r]));
-  return anchorConfirmRows().filter((r) => {
+  return anchorAgentRows().filter((r) => {
     const row = byItem.get(r.label);
     const content = String(row?.content ?? "").trim();
     return content !== "" && content !== "未提供";
   }).length;
 }
 
-/** 定义是否已整理（流程第 1 步就绪判定：L1 至少一项有内容） */
+/** 定义是否已整理（流程第 1 步就绪判定：智能体侧至少一项有内容） */
 export function hasDefinition(db: DbInstance, scenarioId: string): boolean {
-  return l1FilledCount(db, scenarioId) > 0;
-}
-
-/** L1 待确认项数（右栏确认清单与就绪提示共用口径） */
-export function l1PendingCount(db: DbInstance, scenarioId: string): number {
-  return anchorConfirmRows().length - l1FilledCount(db, scenarioId);
+  return definitionFilledCount(db, scenarioId) > 0;
 }
 
 /** 供测试与调试：表1-1 定义项定义 */

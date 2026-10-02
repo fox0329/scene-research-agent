@@ -31,7 +31,6 @@ import {
   advance,
   LAST_STAGE,
   checkStageCompleteness,
-  pendingConfirmationCount,
   gapsBrief,
   validateIncomingRows,
 } from "@scene/domain";
@@ -263,11 +262,7 @@ async function* executeAdvanceStage(
       .list({ where: "scenario_id = ? AND table_code = ?", params: [scenarioId, t.code] })
       .map((r) => r.row as InfoRow);
   }
-  const completeness = checkStageCompleteness({
-    stage: effectiveStage,
-    rowsByTable,
-    pendingConfirmations: pendingConfirmationCount(rowsByTable),
-  });
+  const completeness = checkStageCompleteness({ stage: effectiveStage, rowsByTable });
   yield emit({ type: "completeness", stage, completeness, violations });
 
   // 10. 右栏阶段总结文档（确定性生成，不额外调用模型）
