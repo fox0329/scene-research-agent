@@ -61,9 +61,8 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
   /** 联真流程状态（服务端算好的就绪判定） */
   const [liveFlow, setLiveFlow] = useState<ApiFlowStatus | null>(null);
   const [flowError, setFlowError] = useState<string | null>(null);
-  /** 演示流程状态（本地内存：completed + 是否解锁全部） */
+  /** 演示流程状态（本地内存：已完成的步骤号） */
   const [demoCompleted, setDemoCompleted] = useState<readonly number[]>([]);
-  const [demoUnlockedAll, setDemoUnlockedAll] = useState(false);
   const [demoAnchor, setDemoAnchor] = useState<ApiAnchorRow[]>(DEMO_ANCHOR);
   /** null = 跟随当前步；数字 = 用户正在回看的某一步 */
   const [activeStep, setActiveStep] = useState<number | null>(null);
@@ -75,10 +74,9 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
     () =>
       buildDemoFlowStatus({
         completed: demoCompleted,
-        unlockedAll: demoUnlockedAll,
         anchor: demoAnchor,
       }),
-    [demoCompleted, demoUnlockedAll, demoAnchor],
+    [demoCompleted, demoAnchor],
   );
   const flow = live ? liveFlow : demoFlow;
   const step = activeStep ?? flow?.currentStep ?? 1;
@@ -173,25 +171,6 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
     },
     [busy, live, project.id, onProjectsChanged, showToast],
   );
-
-  /** 解锁全部步骤（默认锁步推进；着急或只想看某一步时用） */
-  const handleUnlockAll = useCallback(async () => {
-    if (busy || flow?.unlockedAll) return;
-    setBusy(true);
-    try {
-      if (live) {
-        const f = await api.unlockAllSteps(project.id);
-        setLiveFlow(f);
-      } else {
-        setDemoUnlockedAll(true);
-      }
-      showToast("已解锁全部步骤，可直接点任一节点查看");
-    } catch (err: unknown) {
-      showToast(`解锁失败：${err instanceof Error ? err.message : String(err)}`);
-    } finally {
-      setBusy(false);
-    }
-  }, [busy, live, project.id, flow?.unlockedAll, showToast]);
 
   /** 演示态：确认 / 修改锚行（只改本地内存） */
   /**
@@ -399,7 +378,6 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
           busy={busy}
           onSelectStep={setActiveStep}
           onComplete={() => void handleComplete()}
-          onUnlockAll={() => void handleUnlockAll()}
         />
       ) : (
         <div className="flow-rail">

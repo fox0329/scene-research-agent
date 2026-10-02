@@ -424,6 +424,60 @@ describe("会话路由", () => {
 
 // ─── 资料库路由 ────────────────────────────────────────────
 
+describe("场景资料来源（v2.9 默认引用 + 可取消）", () => {
+  let h: Harness;
+  beforeEach(() => {
+    h = makeHarness();
+  });
+
+  it("新建场景默认引用全部通用库（不做任何操作就是勾选态）", async () => {
+    const shared = h.db.productLineRepo.insert({ name: "基础产品资料" });
+    const { scenarioId } = seedScenario(h.db, "默认引用场景");
+    const res = await h.app.inject({
+      method: "GET",
+      url: `/api/v1/projects/${scenarioId}/material-sources`,
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { linked: { id: string }[] };
+    expect(body.linked.map((l) => l.id)).toContain(shared.id);
+  });
+
+  it("PUT 勾选集合：取消的那个通用库被排除，再勾回来恢复", async () => {
+    const a = h.db.productLineRepo.insert({ name: "基础产品资料" });
+    const b = h.db.productLineRepo.insert({ name: "行业参考库" });
+    const { scenarioId } = seedScenario(h.db, "取消引用场景");
+    const url = `/api/v1/projects/${scenarioId}/material-sources`;
+
+    // 只勾 a（= 取消 b）
+    await h.app.inject({ method: "PUT", url, payload: { linked_line_ids: [a.id] } });
+    let linked = (
+      (await h.app.inject({ method: "GET", url })).json() as { linked: { id: string }[] }
+    ).linked.map((l) => l.id);
+    expect(linked).toContain(a.id);
+    expect(linked).not.toContain(b.id);
+
+    // 两个都勾回来
+    await h.app.inject({ method: "PUT", url, payload: { linked_line_ids: [a.id, b.id] } });
+    linked = (
+      (await h.app.inject({ method: "GET", url })).json() as { linked: { id: string }[] }
+    ).linked.map((l) => l.id);
+    expect(linked).toEqual(expect.arrayContaining([a.id, b.id]));
+  });
+
+  it("专属库不可被引用 → 400", async () => {
+    const { scenarioId } = seedScenario(h.db, "专属库场景");
+    // 专属库 = product_line.scenario_id 指向某个场景
+    const own = h.db.productLineRepo.insert({ name: "某场景专属库" });
+    h.db.productLineRepo.update(own.id, { scenario_id: scenarioId } as never);
+    const res = await h.app.inject({
+      method: "PUT",
+      url: `/api/v1/projects/${scenarioId}/material-sources`,
+      payload: { linked_line_ids: [own.id] },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+});
+
 describe("资料库路由", () => {
   let h: Harness;
   let plId: string;

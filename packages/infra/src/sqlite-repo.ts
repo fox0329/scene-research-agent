@@ -123,9 +123,10 @@ function runMigrations(db: Database.Database): void {
   if (!scCols.some((c) => c.name === "description")) {
     db.exec("ALTER TABLE scenario ADD COLUMN description TEXT");
   }
-  // v1.5 流程推进：是否已「解锁全部步骤」（默认锁步）
-  if (!scCols.some((c) => c.name === "flow_unlocked_all")) {
-    db.exec("ALTER TABLE scenario ADD COLUMN flow_unlocked_all INTEGER NOT NULL DEFAULT 0");
+  // v2.9：通用库引用改为「默认引用 + 显式取消」，存量行默认 excluded = 0（= 引用）
+  const linkCols = db.pragma("table_info(scenario_linked_line)") as { name: string }[];
+  if (!linkCols.some((c) => c.name === "excluded")) {
+    db.exec("ALTER TABLE scenario_linked_line ADD COLUMN excluded INTEGER NOT NULL DEFAULT 0");
   }
 }
 

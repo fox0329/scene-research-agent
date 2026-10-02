@@ -64,20 +64,27 @@ const done = await rail.locator(".flow-node--done").count();
 const current = await rail.locator(".flow-node--current").count();
 const locked = await rail.locator(".flow-node--locked").count();
 const ready = await rail.locator(".flow-node--ready").count();
-// 锁步：可推进只在「解锁全部」后出现；四态之和恒等于节点数
+// 锁步推进：四态之和恒等于节点数
 ok(
   "4 流程轴四态渲染（已完成/当前/可推进/未解锁）",
   current === 1 && done + current + locked + ready === nodes,
   `done=${done} current=${current} ready=${ready} locked=${locked}（共 ${nodes} 节点）`,
 );
-// 解锁全部后未解锁数应为 0，且按钮显示已解锁
-const unlockedAll = (await rail.getByRole("button", { name: "已解锁全部步骤" }).count()) === 1;
-if (unlockedAll) {
-  ok("4c 已解锁全部：未解锁节点为 0", locked === 0);
-}
 
-const completeBtn = rail.getByRole("button", { name: "完成本步，进入下一步" });
-ok("4b 有「完成本步，进入下一步」按钮", (await completeBtn.count()) === 1);
+// 4c. 用户定调：进度卡只一行 —— 没有「解锁全部步骤」、没有第二行提示、序号已去掉
+const unlockBtn = await rail.getByRole("button", { name: /解锁/ }).count();
+const hintLines = await rail.locator(".flow-hint").count();
+const serials = await rail.locator(".flow-node-no").count();
+const dots = await rail.locator(".flow-node-dot").count();
+const railBox = await rail.boundingBox();
+ok(
+  "4c 进度卡只一行（无解锁全部 / 无第二行提示 / 无序号，圆点 " + dots + " 个）",
+  unlockBtn === 0 && hintLines === 0 && serials === 0 && dots === nodes && (railBox?.height ?? 0) < 60,
+  `解锁按钮 ${unlockBtn} · 提示行 ${hintLines} · 序号 ${serials} · 圆点 ${dots} · 高 ${Math.round(railBox?.height ?? 0)}px`,
+);
+
+const completeBtn = rail.getByRole("button", { name: "下一步" });
+ok("4b 行末有「下一步」按钮，且就绪提示在它的 title 里", (await completeBtn.count()) === 1 && Boolean(await completeBtn.getAttribute("title")), `title=${(await completeBtn.getAttribute("title"))?.slice(0, 24)}…`);
 
 // 5. 右栏双 Tab（补充说明 / 阶段总结）
 await page.locator(".det .det-tab").first().waitFor({ timeout: 8000 });
@@ -144,9 +151,9 @@ if ((await page.locator(".ws .schema-table--anchor").count()) > 0) {
 }
 
 // 8. 流转一圈：完成本步 → 进度前移（在当前步 ready 时）
-const hint = await rail.innerText();
+const hint = String(await completeBtn.getAttribute("title"));
 if (!ALLOW_MUTATE) {
-  ok("8 「完成本步」按钮按数据判定渲染（只读模式未点击）", true,
+  ok("8 「下一步」按钮按数据判定渲染（只读模式未点击）", true,
     (await completeBtn.isDisabled()) ? "当前未就绪→禁用" : "当前就绪→可点");
 } else if (!(await completeBtn.isDisabled())) {
   const before = await rail.locator(".flow-node--done").count();
@@ -156,9 +163,9 @@ if (!ALLOW_MUTATE) {
     before,
     { timeout: 15_000 },
   );
-  ok("8 点「完成本步」→ 流程实际前移", true, `${before} → ${before + 1}`);
+  ok("8 点「下一步」→ 流程实际前移", true, `${before} → ${before + 1}`);
 } else {
-  ok("8 「完成本步」按数据判定禁用（未就绪不可点）", true, hint.split("\n").slice(-2)[0] ?? "");
+  ok("8 「下一步」按数据判定禁用（未就绪不可点）", true, hint.slice(0, 40));
 }
 
 // 9. 用户要求的入口路径：新建**只输名称** → 自动弹出「场景定义」对话页

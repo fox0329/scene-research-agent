@@ -120,7 +120,7 @@
 | PATCH | `/library/product-lines/{id}` | 产品线（资料库）重命名（v1.9）：`{ name }`；名称空 400、未知名 404 |
 | POST | `/library/product-lines/{id}/dedupe-products` | 产品去重（v1.9）：同型号产品合并（保留最早一条，缺位字段补全），M2 规格参数归并到保留产品，删重复行（F3 照打）；返回 `{ groups, products_removed, specs_moved, merged }` |
 
-| GET | `/projects/{id}/material-sources` | 场景资料来源（v1.10；v2.8 起入口在「本场景资料」面板内）：`{ own, linked }`——专属库 + 引用的通用库 |
+| GET | `/projects/{id}/material-sources` | 场景资料来源（v2.8 起入口在「本场景资料」面板内）：`{ own, linked }`——专属库 + 引用的通用库。**v2.9：`linked` = 通用库里没被取消的那些，因此新建场景默认就是全引用** |
 | PUT | `/projects/{id}/material-sources` | 设置引用的通用库（v1.10）：`{ linked_line_ids }`；专属库不可被引用 400 |
 
 ### 联真实现口径（v1.4 登记，M5-T5.1）
@@ -288,7 +288,9 @@ interface DshClient {
 
 1. **数据判定可用 + 用户显式推进**：服务端只算 `ready`（并给 `readyHint` 说明缺什么），
    **不自动完成**。门槛在**流程步进**上；**信息完备度仍只提示不阻断**（两者不可混）。
-2. **默认锁步**：第 n 步未完成则第 n+1 步为「未解锁」；`POST .../flow/unlock-all` 一键解锁全部。
+2. **默认锁步**：第 n 步未完成则第 n+1 步为「未解锁」，未解锁节点不可点——
+   **没有「解锁全部」这个后门**（v2.9 用户定调：不需要这个功能；真实工作里的「先看后面」
+   由「回看已完成步骤」覆盖）。
 3. **已完成步骤可回去重跑**：`POST .../flow/steps/{n}/reopen` 清掉第 n 步及其后的完成标记
    （**数据保留**，按既有失效/重算语义处理下游），场景回到「进行中」。
 
@@ -296,10 +298,9 @@ interface DshClient {
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| GET | `/projects/{id}/flow` | 8 步三态（已完成/当前/可推进/未解锁）+ `ready`/`readyHint`/`progress` + `currentStep`/`completedCount`/`unlockedAll`/`finished` |
+| GET | `/projects/{id}/flow` | 8 步三态（已完成/当前/可推进/未解锁）+ `ready`/`readyHint`/`progress` + `currentStep`/`completedCount`/`finished` |
 | POST | `/projects/{id}/flow/steps/{n}/complete` | 完成本步：写 `scenario_step`、`current_stage` 单调推进、第 8 步置场景「已完成」；返回最新流程状态 |
 | POST | `/projects/{id}/flow/steps/{n}/reopen` | 回到第 n 步重跑：清后缀标记 + 场景回「进行中」；数据保留 |
-| POST | `/projects/{id}/flow/unlock-all` | 解锁全部步骤 |
 | POST | `/projects/{id}/stages/{n}/advance?step=N` | 按第 N 步的表集限定分析范围（不传 `step` 则整阶段） |
 | GET | `/projects` | 每项新增 `flow: { currentStep, completedCount, finished }`（左栏显示「第 n/8 步」） |
 
@@ -308,8 +309,8 @@ interface DshClient {
 | 变更 | 说明 |
 |---|---|
 | 新增 `scenario_step` | 流程步完成记录（`scenario_id + step` 复合主键，**用户点「完成本步」才写入**，`completed_at`） |
-| `scenario.flow_unlocked_all` | 是否已解锁全部步骤（幂等 ALTER，默认 0） |
-| 资料合并（`collectUpstreamData`） | 资料来源 = **本场景专属库 + 全部主库（`scenario_id IS NULL`）+ 显式引用的通用库**；<br>每行标注 `data_scope`（`本场景` / `主库：<名>` / `引用库：<名>`），提示词上游表首列渲染「资料来源」；<br>**同一型号多库出现时本场景优先**（先按库优先级排序再去重）；<br>**存储隔离**：本场景上传只落自己的库，绝不写回主库。 |
+| `scenario_linked_line.excluded` | v2.9：`1` = 用户显式取消引用这个通用库（**没有行 = 默认引用**），幂等 ALTER |
+| 资料合并（`collectUpstreamData`） | 资料来源 = **本场景专属库 + 默认引用的通用库**（v2.9：通用库**默认全引用**，用户取消勾选的被排除）；<br>每行标注 `data_scope`（`本场景` / `主库：<名>`），提示词上游表首列渲染「资料来源」；<br>**同一型号多库出现时本场景优先**（先按库优先级排序再去重）；<br>**存储隔离**：本场景上传只落自己的库，绝不写回主库。 |
 | v2.2 | 2026-09-25 | **场景定义改为对话式**：流程第 1 步由三段式表单改为**对话**——只输场景名称→弹出独立「场景定义」对话页（模型先给理解再提 ≤3 个场景本体问题）→用户点「整理成定义」把对话整理成表1-1（保留已确认行；模型只能标 用户补充/AI推断）。新增 `GET/POST /projects/{id}/definition*` 三端点；第 1 步就绪判定改为「定义已整理」；变更表 #58 |
 
 ---
@@ -355,3 +356,4 @@ interface DshClient {
 | v2.5 | 2026-09-25 | **接上对话上下文管理**：用户问「弹出的对话没有接上上下文管理这些基础设施吗？」——查证确认**没有**：`converse.sendMessage` 每条消息都新建 DSH 会话，而 `DshClient` 是**直连供应商 `/chat/completions`** 的实现（只发 system + 当条 user），DSH 侧会话不参与推理；项目手上其实存着完整历史（`messageRepo`）却从没喂给模型。真机实测第二轮问"我刚才说的代号"模型答"**如果之前在其他对话里说过，我这边看不到**"。修：① `sendMessage` 在本轮消息落库**之前**取历史，用 `buildHistoryBlock` 按预算拼「【对话历史】」块（上限 12 条 / 6000 字符，超出从最早处丢弃并**显式标注省略**）随本轮一起发送，顺序为 历史 → 调用方上下文 → 场景上下文 → 导入报告 → 本轮消息；② 系统提示词声明"把它当作你自己的记忆，不要说看不到"；③ `dsh_session_id` 回写为**实际使用**的会话并注释说明架构原因；④ 覆盖两条入口：「场景定义」弹窗与右下角对话抽屉（同一管道）。真机复验：第二轮准确答出「麒麟-7 / 杭州水务集团」、抽屉答出「3 月 15 日」；变更表 #62 |
 | v2.7 | 2026-09-26 | **表1-1 从「12 项填空」收敛为「6 项业务画像」（用户拍板）**：用户指出「**拍板者、使用者、付费者这些信息都应该是用户提供的吗？用户什么都不知道还要我们干什么？**」并定调「**用户只负责输入场景名称，智能体只负责从业务角度说清楚场景的范围**」「表格用户自己可以修改」「**不用显示待确认**」。① 表1-1 **12 项 → 6 项**：`scene_name`(用户,必填) / `scene_boundary`(必填) / `production_object` / `core_systems` / `buyer_type` / `procurement`；② `confirmRequired` 整体删除，改为**固定行属主** `owner: "用户" \| "智能体"`，`docgen` 表头加「内容属主」列；③ **拍板者/使用者/付费者搬入表3-3**（`decision_maker`/`user_role`/`payer`，与 `customer_type/default_choice/budget_item` 同表，中栏仍 6 列）；④ `Gap` 新增必填 `owner`，缺口分 `userGaps`/`agentGaps`；⑤ 阶段总结第五节「信息缺口与待补充」→「**待补齐信息**」；⑥ 第 1 步就绪 = **智能体已写出业务画像**（不再要求逐项确认）；⑦ 新增存量迁移脚本 `scripts/migrate-anchor-v119.mjs`（dry-run 默认）；变更表 #64 |（用户投诉「整个页面大量的无效信息」）**：① 定义对话**只在第一轮讲行业**，第二轮起只回 1–2 句"变化的部分" + ≤1 个问题、整轮 ≤120 字，并禁止在正文写自我说明；② 「整理成定义」**只收用户说过的**（`source_type` enum 收窄为 `["用户补充"]`，模型顺手推断的一律不落表，新增 `inferred_dropped` 可观测），`open_questions` ≤2；③ 新增正文去噪 `stripMetaNotes`（剥掉"（用户未明说，按行业通行情况推断）"这类括号注解）与 `compressCell`（超 80 字按句界截断），定义格 ≤80 字；④ 重新整理时清空"本次未再产出的旧推断行"，用户持有行正文也去噪；⑤ 数据层 `update` 支持 `source_type: null` 显式清空，空行不留来源；⑥ 一次性清洗脚本 `scripts/clean-anchor-notes.mjs`（dry-run 默认，--apply 自动备份），已对真实库执行 558→312 字；变更表 #63 |
 | v2.8 | 2026-09-26 | **中栏只放信息表 + 确认动作改为就地编辑**（用户定调"中栏只重点显示场景概述这个表格，其他的都不要干扰"）：① 第 1 步中栏只剩表1-1（步标题/引导语/就绪状态行/信息完整度条/「确认无误」按钮全删）；② `PUT /projects/{id}/anchor` 的调用方只剩就地编辑（`source_type` 仍只写「用户补充」）；③ 页头常驻的「资料来源」条删除，`GET/PUT /projects/{id}/material-sources` 的入口移入「本场景资料」面板；④ 阶段总结只带注册表里的固定锚行（存量旧 12 项残项不进总结）；变更表 #65 |
+| v2.9 | 2026-09-26 | **通用库默认引用（可取消）+ 删掉「解锁全部步骤」**（用户定调：「新建项目，默认直接引用基础产品资料（默认勾选），除非用户取消勾选，勾选就代表引用，**不需要保存引用按钮**」「进度卡删除解锁全部步骤按钮，不需要这个功能」）：① `scenario_linked_line` 新增 `excluded` 列，**没有行 = 默认引用**（存量场景天然全引用，不需要回填），`excluded = 1` = 用户显式取消；② `PUT /projects/{id}/material-sources` 收的仍是**勾选集合**，落库落补集（哪些被取消）——勾/取消即生效，前端不再有「保存引用」；③ `collectUpstreamData` 的合并范围 = 专属库 + 通用库中未被取消的（去掉无条件全带主库），`data_scope` 只剩 `本场景` / `主库：<名>`；④ **删除 `POST .../flow/unlock-all`** 与 `scenario.flow_unlocked_all` 字段，`buildFlowStatus` 不再有 `unlockedAll`（锁步推进是唯一路径）；变更表 #66/#67 |

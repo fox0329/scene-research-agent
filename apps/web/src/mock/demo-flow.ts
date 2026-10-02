@@ -301,7 +301,6 @@ export function demoAnchorReadiness(anchor: readonly ApiAnchorRow[]): FlowReadin
 /** 演示态流程状态（本地内存推导；「完成本步」只是往 completed 里加一步） */
 export function buildDemoFlowStatus(input: {
   completed: readonly number[];
-  unlockedAll: boolean;
   anchor: readonly ApiAnchorRow[];
 }): ApiFlowStatus {
   const readiness: Record<number, FlowReadiness> = {};
@@ -320,16 +319,11 @@ export function buildDemoFlowStatus(input: {
     }
   }
 
-  const status = buildFlowStatus({
-    completed: input.completed,
-    unlockedAll: input.unlockedAll,
-    readiness,
-  });
+  const status = buildFlowStatus({ completed: input.completed, readiness });
   return {
     steps: status.steps.map((s) => ({ ...s })),
     currentStep: status.currentStep,
     completedCount: status.completedCount,
-    unlockedAll: status.unlockedAll,
     finished: status.finished,
   };
 }

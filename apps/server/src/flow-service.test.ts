@@ -14,7 +14,7 @@ import { createDb } from "@scene/infra";
 import type { DbInstance } from "@scene/infra";
 import { createApp } from "./app.js";
 import { createSseHub } from "./sse-hub.js";
-import { getFlowState, completeFlowStep, reopenFlowStep, unlockAllFlowSteps } from "./flow-service.js";
+import { getFlowState, completeFlowStep, reopenFlowStep } from "./flow-service.js";
 import { ensureAnchorRows, writeAnchorRows } from "./scenario-anchor.js";
 
 function mockDsh(): DshClient {
@@ -143,11 +143,10 @@ describe("flow-service — 锁步与就绪", () => {
     expect(flow.finished).toBe(true);
   });
 
-  it("解锁全部：未完成步骤都是「可推进」", () => {
+  it("锁步：未完成步不进「可推进」，也无法跳过（没有解锁全部这个后门）", () => {
     const { db, scenarioId } = setup();
-    const flow = unlockAllFlowSteps(db, db.scenarioRepo.getById(scenarioId)!);
-    expect(flow.unlockedAll).toBe(true);
-    expect(flow.steps.slice(1).every((s) => s.state === "可推进")).toBe(true);
+    const flow = getFlowState(db, db.scenarioRepo.getById(scenarioId)!);
+    expect(flow.steps.slice(1).every((s) => s.state === "未解锁")).toBe(true);
   });
 });
 
@@ -202,7 +201,7 @@ describe("flow-service — 路由", () => {
     expect(body.finished).toBe(false);
   });
 
-  it("POST complete / reopen / unlock-all 生效", async () => {
+  it("POST complete / reopen 生效", async () => {
     const c1 = await app.inject({
       method: "POST",
       url: `/api/v1/projects/${scenarioId}/flow/steps/1/complete`,
@@ -210,11 +209,12 @@ describe("flow-service — 路由", () => {
     expect(c1.statusCode).toBe(200);
     expect((c1.json() as { currentStep: number }).currentStep).toBe(2);
 
+    // 解锁全部端点已删除（用户定调不需要这个功能）
     const un = await app.inject({
       method: "POST",
       url: `/api/v1/projects/${scenarioId}/flow/unlock-all`,
     });
-    expect((un.json() as { unlockedAll: boolean }).unlockedAll).toBe(true);
+    expect(un.statusCode).toBe(404);
 
     const re = await app.inject({
       method: "POST",

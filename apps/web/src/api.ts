@@ -74,7 +74,6 @@ export interface ApiFlowStatus {
   /** 当前应做步骤号（全部完成时为最后一步号） */
   currentStep: number;
   completedCount: number;
-  unlockedAll: boolean;
   finished: boolean;
 }
 
@@ -461,12 +460,6 @@ export const api = {
       `/projects/${encodeURIComponent(id)}/flow/steps/${step}/reopen`,
       { method: "POST" },
     ),
-  /** 解锁全部步骤（默认锁步推进） */
-  unlockAllSteps: (id: string) =>
-    req<ApiFlowStatus>(`/projects/${encodeURIComponent(id)}/flow/unlock-all`, {
-      method: "POST",
-    }),
-
   // ─── 阶段完整度与总结 ────────────────────────────────────
   stageCompleteness: (id: string, stage: number) =>
     req<ApiCompleteness>(`/projects/${encodeURIComponent(id)}/stages/${stage}/completeness`),

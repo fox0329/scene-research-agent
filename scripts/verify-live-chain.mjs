@@ -186,16 +186,19 @@ ok(
    关闭弹窗后流程状态要重新拉取，**必须轮询等待**——立刻读会读到刷新前的旧 hint */
 await page
   .waitForFunction(
-    () => /场景业务画像已写出/.test(document.querySelector(".flow-rail .flow-hint")?.textContent ?? ""),
+    () =>
+      /场景业务画像已写出/.test(
+        document.querySelector(".flow-rail button[title]")?.getAttribute("title") ?? "",
+      ),
     null,
     { timeout: 20_000 },
   )
   .catch(() => undefined);
-const readyHint = await page.locator(".flow-rail .flow-hint").innerText();
+const readyHint = (await page.locator(".flow-rail .flow-actions button").first().getAttribute("title")) ?? "";
 ok(
   "3c 整理后第 1 步即可推进（业务画像已写出；界面不出现「待确认」）",
   /场景业务画像已写出/.test(readyHint) && !/待确认/.test(readyHint),
-  readyHint.split("\n").pop(),
+  readyHint.slice(0, 60),
 );
 
 /* 5. 右栏双 Tab：补充说明 / 阶段总结（六段骨架）
@@ -249,7 +252,7 @@ ok(
    顺序说明：本步（第 1 步）中栏只有表1-1，没有分析按钮——分析按钮属于第 2 步起，
    所以这里**先推进到下一步**再发起，否则这一整段会被静默跳过
    （旧版按「开始本阶段分析」找按钮，改名成「开始本步分析」后一直静默跳过）。 */
-const railAdvance = page.locator(".flow-rail button:has-text('完成本步')");
+const railAdvance = page.locator(".flow-rail .flow-actions button:has-text('下一步')");
 if ((await railAdvance.count()) > 0 && (await railAdvance.first().isEnabled())) {
   await railAdvance.first().click();
 }
@@ -305,15 +308,13 @@ ok("6b 交付物为装配式（内部含阶段总结+附录；对外不含内部
 /* 7. 流程推进（导航动作，不是判断，信息不齐备也不阻断）
    断言改成**语义断言**：只看流程是否真的前移（比比对 toast 文案稳） */
 const doneBefore = await page.locator(".flow-rail .flow-node--done").count();
-const advanceBtn = page
-  .locator("button:has-text('完成本步'), button:has-text('进入下一阶段')")
-  .first();
+const advanceBtn = page.locator(".flow-rail .flow-actions button:has-text('下一步')").first();
 // 等它可用：禁用时直接点会一路重试到超时，报错信息也看不出原因
 await page
   .waitForFunction(
     () => {
-      const b = [...document.querySelectorAll(".flow-rail button")].find((x) =>
-        /完成本步|进入下一阶段/.test(x.textContent ?? ""),
+      const b = [...document.querySelectorAll(".flow-rail .flow-actions button")].find((x) =>
+        /下一步/.test(x.textContent ?? ""),
       );
       return !!b && !b.disabled;
     },
@@ -321,8 +322,13 @@ await page
     { timeout: 60_000 },
   )
   .catch(async () => {
-    const hint = await page.locator(".flow-rail .flow-hint").innerText().catch(() => "");
-    throw new Error(`「完成本步」不可点：${hint.replace(/\n+/g, " ")}`);
+    const hint =
+      (await page
+        .locator(".flow-rail .flow-actions button")
+        .first()
+        .getAttribute("title")
+        .catch(() => "")) ?? "";
+    throw new Error(`「下一步」不可点：${hint}`);
   });
 await advanceBtn.click();
 await page.waitForFunction(
@@ -331,7 +337,7 @@ await page.waitForFunction(
   { timeout: 20_000 },
 );
 const doneAfter = await page.locator(".flow-rail .flow-node--done").count();
-ok("7 「完成本步」真实推进流程（导航动作，信息缺口不阻断）", doneAfter > doneBefore, `已完成步 ${doneBefore} → ${doneAfter}`);
+ok("7 「下一步」真实推进流程（导航动作，信息缺口不阻断）", doneAfter > doneBefore, `已完成步 ${doneBefore} → ${doneAfter}`);
 
 /* 8. 对话 converse 闭环存在性（细节覆盖见 M5-T5.5 验收） */
 await page.click(".conv-ta");

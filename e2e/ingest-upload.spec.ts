@@ -46,7 +46,7 @@ async function consolidateAndWait(dlg: import("@playwright/test").Locator): Prom
  */
 async function expectStepOneCompletable(page: import("@playwright/test").Page): Promise<void> {
   await expect(
-    page.locator(".flow-rail").getByRole("button", { name: "完成本步，进入下一步" }),
+    page.locator(".flow-rail").getByRole("button", { name: "下一步" }),
   ).toBeEnabled({ timeout: 30_000 });
 }
 
@@ -247,7 +247,7 @@ test("场景定义对话（联真）：新建只输名称 → 自动开「场景
   await expectStepOneCompletable(page);
   await page
     .locator(".flow-rail")
-    .getByRole("button", { name: "完成本步，进入下一步" })
+    .getByRole("button", { name: "下一步" })
     .click();
   await expect(page.locator(".flow-rail .flow-node--done")).toContainText("场景定义与边界");
   await expect(page.locator(".flow-rail .flow-node--current")).toContainText("认识场景", {
@@ -277,8 +277,13 @@ test("流程逐页推进（联真）：完成本步走的是 /flow 接口，完�
   const rail = page.locator(".flow-rail");
   await expect(rail.locator(".flow-node--current")).toContainText("场景定义与边界");
   // 就绪与否由服务端按表1-1 判定（前端只显示、不阻断）；这里只要求当前步就是第 1 步
-  await expect(rail.locator(".flow-hint")).toContainText("第 1/8 步 · 场景定义与边界");
-  const completeBtn = rail.getByRole("button", { name: "完成本步，进入下一步" });
+  // 进度卡只一行：就绪提示在「下一步」按钮的 title 里，不再占一行
+  await expect(rail.locator(".flow-hint")).toHaveCount(0);
+  await expect(rail.getByRole("button", { name: "下一步" })).toHaveAttribute(
+    "title",
+    /场景业务画像/,
+  );
+  const completeBtn = rail.getByRole("button", { name: "下一步" });
 
   // 第 1 步：在独立「场景定义」对话里把场景聊清楚，点「整理成定义」写表1-1
   await page.locator(".ws").getByRole("button", { name: /场景定义对话/ }).click();
@@ -325,4 +330,57 @@ test("流程逐页推进（联真）：完成本步走的是 /flow 接口，完�
   await check.dispose();
   expect(flow.currentStep).toBe(2);
   expect(flow.completedCount).toBe(1);
+});
+
+/* ─── 资料来源（v2.9）：默认直接引用基础产品资料；取消勾选即生效（没有「保存引用」） ─── */
+
+test("本场景资料（联真）：通用库默认勾选、取消即生效、没有保存按钮", async ({ page, playwright }) => {
+  test.setTimeout(90_000);
+  const req = await playwright.request.newContext({ baseURL: LIVE });
+  // 一个通用资料库（scenario_id 为空 = 基础产品资料）+ 一个新建场景
+  const line = (await (
+    await req.post("/api/v1/library/product-lines", { data: { name: `基础库${Date.now()}` } })
+  ).json()) as { id: string; name: string };
+  const created = (await (
+    await req.post("/api/v1/projects", { data: { name: `E2E资料引用 ${Date.now()}` } })
+  ).json()) as { id: string };
+
+  // 默认：新建场景**不做任何操作**，这个通用库就在引用集合里（服务端口径）
+  const before = (await (await req.get(`/api/v1/projects/${created.id}/material-sources`)).json()) as {
+    linked: { id: string }[];
+  };
+  expect(before.linked.map((l) => l.id)).toContain(line.id);
+
+  await page.goto(`${LIVE}/`);
+  await page.locator(".proj-hd", { hasText: "E2E资料引用" }).click();
+  await page.getByRole("button", { name: "本场景资料" }).click();
+  const panel = page.locator(".pnl.material-panel");
+  // 按库名精确定位（同一个 e2e 服务里可能有别的用例建的通用库）
+  const box = panel.locator(".ms-check", { hasText: line.name }).locator("input");
+  await expect(box).toBeChecked();
+  // 没有「保存引用」这个来回：勾选状态本身就是引用关系
+  await expect(panel.getByRole("button", { name: /保存引用/ })).toHaveCount(0);
+
+  // 取消勾选 → 立即落库（该库不再参与本场景分析）
+  await box.uncheck();
+  await expect
+    .poll(async () => {
+      const r = (await (
+        await req.get(`/api/v1/projects/${created.id}/material-sources`)
+      ).json()) as { linked: { id: string }[] };
+      return r.linked.map((l) => l.id).includes(line.id);
+    }, { timeout: 15_000 })
+    .toBe(false);
+
+  // 再勾回来 → 恢复引用
+  await box.check();
+  await expect
+    .poll(async () => {
+      const r = (await (
+        await req.get(`/api/v1/projects/${created.id}/material-sources`)
+      ).json()) as { linked: { id: string }[] };
+      return r.linked.map((l) => l.id).includes(line.id);
+    }, { timeout: 15_000 })
+    .toBe(true);
+  await req.dispose();
 });

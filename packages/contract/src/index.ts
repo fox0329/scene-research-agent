@@ -224,17 +224,23 @@ export interface Scenario {
   product_line_id: string;
   status: "进行中" | "已完成" | "已归档";
   current_stage: StageId;
-  /** v1.5 流程推进：是否已「解锁全部步骤」（默认锁步，0/1） */
-  flow_unlocked_all?: number | null;
   created_at: string;
   updated_at: string;
 }
 
-/** 场景引用的通用资料库（多对多；引用不拷贝，分析时与专属库合并） */
+/**
+ * 场景 × 通用资料库的引用关系（v2.9）
+ *
+ * **默认引用**（用户定调：新建场景默认直接引用基础产品资料，除非用户取消勾选）：
+ * 没有行 = 默认引用；`excluded = 1` = 用户显式取消。
+ * 这样存量场景（表里没有行）天然就是「默认全引用」，不需要回填。
+ */
 export interface ScenarioLinkedLine {
   id: string;
   scenario_id: string;
   product_line_id: string;
+  /** 1 = 用户显式取消引用（不参与本场景分析）；0/缺省 = 引用 */
+  excluded?: number | null;
   created_at: string;
   updated_at: string;
 }

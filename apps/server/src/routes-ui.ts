@@ -69,7 +69,6 @@ import {
   completeFlowStep,
   getFlowState,
   reopenFlowStep,
-  unlockAllFlowSteps,
 } from "./flow-service.js";
 import { createIngestCommand } from "./ingest.js";
 import { parseStage, streamEvents } from "./sse-stream.js";
@@ -324,7 +323,6 @@ function registerProjectRoutes(app: FastifyInstance, deps: UiRoutesDeps) {
       flow: (() => {
         const st = buildFlowStatus({
           completed: db.scenarioStepRepo.completedSteps(s.id),
-          unlockedAll: Boolean(s.flow_unlocked_all),
         });
         return {
           currentStep: st.currentStep,
@@ -456,14 +454,6 @@ function registerProjectRoutes(app: FastifyInstance, deps: UiRoutesDeps) {
     return reopenFlowStep(db, scenario, n);
   });
 
-  /** 解锁全部步骤（默认锁步推进） */
-  app.post("/api/v1/projects/:id/flow/unlock-all", async (request, reply) => {
-    const { id } = request.params as { id: string };
-    const scenario = db.scenarioRepo.getById(id);
-    if (!scenario) return notFound(reply, `场景 ${id} 不存在`);
-    return unlockAllFlowSteps(db, scenario);
-  });
-
   /** 起草场景锚（表1-1）：诉求 + 资料库 → 12 项内容；用户确认过的行不被覆盖 */
   app.post("/api/v1/projects/:id/brief/draft", async (request, reply) => {
     const { id } = request.params as { id: string };
@@ -527,10 +517,16 @@ function registerProjectRoutes(app: FastifyInstance, deps: UiRoutesDeps) {
     const { id } = request.params as { id: string };
     const scenario = db.scenarioRepo.getById(id);
     if (!scenario) return notFound(reply, `场景 ${id} 不存在`);
-    const linked = db.scenarioLinkedLineRepo
-      .list({ where: "scenario_id = ?", params: [id], orderBy: "created_at ASC" })
-      .map((l) => db.productLineRepo.getById(l.product_line_id))
-      .filter((l): l is NonNullable<typeof l> => Boolean(l));
+    // 默认引用（用户定调）：通用库**没有排除记录就是引用**，因此存量场景天然全勾选
+    const excluded = new Set(
+      db.scenarioLinkedLineRepo
+        .list({ where: "scenario_id = ?", params: [id] })
+        .filter((l) => Boolean(l.excluded))
+        .map((l) => l.product_line_id),
+    );
+    const linked = db.productLineRepo
+      .list({ where: "scenario_id IS NULL", orderBy: "created_at ASC" })
+      .filter((l) => !excluded.has(l.id));
     return { own: db.productLineRepo.getById(scenario.product_line_id), linked };
   });
 
@@ -550,11 +546,27 @@ function registerProjectRoutes(app: FastifyInstance, deps: UiRoutesDeps) {
         return badRequest(reply, `产品线 ${lineId} 不是通用资料库（专属库不可被引用）`);
       }
     }
-    db.scenarioLinkedLineRepo
-      .list({ where: "scenario_id = ?", params: [id] })
-      .forEach((l) => db.scenarioLinkedLineRepo.deleteById(l.id));
-    for (const lineId of ids) {
-      db.scenarioLinkedLineRepo.insert({ scenario_id: id, product_line_id: lineId });
+    // 前端传的是**勾选集合**；落库落的是补集（哪些被显式取消），这样"默认引用"
+    // 不需要在建场景时批量写行，存量场景也不用回填
+    const checked = new Set(ids);
+    for (const lineId of shared) {
+      const existing = db.scenarioLinkedLineRepo
+        .list({ where: "scenario_id = ? AND product_line_id = ?", params: [id, lineId] })
+        .at(0);
+      const excluded = checked.has(lineId) ? 0 : 1;
+      if (!existing) {
+        if (excluded === 1) {
+          db.scenarioLinkedLineRepo.insert({
+            scenario_id: id,
+            product_line_id: lineId,
+            excluded: 1,
+          } as never);
+        }
+        continue;
+      }
+      if (Boolean(existing.excluded) !== Boolean(excluded)) {
+        db.scenarioLinkedLineRepo.update(existing.id, { excluded } as never);
+      }
     }
     return { scenario_id: id, linked_line_ids: ids };
   });

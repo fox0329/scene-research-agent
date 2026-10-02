@@ -312,25 +312,29 @@ export function collectUpstreamData(
 ): Record<string, unknown[]> {
   const data: Record<string, unknown[]> = {};
 
-  // 资料来源（v1.5：**默认合并主库** + 本场景专属库 + 显式引用的通用库）
+  // 资料来源（v2.9：本场景专属库 + **默认引用的通用库**，用户可逐个取消）
   //
-  // 为什么默认带主库：产品资料是**基础设施**（上传一次全场景共用）。
-  // 旧实现只带"本场景专属库 + 显式引用的库"，导致新建场景默认看不到任何主库产品。
+  // 通用库是产品资料基础设施（上传一次全场景共用），所以新建场景默认全部引用；
+  // 用户在「本场景资料」里取消勾选 = 显式排除（`scenario_linked_line.excluded = 1`）。
+  // 表里没有行 = 默认引用（存量场景因此不需要回填）。
   // 存储仍隔离：本场景上传只落自己的库，绝不写回主库。
   const ownLine = scenario.product_line_id;
-  const globalLines = db.productLineRepo.list({ where: "scenario_id IS NULL" });
-  const linkedLineIds = db.scenarioLinkedLineRepo
-    .list({ where: "scenario_id = ?", params: [scenario.id] })
-    .map((l) => l.product_line_id);
-  const lineIds = [...new Set([ownLine, ...globalLines.map((l) => l.id), ...linkedLineIds])];
+  const excludedLineIds = new Set(
+    db.scenarioLinkedLineRepo
+      .list({ where: "scenario_id = ?", params: [scenario.id] })
+      .filter((l) => Boolean(l.excluded))
+      .map((l) => l.product_line_id),
+  );
+  const globalLines = db.productLineRepo
+    .list({ where: "scenario_id IS NULL" })
+    .filter((l) => !excludedLineIds.has(l.id));
+  const lineIds = [...new Set([ownLine, ...globalLines.map((l) => l.id)])];
 
-  /** 行来源标注：主库 / 本场景 / 引用库（合并后仍可区分，用户可核对） */
+  /** 行来源标注：本场景 / 主库：<名>（合并后仍可区分，用户可核对） */
   const scopeOf = (lineId: string): string => {
     if (lineId === ownLine) return "本场景";
     const g = globalLines.find((l) => l.id === lineId);
-    if (g) return `主库：${g.name}`;
-    const l = db.productLineRepo.getById(lineId);
-    return `引用库：${l?.name ?? lineId}`;
+    return `主库：${g?.name ?? lineId}`;
   };
   const annotate = <T extends object>(rows: T[]): (T & { data_scope: string })[] =>
     rows.map((r) => ({
@@ -341,7 +345,7 @@ export function collectUpstreamData(
     }));
 
   /**
-   * 按库优先级排序：本场景 → 主库 → 引用库
+   * 按库优先级排序：本场景 → 主库
    *
    * 必要性：SQL `IN (...)` 的返回顺序是**表的物理顺序**，不是 `lineIds` 顺序。
    * 不排序就去重，会让主库的同名型号把本场景的版本挤掉（本场景优先失效）。

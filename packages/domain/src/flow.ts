@@ -5,7 +5,7 @@
  *  1. **数据判定可用 + 用户显式推进**：本模块只算"能不能点『完成本步』"（`ready`），
  *     不做"自动完成"——走不走由用户点（与「不齐备不阻断」一致：门槛在**流程步进**上，
  *     不在**信息完备度**上）。
- *  2. **默认锁步**：第 n 步未完成则第 n+1 步处于「未解锁」；`unlockedAll` 可一键解锁全部。
+ *  2. **默认锁步**：第 n 步未完成则第 n+1 步处于「未解锁」（`未解锁` 的步不可点）。
  *  3. **已完成步骤可回看/重跑**：状态由"已完成集合"推导，回退只需从集合里去掉后缀。
  *
  * 纯函数、无 IO——就绪判定所需的数据由服务端算好传入。
@@ -57,7 +57,6 @@ export interface FlowStatus {
   /** 当前应做步骤号（全部完成时为最后一步号） */
   currentStep: number;
   completedCount: number;
-  unlockedAll: boolean;
   finished: boolean;
 }
 
@@ -67,18 +66,15 @@ const EMPTY_PROGRESS: FlowStepProgress = { tablesWithData: 0, expectedTables: 0,
  * 推导流程状态
  *
  * @param input.completed 已完成的步骤号（顺序无关，越界/重复会被规范掉）
- * @param input.unlockedAll 是否已「解锁全部步骤」
  * @param input.readiness 每步的就绪判定（缺省视为未就绪）
  * @param input.steps 流程定义（缺省用 FLOW_STEPS，便于测试注入）
  */
 export function buildFlowStatus(input: {
   completed: readonly number[];
-  unlockedAll?: boolean;
   readiness?: Readonly<Record<number, FlowReadiness>>;
   steps?: readonly FlowStep[];
 }): FlowStatus {
   const steps = input.steps ?? FLOW_STEPS;
-  const unlockedAll = input.unlockedAll === true;
   const validIds = new Set(steps.map((s) => s.id));
   const done = new Set(input.completed.filter((id) => validIds.has(id)));
 
@@ -93,7 +89,7 @@ export function buildFlowStatus(input: {
       ? "已完成"
       : s.id === currentStep
         ? "当前"
-        : unlockedAll || prevAllDone
+        : prevAllDone
           ? "可推进"
           : "未解锁";
     const r = input.readiness?.[s.id];
@@ -114,7 +110,6 @@ export function buildFlowStatus(input: {
     steps: statuses,
     currentStep,
     completedCount: done.size,
-    unlockedAll,
     finished: done.size === steps.length,
   };
 }

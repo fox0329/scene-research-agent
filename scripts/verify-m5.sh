@@ -315,6 +315,30 @@ check_contains "03-数据契约与API.md" "定义已整理" "第 1 步就绪降�
 check_contains "07-业务流程总表.md" "不要求确认齐全" "流程总表就绪条件改「不要求确认齐全」"
 check_contains "04-业务过程重定义.md" "v1.7" "业务过程 v1.7（放松定义）"
 check_contains "docs/项目变更表.md" "| 61 |" "变更表 #61 放松定义登记"
+# ── v2.9 资料来源默认引用 + 进度卡一行收口 ────────────────
+check_contains "03-数据契约与API.md" "v2.9" "契约版本记录 v2.9（默认引用 + 删解锁全部）"
+check_contains "03-数据契约与API.md" "scenario_linked_line.excluded" "通用库取消引用（excluded）登记"
+check_contains "01-产品定义.md" "没有「解锁全部」" "产品定义：锁步推进、无解锁入口"
+check_contains "04-业务过程重定义.md" "v1.11" "业务过程 v1.11（进度卡一行）"
+check_contains "docs/项目变更表.md" "| 66 |" "变更表 #66 资料默认引用登记"
+check_contains "docs/项目变更表.md" "| 67 |" "变更表 #67 进度卡一行登记"
+# 负向守卫：「解锁全部步骤」必须从契约 / 领域 / 服务 / 前端四条链路彻底消失
+# （测试文件除外——`flow-service.test.ts` 反向断言该端点已 404，必须留着那个路径字面量）
+UNLOCK_HITS=$(grep -rn "unlock-all\|unlockedAll\|unlockAllFlowSteps" "$ROOT/apps/web/src" "$ROOT/apps/server/src" "$ROOT/packages/contract/src" "$ROOT/packages/domain/src" --include=*.ts --include=*.tsx 2>/dev/null | grep -v "\.test\.ts" || true)
+if [ -n "$UNLOCK_HITS" ]; then
+  echo "❌ 仍存在「解锁全部步骤」残留（用户定调：不需要这个功能）"
+  echo "$UNLOCK_HITS" | head -3
+  FAIL=1
+else
+  echo "✅ 「解锁全部步骤」已从契约/领域/服务/前端彻底移除（测试里的 404 反向断言除外）"
+fi
+# 负向守卫：进度卡不得再有第二行提示与序号节点
+if grep -q "flow-hint\|flow-node-no" "$ROOT/apps/web/src/components/FlowRail.tsx" 2>/dev/null; then
+  echo "❌ 进度卡仍渲染第二行提示或序号（用户定调：只一行、去掉序号）"
+  FAIL=1
+else
+  echo "✅ 进度卡只一行：无第二行提示、无序号节点"
+fi
 if [ -f "$ROOT/05-表格定义总表.md" ] && pnpm check:docs >/dev/null 2>&1; then
   echo "✅ 05-表格定义总表.md 与表定义注册表一致（漂移守卫）"
 else

@@ -1,19 +1,21 @@
 /**
- * @scene/web — 流程进度轴（v1.5 逐页推进）
+ * @scene/web — 流程进度卡（v1.5 逐页推进 / v2.9 压成一行）
  *
  * 取代 v1.4 的「8 个阶段并列 tab」：阶段是**数据落库口径**，流程步才是
- * **用户看到的推进单位**。这条轴回答三件事：
+ * **用户看到的推进单位**。这张卡回答三件事：
  *   ① 我现在在第几步（当前位置）
  *   ② 前面走过哪些步（可点回看）
  *   ③ 这一步能不能走（`ready` + `readyHint` 由服务端数据判定给出）
  *
- * 三条既定规则的落点：
- *  - 「完成本步」是**导航动作**，不是判断：信息缺口只在 hint 里提示，不阻断
- *  - 默认锁步：未解锁节点 `disabled`，另给「解锁全部步骤」
- *  - 已完成步骤可点回看（重跑按钮在该步面板里）
+ * 用户定调（v2.9）：
+ *  - **只一行显示**：8 个节点 + 行末一个「下一步」按钮，不再有第二行提示、
+ *    不再有「解锁全部步骤」（这个功能不需要）
+ *  - **去掉序号**：节点上的 ①②③ 去掉，位置靠顺序与高亮表达
+ *  - 就绪提示不单独占一行，改为「下一步」按钮的悬停提示
+ *  - 中栏调窄时自动隐藏阶段标题（仅留状态圆点），见 app.css 的容器查询
  *
- * 无障碍：`role="tablist"` + `role="tab"` + `aria-selected`，左右方向键可移动，
- * 未解锁节点不进 Tab 序列（disabled）。
+ * 无障碍：`role="tablist"` + `role="tab"` + `aria-selected`，左右方向键可移动；
+ * 未解锁节点不进 Tab 序列（disabled），`aria-label` 仍带「第 n 步 · 标题」。
  */
 
 import React, { useCallback, useRef } from "react";
@@ -26,7 +28,6 @@ export interface FlowRailProps {
   onSelectStep: (step: number) => void;
   /** 完成「当前步」并前进（就绪判定由 status 给出） */
   onComplete: () => void;
-  onUnlockAll: () => void;
   /** 请求进行中：动作按钮禁用，避免重复提交 */
   busy?: boolean;
 }
@@ -44,7 +45,6 @@ export const FlowRail: React.FC<FlowRailProps> = ({
   activeStep,
   onSelectStep,
   onComplete,
-  onUnlockAll,
   busy = false,
 }) => {
   const nodeRefs = useRef<Record<number, HTMLButtonElement | null>>({});
@@ -70,12 +70,7 @@ export const FlowRail: React.FC<FlowRailProps> = ({
 
   return (
     <div className="flow-rail">
-      <div
-        className="flow-nodes"
-        role="tablist"
-        aria-label="业务流程步骤"
-        onKeyDown={handleKeyDown}
-      >
+      <div className="flow-nodes" role="tablist" aria-label="业务流程步骤" onKeyDown={handleKeyDown}>
         {status.steps.map((s) => {
           const locked = s.state === "未解锁";
           return (
@@ -89,72 +84,40 @@ export const FlowRail: React.FC<FlowRailProps> = ({
               }}
               className={`flow-node flow-node--${STATE_CLASS[s.state] ?? "ready"}`}
               disabled={locked}
-              title={`${s.title}：${s.goal}`}
+              title={`第 ${s.id} 步 · ${s.title}：${s.goal}`}
               aria-label={`第 ${s.id} 步 · ${s.title}（${s.state}）`}
               onClick={() => onSelectStep(s.id)}
             >
-              <span className="flow-node-no" aria-hidden="true">
-                {s.state === "已完成" ? "✓" : s.id}
+              {/* 状态圆点：窄栏隐藏标题后，它就是唯一的位置标记 */}
+              <span className="flow-node-dot" aria-hidden="true">
+                {s.state === "已完成" ? "✓" : ""}
               </span>
               <span className="flow-node-tt">{s.title}</span>
-              {locked ? (
-                <span className="flow-node-lock" aria-hidden="true">
-                  🔒
-                </span>
-              ) : null}
             </button>
           );
         })}
-      </div>
 
-      {/* 当前步就绪提示：缺什么直接说，不作为阻断 */}
-      {current ? (
-        <p className="flow-hint" role="status">
-          <span className="flow-hint-step">
-            第 {current.id}/{status.steps.length} 步 · {current.title}
-          </span>
-          {reviewing ? (
-            <span className="flow-hint-text">
-              正在回看第 {activeStep} 步；当前应做的是第 {current.id} 步
-            </span>
-          ) : (
-            <span className="flow-hint-text">{current.readyHint}</span>
-          )}
-        </p>
-      ) : null}
-
-      <div className="flow-actions">
-        <button
-          className="btn primary"
-          type="button"
-          disabled={busy || reviewing || !current?.ready}
-          title={
-            reviewing
-              ? `正在回看第 ${activeStep} 步；先回到当前步再推进`
-              : (current?.readyHint ?? "")
-          }
-          onClick={onComplete}
-        >
-          完成本步，进入下一步
-        </button>
-        {reviewing ? (
-          <button className="btn" type="button" onClick={() => onSelectStep(status.currentStep)}>
-            回到当前步（第 {status.currentStep} 步）
+        {/* 行末动作：就绪提示进 title（不占第二行） */}
+        <div className="flow-actions">
+          <button
+            className="btn primary"
+            type="button"
+            disabled={busy || reviewing || !current?.ready}
+            title={
+              reviewing
+                ? `正在回看第 ${activeStep} 步；先回到当前步再推进`
+                : (current?.readyHint ?? "")
+            }
+            onClick={onComplete}
+          >
+            下一步
           </button>
-        ) : null}
-        <button
-          className="btn"
-          type="button"
-          disabled={busy || status.unlockedAll}
-          title={
-            status.unlockedAll
-              ? "已解锁全部步骤，可直接点任一节点"
-              : "不想按顺序走？解锁后可直接点任意步骤"
-          }
-          onClick={onUnlockAll}
-        >
-          {status.unlockedAll ? "已解锁全部步骤" : "解锁全部步骤"}
-        </button>
+          {reviewing ? (
+            <button className="btn" type="button" onClick={() => onSelectStep(status.currentStep)}>
+              回到当前步
+            </button>
+          ) : null}
+        </div>
       </div>
     </div>
   );

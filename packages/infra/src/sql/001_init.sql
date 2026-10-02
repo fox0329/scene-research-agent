@@ -144,6 +144,8 @@ CREATE TABLE IF NOT EXISTS scenario_linked_line (
   id              TEXT PRIMARY KEY,
   scenario_id     TEXT NOT NULL REFERENCES scenario(id),
   product_line_id TEXT NOT NULL REFERENCES product_line(id),
+  -- v2.9：0 = 引用（默认），1 = 用户显式取消引用
+  excluded        INTEGER NOT NULL DEFAULT 0,
   created_at      TEXT NOT NULL,
   updated_at      TEXT NOT NULL,
   UNIQUE (scenario_id, product_line_id)

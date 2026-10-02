@@ -78,12 +78,11 @@ describe("flow — 锁步推进", () => {
     expect(st.steps[2]?.state).toBe("未解锁");
   });
 
-  it("解锁全部：未完成步骤都是「可推进」，当前仍是第一个未完成", () => {
-    const st = buildFlowStatus({ completed: [1, 2], unlockedAll: true });
+  it("锁步：第 3 步是当前，之后全部「未解锁」（没有解锁全部这个后门）", () => {
+    const st = buildFlowStatus({ completed: [1, 2] });
     expect(st.currentStep).toBe(3);
     expect(st.steps[2]?.state).toBe("当前");
-    expect(st.steps.slice(3).every((s) => s.state === "可推进")).toBe(true);
-    expect(st.unlockedAll).toBe(true);
+    expect(st.steps.slice(3).every((s) => s.state === "未解锁")).toBe(true);
   });
 
   it("全部完成：finished=true，当前停留在最后一步", () => {

@@ -109,7 +109,6 @@ export function getFlowState(db: DbInstance, scenario: Scenario): FlowStatus {
 
   return buildFlowStatus({
     completed,
-    unlockedAll: Boolean(scenario.flow_unlocked_all),
     readiness,
   });
 }
@@ -147,13 +146,6 @@ export function reopenFlowStep(db: DbInstance, scenario: Scenario, stepId: numbe
   flowStep(stepId); // 校验步骤号
   db.scenarioStepRepo.clearFrom(scenario.id, stepId);
   db.scenarioRepo.update(scenario.id, { status: "进行中" } as never);
-  const fresh = db.scenarioRepo.getById(scenario.id) ?? scenario;
-  return getFlowState(db, fresh);
-}
-
-/** 解锁全部步骤（正常是锁步推进；着急或只想看某一步时用） */
-export function unlockAllFlowSteps(db: DbInstance, scenario: Scenario): FlowStatus {
-  db.scenarioRepo.update(scenario.id, { flow_unlocked_all: 1 } as never);
   const fresh = db.scenarioRepo.getById(scenario.id) ?? scenario;
   return getFlowState(db, fresh);
 }

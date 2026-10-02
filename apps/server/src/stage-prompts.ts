@@ -105,7 +105,7 @@ function renderUpstream(upstreamData: Record<string, unknown>): string {
       t && middleColumns(t).length > 0
         ? middleColumns(t).map((c) => c.key)
         : Object.keys(rows[0] ?? {}).filter((k) => !["id", "scenario_id", "stage", "is_stale", "created_at", "updated_at"].includes(k));
-    // 资料来源（主库 / 本场景 / 引用库）置首列：合并后仍可区分，模型引用时能说清出处
+    // 资料来源（本场景 / 主库）置首列：合并后仍可区分，模型引用时能说清出处
     const hasScope = rows.some((r) => typeof r["data_scope"] === "string");
     const keys = hasScope ? ["data_scope", ...raw.filter((k) => k !== "data_scope")] : raw;
     const header = (k: string): string => (k === "data_scope" ? "资料来源" : k);
