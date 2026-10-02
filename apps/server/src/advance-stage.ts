@@ -28,7 +28,13 @@ import type {
 import type { DbInstance } from "@scene/infra";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { isModelStage, stageDef, tablesOfStage, type InfoStageId } from "@scene/contract";
+import {
+  filterRowByStage,
+  isModelStage,
+  stageDef,
+  tablesOfStage,
+  type InfoStageId,
+} from "@scene/contract";
 import {
   advance,
   LAST_STAGE,
@@ -362,7 +368,10 @@ async function* executeAdvanceStage(
   for (const row of acceptedRows) {
     // 通用列从行里剥掉：`source_type`/`confirm_state` 由服务端掌握，
     // **模型自封的「用户确认」不得进入数据**（否则污染证据等级）
-    const { source_type: declared, confirm_state: _ignored, ...fields } = row.fields;
+    const { source_type: declared, confirm_state: _ignored, ...rawFields } = row.fields;
+    // 跨阶段表里属于后续阶段的列（如表2-5 的"实现路径/责任人"要到阶段 4）本步一律不入库：
+    // 由契约的列级 filledInStages 决定，不靠提示词自觉（实机曾把"责任人"这类我方内容填进第 2 步）
+    const fields = filterRowByStage(String(row.table_code), effectiveStage, rawFields);
     const sourceType = declared === "AI推断" || row.source_type === "AI推断" ? "AI推断" : "AI提取";
     const inserted = db.stageDataRepo.insert({
       scenario_id: scenarioId,
@@ -523,8 +532,16 @@ export function collectUpstreamData(
   // spec_param 无 product_line_id 列，经 product 反查多库
   const specByLines = `product_id IN (SELECT id FROM product WHERE product_line_id IN ${inLines})`;
 
-  // 所有阶段都需要基础材料
-  if (stage >= 0) {
+  /**
+   * 公司材料（M1–M6 + 可选材料）**只从阶段 3（能力匹配）起注入**
+   *
+   * 用户定调（2026-10-02）：场景定义 / 认识场景 / 商业梳理这三步是**从不同角度理解场景本身**，
+   * 不需要公司产品能力；到能力匹配才把公司能力放进去评估。原先每个阶段都注入 M1–M6，
+   * 模型是"看着我们自己的产品在写场景"，于是自然写出「我方切入点」「我方优势」「我方角色」——
+   * 表里的公司侧列（表1-2 可参与程度、表3-2 我方切入点…）就是这么长出来的。
+   * 现在阶段 0–2 只给场景侧上下文（场景锚 + 前几步的场景产出），公司材料在阶段 3 才进场。
+   */
+  if (stage >= 3) {
     const products = db.productRepo.list({
       where: `product_line_id IN ${inLines}`,
       params: lineIds,

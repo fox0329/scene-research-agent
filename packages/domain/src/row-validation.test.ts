@@ -44,12 +44,13 @@ describe("row-validation — 流程步限定表集", () => {
         ok("表1-2", {
           link: "制水",
           is_digital: "可以联网采集",
-          can_touch: "可以碰",
-          our_role: "辅助",
+          owner_now: "值班班组人工抄表",
+          current_tool: "纸质记录 + Excel 汇总",
+          current_flow: "每班两次人工抄表，下班前录入",
+          pain: "数据滞后、易漏抄",
           description: "加药与过滤",
-          responsibility: "我方提供采集",
-          reason: "环节数字化程度高",
-          role_reason: "只做数据不碰控制",
+          responsibility: "水厂运行班",
+          reason: "现场访谈",
         }),
       ],
       ["表1-2"],
@@ -60,13 +61,13 @@ describe("row-validation — 流程步限定表集", () => {
 
 describe("row-validation — 必填列", () => {
   it("缺必填列逐项报出（带列名与行号）", () => {
-    // 表1-2 必填：link / is_digital / can_touch / our_role / description
+    // 表1-2 必填：link / is_digital / owner_now / current_tool / current_flow / pain
     const v = validateIncomingRows(1, [
-      ok("表1-2", { link: "制水", is_digital: "可以联网采集", can_touch: "可以碰" }),
+      ok("表1-2", { link: "制水", is_digital: "可以联网采集", owner_now: "值班班组" }),
     ]);
     const kinds = v.filter((x) => x.kind === "缺必填列").map((x) => x.column);
-    expect(kinds).toContain("our_role");
-    expect(kinds).toContain("description");
+    expect(kinds).toContain("current_flow");
+    expect(kinds).toContain("current_tool");
     expect(v[0]?.detail).toContain("第 1 行");
   });
 

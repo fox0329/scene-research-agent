@@ -19,6 +19,7 @@ import {
   crossStageTables,
   tableDef,
   stageDef,
+  filterRowByStage,
 } from "./tables.js";
 
 describe("表定义注册表 — 完整性", () => {
@@ -26,22 +27,22 @@ describe("表定义注册表 — 完整性", () => {
     expect(registryIssues()).toEqual([]);
   });
 
-  it("共 34 张表，且表号唯一", () => {
-    expect(TABLES).toHaveLength(34);
-    expect(new Set(TABLES.map((t) => t.code)).size).toBe(34);
-    expect(Object.keys(TABLES_BY_CODE)).toHaveLength(34);
+  it("共 35 张表，且表号唯一", () => {
+    expect(TABLES).toHaveLength(35);
+    expect(new Set(TABLES.map((t) => t.code)).size).toBe(35);
+    expect(Object.keys(TABLES_BY_CODE)).toHaveLength(35);
   });
 
-  it("级别分布：重要 17 / 支撑 12 / 过程 5", () => {
+  it("级别分布：重要 18 / 支撑 12 / 过程 5", () => {
     const count = (tier: string): number => TABLES.filter((t) => t.tier === tier).length;
-    expect(count("重要")).toBe(17);
+    expect(count("重要")).toBe(18);
     expect(count("支撑")).toBe(12);
     expect(count("过程")).toBe(5);
   });
 
-  it("阶段分布：0→7张、1→8张、2→8张、3→4张、4→4张、5→2张、6→1张、7→0张", () => {
+  it("阶段分布：0→7张、1→8张、2→8张、3→5张、4→4张、5→2张、6→1张、7→0张", () => {
     const dist = [0, 1, 2, 3, 4, 5, 6, 7].map((s) => tablesOfStage(s as 0).length);
-    expect(dist).toEqual([7, 8, 8, 4, 4, 2, 1, 0]);
+    expect(dist).toEqual([7, 8, 8, 5, 4, 2, 1, 0]);
   });
 
   it("阶段定义的 tableCodes 与实际表一致（含阶段 7 无表）", () => {
@@ -143,10 +144,9 @@ describe("表定义注册表 — 关键结构", () => {
     expect(middleColumns(tableDef("表1-1")).map((c) => c.key)).toEqual(["item", "content"]);
   });
 
-  it("跨阶段填写的表为 表2-5 / 表3-6 / 表3-8（回退时按列清除）", () => {
-    expect(crossStageTables().map((t) => t.code).sort()).toEqual(["表2-5", "表3-6", "表3-8"]);
+  it("跨阶段填写的表为 表2-5 / 表3-8（回退时按列清除）", () => {
+    expect(crossStageTables().map((t) => t.code).sort()).toEqual(["表2-5", "表3-8"]);
     expect(tableDef("表2-5").filledInStages).toEqual([1, 4]);
-    expect(tableDef("表3-6").filledInStages).toEqual([2, 4]);
     expect(tableDef("表3-8").filledInStages).toEqual([2, 3]);
   });
 
@@ -231,5 +231,32 @@ describe("表定义注册表 — 枚举", () => {
     expect(flat).not.toContain("建议进");
     expect(flat).not.toContain("建议通过");
     expect(flat).not.toContain("建议不通过");
+  });
+});
+
+describe("列级 filledInStages — 后续阶段的列不许提前填", () => {
+  it("跨阶段表里属后续阶段的列都标了 filledInStages", () => {
+    for (const code of ["表2-5", "表3-8"]) {
+      const t = tableDef(code);
+      const marked = t.columns.filter((c) => c.filledInStages);
+      expect(marked.length, `${code} 应有列标 filledInStages`).toBeGreaterThan(0);
+    }
+    expect(tableDef("表2-5").columns.find((c) => c.key === "owner")?.filledInStages).toEqual([4]);
+    expect(tableDef("表3-8").columns.find((c) => c.key === "rank")?.filledInStages).toEqual([3]);
+  });
+
+  it("filterRowByStage 剥掉本阶段不该填的列，其余原样保留", () => {
+    const row = { constraint_item: "等保三级", compliance_path: "换设备", owner: "我方交付" };
+    expect(filterRowByStage("表2-5", 1, row)).toEqual({ constraint_item: "等保三级" });
+    expect(filterRowByStage("表2-5", 4, row)).toEqual(row);
+    // 表3-8 的排序/多源验证/预算科目在阶段 2 不填、阶段 3 才填
+    const gap = { gap: "数据不全", rank: "1", cross_validation: "3 家" };
+    expect(filterRowByStage("表3-8", 2, gap)).toEqual({ gap: "数据不全" });
+    expect(filterRowByStage("表3-8", 3, gap)).toEqual(gap);
+  });
+
+  it("没有列级标记的表不受影响（原样返回）", () => {
+    const row = { link: "制水", current_flow: "每班抄表" };
+    expect(filterRowByStage("表1-2", 1, row)).toEqual(row);
   });
 });

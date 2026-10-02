@@ -457,6 +457,44 @@ else
   echo "❌ 缺少列宽自动适配的 E2E 用例"
   FAIL=1
 fi
+# v1.21 守卫：前两步只梳理场景现状，公司能力到「能力匹配」才进场
+check_contains "04-业务过程重定义.md" "v1.21" "业务过程 v1.21（场景侧与公司侧分家）"
+check_contains "docs/项目变更表.md" "| 79 |" "变更表 #79 场景现状口径登记"
+check_contains "packages/contract/src/tables.ts" "code: \"表4-2\"" "新增表4-2 我方参与地图（公司能力进场的第一步）"
+# 正向守卫：公司材料只在阶段 3 及以后注入（根因：每个阶段都注入 M1–M6，模型看着自家产品写场景）
+check_contains "apps/server/src/advance-stage.ts" "if (stage >= 3) {" "公司材料只在阶段 3+ 注入"
+# 正向守卫：阶段 1/2 提示词必须写明「只写现状、不得出现我方视角」
+check_contains "apps/server/src/stage-prompts.ts" "只写这个场景" "阶段 1 提示词限定只写场景现状"
+check_contains "apps/server/src/stage-prompts.ts" "同样禁止出现我方视角" "阶段 2 提示词禁止我方视角"
+check_contains "apps/server/src/stage-prompts.ts" "公司能力从这里进场" "阶段 3 提示词说明公司能力进场"
+# 反向守卫：第 2、3 步（阶段 1、2）的表里不得再出现公司侧列
+# 只看阶段 1–2 的两段定义（表4-2 里 can_touch/our_role 是**应该**有的——那是阶段 3 的公司侧镜像）
+awk '/^\/\/ ─── 阶段 1 ·/,/^\/\/ ─── 阶段 3 ·/' "$ROOT/packages/contract/src/tables.ts" > /tmp/vm5-stage12.txt
+for bad in 'mid("can_touch"' 'mid("our_role"' 'mid("our_entry"' 'mid("our_advantage"' 'mid("implication"' 'mid("judgment"'; do
+  if grep -qF "$bad" /tmp/vm5-stage12.txt; then
+    echo "❌ 公司侧列又出现在第 2、3 步的表里：${bad}（前两步只写场景现状，我方视角归阶段 3）"
+    FAIL=1
+  fi
+done
+rm -f /tmp/vm5-stage12.txt
+echo "✅ 第 2、3 步中栏不含公司侧列（可参与程度/我方角色/我方切入点/我方优势/对我方含义）"
+# 正向守卫：迁走的公司侧内容在阶段 3 有落点（参与地图 / 细分优先级 / 竞争力判断）
+check_contains "packages/contract/src/tables.ts" "role_reason" "表4-2 承接角色判定依据"
+check_contains "packages/contract/src/tables.ts" "market_form" "表4-4 承接对应市场形态或趋势"
+check_contains "packages/contract/src/tables.ts" "compared_with" "表4-5 承接对照对象"
+# 正向守卫：存量数据要有迁移脚本（默认 dry-run）
+check_contains "scripts/migrate-scene-vs-company.mjs" "表1-2 → 表4-2" "存量迁移脚本在册（表1-2 → 表4-2）"
+check_contains "scripts/migrate-scene-vs-company.mjs" "表4-2" "迁移目标表正确"
+# 正向守卫：测试必须真的跑源码（tsc 就地编译的 .js 会让测试跑旧代码，见故障 #24）
+if [ -f "$ROOT/packages/contract/src/tables.js" ]; then
+  echo "❌ 源码目录里有 tsc 就地编译的 .js：测试会跑旧代码（故障 #24）"
+  FAIL=1
+else
+  echo "✅ 源码目录无就地编译残留（测试跑的是 .ts 源码）"
+fi
+check_contains "package.json" "clean:stray" "pretest 清理残留编译产物"
+check_contains "docs/故障及解决清单.md" "测试跑的还是上次编译的产物" "故障 #24 登记（单测测旧代码）"
+
 # v1.20 守卫：进度不进中栏（中栏只放信息），进度只留在流程轴按钮上
 check_contains "04-业务过程重定义.md" "v1.20" "业务过程 v1.20（进度不进中栏）"
 check_contains "docs/项目变更表.md" "| 78 |" "变更表 #78 进度只留流程轴登记"

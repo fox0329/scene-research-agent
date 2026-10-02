@@ -1,7 +1,7 @@
 /**
  * @scene/contract — 表定义注册表（单一事实源）
  *
- * 本文件是 34 张信息表的**唯一事实源**：表号、名称、阶段、级别、行粒度、列定义、
+ * 本文件是 35 张信息表的**唯一事实源**：表号、名称、阶段、级别、行粒度、列定义、
  * 栏位分配（中栏 / 右栏补充）、枚举、完整度规则。
  *
  * 派生关系（三处共用同一份定义，不再各写一遍）：
@@ -37,7 +37,7 @@ export const ENUMS = {
   measured: ["实测", "宣称", "未提及"],
   barrier_type: ["技术", "行业准入", "经济", "生态锁定", "一票否决者"],
   barrier_status: ["过得了", "过不了", "绕道", "借道", "等窗口", "不知道"],
-  strategy: ["直接进入", "找替代路径", "找合作伙伴", "不进入", "等政策变化", "列为调研重点"],
+  industry_practice: ["正面满足", "换技术路径", "借道合作", "等窗口", "行业普遍不做"],
   can_touch: ["可以碰", "只能配合", "不能碰"],
   our_role: ["替代", "辅助", "外围", "不参与"],
   match: ["真能解", "需补齐", "不能做"],
@@ -87,6 +87,15 @@ export interface TableColumn {
   block?: string;
   /** 说明（供提示词与 tooltip） */
   note?: string;
+  /**
+   * 该列只在哪些阶段填写（缺省 = 表所属阶段）
+   *
+   * 为什么需要：跨阶段表（表2-5 物理与合规约束、表3-8 没被满足的需求）里有几列是**后面阶段**才补的
+   * （如"实现路径/责任人"要等阶段 4）。没有这个标记时，模型会把它们在本步一起编出来——
+   * 实机就出现第 2 步填了「责任人」（那是我方的活，属公司侧），与"前两步只梳理场景现状"的口径冲突。
+   * 写入时按此字段过滤，**由契约保证，不靠提示词自觉**。
+   */
+  filledInStages?: readonly InfoStageId[];
 }
 
 /**
@@ -229,7 +238,7 @@ export const STAGE_DEFS: readonly StageDef[] = [
     name: "能力匹配",
     producedBy: "模型分析",
     goal: "我方能力底账、客户每条需求能否满足、细分优先级、竞争力评分",
-    tableCodes: ["表4-1", "表4-3", "表4-4", "表4-5"],
+    tableCodes: ["表4-1", "表4-2", "表4-3", "表4-4", "表4-5"],
     summaryTitle: "④ 能力匹配总结",
   },
   {
@@ -562,21 +571,26 @@ const TABLES_STAGE_1: readonly TableDef[] = [
     stage: 1,
     tier: "重要",
     rowUnit: "一个业务环节",
-    purpose: "铺开场景的全部业务环节，标出每个环节能不能碰、我方以什么角色参与",
+    purpose: "铺开场景的全部业务环节，把每个环节**现在是怎么做的**写清楚（谁在做、用什么、什么问题）",
     columns: [
       mid("link", "业务环节", { required: true }),
       mid("is_digital", "有无电子部分", { required: true, enum: "is_digital" }),
-      mid("can_touch", "我方可参与程度", { required: true, enum: "can_touch" }),
-      mid("our_role", "我方角色", { required: true, enum: "our_role" }),
-      mid("description", "环节说明", { required: true, type: "longText", truncate: TRUNCATE_DEFAULT }),
+      mid("owner_now", "现在谁在做", { required: true, note: "写角色或岗位（如「班组长人工抄表」），不写人名" }),
+      mid("current_tool", "现在用什么", { required: true, note: "现有系统/设备/方式；纯人工也要写明" }),
+      mid("current_flow", "现在怎么做", { required: true, note: "流程与频次（谁在什么时候做什么）" }),
+      mid("pain", "现状问题", { required: true, note: "这个环节现在卡在哪；没有就写「未发现明确问题」" }),
+      sup("description", "环节说明", { required: true, type: "longText" }),
       sup("responsibility", "责任归属", { required: true }),
       sup("reason", "依据", { required: true, type: "longText" }),
-      sup("role_reason", "角色判定依据", { required: true, type: "longText" }),
       sup("source", "来源", { required: true }),
       sup("evidence_level", "证据等级", { required: true, enum: "evidence_level" }),
       sup("authority", "来源权威性", { required: true, enum: "authority" }),
     ],
-    completeness: ["业务环节 ≥3 个", "每环节 can_touch 与 our_role 非空且取值合法", "依据可回溯 M4 或法规"],
+    completeness: [
+      "业务环节 ≥3 个",
+      "每环节 owner_now / current_tool / current_flow / pain 非空——本步只写现状",
+      "依据须可回溯材料或标「行业通例（模型知识·待核实）」",
+    ],
     consumedBy: [3, 4, 7],
   },
   {
@@ -585,22 +599,17 @@ const TABLES_STAGE_1: readonly TableDef[] = [
     stage: 1,
     tier: "重要",
     rowUnit: "一道门槛（一票否决者类为一个角色；认证类为一项认证要求）",
-    purpose: "五类门槛 + 认证现状 + 处置策略三合一",
+    purpose: "五类门槛 + 现在过不过得去 + 行业里一般怎么过（不写我方的行动）",
     columns: [
       mid("barrier_type", "门槛类型", { required: true, enum: "barrier_type" }),
       mid("barrier_name", "门槛", { required: true }),
       mid("veto_holder", "否决者", { requiredWhen: "生态锁定类除外" }),
       mid("criteria", "判据", { required: true, type: "longText", truncate: TRUNCATE_DEFAULT }),
-      mid("current_status", "现状", { required: true, enum: "barrier_status" }),
-      mid("judgment", "判定", { required: true, enum: "barrier_status" }),
+      mid("current_status", "现状", { required: true, enum: "barrier_status", note: "这个场景现在过不过得去" }),
+      mid("industry_practice", "行业通行处置", { enum: "industry_practice", note: "行业里这道门槛一般怎么过（市场知识）" }),
       sup("evidence", "证据", { required: true }),
-      sup("held_certs", "已持有认证", { requiredWhen: "认证类必填" }),
+      sup("held_certs", "已持有认证", { requiredWhen: "认证类必填", note: "该场景/客户目前持有的认证" }),
       sup("cert_gap", "认证差距", { requiredWhen: "认证类必填" }),
-      sup("cert_mitigation", "认证弥补措施"),
-      sup("strategy", "处置策略", { enum: "strategy" }),
-      sup("action_items", "行动项"),
-      sup("owner", "负责人"),
-      sup("timeline", "时间线"),
       sup("source", "来源", { required: true }),
       sup("evidence_level", "证据等级", { required: true, enum: "evidence_level" }),
       sup("authority", "来源权威性", { required: true, enum: "authority" }),
@@ -608,7 +617,7 @@ const TABLES_STAGE_1: readonly TableDef[] = [
     completeness: [
       "五类门槛各 ≥1 行",
       "criteria 含具体等级/标准号/数值（禁『较高』『相关』）",
-      "过不了/不知道行必须有 strategy 与 action_items",
+      "现状写具体（过得了/过不了/绕道/借道/等窗口/不知道），不知道的须说明缺什么信息",
     ],
     consumedBy: [4, 7],
   },
@@ -674,14 +683,14 @@ const TABLES_STAGE_1: readonly TableDef[] = [
     stage: 1,
     tier: "支撑",
     rowUnit: "一个约束项",
-    purpose: "硬约束 + 我方如何满足（要求与响应同行）",
+    purpose: "这个场景的硬约束（要求与出处；实现路径到阶段 4 再补）",
     filledInStages: [1, 4],
     columns: [
       mid("constraint_item", "约束项", { required: true }),
       mid("required_value", "具体要求值", { required: true }),
       mid("standard_no", "适用标准号"),
-      mid("compliance_path", "实现路径", { note: "阶段 4 补填" }),
-      mid("owner", "责任人", { note: "阶段 4 补填" }),
+      mid("compliance_path", "实现路径", { note: "阶段 4 补填", filledInStages: [4] }),
+      mid("owner", "责任人", { note: "阶段 4 补填", filledInStages: [4] }),
       sup("period", "周期"),
       sup("status", "状态"),
       sup("source", "出处", { required: true }),
@@ -736,18 +745,18 @@ const TABLES_STAGE_2: readonly TableDef[] = [
     stage: 2,
     tier: "重要",
     rowUnit: "一种方案形态",
-    purpose: "市面有几种打法、哪种在扩张，我方切入点在哪",
+    purpose: "市面有几种打法、哪种在扩张、各自适合什么客户（不写我方怎么切）",
     columns: [
       mid("form", "方案形态", { required: true }),
       mid("key_points", "要点", { required: true, type: "longText", truncate: TRUNCATE_DEFAULT }),
       mid("leader", "主导者", { required: true }),
       mid("position", "当前地位", { required: true, enum: "position" }),
-      mid("our_entry", "我方切入点", { required: true, type: "longText", truncate: TRUNCATE_DEFAULT }),
+      mid("fit_for", "适用条件", { required: true, note: "这种打法适合什么客户、什么预算档、什么场景规模" }),
       sup("form_no", "形态编号"),
       sup("source", "来源", { required: true }),
     ],
-    completeness: ["≥3 种形态", "form/key_points/leader/our_entry 非空"],
-    consumedBy: [7],
+    completeness: ["≥3 种形态", "form/key_points/leader/fit_for 非空"],
+    consumedBy: [3, 7],
   },
   {
     code: "表3-3",
@@ -755,7 +764,7 @@ const TABLES_STAGE_2: readonly TableDef[] = [
     stage: 2,
     tier: "支撑",
     rowUnit: "一类客户",
-    purpose: "客户怎么买、钱从哪出、谁拍板谁用、决策多久、怎么撬动",
+    purpose: "客户怎么买、钱从哪出、谁拍板谁用、决策多久、现在谁在供",
     columns: [
       mid("customer_type", "客户类型", { required: true }),
       mid("decision_maker", "决策角色", { note: "哪类岗位拍板（写角色不写人名）——表1-1 只给画像，明细在这里查" }),
@@ -768,8 +777,8 @@ const TABLES_STAGE_2: readonly TableDef[] = [
       sup("procurement_method", "采购方式"),
       sup("decision_cycle", "决策周期"),
       sup("decision_basis", "决策依据"),
-      sup("in_path", "我方是否在路径中"),
-      sup("leverage", "需撬动什么"),
+      sup("incumbent", "现在谁在供", { note: "在位供应商的类型或厂商名" }),
+      sup("path_nodes", "路径关键节点", { note: "这条采购路径上必须过的关口" }),
       sup("source", "来源", { required: true }),
     ],
     completeness: ["customer_type/default_choice/budget_item 非空", "每行有来源"],
@@ -780,19 +789,19 @@ const TABLES_STAGE_2: readonly TableDef[] = [
     name: "竞争对手对照",
     stage: 2,
     tier: "支撑",
-    rowUnit: "一个对照维度（固定 4 列：我方 + 竞品 A/B/C）",
-    purpose: "我方位势——关键维度上有没有优势",
+    rowUnit: "一个对照维度（固定 4 列：竞品 A/B/C/D）",
+    purpose: "市面上有哪几家对手、各自什么水平（我方与对手的对照在阶段 3 表4-5）",
     columns: [
       mid("dimension", "对照维度", { required: true }),
-      mid("our", "我方", { required: true }),
       mid("competitor_a", "竞品 A"),
       mid("competitor_b", "竞品 B"),
       mid("competitor_c", "竞品 C"),
+      mid("competitor_d", "竞品 D"),
       sup("source", "来源", { required: true }),
       sup("evidence_level", "证据等级", { required: true, enum: "evidence_level" }),
       sup("authority", "来源权威性", { required: true, enum: "authority" }),
     ],
-    completeness: ["竞品 ≥3 家（A/B/C 均填）", "维度 ≥3 个", "竞品取值须有来源"],
+    completeness: ["竞品 ≥3 家（A/B/C 至少填满）", "维度 ≥3 个", "竞品取值须有来源"],
     consumedBy: [3],
   },
   {
@@ -800,22 +809,19 @@ const TABLES_STAGE_2: readonly TableDef[] = [
     name: "替代方案与价格对照",
     stage: 2,
     tier: "重要",
-    rowUnit: "一个可对照方案（末行必须是我方方案）",
-    purpose: "客户的可选项 + 我方价格位置",
-    filledInStages: [2, 4],
+    rowUnit: "一个可对照方案（必须含「什么都不做」）",
+    purpose: "客户手上还有什么可选项、各自什么价格（我方的价格位置在阶段 4 成本估算）",
     columns: [
       mid("alternative", "替代方案", { required: true, note: "必须含『什么都不做』" }),
       mid("customer_gets", "客户得到什么", { required: true, type: "longText", truncate: TRUNCATE_DEFAULT }),
       mid("cost_structure", "成本结构", { required: true }),
       mid("unit_cost", "单位成本", { required: true, type: "number" }),
-      mid("our_advantage", "我方优势", { type: "longText", truncate: TRUNCATE_DEFAULT }),
+      mid("chosen_when", "谁在用、什么条件下选它", { required: true, note: "这类方案的实际采用者与采用条件" }),
       sup("no", "编号"),
-      sup("our_weakness", "我方劣势"),
-      sup("implication", "对我方意味着什么", { required: true, type: "longText" }),
       sup("source", "来源", { required: true }),
     ],
-    completeness: ["≥2 个对照方案 + 我方方案行", "alternative/customer_gets/cost_structure/unit_cost 非空", "成本须有来源或标『估算』"],
-    consumedBy: [4, 7],
+    completeness: ["≥2 个对照方案（含「什么都不做」）", "alternative/customer_gets/cost_structure/unit_cost/chosen_when 非空", "成本须有来源或标『估算』"],
+    consumedBy: [3, 4, 7],
   },
   {
     code: "表3-7",
@@ -844,14 +850,14 @@ const TABLES_STAGE_2: readonly TableDef[] = [
     purpose: "『值得打的位置』的唯一来源 + 痛点排序",
     filledInStages: [2, 3],
     columns: [
-      mid("rank", "排序", { note: "阶段 3 补填" }),
+      mid("rank", "排序", { note: "阶段 3 补填", filledInStages: [3] }),
       mid("gap", "缺口描述", { required: true, type: "longText", truncate: TRUNCATE_DEFAULT }),
       mid("who_hurts", "谁在痛", { required: true }),
       mid("pain_level", "痛到什么程度", { required: true, enum: "level_hml" }),
       mid("current_alternative", "现有替代方案", { type: "longText", truncate: TRUNCATE_DEFAULT }),
-      mid("cross_validation", "多源验证", { note: "阶段 3 补填" }),
+      mid("cross_validation", "多源验证", { note: "阶段 3 补填", filledInStages: [3] }),
       sup("why_unsatisfied", "为什么不满意", { required: true, type: "longText" }),
-      sup("budget_item", "对应预算科目", { note: "阶段 3 补填" }),
+      sup("budget_item", "对应预算科目", { note: "阶段 3 补填", filledInStages: [3] }),
       sup("gap_source", "缺口来源"),
       sup("source", "来源", { required: true }),
       sup("evidence_level", "证据等级", { required: true, enum: "evidence_level" }),
@@ -866,21 +872,21 @@ const TABLES_STAGE_2: readonly TableDef[] = [
     stage: 2,
     tier: "过程",
     rowUnit: "一条趋势",
-    purpose: "变化方向与时间窗口（时机判断）",
+    purpose: "变化方向与时间窗口（对场景各方的影响，不写对我方含义）",
     columns: [
       mid("trend", "趋势", { required: true, type: "longText", truncate: TRUNCATE_DEFAULT }),
       mid("driver", "驱动力", { required: true }),
-      mid("implication", "对我方含义", { required: true, type: "longText", truncate: TRUNCATE_DEFAULT }),
+      mid("impact", "对场景各方的影响", { required: true, type: "longText", truncate: TRUNCATE_DEFAULT, note: "对客户、对在位供应商分别意味着什么" }),
       mid("window", "时间窗口", { required: true, type: "longText", truncate: TRUNCATE_DEFAULT }),
       sup("no", "编号"),
       sup("source", "来源", { required: true }),
     ],
-    completeness: ["趋势/对我方含义 非空", "时间窗口须为具体时间段"],
-    consumedBy: [7],
+    completeness: ["趋势/对场景各方的影响 非空", "时间窗口须为具体时间段"],
+    consumedBy: [3, 7],
   },
 ];
 
-// ─── 阶段 3 · 能力匹配（4 张） ──────────────────────────────
+// ─── 阶段 3 · 能力匹配（5 张） ──────────────────────────────
 
 const TABLES_STAGE_3: readonly TableDef[] = [
   {
@@ -900,6 +906,30 @@ const TABLES_STAGE_3: readonly TableDef[] = [
     ],
     completeness: ["ability/maturity/proof 非空", "已交付行须有案例或验收数据"],
     consumedBy: [7],
+  },
+  {
+    code: "表4-2",
+    name: "我方参与地图",
+    stage: 3,
+    tier: "重要",
+    rowUnit: "一个业务环节（来自表1-2）",
+    purpose: "公司能力进场的第一步：逐环节看这个场景我方能不能碰、以什么角色参与",
+    columns: [
+      mid("link", "业务环节", { required: true, note: "与表1-2 的环节一致" }),
+      mid("can_touch", "我方可参与程度", { required: true, enum: "can_touch" }),
+      mid("our_role", "我方角色", { required: true, enum: "our_role" }),
+      mid("our_product", "我方产品", { note: "对得上就写型号或产品线" }),
+      mid("role_reason", "角色判定依据", { required: true, type: "longText", truncate: TRUNCATE_DEFAULT, note: "依据 M3 能力清单 / M4 边界 / M5 已知限制" }),
+      sup("source", "来源", { required: true }),
+      sup("evidence_level", "证据等级", { required: true, enum: "evidence_level" }),
+      sup("authority", "来源权威性", { required: true, enum: "authority" }),
+    ],
+    completeness: [
+      "每个环节一行（对齐表1-2）",
+      "can_touch 与 our_role 非空且取值合法",
+      "判定依据须引用 M3/M4/M5 的具体条目",
+    ],
+    consumedBy: [4, 5, 7],
   },
   {
     code: "表4-3",
@@ -926,7 +956,7 @@ const TABLES_STAGE_3: readonly TableDef[] = [
     stage: 3,
     tier: "重要",
     rowUnit: "一个细分场景",
-    purpose: "先打哪个细分",
+    purpose: "先打哪个细分——公司能力进场后，把市场形态与我方能力对起来",
     columns: [
       mid("sub_scene", "细分场景", { required: true }),
       mid("value_density", "价值密度", { required: true }),
@@ -934,6 +964,8 @@ const TABLES_STAGE_3: readonly TableDef[] = [
       mid("difficulty", "进入难度", { required: true }),
       mid("stock_maturity", "存量成熟度", { required: true }),
       mid("rank", "综合排序", { required: true }),
+      sup("market_form", "对应市场形态或趋势", { note: "引用表3-2 的形态或表3-9 的趋势" }),
+      sup("entry_note", "我方切入点／对我方含义", { type: "longText", note: "承接表3-2 与表3-9 里原先挂在我方的那两项" }),
       sup("strategy", "策略"),
       sup("source", "来源", { required: true }),
     ],
@@ -946,12 +978,16 @@ const TABLES_STAGE_3: readonly TableDef[] = [
     stage: 3,
     tier: "重要",
     rowUnit: "一个评分维度（末行总分）",
-    purpose: "赢面评分与依据",
+    purpose: "与对手/替代方案比，赢面评分与依据（我方对照全在这里）",
     columns: [
       mid("dimension", "维度", { required: true }),
       mid("weight", "权重", { required: true, type: "number" }),
       mid("score", "评分(1-5)", { required: true, type: "number" }),
       mid("basis", "打分依据", { required: true, type: "longText", truncate: TRUNCATE_DEFAULT }),
+      sup("compared_with", "对照对象", { note: "与哪家竞品（表3-4）或哪个替代方案（表3-6）比" }),
+      sup("advantage", "我方优势"),
+      sup("weakness", "我方劣势"),
+      sup("implication", "对我方意味着什么", { type: "longText" }),
       sup("source", "来源"),
     ],
     completeness: ["维度 ≥4 个", "权重之和 = 100%", "总分 = Σ(权重 × 评分)"],
@@ -990,7 +1026,7 @@ const TABLES_STAGE_4: readonly TableDef[] = [
     stage: 4,
     tier: "重要",
     rowUnit: "一个实施项",
-    purpose: "落地路径与前置条件（人天进成本）",
+    purpose: "落地路径与前置条件（人天进成本）；门槛应对行动也写在这里",
     columns: [
       mid("item", "项", { required: true }),
       mid("content", "内容", { required: true, type: "longText", truncate: TRUNCATE_DEFAULT }),
@@ -998,6 +1034,7 @@ const TABLES_STAGE_4: readonly TableDef[] = [
       mid("man_days", "人天", { required: true, type: "number" }),
       mid("rollback", "回退", { required: true }),
       sup("env_prep", "环境准备"),
+      sup("owner", "负责人"),
       sup("source", "出处"),
     ],
     completeness: ["六项必填非空", "man_days 为数值（与表5-5 人工成本对应）", "依赖不可控条件的项须显式标注"],
@@ -1117,7 +1154,7 @@ const TABLES_STAGE_6: readonly TableDef[] = [
   },
 ];
 
-// ─── 34 张表总表 ───────────────────────────────────────────
+// ─── 35 张表总表 ───────────────────────────────────────────
 
 export const TABLES: readonly TableDef[] = [
   ...TABLES_STAGE_0,
@@ -1263,6 +1300,26 @@ export function pinnedTables(): readonly TableDef[] {
 }
 
 /** 跨阶段填写的表（回退时按列清除） */
+/**
+ * 按阶段过滤一行：剥掉「本阶段不该填」的列（列级 filledInStages 不含当前阶段）
+ *
+ * 用途见 `TableColumn.filledInStages`：跨阶段表里属于后续阶段的列，模型即便写了也不入库，
+ * 避免"我方视角/后续阶段内容"提前混进本步产出。
+ */
+export function filterRowByStage(
+  tableCode: string,
+  stage: InfoStageId,
+  row: Record<string, unknown>,
+): Record<string, unknown> {
+  const t = TABLES_BY_CODE[tableCode as keyof typeof TABLES_BY_CODE] as TableDef | undefined;
+  if (!t) return row;
+  const notYet = new Set(
+    t.columns.filter((c) => c.filledInStages && !c.filledInStages.includes(stage)).map((c) => c.key),
+  );
+  if (notYet.size === 0) return row;
+  return Object.fromEntries(Object.entries(row).filter(([k]) => !notYet.has(k)));
+}
+
 export function crossStageTables(): readonly TableDef[] {
   return TABLES.filter((t) => (t.filledInStages?.length ?? 0) > 1);
 }
@@ -1322,7 +1379,7 @@ export function registryIssues(): readonly string[] {
   const issues: string[] = [];
 
   // 表数
-  if (TABLES.length !== 34) issues.push(`表数应为 34，实际 ${TABLES.length}`);
+  if (TABLES.length !== 35) issues.push(`表数应为 35，实际 ${TABLES.length}`);
 
   // 表号唯一
   const seen = new Set<string>();

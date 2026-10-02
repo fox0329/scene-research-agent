@@ -55,7 +55,7 @@ describe("stage-prompts — 内容由注册表派生", () => {
   it("必填与枚举在字段清单里标注", () => {
     const p = buildStagePrompt(1, {}, scenario);
     expect(p.system).toContain("必填");
-    expect(p.system).toContain("枚举 can_touch");
+    expect(p.system).toContain("枚举 is_digital");
   });
 
   it("表1-1 的固定行逐个列出，且只给「场景名称」标「用户输入」", () => {

@@ -52,7 +52,7 @@ describe("collectUpstreamData — 通用库默认引用、可逐个取消", () =
   it("新建场景不做任何操作，默认就能看到主库产品", () => {
     const { db, scenarioId } = setup();
     const sc = db.scenarioRepo.getById(scenarioId)!;
-    const data = collectUpstreamData(db, sc, 1) as Record<string, Record<string, unknown>[]>;
+    const data = collectUpstreamData(db, sc, 3) as Record<string, Record<string, unknown>[]>;
     const m1 = data["M1_产品型号"] ?? [];
     expect(m1.length).toBeGreaterThanOrEqual(1);
     expect(m1.some((r) => String(r["data_scope"]).startsWith("主库"))).toBe(true);
@@ -61,7 +61,7 @@ describe("collectUpstreamData — 通用库默认引用、可逐个取消", () =
   it("同一型号在多库出现时去重，且本场景优先", () => {
     const { db, scenarioId } = setup();
     const sc = db.scenarioRepo.getById(scenarioId)!;
-    const data = collectUpstreamData(db, sc, 1) as Record<string, Record<string, unknown>[]>;
+    const data = collectUpstreamData(db, sc, 3) as Record<string, Record<string, unknown>[]>;
     const m1 = data["M1_产品型号"] ?? [];
     const ipc = m1.filter((r) => r["model"] === "IPC-3000");
     expect(ipc).toHaveLength(1);
@@ -72,7 +72,7 @@ describe("collectUpstreamData — 通用库默认引用、可逐个取消", () =
   it("每行都带来源标注（主库/本场景可区分）", () => {
     const { db, scenarioId } = setup();
     const sc = db.scenarioRepo.getById(scenarioId)!;
-    const data = collectUpstreamData(db, sc, 1) as Record<string, Record<string, unknown>[]>;
+    const data = collectUpstreamData(db, sc, 3) as Record<string, Record<string, unknown>[]>;
     for (const key of ["M1_产品型号", "M2_规格参数", "M3_能力清单", "M4_边界声明"]) {
       for (const row of data[key] ?? []) {
         expect(typeof row["data_scope"], key).toBe("string");
@@ -88,7 +88,7 @@ describe("collectUpstreamData — 通用库默认引用、可逐个取消", () =
       product_line_id: globalId,
       excluded: 1,
     } as never);
-    const data = collectUpstreamData(db, sc, 1) as Record<string, Record<string, unknown>[]>;
+    const data = collectUpstreamData(db, sc, 3) as Record<string, Record<string, unknown>[]>;
     const scopes = (data["M1_产品型号"] ?? []).map((r) => String(r["data_scope"]));
     // 主库被排除后，只剩本场景那条（IPC-3000 定制）
     expect(scopes.every((s) => !s.startsWith("主库"))).toBe(true);
@@ -104,7 +104,7 @@ describe("collectUpstreamData — 通用库默认引用、可逐个取消", () =
       excluded: 1,
     } as never);
     db.scenarioLinkedLineRepo.update(rel.id, { excluded: 0 } as never);
-    const data = collectUpstreamData(db, sc, 1) as Record<string, Record<string, unknown>[]>;
+    const data = collectUpstreamData(db, sc, 3) as Record<string, Record<string, unknown>[]>;
     const scopes = (data["M1_产品型号"] ?? []).map((r) => String(r["data_scope"]));
     expect(scopes).toContain("主库：公司产品库");
     expect(data["M1_产品型号"]?.map((r) => r["model"])).toContain("SEN-200");

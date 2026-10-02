@@ -22,6 +22,8 @@
     "typecheck": "pnpm run typecheck:packages && node scripts/copy-infra-sql.mjs && tsc -b apps/server apps/web",
     "build": "pnpm -r --if-present run build",
     "lint": "echo 'lint placeholder — TODO: 集成 eslint'",
+    "clean:stray": "find packages apps -path '*/src/*' -name '*.js' -not -path '*/node_modules/*' -delete",
+    "pretest": "pnpm run clean:stray",
     "test": "vitest run",
     "start": "node scripts/copy-infra-sql.mjs && node apps/server/dist/index.js",
     "verify:m0": "bash scripts/verify-m0.sh",
@@ -36,7 +38,7 @@
     "check:docs": "pnpm --filter @scene/contract build && node scripts/gen-table-docs.mjs --check",
     "typecheck:packages": "tsc --noEmit -p tsconfig.json",
     "migrate:info-model": "node scripts/copy-infra-sql.mjs && node scripts/migrate-info-model.mjs",
-    "clean": "rm -rf packages/*/dist apps/*/dist *.tsbuildinfo packages/*/*.tsbuildinfo apps/*/*.tsbuildinfo",
+    "clean": "rm -rf packages/*/dist apps/*/dist *.tsbuildinfo packages/*/*.tsbuildinfo apps/*/*.tsbuildinfo && pnpm run clean:stray",
     "verify:m6": "bash scripts/verify-m5.sh"
   }
 }

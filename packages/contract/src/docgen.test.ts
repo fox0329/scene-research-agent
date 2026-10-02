@@ -29,11 +29,11 @@ describe("文档生成 — 与注册表一致（漂移守卫）", () => {
 describe("文档生成 — 内容完整性", () => {
   const body = renderTables();
 
-  it("34 张表全部渲染为三级标题", () => {
+  it("35 张表全部渲染为三级标题", () => {
     for (const t of TABLES) {
       expect(body, t.code).toContain(`### ${t.code} ${t.name} `);
     }
-    expect(body.match(/^### /gm)?.length).toBe(34);
+    expect(body.match(/^### /gm)?.length).toBe(TABLES.length);
   });
 
   it("每张表都渲染了目的、行粒度、栏位分配、完整度规则", () => {
@@ -42,8 +42,8 @@ describe("文档生成 — 内容完整性", () => {
       expect(body).toContain(t.rowUnit);
       expect(body).toContain(t.completeness[0]);
     }
-    expect(body.match(/- \*\*栏位分配\*\*/g)?.length).toBe(34);
-    expect(body.match(/- \*\*完整度规则\*\*/g)?.length).toBe(34);
+    expect(body.match(/- \*\*栏位分配\*\*/g)?.length).toBe(TABLES.length);
+    expect(body.match(/- \*\*完整度规则\*\*/g)?.length).toBe(TABLES.length);
   });
 
   it("表1-1 渲染 6 行固定项，并标出唯一由用户输入的那一项", () => {
@@ -67,7 +67,7 @@ describe("文档生成 — 内容完整性", () => {
   });
 
   it("跨阶段填写的表标出所属阶段", () => {
-    for (const code of ["表2-5", "表3-6", "表3-8"]) {
+    for (const code of ["表2-5", "表3-8"]) {
       const i = body.indexOf(`### ${code} `);
       const section = body.slice(i, body.indexOf("\n### ", i + 1));
       expect(section, code).toContain("跨阶段填写");
