@@ -276,6 +276,10 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
             .then((r) => setAnchor(r.anchor))
             .catch(() => undefined);
           onChanged?.();
+          // **必须重取流程状态**：本步就绪是服务端按数据算的，分析刚落库时父级那份
+          // flow 还是旧的（ready=false）——不刷的话「完成本步」会一直禁用，
+          // 用户只能刷新页面才能往下走（存量 bug，一直藏在"走查静默跳过分析段"后面）。
+          onFlowChanged?.();
         }
       }
     } catch (err: unknown) {
@@ -287,7 +291,7 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
       runningRef.current = false;
       setRunning(false);
     }
-  }, [projectId, stage, stepId, reload, loadSummary, onChanged]);
+  }, [projectId, stage, stepId, reload, loadSummary, onChanged, onFlowChanged]);
 
   /* ── 三态渲染 ── */
 

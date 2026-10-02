@@ -33,6 +33,13 @@ function ok(name, cond, extra = "") {
   }
 }
 
+// 失败时也要能看到"哪些项已经过了"：否则抛错只会留下最后一行的堆栈
+process.on("uncaughtException", (err) => {
+  console.log(results.join("\n"));
+  console.error(`❌ 走查中断：${err?.message ?? err}`);
+  process.exit(1);
+});
+
 const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
 const dialogQueue = [];
@@ -245,27 +252,31 @@ ok(
 const railAdvance = page.locator(".flow-rail button:has-text('完成本步')");
 if ((await railAdvance.count()) > 0 && (await railAdvance.first().isEnabled())) {
   await railAdvance.first().click();
-  await page.waitForTimeout(1200);
 }
+// 等第 2 步的面板真的挂上（流程状态是异步重取的，立刻找按钮会找不到）
+await page
+  .locator(".ws .table-chips, .ws button:has-text('开始本步分析')")
+  .first()
+  .waitFor({ state: "visible", timeout: 30_000 })
+  .catch(() => undefined);
 const startBtn = page.locator("button:has-text('开始本步分析'), button:has-text('开始本阶段分析')");
-let analysisNote = "面板已有结果（跳过发起）";
-if (await startBtn.count()) {
-  await startBtn.click();
-  if (HAS_KEY) {
-    await page.waitForFunction(
-      () => /【完成】分析结果已落库/.test(document.body.innerText),
-      null,
-      { timeout: 300_000 },
-    );
-    analysisNote = "真实分析落库完成";
-  } else {
-    await page.waitForFunction(
-      () => /【错误】/.test(document.body.innerText),
-      null,
-      { timeout: 60_000 },
-    );
-    analysisNote = "无密钥降级：流内【错误】上屏（SSE 通路验证）";
-  }
+if ((await startBtn.count()) === 0) {
+  throw new Error("第 2 步没有找到「开始本步分析」按钮——分析段无法验证（不允许静默跳过）");
+}
+await startBtn.first().click();
+let analysisNote = "";
+if (HAS_KEY) {
+  await page.waitForFunction(
+    () => /【完成】分析结果已落库/.test(document.body.innerText),
+    null,
+    { timeout: 300_000 },
+  );
+  analysisNote = "真实分析落库完成";
+} else {
+  await page.waitForFunction(() => /【错误】/.test(document.body.innerText), null, {
+    timeout: 60_000,
+  });
+  analysisNote = "无密钥降级：流内【错误】上屏（SSE 通路验证）";
 }
 ok("5c 本步分析 SSE 链路（真实或降级）实时上屏", true, analysisNote);
 
