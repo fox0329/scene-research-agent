@@ -457,6 +457,29 @@ else
   echo "❌ 缺少列宽自动适配的 E2E 用例"
   FAIL=1
 fi
+# v1.19 守卫：进度通道断线要能自己接回来，收尾必须无条件对账（不许停在「分析中」）
+check_contains "04-业务过程重定义.md" "v1.19" "业务过程 v1.19（断线续连 + 收尾对账）"
+check_contains "docs/项目变更表.md" "| 77 |" "变更表 #77 断线续连登记"
+check_contains "apps/web/src/hooks/analysis-stream.ts" "consumeAnalysisStream" "进度流消费是独立的可单测模块"
+check_contains "apps/web/src/hooks/analysis-stream.ts" "DEFAULT_STALL_MS" "连接看门狗（静默即断线）在册"
+check_contains "apps/web/src/hooks/useStageAnalysis.ts" "reconnectStageStream" "断线按 Last-Event-ID 续连"
+# 反向守卫：收尾必须无条件对账（原来只在 done 里刷新，连接断了就永远停在「分析中」）
+if grep -qF "onSettled?.();" "$ROOT/apps/web/src/hooks/useStageAnalysis.ts" && \
+   grep -qF "onSettled:" "$ROOT/apps/web/src/views/ProjectView.tsx"; then
+  echo "✅ 运行结束（含断线/失败）一律对账刷新，界面不会停在「分析中」"
+else
+  echo "❌ 收尾对账丢了：连接断了界面会永远停在「分析中」（用户实测事故）"
+  FAIL=1
+fi
+# 反向守卫：模型不吐字时也要有按时间的「仍在思考」心跳（否则界面一条事件都没有）
+check_contains "apps/server/src/advance-stage.ts" "模型仍在思考" "模型空闲时按时间补心跳"
+# 反向守卫：心跳不得吞掉真实事件（tick 后必须继续等同一份读取）
+if grep -qF "const reader = createEventReader" "$ROOT/apps/server/src/advance-stage.ts"; then
+  echo "✅ 心跳与读取共用同一份结果（不会把已吐出的事件吞掉）"
+else
+  echo "❌ 心跳又把读取丢掉了：模型吐的字可能被吞，导致整步分析失败"
+  FAIL=1
+fi
 if grep -q "td.ed" "$ROOT/apps/web/src/styles/app.css" && \
    awk '/^td\.ed \{/,/\}/' "$ROOT/apps/web/src/styles/app.css" | grep -q "nowrap"; then
   echo "❌ 可编辑单元格仍是单行截断（用户定调：内容换行、行高随内容）"

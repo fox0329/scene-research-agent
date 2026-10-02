@@ -677,6 +677,7 @@ export async function* sseRequest(
   body?: unknown,
   lastEventIdSink: { lastId: string | null } = { lastId: null },
   method?: string,
+  signal?: AbortSignal,
 ): AsyncGenerator<FollowEvent> {
   const httpMethod =
     method ?? (body === undefined ? "GET" : "POST");
@@ -684,6 +685,7 @@ export async function* sseRequest(
     method: httpMethod,
     headers: body === undefined ? undefined : { "content-type": "application/json" },
     body: body === undefined ? undefined : JSON.stringify(body),
+    ...(signal ? { signal } : {}),
   });
   if (!res.ok || !res.body) {
     let message = `流式请求失败（HTTP ${res.status}）`;
@@ -705,14 +707,21 @@ export async function* sseRequest(
  * `step` 会作为 `?step=N` 传给服务端，按**该流程步的表集**限定模型输出契约——
  * 例如阶段 1 的第 2 步（认识场景）不该重复产出场景锚（表1-1 归第 1 步）。
  */
-export const advanceStageStream = (projectId: string, stage: number, step?: number) =>
+export const advanceStageStream = (
+  projectId: string,
+  stage: number,
+  step?: number,
+  lastEventIdSink: { lastId: string | null } = { lastId: null },
+  signal?: AbortSignal,
+) =>
   sseRequest(
     `/projects/${encodeURIComponent(projectId)}/stages/${stage}/advance${
       step === undefined ? "" : `?step=${step}`
     }`,
     undefined,
-    undefined,
+    lastEventIdSink,
     "POST",
+    signal,
   );
 
 /** 断线续传：GET events + Last-Event-ID */
@@ -720,9 +729,15 @@ export const reconnectStageStream = (
   projectId: string,
   stage: number,
   lastEventId: string,
+  lastEventIdSink: { lastId: string | null } = { lastId: null },
+  signal?: AbortSignal,
 ) =>
   sseRequest(
     `/projects/${encodeURIComponent(projectId)}/stages/${stage}/events?lastEventId=${encodeURIComponent(lastEventId)}`,
+    undefined,
+    lastEventIdSink,
+    "GET",
+    signal,
   );
 
 /** 会话消息流（T5.5 抽屉使用；发消息即建流） */

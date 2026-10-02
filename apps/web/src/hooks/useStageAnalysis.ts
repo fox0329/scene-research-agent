@@ -1,13 +1,19 @@
 /**
- * @scene/web — 本步分析的运行态（v1.20）
+ * @scene/web — 本步分析的运行态
  *
  * 为什么不放在面板里：用户定调「中栏只放信息，动作都在上面」——
  * 第 2–8 步的触发按钮上移到流程轴的「下一步」位（没产出时它就是「开始本步分析」），
  * 而进度流仍显示在中栏。触发点在流程轴、显示在中栏，这份状态就放在共同父级。
+ *
+ * 收尾口径（用户实测：连接断了但界面永远停在「分析中」，刷新页面才看到早已生成完）：
+ * 进度流的消费交给 `consumeAnalysisStream`——断线按 Last-Event-ID 续连、静默超时由
+ * 看门狗续连；**无论怎么结束都回调一次 `onSettled`**，由父级刷新本步数据与流程状态，
+ * 所以"服务端写完了、界面还停在分析中"不会再发生。
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { advanceStageStream } from "../api";
+import { advanceStageStream, reconnectStageStream } from "../api";
+import { consumeAnalysisStream } from "./analysis-stream";
 
 export interface StageAnalysisState {
   running: boolean;
@@ -27,12 +33,19 @@ export function useStageAnalysis(opts: {
   projectId: string;
   stage: number;
   stepId?: number | undefined;
-  /** 分析落库后的收尾刷新（父级重取流程状态与本步数据） */
+  /** 分析落库（收到 done）回调：父级可做轻量联动（如刷新项目列表） */
   onDone?: () => void;
+  /**
+   * 本次运行**结束**（正常完成 / 出错 / 连接续连失败）后回调一次
+   *
+   * 前端不该假设"一定收得到 done"：连接可能中途断掉，而服务端其实已经写完并落库。
+   * 收尾一律对账（重取流程状态 + 本步数据），界面才不会停在「分析中」。
+   */
+  onSettled?: () => void;
   /** 失败回调（父级负责提示；中栏仍保留错误行） */
   onError?: (message: string) => void;
 }): StageAnalysisState {
-  const { projectId, stage, stepId, onDone, onError } = opts;
+  const { projectId, stage, stepId, onDone, onSettled, onError } = opts;
   const [running, setRunning] = useState(false);
   const [elapsedSec, setElapsedSec] = useState(0);
   const [streamLines, setStreamLines] = useState<string[]>([]);
@@ -55,31 +68,55 @@ export function useStageAnalysis(opts: {
     setRunning(true);
     setStreamLines(["已发起本步分析…"]);
     void (async () => {
+      let terminal = false;
       try {
-        for await (const ev of advanceStageStream(projectId, stage, stepId)) {
-          if (ev.type === "progress") {
-            // 服务端 progress 事件用 `message`（`text` 只有上传链路用）：
-            // 只读 text 会让每条进度都变成同一句「分析中…」，看着像卡死。
-            push(String(ev.message ?? ev.text ?? "分析中…"));
-          } else if (ev.type === "error") {
-            const message = String(ev.message ?? "");
-            push(`【错误】${message}`);
-            onError?.(message);
-          } else if (ev.type === "done") {
-            push("【完成】分析结果已落库");
-            onDone?.();
-          }
-        }
+        const result = await consumeAnalysisStream({
+          open: (lastEventId) => {
+            /* 第一条连接是 POST /advance（真正跑分析）；续连走 GET /events（按 id 重放） */
+            const sink = { lastId: lastEventId };
+            const controller = new AbortController();
+            const events =
+              lastEventId === null
+                ? advanceStageStream(projectId, stage, stepId, sink, controller.signal)
+                : reconnectStageStream(projectId, stage, lastEventId, sink, controller.signal);
+            return { events, abort: () => controller.abort() };
+          },
+          onEvent: (ev) => {
+            if (ev.type === "progress") {
+              // 服务端 progress 事件用 `message`（`text` 只有上传链路用）：
+              // 只读 text 会让每条进度都变成同一句「分析中…」，看着像卡死。
+              push(String(ev.message ?? ev.text ?? "分析中…"));
+            } else if (ev.type === "error") {
+              const message = String(ev.message ?? "");
+              push(`【错误】${message}`);
+              onError?.(message);
+            } else if (ev.type === "done") {
+              push("【完成】分析结果已落库");
+              onDone?.();
+            }
+          },
+          onReconnect: (reason) => {
+            push(
+              reason === "stall"
+                ? "连接长时间没有新进度，正在恢复进度…"
+                : "进度连接中断，正在恢复…",
+            );
+          },
+        });
+        terminal = result.terminal;
+        if (!terminal) push("【提示】进度连接没能恢复，已按服务端结果对账本步数据");
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err);
         push(`【错误】${message}`);
         onError?.(message);
       } finally {
+        // 不管拿到没拿到终局事件都对账一次：服务端可能早已写完（连接断在收尾那段）
+        onSettled?.();
         runningRef.current = false;
         setRunning(false);
       }
     })();
-  }, [projectId, stage, stepId, push, onDone, onError]);
+  }, [projectId, stage, stepId, push, onDone, onSettled, onError]);
 
   const elapsedLabel = `${Math.floor(elapsedSec / 60)}:${String(elapsedSec % 60).padStart(2, "0")}`;
   return { running, elapsedLabel, streamLines, start };

@@ -125,10 +125,18 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
     projectId: project.id,
     stage: stepStage,
     stepId: step,
-    onDone: () => {
+    // done 只是"更快知道成功了"：真正决定界面收敛的是下面的 onSettled
+    onDone: () => onProjectsChanged?.(),
+    /**
+     * 运行结束（成功 / 失败 / 连接续连失败）都对账一次
+     *
+     * 用户实测：「一直显示分析中，刷新页面才发现早就生成完了」——服务端写完了、
+     * 连接却断在收尾那段，前端拿不到 done。收尾无条件重取流程状态与本步数据，
+     * 界面就不会停在「分析中」，也不会显示过期数据。
+     */
+    onSettled: () => {
       setAnalysisRefresh((n) => n + 1);
       onProjectsChanged?.();
-      // 就绪是服务端按数据算的：分析刚落库时必须重取，否则上面那个按钮不会变回「下一步」
       void reloadFlow(true);
     },
     onError: (message) => showToast(`本步分析失败：${message}`),

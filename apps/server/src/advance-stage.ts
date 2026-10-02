@@ -71,6 +71,73 @@ interface DshStageOutput {
  * @param deps - 注入的依赖（db / dshClient）
  * @returns 包含 execute 方法的 command 对象
  */
+/** 模型流空闲心跳间隔（默认 15 秒；测试用 STAGE_KEEPALIVE_MS 压到毫秒级） */
+function keepaliveIntervalMs(): number {
+  const raw = Number(process.env["STAGE_KEEPALIVE_MS"] ?? 15_000);
+  return Number.isFinite(raw) && raw > 0 ? raw : 15_000;
+}
+
+type TickRace<T> = { kind: "tick" } | { kind: "next"; result: IteratorResult<T> };
+
+/**
+ * 逐事件读取 + 空闲心跳（两者赛跑）
+ *
+ * 直接在 `for await` 里发不了定时心跳（回调里不能 yield），所以把「读下一个事件」
+ * 和「计时」放在一起竞争。**关键：心跳赢了不能把这次读取丢掉**——每次 tick 都重新
+ * `iterator.next()` 的话，上一次挂着的读取结果会被吞掉（模型已经吐出来的字凭空消失，
+ * 最后解析不出行，整步分析反而失败）。所以这里只发起一次读取，tick 后继续等同一个
+ * 读取结果。
+ */
+function createEventReader<T>(iterator: AsyncIterator<T>): {
+  race: (ms: number) => Promise<TickRace<T>>;
+} {
+  let pending: Promise<IteratorResult<T>> | null = null;
+  let cached: IteratorResult<T> | null = null;
+  let failure: unknown = null;
+  let hasFailure = false;
+
+  return {
+    race(ms: number): Promise<TickRace<T>> {
+      if (hasFailure) return Promise.reject(failure);
+      if (cached !== null) {
+        const result = cached;
+        cached = null;
+        return Promise.resolve<TickRace<T>>({ kind: "next", result });
+      }
+      if (pending === null) {
+        pending = iterator.next().then(
+          (result) => {
+            pending = null;
+            cached = result; // 先缓存，等下一次 race 真正取走
+            return result;
+          },
+          (err: unknown) => {
+            pending = null;
+            hasFailure = true;
+            failure = err instanceof Error ? err : new Error(String(err));
+            throw failure;
+          },
+        );
+      }
+      const read = pending;
+      return new Promise<TickRace<T>>((resolve, reject) => {
+        const timer = setTimeout(() => resolve({ kind: "tick" }), ms);
+        read.then(
+          (result) => {
+            clearTimeout(timer);
+            cached = null;
+            resolve({ kind: "next", result });
+          },
+          (err: unknown) => {
+            clearTimeout(timer);
+            reject(err instanceof Error ? err : new Error(String(err)));
+          },
+        );
+      });
+    },
+  };
+}
+
 export function createAdvanceStageCommand(deps: AdvanceStageDeps) {
   return {
     execute: (opts: { scenarioId: string; stage: StageId; tables?: readonly string[] }) =>
@@ -186,7 +253,30 @@ async function* executeAdvanceStage(
       outputContract,
     });
 
-    for await (const event of stream) {
+    /**
+     * 逐事件读取模型流，**空闲时补一条"仍在思考"心跳**
+     *
+     * 原来的心跳只在"有字吐出来"时发：推理型模型先想几十秒到两分钟不吐字，这段时间
+     * 前端一条事件都收不到——用户看到的就是"一直显示在分析中"（实机反馈），
+     * 前端侧的连接看门狗也分不清"在思考"还是"连接死了"。按时间补心跳后：
+     * ① 界面上一直有动静（已等待 N 秒）；② 静默只可能来自真断线，看门狗判得准。
+     */
+    const keepaliveMs = keepaliveIntervalMs();
+    const reader = createEventReader(stream[Symbol.asyncIterator]());
+    let waitingSince = Date.now();
+    for (;;) {
+      const step = await reader.race(keepaliveMs);
+      if (step.kind === "tick") {
+        yield emit({
+          type: "progress",
+          stage,
+          message: `模型仍在思考（已等待 ${Math.round((Date.now() - waitingSince) / 1000)} 秒）…`,
+        });
+        continue;
+      }
+      if (step.result.done) break;
+      const event = step.result.value;
+      waitingSince = Date.now();
       if (event.type === "text") {
         fullText += (event as { type: "text"; text: string }).text;
         const now = Date.now();

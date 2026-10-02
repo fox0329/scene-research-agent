@@ -716,6 +716,43 @@ describe("createAdvanceStageCommand", () => {
       expect(db.stageDataRepo.insert).not.toHaveBeenCalled();
     });
 
+    it("模型长时间不吐字：按时间补「仍在思考」心跳（前端才看得见「还在动」）", async () => {
+      const prev = process.env["STAGE_KEEPALIVE_MS"];
+      process.env["STAGE_KEEPALIVE_MS"] = "5";
+      try {
+        db = createMockDb({ scenario: { current_stage: 2 } });
+        const validJson = JSON.stringify(makeStage2DshOutput());
+        dshClient = {
+          createSession: vi.fn(async () => ({ sessionId: "mock-slow" })),
+          prompt: vi.fn(async function* (): AsyncGenerator<FollowEvent> {
+            // 像推理型模型那样先静默 40ms（心跳间隔 5ms → 期间应有多次"仍在思考"）
+            await new Promise((r) => setTimeout(r, 40));
+            yield { type: "text", text: validJson };
+            yield { type: "done" };
+          }),
+          cancel: vi.fn(async () => {}),
+        };
+        deps = { db, dshClient };
+
+        const cmd = createAdvanceStageCommand(deps);
+        const events = await collectEvents(cmd.execute({ scenarioId: "sc-1", stage: 2 }));
+
+        const beats = events.filter(
+          (e) => e.type === "progress" && String((e as { message?: string }).message).includes("仍在思考"),
+        );
+        expect(beats.length).toBeGreaterThan(0);
+        // 心跳**不能吞掉真实事件**：模型吐的字必须照常进到文本心跳与落库
+        // （曾经的实现每次心跳都重新 iterator.next()，把挂着的那次读取结果丢了，
+        //   最后解析不出行、整步分析反而失败）
+        expect(events.some((e) => String((e as { message?: string }).message).includes("模型已输出"))).toBe(true);
+        expect(events.at(-1)!.type).toBe("done");
+        expect(db.stageDataRepo.insert).toHaveBeenCalled();
+      } finally {
+        if (prev === undefined) delete process.env["STAGE_KEEPALIVE_MS"];
+        else process.env["STAGE_KEEPALIVE_MS"] = prev;
+      }
+    });
+
     it("阶段 2 也应落库阶段总结（不再写质量关）", async () => {
       const cmd = createAdvanceStageCommand(deps);
       await collectEvents(cmd.execute({ scenarioId: "sc-1", stage: 2 }));
