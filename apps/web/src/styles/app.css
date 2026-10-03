@@ -2001,6 +2001,9 @@ td.ed {
 
 /* 阶段表切换 chips */
 .table-chips { display: flex; flex-wrap: wrap; gap: var(--s1); margin-bottom: var(--s3); }
+/* 主芯片行固定一行（用户定调 v1.26：不分两级、一行显示）；块多时横向滚动，不折成两行 */
+.table-chips--single { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: thin; }
+.table-chips--single .chip { flex: 0 0 auto; white-space: nowrap; }
 .table-chips.sub { margin-top: calc(-1 * var(--s2)); }
 .chip {
   display: inline-flex; align-items: center; gap: var(--s1);

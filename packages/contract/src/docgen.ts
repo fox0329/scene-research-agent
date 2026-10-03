@@ -9,6 +9,7 @@
  */
 
 import {
+  blockLabel,
   TABLES,
   STAGE_DEFS,
   ENUMS,
@@ -140,7 +141,7 @@ function renderTable(t: TableDef): string {
   } else if (t.columns.some((c) => c.block)) {
     const byBlock = middleColumnsByBlock(t);
     for (const [block, cols] of Object.entries(byBlock)) {
-      L.push(`- **${block}块**`);
+      L.push(`- **${blockLabel(t, block)}**`);
       L.push("");
       L.push(columnTable(cols));
       L.push("");

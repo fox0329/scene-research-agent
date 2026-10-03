@@ -131,6 +131,13 @@ export interface TableDef {
   fixedRows?: readonly FixedRow[];
   /** 分组维度（该字段不进列，仅用于分组渲染，如表2 规格书按型号分组） */
   groupBy?: string;
+  /**
+   * 子块的显示名（缺省 = `${block}块`）
+   *
+   * 为什么需要：多子块表的各块在界面上**各占一个"表"**（用户定调：不分两级、芯片一行显示），
+   * 块名必须能独立看懂——「架构块」脱离表名看不懂，「方案架构」可以。
+   */
+  blockLabels?: Readonly<Record<string, string>>;
   /** 是否常驻中栏顶部（表1-1 = 场景锚） */
   pinned?: boolean;
   /** 动态 payload（可选材料：1 张表 6 种 payload，按 category 切换） */
@@ -994,6 +1001,7 @@ const TABLES_STAGE_4: readonly TableDef[] = [
     tier: "重要",
     rowUnit: "架构块 = 一个层级；接口块 = 一个接口",
     purpose: "方案全貌 + 边界声明 + 接口清单与适配工作量",
+    blockLabels: { 架构: "方案架构", 接口: "接口清单" },
     columns: [
       mid("layer", "层", { required: true, block: "架构" }),
       mid("components", "组件/设备", { required: true, block: "架构" }),
@@ -1053,6 +1061,7 @@ const TABLES_STAGE_4: readonly TableDef[] = [
     stage: 4,
     tier: "重要",
     rowUnit: "一个成本项（硬件/人工/运营/汇总四个子块）",
+    blockLabels: { 硬件: "硬件成本", 人工: "人工成本", 运营: "运营成本", 汇总: "成本汇总" },
     purpose: "报价的唯一来源（硬件 + 人工 + 运营）",
     columns: [
       mid("item", "项目", { required: true, block: "硬件" }),
@@ -1288,6 +1297,36 @@ export function tablesOfStage(id: InfoStageId): readonly TableDef[] {
 /** 常驻表（表1-1 场景锚） */
 export function pinnedTables(): readonly TableDef[] {
   return TABLES.filter((t) => t.pinned);
+}
+
+/**
+ * 行是否属于某个子块：块内任一列有值即算属于
+ *
+ * 为什么需要：v1.26 起多子块表的每个块在界面上各自成表（用户定调：拆成多个表格、一行显示），
+ * 而生成时一行只填一个块的列（表5-1 的 rowUnit：架构块 = 一个层级；接口块 = 一个接口）。
+ * 不按块过滤，接口块视图里会挂着一排「架构块的行」全是空格子。
+ */
+export function rowBelongsToBlock(
+  t: TableDef,
+  block: string,
+  row: Readonly<Record<string, unknown>>,
+): boolean {
+  const cols = middleColumnsByBlock(t)[block] ?? [];
+  if (cols.length === 0) return true;
+  return cols.some((c) => {
+    const v = row[c.key];
+    if (Array.isArray(v)) return v.length > 0;
+    return v !== undefined && v !== null && String(v).trim() !== "";
+  });
+}
+
+/**
+ * 子块的显示名：优先用注册表的 `blockLabels`，缺省 `${block}块`
+ *
+ * 界面（芯片一行）与文档（05 表格定义总表）都走这里，避免两处各写一遍。
+ */
+export function blockLabel(t: TableDef, block: string): string {
+  return t.blockLabels?.[block] ?? `${block}块`;
 }
 
 /** 枚举取值 */

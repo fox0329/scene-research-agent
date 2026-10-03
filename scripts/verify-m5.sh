@@ -374,6 +374,23 @@ if grep -qE "filledInStages|filterRowByStage|crossStageTables" "$ROOT/packages/c
 else
   echo "✅ 无跨阶段补填机制（表2-5/表3-8 的死列已删）"
 fi
+# v1.26：多子块表不再分两级——块在芯片一行里各占一个"表"，且块名能独立看懂
+check_contains "packages/contract/src/tables.ts" "blockLabels" "多子块表的块显示名在注册表里"
+check_contains "packages/contract/src/tables.ts" "方案架构" "表5-1 架构块显示名"
+check_contains "apps/web/src/views/RealStagePanel.tsx" "table-chips--single" "芯片一行显示"
+check_contains "apps/web/src/views/DemoStagePanel.tsx" "table-chips--single" "演示态同口径"
+for f in apps/web/src/views/RealStagePanel.tsx apps/web/src/views/DemoStagePanel.tsx; do
+  if grep -qE 'blocks\.length > 1' "$ROOT/$f"; then
+    echo "❌ $f 又出现「块」子行（表名一行 + 块名一行 = 两级选择，用户已否）"
+    FAIL=1
+  fi
+  if grep -qE '^ *\{b\}块' "$ROOT/$f"; then
+    echo "❌ $f 又用「\${块}块」当芯片名（脱离表名看不懂）"
+    FAIL=1
+  fi
+done
+echo "✅ 多子块表一行显示（方案架构 / 接口清单 / 硬件成本…），无两级选择"
+
 for gone in "is_digital" "current_status" "compliance_path" "held_certs"; do
   if grep -q "$gone" "$ROOT/packages/contract/src/tables.ts"; then
     echo "❌ 已删的列又回来了：$gone"
@@ -409,8 +426,8 @@ else
 fi
 if grep -qF "开始本步分析" "$ROOT/apps/web/src/components/FlowRail.tsx" && \
    grep -qF "useStageAnalysis" "$ROOT/apps/web/src/views/ProjectView.tsx" && \
-   grep -qF "{t.name}" "$ROOT/apps/web/src/views/RealStagePanel.tsx"; then
-  echo "✅ 分析入口在流程轴按钮位 + 表名一行（不带表号）"
+   grep -qF "{e.label}" "$ROOT/apps/web/src/views/RealStagePanel.tsx"; then
+  echo "✅ 分析入口在流程轴按钮位 + 表名一行（不带表号；多子块表按块拆成多个表位）"
 else
   echo "❌ 分析入口或表名行被改动（没产出时必须能发起分析；表名不带表号）"
   FAIL=1

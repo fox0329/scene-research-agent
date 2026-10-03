@@ -3,8 +3,10 @@ import {
   FLOW_STEPS,
   FLOW_TOTAL,
   STAGE_DEFS,
+  blockLabel,
   tablesOfStage,
   tableDef,
+  rowBelongsToBlock,
   supplementColumns,
   type InfoStageId,
 } from "@scene/contract";
@@ -67,12 +69,35 @@ export const DemoStagePanel: React.FC<DemoStagePanelProps> = ({
     setActiveTable((prev) => (prev && stageTables.some((t) => t.code === prev) ? prev : first));
   }, [stageTables]);
 
-  const blocks = activeTable ? tableBlocks(activeTable) : [];
-  const categories = activeTable ? tableCategories(activeTable) : [];
+  const blocks = useMemo(() => (activeTable ? tableBlocks(activeTable) : []), [activeTable]);
+  /** 表格芯片：多子块表每块各占一个"表"，全部排在同一行（与联真同口径，v1.26） */
+  const tableEntries = useMemo(
+    () =>
+      stageTables.flatMap((t) => {
+        const bs = tableBlocks(t.code);
+        if (bs.length <= 1) {
+          return [{ key: t.code, label: t.name, code: t.code, block: null as string | null }];
+        }
+        const def = tableDef(t.code);
+        return bs.map((b) => ({
+          key: `${t.code}:${b}`,
+          label: def ? blockLabel(def, b) : `${b}块`,
+          code: t.code,
+          block: b as string | null,
+        }));
+      }),
+    [stageTables],
+  );
+  const categories = useMemo(
+    () => (activeTable ? tableCategories(activeTable) : []),
+    [activeTable],
+  );
   useEffect(() => {
-    setBlock(blocks[0] ?? null);
-    setCategory(categories[0] ?? null);
-  }, [blocks, categories]);
+    // 块/类别只在「当前值对新表不成立」时才回落到第一个：v1.26 芯片一行后，
+    // 一次点击会同时切表与切块（如「成本汇总」= 表5-5 + 汇总块），无脑重置会把用户点的块冲掉
+    if (block === null || !blocks.includes(block)) setBlock(blocks[0] ?? null);
+    if (category === null || !categories.includes(category)) setCategory(categories[0] ?? null);
+  }, [blocks, categories, block, category]);
 
   const rowsByTable = useMemo(() => {
     const out: Record<string, InfoRow[]> = {};
@@ -165,32 +190,26 @@ export const DemoStagePanel: React.FC<DemoStagePanelProps> = ({
       {stageTables.length > 0 ? (
         <div className="pnl">
           <div className="pnl-b">
-            <div className="table-chips">
-              {stageTables.map((t) => (
-                <button
-                  key={t.code}
-                  type="button"
-                  className={`chip${activeTable === t.code ? " active" : ""}`}
-                  onClick={() => setActiveTable(t.code)}
-                >
-                  {t.name}
-                </button>
-              ))}
-            </div>
-            {blocks.length > 1 ? (
-              <div className="table-chips sub">
-                {blocks.map((b) => (
+            <div className="table-chips table-chips--single">
+              {tableEntries.map((e) => {
+                const active =
+                  activeTable === e.code &&
+                  (e.block ?? null) === (block ?? blocks[0] ?? null);
+                return (
                   <button
-                    key={b}
+                    key={e.key}
                     type="button"
-                    className={`chip${block === b ? " active" : ""}`}
-                    onClick={() => setBlock(b)}
+                    className={`chip${active ? " active" : ""}`}
+                    onClick={() => {
+                      setActiveTable(e.code);
+                      setBlock(e.block);
+                    }}
                   >
-                    {b}块
+                    {e.label}
                   </button>
-                ))}
-              </div>
-            ) : null}
+                );
+              })}
+            </div>
             {categories.length > 0 ? (
               <div className="table-chips sub">
                 {categories.map((c) => (
@@ -208,10 +227,11 @@ export const DemoStagePanel: React.FC<DemoStagePanelProps> = ({
             {activeTable ? (
               <SchemaTable
                 tableCode={activeTable}
-                rows={(rowsByTable[activeTable] ?? []).map((r, i) => ({
-                  id: `${activeTable}-${i}`,
-                  row: r,
-                }))}
+                rows={(rowsByTable[activeTable] ?? [])
+                  .map((r, i) => ({ id: `${activeTable}-${i}`, row: r }))
+                  .filter((r) =>
+                    activeDef && block ? rowBelongsToBlock(activeDef, block, r.row) : true,
+                  )}
                 block={block ?? undefined}
                 category={category ?? undefined}
                 onCellChange={(rowId, cell, value) => {

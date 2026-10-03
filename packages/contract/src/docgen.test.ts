@@ -81,13 +81,14 @@ describe("文档生成 — 内容完整性", () => {
     }
   });
 
-  it("多子块表（成本估算 / 方案架构）按块渲染", () => {
-    expect(body).toContain("**硬件块**");
-    expect(body).toContain("**人工块**");
-    expect(body).toContain("**运营块**");
-    expect(body).toContain("**汇总块**");
-    expect(body).toContain("**架构块**");
-    expect(body).toContain("**接口块**");
+  it("多子块表（成本估算 / 方案架构）按块渲染，且用能独立看懂的显示名（v1.26）", () => {
+    for (const label of ["硬件成本", "人工成本", "运营成本", "成本汇总", "方案架构", "接口清单"]) {
+      expect(body, label).toContain(`**${label}**`);
+    }
+    // 旧的两级叫法（架构块/接口块…）不再出现在文档里——块名要能脱离表名独立看懂
+    for (const gone of ["**架构块**", "**接口块**", "**硬件块**", "**汇总块**"]) {
+      expect(body, gone).not.toContain(gone);
+    }
   });
 
   it("列说明（note）被渲染出来", () => {

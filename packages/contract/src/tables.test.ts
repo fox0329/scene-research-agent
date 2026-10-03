@@ -12,6 +12,8 @@ import {
   registryIssues,
   middleColumns,
   supplementColumns,
+  blockLabel,
+  rowBelongsToBlock,
   middleColumnsByBlock,
   middleColumnGroups,
   tablesOfStage,
@@ -90,6 +92,38 @@ describe("表定义注册表 — 列预算（中栏 ≤6 列）", () => {
       "硬件",
       "运营",
     ]);
+  });
+
+  it("多子块表的每个块都有能独立看懂的显示名（v1.26：块在界面上一行各占一个表）", () => {
+    // 缺了显示名就会退回「架构块」——脱离表名看不懂，而界面上不再有表名那一行做上下文
+    for (const code of ["表5-1", "表5-5"]) {
+      const t = tableDef(code);
+      for (const b of Object.keys(middleColumnsByBlock(t))) {
+        const label = blockLabel(t, b);
+        expect(label, `${code} 的块「${b}」`).not.toBe(`${b}块`);
+        expect(label.length).toBeGreaterThan(1);
+      }
+    }
+    expect(["架构", "接口"].map((b) => blockLabel(tableDef("表5-1"), b))).toEqual([
+      "方案架构",
+      "接口清单",
+    ]);
+    // 未标显示名的表退回 `${块}块`（不留空标签）
+    const fake = { ...tableDef("表5-1"), blockLabels: undefined } as ReturnType<typeof tableDef>;
+    expect(blockLabel(fake, "架构")).toBe("架构块");
+  });
+
+  it("按块拆表后，每张表只显示属于自己的行（块内任一列有值）", () => {
+    const t = tableDef("表5-1");
+    const arch = { layer: "边缘层", components: "边缘网关" };
+    const iface = { interface_name: "会议室预定接口", type: "REST" };
+    expect(rowBelongsToBlock(t, "架构", arch)).toBe(true);
+    expect(rowBelongsToBlock(t, "架构", iface)).toBe(false);
+    expect(rowBelongsToBlock(t, "接口", iface)).toBe(true);
+    expect(rowBelongsToBlock(t, "接口", arch)).toBe(false);
+    expect(rowBelongsToBlock(t, "接口", { interface_name: "  " })).toBe(false);
+    expect(rowBelongsToBlock(t, "架构", { boundary: [] })).toBe(false);
+    expect(rowBelongsToBlock(tableDef("表5-3"), "任意", {})).toBe(true); // 非块表不参与过滤
   });
 
   it("可选材料：1 张表 6 种 payload，每种 payload 的中栏列（含类别列）≤ 上限", () => {

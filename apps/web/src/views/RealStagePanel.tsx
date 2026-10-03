@@ -2,7 +2,9 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   FLOW_TOTAL,
   STAGE_DEFS,
+  blockLabel,
   flowStep,
+  rowBelongsToBlock,
   supplementColumns,
   tableDef,
   tablesOfStage,
@@ -93,9 +95,44 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
     [activeTable],
   );
   useEffect(() => {
-    setBlock(blocks[0] ?? null);
-    setCategory(categories[0] ?? null);
-  }, [blocks, categories]);
+    // 块/类别只在「当前值对新表不成立」时才回落到第一个：v1.26 芯片一行后，
+    // 一次点击会同时切表与切块（如「成本汇总」= 表5-5 + 汇总块），无脑重置会把用户点的块冲掉
+    if (block === null || !blocks.includes(block)) setBlock(blocks[0] ?? null);
+    if (category === null || !categories.includes(category)) setCategory(categories[0] ?? null);
+  }, [blocks, categories, block, category]);
+
+  /**
+   * 表格芯片清单：**多子块表的每块各占一个"表"，全部排在同一个芯片行里**
+   *
+   * 用户定调（v1.26）：不要"表名一行 + 块名一行"的两级选择，拆成多个表格、一行显示。
+   * 块的列结构本来就不同（架构块 5 列 / 接口块 4 列；成本的四块各自成表），
+   * 所以这一层级的"拆分"是真实的，只是不再让用户先选表再选块。
+   */
+  const tableEntries = useMemo(
+    () =>
+      stageTables.flatMap((t) => {
+        const bs = tableBlocks(t.code);
+        if (bs.length <= 1) {
+          return [{ key: t.code, label: t.name, code: t.code, block: null as string | null }];
+        }
+        const def = tableDef(t.code);
+        return bs.map((b) => ({
+          key: `${t.code}:${b}`,
+          label: def ? blockLabel(def, b) : `${b}块`,
+          code: t.code,
+          block: b as string | null,
+        }));
+      }),
+    [stageTables],
+  );
+
+  /** 本表本块的行：多子块表按块过滤（否则接口块视图会带出一排架构块的空行） */
+  const activeRows = useMemo(() => {
+    const mine = rows.filter((r) => r.table_code === activeTable);
+    const def = activeTable ? tableDef(activeTable) : undefined;
+    if (!def || !block) return mine;
+    return mine.filter((r) => rowBelongsToBlock(def, block, r.row));
+  }, [rows, activeTable, block]);
 
   /* 阶段总结 */
   const [summary, setSummary] = useState<string | null>(null);
@@ -241,41 +278,32 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
 
   const completeness = data?.completeness;
   const activeDef = activeTable ? tableDef(activeTable) : undefined;
-  const activeRows = rows.filter((r) => r.table_code === activeTable);
-
   return (
     <>
       {/* 本步的表：表名一行（不带表号/条数）+ SchemaTable */}
       {stageTables.length > 0 ? (
         <div className="pnl">
           <div className="pnl-b">
-            <div className="table-chips">
-              {stageTables.map((t) => (
-                <button
-                  key={t.code}
-                  type="button"
-                  className={`chip${activeTable === t.code ? " active" : ""}`}
-                  onClick={() => setActiveTable(t.code)}
-                >
-                  {t.name}
-                </button>
-              ))}
-            </div>
-
-            {blocks.length > 1 ? (
-              <div className="table-chips sub">
-                {blocks.map((b) => (
+            <div className="table-chips table-chips--single">
+              {tableEntries.map((e) => {
+                const active =
+                  activeTable === e.code &&
+                  (e.block ?? null) === (block ?? blocks[0] ?? null);
+                return (
                   <button
-                    key={b}
+                    key={e.key}
                     type="button"
-                    className={`chip${block === b ? " active" : ""}`}
-                    onClick={() => setBlock(b)}
+                    className={`chip${active ? " active" : ""}`}
+                    onClick={() => {
+                      setActiveTable(e.code);
+                      setBlock(e.block);
+                    }}
                   >
-                    {b}块
+                    {e.label}
                   </button>
-                ))}
-              </div>
-            ) : null}
+                );
+              })}
+            </div>
             {categories.length > 0 ? (
               <div className="table-chips sub">
                 {categories.map((c) => (
