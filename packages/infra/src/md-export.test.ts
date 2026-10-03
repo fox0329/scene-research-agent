@@ -124,11 +124,12 @@ describe("exportFileName", () => {
 });
 
 describe("exportDeliverables — 内部调研报告", () => {
-  it("头部含场景、日期与「不含任何建议或判断」声明", async () => {
+  it("头部含场景、日期与「核实结论 + 不给决策建议」声明", async () => {
     const { internal_report } = await exportDeliverables(makeInput());
     expect(internal_report).toContain("# 智慧水务 场景调研 — 内部调研报告");
     expect(internal_report).toContain("**生成日期**：2026-09-25");
-    expect(internal_report).toContain("不含任何建议或判断");
+    expect(internal_report).toContain("每条信息都带核实结论");
+    expect(internal_report).toContain("不给决策建议");
     // 场景锚派生副标题
     // 场景锚派生副标题：场景边界 ｜ 买方类型（新口径里"客户类型"已不在表1-1）
     expect(internal_report).toContain("制水到输配 ｜ 市政水务集团");
@@ -210,7 +211,7 @@ describe("exportDeliverables — 对外汇报材料", () => {
   });
 });
 
-describe("exportDeliverables — 不产出判断（核心约束）", () => {
+describe("exportDeliverables — 不给决策建议（核心约束）", () => {
   it("两份文档都不含建议档位与结论性措辞", async () => {
     const { internal_report, external_report } = await exportDeliverables(makeInput());
     const forbidden = [

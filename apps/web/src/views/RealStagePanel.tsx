@@ -5,7 +5,7 @@ import {
   blockLabel,
   flowStep,
   rowBelongsToBlock,
-  supplementColumns,
+  detailColumns,
   tableDef,
   tablesOfStage,
   type InfoStageId,
@@ -189,7 +189,7 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
     const supplements: SupplementTable[] = [];
     if (activeTable) {
       const def = tableDef(activeTable);
-      const cols = def ? supplementColumns(def, category ?? undefined) : [];
+      const cols = def ? detailColumns(def, category ?? undefined) : [];
       const tRows = rows.filter((r) => r.table_code === activeTable);
       if (def && cols.length > 0 && tRows.length > 0) {
         supplements.push({

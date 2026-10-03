@@ -103,7 +103,7 @@ describe("stage-prompts — 内容由注册表派生", () => {
   });
 });
 
-describe("stage-prompts — 信息版口径（不产出判断）", () => {
+describe("stage-prompts — 信息版口径（不给决策建议 + 每条信息必须自己核实）", () => {
   const forbidden = ["建议进", "建议有条件进", "建议不通过", "一票否决后不进"];
 
   it("任何阶段的 prompt 都不含建议档位措辞", () => {
@@ -116,9 +116,12 @@ describe("stage-prompts — 信息版口径（不产出判断）", () => {
     }
   });
 
-  it("system 明确声明「不产出判断」与「不得自称用户确认」", () => {
+  it("system 明确声明「不给决策建议 / 每条信息必须自己核实」与「不得自称用户确认」", () => {
     const p = buildStagePrompt(3, {}, scenario);
-    expect(p.system).toContain("不产出判断");
+    expect(p.system).toContain("不给决策建议");
+    expect(p.system).toContain("每条信息必须由你核实");
+    expect(p.system).toContain("verification_verdict");
+    expect(p.system).toContain("禁止把核实推给读者");
     expect(p.system).toContain("不得自称「用户确认」");
     // 反编造与「行业行情要写满」是一对相反的要求，必须同时在场（见下方 market 用例）
     expect(p.system).toContain("没有材料依据就写「未提供」");

@@ -3,7 +3,12 @@ import { validateIncomingRows, violationsBrief, mustDowngrade } from "./row-vali
 
 const ok = (table_code: string, fields: Record<string, unknown>, extra: Record<string, unknown> = {}) => ({
   table_code,
-  fields,
+  fields: {
+    // v1.27：核实两列是每行的必填项——「合格的一行」必须带核实判定
+    verification_verdict: "已核实",
+    verification: "准确：与《白皮书》p.3 数值一致；客观：客户自有台账口径；为什么：可复算",
+    ...fields,
+  },
   source: "《白皮书》p.3",
   source_type: "AI提取",
   ...extra,
@@ -182,6 +187,40 @@ describe("row-validation — 汇总", () => {
     ]);
     expect(v).toEqual([]);
     expect(violationsBrief(v)).toContain("通过");
+  });
+
+  it("核实两列缺一不可（v1.27：每条信息都要带核实判定）", () => {
+    const v = validateIncomingRows(5, [
+      {
+        table_code: "表6-1",
+        fields: {
+          benefit: "省电",
+          metric: "kWh",
+          baseline: "100",
+          expected: "80",
+          evidence_level: "C",
+          user_feeling: "电费少了",
+          how_to_measure: "读电表",
+          metric_type: "成本",
+        },
+      },
+    ]);
+    const missing = v.filter((x) => x.kind === "缺必填列").map((x) => x.column);
+    expect(missing).toContain("verification_verdict");
+    expect(missing).toContain("verification");
+  });
+
+  it("把核实推给读者（待核实／建议抽查／请用户确认）→ 核实推诿", () => {
+    const punt = (text: string) =>
+      validateIncomingRows(5, [ok("表6-1", { benefit: "省电", verification: text })]).find(
+        (x) => x.kind === "核实推诿",
+      );
+    expect(punt("本客户基线未提供，待核实")?.kind).toBe("核实推诿");
+    expect(punt("行业通例数据，建议抽查 3 条来源")?.kind).toBe("核实推诿");
+    expect(punt("准确：与材料一致；来源待确认")?.kind).toBe("核实推诿");
+    expect(punt("请用户确认本项目的实际基线")?.kind).toBe("核实推诿");
+    // 如实给结论不算推诿
+    expect(punt("准确：材料未给基线；客观：仅模型知识；为什么：无法核实，缺客户台账")).toBeUndefined();
   });
 
   it("违规概览按类型计数", () => {

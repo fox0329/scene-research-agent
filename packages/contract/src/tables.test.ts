@@ -13,6 +13,7 @@ import {
   middleColumns,
   supplementColumns,
   blockLabel,
+  enumValues,
   rowBelongsToBlock,
   middleColumnsByBlock,
   middleColumnGroups,
@@ -194,6 +195,35 @@ describe("表定义注册表 — 关键结构", () => {
       "source",
       "evidence_level",
       "authority",
+      // v1.27：每张表末尾统一追加核实两列
+      "verification_verdict",
+      "verification",
+    ]);
+  });
+
+  it("每张表都带核实两列（v1.27：每条信息都要回答准不准·客不客观·为什么）", () => {
+    for (const t of TABLES) {
+      const keys = t.columns.map((c) => c.key);
+      const verdict = t.columns.find((c) => c.key === "verification_verdict");
+      const explain = t.columns.find((c) => c.key === "verification");
+      expect(keys.lastIndexOf("verification_verdict"), t.code).toBe(keys.length - 2);
+      expect(verdict?.required, t.code).toBe(true);
+      expect(verdict?.enum, t.code).toBe("verification_verdict");
+      expect(explain?.required, t.code).toBe(true);
+      // 核实列一律右栏补充，不占中栏列预算
+      expect(verdict?.slot, t.code).toBe("右栏补充");
+      expect(
+        middleColumns(t).some((c) => c.key.startsWith("verification")),
+        t.code,
+      ).toBe(false);
+    }
+    expect(enumValues("verification_verdict")).toEqual([
+      "已核实",
+      "交叉一致",
+      "行业通例",
+      "单一来源",
+      "无法核实",
+      "有反证",
     ]);
   });
 

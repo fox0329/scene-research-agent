@@ -7,7 +7,7 @@ import {
   tablesOfStage,
   tableDef,
   rowBelongsToBlock,
-  supplementColumns,
+  detailColumns,
   type InfoStageId,
 } from "@scene/contract";
 import { buildStageSummary, checkStageCompleteness, type InfoRow } from "@scene/domain";
@@ -137,7 +137,7 @@ export const DemoStagePanel: React.FC<DemoStagePanelProps> = ({
     const supplements: SupplementTable[] = [];
     if (activeTable) {
       const t = tableDef(activeTable);
-      const cols = t ? supplementColumns(t, category ?? undefined) : [];
+      const cols = t ? detailColumns(t, category ?? undefined) : [];
       const rows = (rowsByTable[activeTable] ?? []).map((r, i) => ({
         id: `${activeTable}-${i}`,
         row: r,
@@ -162,7 +162,17 @@ export const DemoStagePanel: React.FC<DemoStagePanelProps> = ({
             }`,
           }
         : {}),
-      rows: [],
+      // 右栏「核实」段读这里的行（v1.27）：演示态也要能看到每条信息的核实结论
+      rows: activeTable
+        ? (rowsByTable[activeTable] ?? []).map((r, i) => ({
+            id: `${activeTable}-${i}`,
+            scenario_id: "demo",
+            stage,
+            table_code: activeTable,
+            row: r as Record<string, unknown>,
+            is_stale: false,
+          }))
+        : [],
       completeness,
       summary,
       summaryLoading: false,
@@ -171,7 +181,13 @@ export const DemoStagePanel: React.FC<DemoStagePanelProps> = ({
       anchor: [...checklistAnchor],
       anchorSummary: anchorSummary(checklistAnchor),
       onRefreshSummary: () => undefined,
-      onSupplementChange: () => undefined,
+      // 演示态的补充说明/核实同样可编辑（与联真同口径：逐格可编辑，只改本地内存）
+      onSupplementChange: (rowId, cell, value) => {
+        if (!activeTable) return;
+        const idx = Number(String(rowId).slice(`${activeTable}-`.length));
+        if (Number.isNaN(idx)) return;
+        handleDemoEdit(activeTable, idx, cell, value);
+      },
     };
   }, [stage, stepId, def, completeness, summary, activeTable, supplementsKey(activeTable, category), rowsByTable, id, anchorRows]);
 

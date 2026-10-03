@@ -1,7 +1,8 @@
 /**
  * stage-summary — 阶段总结文档生成（对应 04 §五）
  *
- * 每份总结**围绕一个范围**展开，且**不含任何建议与判断**：
+ * 每份总结**围绕一个范围**展开**不给决策建议**（是否该进由用户自己定），
+ * 但**每条信息都必须带核实判定**（准确吗·客观吗·为什么——v1.27 用户定调）：
  *  - `scope: "step"`（右栏默认，v2.9）：**只讲本步**——表集限本步、不含用户诉求全文、
  *    不含上下游衔接（用户定调："右栏的补充说明和阶段总结只针对当前阶段做说明和总结，
  *    不要整理整个过程"）
@@ -103,6 +104,22 @@ function allEntries(input: StageSummaryInput, tables: readonly TableDef[]): RowE
   return out;
 }
 
+/** 核实结论的五个取值（顺序：从最强到最弱） */
+export const VERIFICATION_VERDICTS = [
+  "已核实",
+  "交叉一致",
+  "行业通例",
+  "单一来源",
+  "无法核实",
+  "有反证",
+] as const;
+
+/** 取一行的核实结论；早期数据没有该列时算「未核」 */
+export function verificationVerdict(row: Record<string, unknown>): string {
+  const v = String(row["verification_verdict"] ?? "").trim();
+  return v === "" ? "未核" : v;
+}
+
 /** 本份总结覆盖的表（按给定顺序；`tableCodes` 缺省 = 本阶段全部表） */
 function tablesFor(input: StageSummaryInput): TableDef[] {
   if (!input.tableCodes) return [...tablesOfStage(input.stage)];
@@ -122,7 +139,7 @@ function labelOf(entry: RowEntry): string {
  * 生成阶段总结文档（Markdown，六段骨架）
  *
  * 骨架：一、信息摘要 ｜ 二、关键信息清单 ｜ 三、说明与方法口径
- *       四、来源与抽查 ｜ 五、待补齐信息
+ *       四、核实结论 ｜ 五、待补齐信息
  *       （**步骤级**到此为止；**阶段级**再加 六、上下游衔接）
  */
 export function buildStageSummary(input: StageSummaryInput): string {
@@ -198,7 +215,7 @@ export function buildStageSummary(input: StageSummaryInput): string {
   L.push("");
   L.push("- 口径：数值型字段按材料原值录入，未做换算；价格类为材料所示口径（含税/年份以材料为准）。");
   if (assumptions.length > 0) {
-    L.push(`- **C 级假设（${assumptions.length} 条，不得当结论用）**：`);
+    L.push(`- **C 级假设（${assumptions.length} 条，按 G-R2 不作结论；核实结论见第四节）**：`);
     for (const e of assumptions.slice(0, 10)) {
       L.push(`  - ${e.code}｜${labelOf(e)}`);
     }
@@ -206,7 +223,7 @@ export function buildStageSummary(input: StageSummaryInput): string {
     L.push("- C 级假设：无。");
   }
   if (inferred.length > 0) {
-    L.push(`- **系统推断（${inferred.length} 条，${inferred.length} 项待用户确认）**：`);
+    L.push(`- **系统推断（${inferred.length} 条，模型按行业通例补的；核实结论见第四节）**：`);
     for (const e of inferred.slice(0, 10)) {
       L.push(`  - ${e.code}｜${labelOf(e)}`);
     }
@@ -215,22 +232,43 @@ export function buildStageSummary(input: StageSummaryInput): string {
   }
   L.push("");
 
-  // 四、来源与抽查
-  L.push("## 四、来源与抽查");
+  // 四、核实结论（v1.27：每条信息都带核实判定——准不准、客不客观、为什么）
+  L.push("## 四、核实结论");
   L.push("");
   const sources = [...new Set(rows.map((r) => String(r["source"] ?? "").trim()).filter((s) => s !== ""))];
-  if (sources.length === 0) {
+  if (rows.length === 0) {
     L.push(
-      stepDef
-        ? "（本步尚无带来源的信息——来源是硬要求，见第五节待补清单）"
-        : "（本阶段尚无带来源的信息——来源是硬要求，见第五节待补清单）",
+      stepDef ? "（本步尚无信息，见第五节待补清单）" : "（本阶段尚无信息，见第五节待补清单）",
     );
   } else {
+    const counts = new Map<string, number>();
+    for (const r of rows) {
+      const v = verificationVerdict(r);
+      counts.set(v, (counts.get(v) ?? 0) + 1);
+    }
+    const unverified = counts.get("未核") ?? 0;
     L.push(
-      `- 来源分布：T1 ${dist["T1"]} 条 / T2 ${dist["T2"]} 条 / T3 ${dist["T3"]} 条 / T4 ${dist["T4"]} 条`,
+      `- 核实分布：${VERIFICATION_VERDICTS.map((v) => `${v} ${counts.get(v) ?? 0} 条`).join(" / ")}` +
+        (unverified > 0 ? ` ／ 未核 ${unverified} 条（早期数据未带核实列）` : ""),
     );
-    L.push(`- 不同来源共 ${sources.length} 个；建议抽查 ≥3 条（G-R3）：`);
-    for (const s of sources.slice(0, 3)) L.push(`  - ${s}`);
+    for (const [verdict, tail] of [
+      ["有反证", "材料之间冲突，冲突点写在核实说明里"],
+      ["无法核实", "本客户事实缺材料、或材料冲突到判不了——**不能当结论用**"],
+    ] as const) {
+      const list = entries.filter((e) => verificationVerdict(e.row) === verdict);
+      if (list.length === 0) continue;
+      L.push(`- **${verdict}（${list.length} 条）：${tail}**：`);
+      for (const e of list.slice(0, 10)) L.push(`  - ${e.code}｜${labelOf(e)}`);
+      if (list.length > 10) L.push(`  - （其余 ${list.length - 10} 条见各表）`);
+    }
+    L.push("- 每条信息的核实理由（**准确**：对得上哪份材料、能否复算；**客观**：事实还是推断、谁的口径、有无利益相关方；**为什么**：凭什么采信、哪里不确定）见各表「核实说明」列。");
+    if (sources.length > 0) {
+      L.push(
+        `- 来源分布：T1 ${dist["T1"]} 条 / T2 ${dist["T2"]} 条 / T3 ${dist["T3"]} 条 / T4 ${dist["T4"]} 条；不同来源共 ${sources.length} 个`,
+      );
+    } else {
+      L.push("- 来源分布：本步尚未带来源的信息（来源是硬要求，见第五节待补清单）");
+    }
   }
   L.push("");
 
@@ -266,7 +304,7 @@ export function buildStageSummary(input: StageSummaryInput): string {
   L.push("---");
   L.push("");
   L.push(
-    "> 本文档只做信息摘要、说明与缺口提示，**不含任何建议或判断**；判断由用户自己做。",
+    "> 本文档每条信息都带**核实结论**（准不准 · 客不客观 · 为什么）；只给可核实的事实与判定，**不给决策建议**——该不该进由你自己定。",
   );
   L.push("");
   return L.join("\n");

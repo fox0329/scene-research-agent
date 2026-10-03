@@ -17,7 +17,8 @@
  *       由智能体自己排补，用户界面不再呈现（见 `@scene/domain` 的 `userGaps`）
  */
 
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
+import { enumValues, middleColumns, tableDef } from "@scene/contract";
 import { FoldSection } from "./FoldSection";
 import type { StageSnapshot } from "./stage-snapshot";
 import { plainText } from "./text-display";
@@ -129,6 +130,30 @@ export function summarizeMarkdown(md: string): string {
 export const StageRightPanel: React.FC<StageRightPanelProps> = ({ snapshot, live }) => {
   const [tab, setTab] = useState<Tab>("supplement");
 
+  /**
+   * 核实（v1.27）：每条信息准确吗·客观吗·为什么
+   *
+   * 为什么不横排进「补充说明」表：右栏只有 240–480 宽，8 列会挤成 27px/列；
+   * 核实说明是长文本，纵向一条一条排才读得下去——它也是这份产物最该被看见的内容。
+   */
+  const verifyRows = useMemo(() => {
+    if (!snapshot) return [];
+    const mine = snapshot.activeTable
+      ? snapshot.rows.filter((r) => r.table_code === snapshot.activeTable)
+      : snapshot.rows;
+    return mine.map((r) => {
+      const def = tableDef(r.table_code);
+      const mid = def ? middleColumns(def) : [];
+      const label =
+        mid
+          .map((c) => String((r.row as Record<string, unknown>)[c.key] ?? "").trim())
+          .find((v) => v !== "") ?? "(未命名条目)";
+      const verdict = String((r.row as Record<string, unknown>)["verification_verdict"] ?? "").trim();
+      const text = String((r.row as Record<string, unknown>)["verification"] ?? "");
+      return { id: r.id, tableCode: r.table_code, label, verdict, text };
+    });
+  }, [snapshot]);
+
   // 注意顺序：有快照就渲染（演示态也会产生快照，走同一套结构），
   // 只有既无快照又非联真时才显示演示占位——否则演示态会被占位挡住。
   if (!snapshot) {
@@ -162,6 +187,7 @@ export const StageRightPanel: React.FC<StageRightPanelProps> = ({ snapshot, live
   }
 
   const { completeness, supplements, rows } = snapshot;
+
 
   const emptyMsg = "本步还没有产出——做完本步分析后这里会生成本步总结";
   const full = snapshot.summary ?? "";
@@ -260,6 +286,53 @@ export const StageRightPanel: React.FC<StageRightPanelProps> = ({ snapshot, live
                 </section>
               ))
             )}
+
+            {/* 核实：结论 + 准确·客观·为什么（长文本，纵向排） */}
+            {verifyRows.length > 0 ? (
+              <section className="det-sec">
+                <h4>
+                  核实
+                  <span className="det-sec-sub">这条准确吗 · 客观吗 · 为什么</span>
+                </h4>
+                <div className="verify-list">
+                  {verifyRows.map((r) => (
+                    <div className="verify-item" key={r.id}>
+                      <div className="verify-head">
+                        <span className="verify-label" title={r.label}>
+                          {r.label}
+                        </span>
+                        <select
+                          className={`cell-input verify-verdict${
+                            r.verdict === "无法核实" || r.verdict === "有反证" ? " warn" : ""
+                          }`}
+                          value={r.verdict}
+                          aria-label="核实结论"
+                          onChange={(e) =>
+                            snapshot.onSupplementChange(r.id, "verification_verdict", e.target.value)
+                          }
+                        >
+                          <option value="">（未核）</option>
+                          {enumValues("verification_verdict").map((v) => (
+                            <option key={v} value={v}>
+                              {v}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <textarea
+                        className="cell-input verify-text"
+                        value={r.text}
+                        rows={3}
+                        placeholder="准确：对得上哪份材料的哪一处、能否复算；客观：事实还是推断、谁的口径、有无利益相关方；为什么：凭什么采信、哪里不确定"
+                        onChange={(e) =>
+                          snapshot.onSupplementChange(r.id, "verification", e.target.value)
+                        }
+                      />
+                    </div>
+                  ))}
+                </div>
+              </section>
+            ) : null}
           </>
         ) : (
           <section className="det-sec">
@@ -287,7 +360,7 @@ export const StageRightPanel: React.FC<StageRightPanelProps> = ({ snapshot, live
                 <div className="empty-state-title">尚未生成本步总结</div>
                 <div className="empty-state-desc">
                   点击「重新生成」按五段骨架生成本步内容：信息摘要 / 关键信息清单 /
-                  说明与方法口径 / 来源与抽查 / 待补齐信息。只讲这一步，不讲整个过程。
+                  说明与方法口径 / 核实结论 / 待补齐信息。只讲这一步，不讲整个过程。
                 </div>
               </div>
             ) : (

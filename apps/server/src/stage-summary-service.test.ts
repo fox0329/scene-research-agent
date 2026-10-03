@@ -145,7 +145,8 @@ describe("stage-summary-service — 生成与落库", () => {
     const r = generateStageSummary(db, sc, 8 as never);
     expect(r.stage).toBe(7);
     expect(r.markdown).toContain("阶段 7 · 最终交付物");
-    expect(r.markdown).toContain("不含任何建议或判断");
+    expect(r.markdown).toContain("不给决策建议");
+    expect(r.markdown).toContain("核实结论");
   });
 });
 

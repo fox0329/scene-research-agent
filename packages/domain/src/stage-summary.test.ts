@@ -82,7 +82,7 @@ describe("stage-summary — 步骤级只讲本步", () => {
   });
 
   it("五段骨架齐全且顺序固定（步骤级没有第六段）", () => {
-    const titles = ["## 一、信息摘要", "## 二、关键信息清单", "## 三、说明与方法口径", "## 四、来源与抽查", "## 五、待补齐信息"];
+    const titles = ["## 一、信息摘要", "## 二、关键信息清单", "## 三、说明与方法口径", "## 四、核实结论", "## 五、待补齐信息"];
     const positions = titles.map((t) => md.indexOf(t));
     expect(positions.every((p) => p >= 0)).toBe(true);
     expect([...positions].sort((a, b) => a - b)).toEqual(positions);
@@ -102,7 +102,7 @@ describe("stage-summary — 阶段级六段骨架（交付物装配口径）", (
   });
 
   it("六段标题齐全且顺序固定", () => {
-    const titles = ["## 一、信息摘要", "## 二、关键信息清单", "## 三、说明与方法口径", "## 四、来源与抽查", "## 五、待补齐信息", "## 六、上下游衔接"];
+    const titles = ["## 一、信息摘要", "## 二、关键信息清单", "## 三、说明与方法口径", "## 四、核实结论", "## 五、待补齐信息", "## 六、上下游衔接"];
     const positions = titles.map((t) => md.indexOf(t));
     expect(positions.every((p) => p >= 0)).toBe(true);
     expect([...positions].sort((a, b) => a - b)).toEqual(positions);
@@ -122,16 +122,20 @@ describe("stage-summary — 阶段级六段骨架（交付物装配口径）", (
   });
 
   it("三、说明与方法口径列出 C 级假设与系统推断（带表号）", () => {
-    expect(md).toContain("C 级假设（1 条，不得当结论用）");
+    expect(md).toContain("C 级假设（1 条，按 G-R2 不作结论；核实结论见第四节）");
     expect(md).toContain("表1-3｜技术");
     expect(md).toContain("系统推断（1 条");
     expect(md).toContain("表1-3｜行业准入");
   });
 
-  it("四、来源与抽查给出分布与抽查建议", () => {
+  it("四、核实结论给出核实分布、无法核实清单与核实理由指引", () => {
     expect(md).toContain("来源分布：T1");
-    expect(md).toContain("建议抽查 ≥3 条（G-R3）");
-    expect(md).toContain("《白皮书》p.3");
+    // v1.27：不再把核实推给读者（没有「建议抽查」），而是给出模型自己的核实判定
+    expect(md).not.toContain("建议抽查");
+    expect(md).toContain("核实分布：已核实");
+    expect(md).toContain("每条信息的核实理由");
+    // 来源清单不再在总结里复述（附录 A 有来源索引）；这里只给分布
+    expect(md).not.toMatch(/建议抽查/);
   });
 
   it("五、待补齐信息来自完整度报告", () => {
@@ -147,12 +151,13 @@ describe("stage-summary — 阶段级六段骨架（交付物装配口径）", (
 });
 
 describe("stage-summary — 信息版口径", () => {
-  it("不含任何建议或判断措辞", () => {
+  it("不含决策建议措辞（但必须带核实结论）", () => {
     const md = summaryFor();
     for (const bad of ["建议进", "建议通过", "建议不通过", "建议有条件", "红线"]) {
       expect(md, bad).not.toContain(bad);
     }
-    expect(md).toContain("不含任何建议或判断");
+    expect(md).toContain("不给决策建议");
+    expect(md).toContain("核实结论");
   });
 
   it("空阶段也能生成（不报错，缺口清单占位）", () => {

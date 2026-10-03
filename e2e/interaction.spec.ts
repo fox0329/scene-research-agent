@@ -191,6 +191,34 @@ test("右栏双 Tab：补充说明 / 阶段总结（确认清单与缺口清单�
   await expect(md).not.toContainText("上下游衔接");
 });
 
+test("右栏核实段：每条信息给出核实结论与「准确·客观·为什么」，不挤进补充说明表", async ({ page }) => {
+  await gotoStep2(page);
+  const det = page.locator(".det");
+  // 补充说明表只有出处类列，核实两列**不横排**进去（否则右栏 8 列挤成 27px/列）
+  const head = det.locator(".supplement-table th");
+  await expect(head.filter({ hasText: "核实" })).toHaveCount(0);
+
+  // 核实单独一段：结论可选（六档 + 未核）、说明是可编辑长文本
+  const verify = det.locator(".verify-list");
+  await expect(verify).toBeVisible();
+  const first = verify.locator(".verify-item").first();
+  await expect(first.locator(".verify-label")).not.toBeEmpty();
+  const sel = first.locator("select.verify-verdict");
+  await expect(sel).toHaveValue("已核实");
+  await expect(sel.locator("option")).toHaveCount(7); // 未核 + 六档
+  const text = first.locator("textarea.verify-text");
+  await expect(text).toHaveValue(/准确：/);
+  await expect(text).toHaveValue(/客观：/);
+  await expect(text).toHaveValue(/为什么：/);
+
+  // 无法核实会标黄（提示"不能当结论用"），但仍然是可编辑的输入
+  const third = verify.locator(".verify-item").nth(2);
+  await expect(third.locator("select.verify-verdict")).toHaveValue("无法核实");
+  await expect(third.locator("select.verify-verdict")).toHaveClass(/warn/);
+  await third.locator("select.verify-verdict").selectOption("已核实");
+  await expect(third.locator("select.verify-verdict")).not.toHaveClass(/warn/);
+});
+
 test("中栏表格：拖列间分割线只改这一列，末列承接余量，表宽不变、无横向滚动", async ({ page }) => {
   await gotoStep2(page);
   const table = page.locator(".ws table").first();

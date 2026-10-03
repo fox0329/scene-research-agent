@@ -56,6 +56,14 @@ export const ENUMS = {
   pilot_kind: ["试点范围", "试点时长", "成功判据", "风险", "验收口径", "合同条款"],
   rate_category: ["实施", "商务"],
   source_type: ["AI提取", "AI推断", "用户确认", "用户补充"],
+  /**
+   * 核实结论：这条信息目前处在哪种证据状态（不是"来源等级"，是核实后的判定）
+   *
+   * 为什么要有「行业通例」这一档：实跑发现模型把**行业公开常识**也写成「无法核实」，
+   * 一个阶段 85 条全进"不能当结论用"的桶里，等于把行情信息作废。行情是能自证的
+   * （公开、可查、无利益相关方），只是**不是本客户的事实**——所以单独一档。
+   */
+  verification_verdict: ["已核实", "交叉一致", "行业通例", "单一来源", "无法核实", "有反证"],
 } as const;
 
 export type EnumName = keyof typeof ENUMS;
@@ -1156,6 +1164,34 @@ const TABLES_STAGE_6: readonly TableDef[] = [
 
 // ─── 35 张表总表 ───────────────────────────────────────────
 
+/**
+ * 核实两列：**每张表每一行**都要回答「这条信息准确吗、客观吗、为什么」
+ *
+ * 用户定调（v1.27）：「你的输出要核实客观性，要有价值……你应该对每一条信息问几个问题，
+ * 这准确吗、客观吗？为什么准确，为什么客观。**不是要提示**，告诉用户来源准不准」。
+ *
+ * 所以这条不是「来源等级」那种标签，而是**核实之后的判定**：
+ * - `verification_verdict`：已核实（材料能直接对上）/ 交叉一致（多源同向）/ 单一来源 /
+ *   无法核实（只有模型知识或本客户数据缺失）/ 有反证（材料之间冲突，要写清冲在哪）
+ * - `verification`：三段说明——**准确**（对得上哪份材料、数值能否复算、有无反例）、
+ *   **客观**（是事实记录还是推断、谁的口径、有无利益相关方）、**为什么**（凭什么采信、哪里还不确定）
+ *
+ * 统一追加而不是 35 张表各写一遍：核实是每张表的义务，逐表手写必然漏。
+ */
+export const VERIFICATION_COLUMNS: readonly TableColumn[] = [
+  sup("verification_verdict", "核实结论", {
+    required: true,
+    enum: "verification_verdict",
+    note: "核实后的判定，不是来源等级：材料能直接对上=已核实；多源同向=交叉一致；行业公开常识、非本客户事实=行业通例；只有一处材料=单一来源；本客户事实缺材料/材料冲突判不了=无法核实；材料互相矛盾=有反证",
+  }),
+  sup("verification", "核实说明（准确·客观·为什么）", {
+    required: true,
+    type: "longText",
+    truncate: 40,
+    note: "三段写清：① 准确——对得上哪份材料的哪一处、数值能否复算、有没有反例；② 客观——是事实记录还是推断、谁的口径、有无利益相关方；③ 为什么——凭什么采信、哪里还不确定。**不许把核实推给读者**（不写「待核实」「建议抽查」「请用户确认」）",
+  }),
+];
+
 export const TABLES: readonly TableDef[] = [
   ...TABLES_STAGE_0,
   ...TABLES_STAGE_1,
@@ -1164,7 +1200,7 @@ export const TABLES: readonly TableDef[] = [
   ...TABLES_STAGE_4,
   ...TABLES_STAGE_5,
   ...TABLES_STAGE_6,
-];
+].map((t) => ({ ...t, columns: [...t.columns, ...VERIFICATION_COLUMNS] }));
 
 /** 信息表表号联合类型（由注册表派生，供数据层使用） */
 export type InfoTableCode = (typeof TABLES)[number]["code"];
@@ -1258,6 +1294,27 @@ export function middleColumns(t: TableDef, category?: string): readonly TableCol
 export function supplementColumns(t: TableDef, category?: string): readonly TableColumn[] {
   const payload = category && t.payloads ? (t.payloads[category] ?? []) : [];
   return [...t.columns, ...payload].filter((c) => c.slot === "右栏补充");
+}
+
+/** 核实两列的 key（v1.27：每条信息准确吗·客观吗·为什么） */
+export const VERIFICATION_KEYS = ["verification_verdict", "verification"] as const;
+
+/** 该表的核实列（每张表都有两列，统一追加） */
+export function verificationColumns(t: TableDef): readonly TableColumn[] {
+  return t.columns.filter((c) => (VERIFICATION_KEYS as readonly string[]).includes(c.key));
+}
+
+/**
+ * 右栏「补充说明」表用的列：出处、证据等级、来源权威性、周期、说明……
+ *
+ * 核实两列**不进这张表**（v1.27）：右栏宽 240–480，横排进 8 列会挤成 27px/列；
+ * 核实说明是长文本，单独一段纵向排（结论 + 全文）才读得下去，也才显得出它是重点。
+ * 提示词渲染照旧用 `supplementColumns`（两列都要模型产出）。
+ */
+export function detailColumns(t: TableDef, category?: string): readonly TableColumn[] {
+  return supplementColumns(t, category).filter(
+    (c) => !(VERIFICATION_KEYS as readonly string[]).includes(c.key),
+  );
 }
 
 /** 按块分组的中栏列（用于成本估算、方案架构等多子块表） */

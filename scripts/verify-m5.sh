@@ -391,6 +391,20 @@ for f in apps/web/src/views/RealStagePanel.tsx apps/web/src/views/DemoStagePanel
 done
 echo "✅ 多子块表一行显示（方案架构 / 接口清单 / 硬件成本…），无两级选择"
 
+# v1.27：每条信息必须带核实判定（准不准·客不客观·为什么），且不许把核实推给读者
+check_contains "packages/contract/src/tables.ts" "verification_verdict" "核实两列在注册表"
+check_contains "packages/contract/src/tables.ts" "VERIFICATION_COLUMNS" "核实列统一追加（35 张表都带）"
+check_contains "apps/server/src/stage-prompts.ts" "每条信息必须由你核实" "提示词要求模型自己核实"
+check_contains "packages/domain/src/stage-summary.ts" "## 四、核实结论" "总结第四段是核实结论"
+check_contains "packages/domain/src/row-validation.ts" "核实推诿" "推诿话术有确定性检查"
+for gone in "建议抽查 ≥3 条" "待用户确认" "不含任何建议或判断"; do
+  if grep -qF "$gone" "$ROOT/packages/domain/src/stage-summary.ts" "$ROOT/packages/infra/src/md-export.ts"; then
+    echo "❌ 又出现「$gone」（用户定调：不是要提示，核实结论必须是模型自己的判定）"
+    FAIL=1
+  fi
+done
+echo "✅ 每条信息带核实判定，无推诿话术"
+
 for gone in "is_digital" "current_status" "compliance_path" "held_certs"; do
   if grep -q "$gone" "$ROOT/packages/contract/src/tables.ts"; then
     echo "❌ 已删的列又回来了：$gone"

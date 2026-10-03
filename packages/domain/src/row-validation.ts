@@ -27,7 +27,8 @@ export type ViolationKind =
   | "缺必填列"
   | "枚举非法"
   | "缺来源"
-  | "自称用户确认";
+  | "自称用户确认"
+  | "核实推诿";
 
 export interface RowViolation {
   kind: ViolationKind;
@@ -124,10 +125,37 @@ export function validateIncomingRows(
         detail: `${code} 第 ${rowIndex + 1} 行标了「${st}」——该状态只能由用户确认动作产生，模型只能用 AI提取/AI推断`,
       });
     }
+
+    // v1.27：核实是模型的活——写了「待核实／建议抽查／请用户核实」等于把活推回给读者
+    const verdict = String(valueOf("verification_verdict") ?? "").trim();
+    const explain = String(valueOf("verification") ?? "");
+    const punt = PUNT_PATTERNS.find((re) => re.test(explain) || re.test(verdict));
+    if (punt) {
+      out.push({
+        kind: "核实推诿",
+        tableCode: code,
+        rowIndex,
+        detail: `${code} 第 ${rowIndex + 1} 行把核实推给了读者（命中「${punt.source}」）——核实没做完就是没做完，写不出结论就如实给「无法核实」并说明缺什么`,
+      });
+    }
   });
 
   return out;
 }
+
+/**
+ * 推诿话术（把核实推回给用户/读者的写法）
+ *
+ * 用户定调：「不是要提示，告诉用户来源准不准」——核实结论必须是模型自己的判定。
+ */
+const PUNT_PATTERNS: readonly RegExp[] = [
+  /待核实/,
+  /建议抽查/,
+  /来源待确认/,
+  /待用户确认/,
+  /请用户(核实|确认)/,
+  /需用户(核实|确认)/,
+];
 
 /** 违规清单 → 一句话概览 */
 export function violationsBrief(violations: readonly RowViolation[]): string {

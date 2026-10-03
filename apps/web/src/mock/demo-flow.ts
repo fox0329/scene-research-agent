@@ -194,6 +194,10 @@ export const DEMO_ROWS: Record<string, InfoRow[]> = {
       current_flow: "每班两次抄表，下班前录入",
       pain: "数据滞后、易漏抄",
       description: "加药与过滤环节",
+      // v1.27：演示态也带核实两列——演示模式要能看出"每条信息都过核实关"
+      verification_verdict: "已核实",
+      verification:
+        "准确：《水厂运行规程》p.12 明确每班两次抄表，与本行一致，频次可复算；客观：客户自有台账口径，非厂商宣传，无利益相关方；为什么：材料原文直接对应，采信无疑。",
     },
     {
       link: "输配",
@@ -202,6 +206,9 @@ export const DEMO_ROWS: Record<string, InfoRow[]> = {
       current_flow: "调度值守 24 小时，巡线按周",
       pain: "漏损定位靠经验",
       description: "管网调度与漏损",
+      verification_verdict: "交叉一致",
+      verification:
+        "准确：材料 A《调度中心介绍》p.3 与材料 B《管网运维手册》p.8 均写 24 小时值守、按周巡线，两处独立来源同向；客观：两份都是客户自有文件，无第三方利益口径；为什么：多源同向且细节互补，可采信。",
     },
     {
       link: "原水取水",
@@ -210,6 +217,9 @@ export const DEMO_ROWS: Record<string, InfoRow[]> = {
       current_flow: "按班记录，按月汇总上报",
       pain: "数据不上网",
       description: "水源安全相关",
+      verification_verdict: "无法核实",
+      verification:
+        "准确：本客户水源处的仪表清单与台账样例材料里都没有，无法核对；客观：本行为行业通行做法的推断，不是本客户事实；为什么：缺客户材料，按行业通例只作追问方向，不能当结论用。",
     },
   ],
   "表1-3": [
