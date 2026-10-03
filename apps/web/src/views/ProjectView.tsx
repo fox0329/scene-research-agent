@@ -128,14 +128,26 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
    * 就消失的提示——那样用户只看到按钮变回「开始本步分析」、不知道发生了什么。
    * 这里沿用已有的状态横幅样式，成功时不留痕（数据出现本身就是信号）。
    */
-  const [analysisNotice, setAnalysisNotice] = useState<{ kind: "error" | "info"; text: string } | null>(null);
+  const [analysisNotice, setAnalysisNotice] = useState<
+    { kind: "error" | "info" | "warning"; text: string } | null
+  >(null);
   const analysis = useStageAnalysis({
     projectId: project.id,
     stage: stepStage,
     stepId: step,
     // done 只是"更快知道成功了"：真正决定界面收敛的是下面的 onSettled
-    onDone: () => {
-      setAnalysisNotice(null);
+    onDone: (info) => {
+      const failed = info?.tablesFailed ?? [];
+      // 只有部分失败才挂常驻提示（全部成功就清掉旧提示）：失败的表沿用了原有内容，
+      // 用户需要知道"这一步没全成"，否则会以为看到的是最新结果
+      setAnalysisNotice(
+        failed.length > 0
+          ? {
+              kind: "warning",
+              text: `${failed.join("、")} 这次没生成成功，已沿用原有内容——可稍后重算本步补齐`,
+            }
+          : null,
+      );
       onProjectsChanged?.();
     },
     /**
@@ -456,7 +468,11 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
       {live && analysisNotice && (
         <div className="stale-banner" role="status">
           <span className={`badge ${analysisNotice.kind === "error" ? "error" : "warning"}`}>
-            {analysisNotice.kind === "error" ? "分析失败" : "进度提示"}
+            {analysisNotice.kind === "error"
+              ? "分析失败"
+              : analysisNotice.kind === "warning"
+                ? "部分未生成"
+                : "进度提示"}
           </span>
           {analysisNotice.text}
         </div>

@@ -338,7 +338,7 @@ check_contains "04-业务过程重定义.md" "表宽恒等于中栏宽" "不出�
 check_contains "docs/项目变更表.md" "| 71 |" "变更表 #71 中栏表格修正登记"
 # 正向守卫：本步分析的进度必须读服务端的 message（只读 text 会每条都显示同一句"分析中…"）
 if grep -qF "ev.message ?? ev.text" "$ROOT/apps/web/src/hooks/useStageAnalysis.ts" && \
-   grep -qF "模型已输出" "$ROOT/apps/server/src/advance-stage.ts"; then
+   grep -qF '已输出 ${text.length} 字' "$ROOT/apps/server/src/advance-stage.ts"; then
   echo "✅ 本步分析进度：读 message 字段 + 生成过程有心跳（不再一直显示「分析中」）"
 else
   echo "❌ 本步分析进度线断了（用户定调：不认「一直分析中」）"
@@ -494,6 +494,33 @@ else
 fi
 check_contains "package.json" "clean:stray" "pretest 清理残留编译产物"
 check_contains "docs/故障及解决清单.md" "测试跑的还是上次编译的产物" "故障 #24 登记（单测测旧代码）"
+check_contains "docs/故障及解决清单.md" "按表并发后整步报「完成」" "故障 #25 登记（并发提前收工/就绪判据）"
+
+# v1.22 守卫：按表并发生成（延迟 ≈ 最慢那张表；单表失败不拖垮整步）
+check_contains "04-业务过程重定义.md" "v1.22" "业务过程 v1.22（按表并发生成）"
+check_contains "docs/项目变更表.md" "| 80 |" "变更表 #80 按表并发登记"
+check_contains "packages/contract/src/tables.ts" "dependsOnTables" "契约声明本步内的真实依赖"
+check_contains "packages/contract/src/tables.ts" "dependsOnTables" "依赖在契约里声明（要素清单先跑）"
+check_contains "apps/server/src/advance-stage.ts" "export function readyTables" "就绪队列是纯函数（可单测）"
+check_contains "apps/server/src/advance-stage.ts" "args.finished.has(d)" "等的是依赖完成，不是依赖开始"
+check_contains "apps/server/src/advance-stage.ts" "STAGE_TABLE_CONCURRENCY" "并发上限可配（默认 5）"
+# 单表失败必须只丢该表：逐表删，失败表沿用原有内容
+check_contains "apps/server/src/advance-stage.ts" "deleteByScenarioStageTable" "逐表覆盖（失败表不被清空）"
+check_contains "packages/infra/src/sqlite-repo.ts" "deleteByScenarioStageTable" "仓储提供逐表删除"
+if grep -q "db.stageDataRepo.deleteByScenarioStage(scenarioId, stage);" "$ROOT/apps/server/src/advance-stage.ts"; then
+  echo "❌ 又整阶段删了：单表失败会把该表原有内容一起清掉（应按表删）"
+  FAIL=1
+else
+  echo "✅ 不再整阶段删（逐表覆盖，失败表沿用原内容）"
+fi
+check_contains "apps/server/src/advance-stage.ts" "tablesFailed" "未生成的表要明说（done.tablesFailed）"
+check_contains "apps/web/src/views/ProjectView.tsx" "部分未生成" "中栏提示条报出未生成的表"
+check_contains "apps/server/src/stage-prompts.ts" "siblings" "并发时把兄弟表列给模型对齐口径"
+check_contains "apps/server/src/advance-stage.test.ts" "同一批的多张表同时在跑" "并发行为有单测（峰值并发 ≥ 2）"
+check_contains "apps/server/src/advance-stage.test.ts" "失败表沿用原有内容" "单表失败不拖垮整步有单测"
+check_contains "packages/contract/src/tables.test.ts" "dependsOnTables" "依赖声明有单测（含不跨阶段）"
+check_contains "apps/server/src/advance-stage.test.ts" "就绪队列" "就绪队列有单测（完成即放行/环兜底）"
+check_contains "apps/server/src/advance-stage.test.ts" "最后才起始的依赖表也必须落库" "收工条件回归用例在册（不准全部开始就收工）"
 
 # v1.20 守卫：进度不进中栏（中栏只放信息），进度只留在流程轴按钮上
 check_contains "04-业务过程重定义.md" "v1.20" "业务过程 v1.20（进度不进中栏）"

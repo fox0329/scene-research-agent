@@ -33,7 +33,7 @@ import type {
   MessageRepo,
 } from "@scene/infra";
 
-import { createAdvanceStageCommand } from "./advance-stage.js";
+import { createAdvanceStageCommand, readyTables } from "./advance-stage.js";
 import type { AdvanceStageDeps } from "./advance-stage.js";
 
 // ─── Mock 工厂 ─────────────────────────────────────────────
@@ -44,6 +44,36 @@ function createMockDshClient(outputText: string): DshClient {
     createSession: vi.fn(async () => ({ sessionId: "mock-session-stage" })),
     prompt: vi.fn(async function* (): AsyncGenerator<FollowEvent> {
       yield { type: "text", text: outputText };
+      yield { type: "done" };
+    }),
+    cancel: vi.fn(async () => {}),
+  };
+}
+
+/** 从输出契约里取本次调用允许的表号（按表并发后每次调用只问一张表） */
+function allowedTablesOf(outputContract: Record<string, unknown>): string[] {
+  const props = outputContract as {
+    properties?: { rows?: { items?: { properties?: { table_code?: { enum?: string[] } } } } };
+  };
+  return props.properties?.rows?.items?.properties?.table_code?.enum ?? [];
+}
+
+/**
+ * 表感知的 mock DshClient：按本次调用允许的表号，只回该表的行
+ *
+ * 按表并发生成（v1.22）后，一次分析会发多次"只问一张表"的调用。这个 mock 让既有样本
+ * 仍然可用：每个调用只收到属于它自己那张表的行，等价于模型按表分别作答。
+ */
+function createTableAwareDshClient(output: { rows: Array<Record<string, unknown>> }): DshClient {
+  return {
+    createSession: vi.fn(async () => ({ sessionId: "mock-session-stage" })),
+    prompt: vi.fn(async function* (
+      _h: unknown,
+      input: { outputContract: Record<string, unknown> },
+    ): AsyncGenerator<FollowEvent> {
+      const allowed = allowedTablesOf(input.outputContract);
+      const rows = output.rows.filter((r) => allowed.includes(String(r["table_code"])));
+      yield { type: "text", text: JSON.stringify({ rows }) };
       yield { type: "done" };
     }),
     cancel: vi.fn(async () => {}),
@@ -113,6 +143,16 @@ function createMockStageDataRepo(): StageDataRepo {
       const before = store.length;
       const kept = store.filter(
         (r) => !(r.scenario_id === scenarioId && r.stage === stage),
+      );
+      store.length = 0;
+      store.push(...kept);
+      return before - store.length;
+    }),
+    deleteByScenarioStageTable: vi.fn((scenarioId: string, stage: number, tableCode: string) => {
+      const before = store.length;
+      const kept = store.filter(
+        (r) =>
+          !(r.scenario_id === scenarioId && r.stage === stage && r.table_code === tableCode),
       );
       store.length = 0;
       store.push(...kept);
@@ -479,9 +519,7 @@ describe("createAdvanceStageCommand", () => {
   describe("阶段 1：门槛筛查", () => {
     beforeEach(() => {
       db = createMockDb({ scenario: { current_stage: 1 } });
-      dshClient = createMockDshClient(
-        JSON.stringify(makeStage1DshOutput()),
-      );
+      dshClient = createTableAwareDshClient(makeStage1DshOutput());
       deps = { db, dshClient };
     });
 
@@ -622,9 +660,7 @@ describe("createAdvanceStageCommand", () => {
   describe("阶段 2：架构约束分析", () => {
     beforeEach(() => {
       db = createMockDb({ scenario: { current_stage: 2 } });
-      dshClient = createMockDshClient(
-        JSON.stringify(makeStage2DshOutput()),
-      );
+      dshClient = createTableAwareDshClient(makeStage2DshOutput());
       deps = { db, dshClient };
     });
 
@@ -653,13 +689,13 @@ describe("createAdvanceStageCommand", () => {
       const beats = events.filter(
         (e) =>
           e.type === "progress" &&
-          /模型已输出 \d+ 字/.test(String((e as { message?: string }).message ?? "")),
+          /已输出 \d+ 字/.test(String((e as { message?: string }).message ?? "")),
       );
       expect(beats.length).toBeGreaterThanOrEqual(1);
-      // 心跳必须排在"正在调用 AI 分析"之后、写库之前
+      // 心跳必须排在"开始生成"之后、写库之前
       const types = events.map((e) => String((e as { message?: string }).message ?? ""));
-      expect(types.findIndex((m) => /模型已输出/.test(m))).toBeGreaterThan(
-        types.findIndex((m) => /正在调用 AI 分析/.test(m)),
+      expect(types.findIndex((m) => /已输出/.test(m))).toBeGreaterThan(
+        types.findIndex((m) => /正在并行生成/.test(m)),
       );
     });
 
@@ -744,7 +780,7 @@ describe("createAdvanceStageCommand", () => {
         // 心跳**不能吞掉真实事件**：模型吐的字必须照常进到文本心跳与落库
         // （曾经的实现每次心跳都重新 iterator.next()，把挂着的那次读取结果丢了，
         //   最后解析不出行、整步分析反而失败）
-        expect(events.some((e) => String((e as { message?: string }).message).includes("模型已输出"))).toBe(true);
+        expect(events.some((e) => String((e as { message?: string }).message).includes("已输出"))).toBe(true);
         expect(events.at(-1)!.type).toBe("done");
         expect(db.stageDataRepo.insert).toHaveBeenCalled();
       } finally {
@@ -836,9 +872,7 @@ describe("createAdvanceStageCommand", () => {
   describe("F2 流式续传：事件带递增 id", () => {
     it("每个事件应有递增的 id 字段", async () => {
       db = createMockDb({ scenario: { current_stage: 1 } });
-      dshClient = createMockDshClient(
-        JSON.stringify(makeStage1DshOutput()),
-      );
+      dshClient = createTableAwareDshClient(makeStage1DshOutput());
       deps = { db, dshClient };
 
       const cmd = createAdvanceStageCommand(deps);
@@ -863,9 +897,7 @@ describe("createAdvanceStageCommand", () => {
   describe("F2 会话登记：DSH session → conversation", () => {
     it("conversation 应包含正确的 dsh_session_id", async () => {
       db = createMockDb({ scenario: { current_stage: 1 } });
-      dshClient = createMockDshClient(
-        JSON.stringify(makeStage1DshOutput()),
-      );
+      dshClient = createTableAwareDshClient(makeStage1DshOutput());
       deps = { db, dshClient };
 
       const cmd = createAdvanceStageCommand(deps);
@@ -876,5 +908,195 @@ describe("createAdvanceStageCommand", () => {
       expect(convCall.dsh_session_id).toBe("mock-session-stage");
       expect(convCall.title).toContain("阶段 1");
     });
+  
+  describe("按表并发生成（v1.22）", () => {
+    /** 记录同时在跑的调用数，用于证明"确实并发"而不是排队 */
+    function createConcurrencyProbe(output: { rows: Array<Record<string, unknown>> }): {
+      client: DshClient;
+      peak: () => number;
+      calls: () => number;
+      promptOf: (code: string) => string | undefined;
+    } {
+      let inFlight = 0;
+      let peak = 0;
+      let calls = 0;
+      const prompted: Array<{ code: string; user: string }> = [];
+      const client: DshClient = {
+        createSession: vi.fn(async () => ({ sessionId: "mock-concurrent" })),
+        prompt: vi.fn(async function* (
+          _h: unknown,
+          input: { user: string; outputContract: Record<string, unknown> },
+        ): AsyncGenerator<FollowEvent> {
+          inFlight++;
+          peak = Math.max(peak, inFlight);
+          calls++;
+          prompted.push({ code: allowedTablesOf(input.outputContract)[0] ?? "", user: input.user });
+          // 每个调用都等一小会儿：不并发的话峰值只能是 1
+          await new Promise((r) => setTimeout(r, 15));
+          const allowed = allowedTablesOf(input.outputContract);
+          const rows = output.rows.filter((r) => allowed.includes(String(r["table_code"])));
+          inFlight--;
+          yield { type: "text", text: JSON.stringify({ rows }) };
+          yield { type: "done" };
+        }),
+        cancel: vi.fn(async () => {}),
+      };
+      const promptOf = (code: string): string | undefined =>
+        prompted.find((x) => x.code === code)?.user;
+      return { client, peak: () => peak, calls: () => calls, promptOf };
+    }
+
+    it("同一批的多张表同时在跑（不是一张一张排队）", async () => {
+      db = createMockDb({ scenario: { current_stage: 1 } });
+      const probe = createConcurrencyProbe(makeStage1DshOutput());
+      deps = { db, dshClient: probe.client };
+
+      await collectEvents(createAdvanceStageCommand(deps).execute({ scenarioId: "sc-1", stage: 1 }));
+
+      // 阶段 1 本步 7 张表：无依赖的那些一起跑（默认上限 5）
+      expect(probe.calls()).toBeGreaterThanOrEqual(5);
+      expect(probe.peak()).toBeGreaterThanOrEqual(2);
+    });
+
+    it("就绪队列：前置一完成就放行下游，不等整轮", () => {
+      const codes = ["表1-2", "表2-2", "表2-3", "表2-4"];
+      const depsOf = (c: string): readonly string[] =>
+        c === "表2-3" || c === "表2-4" ? ["表2-2"] : [];
+      // 表2-2 还在跑（已开始、未完成）时下游不许起跑——只判"开始"会让下游拿到空依赖
+      expect(
+        readyTables({
+          codes,
+          depsOf,
+          started: new Set(["表1-2", "表2-2"]),
+          finished: new Set(["表1-2"]),
+          limit: 5,
+        }),
+      ).toEqual([]);
+      // 表2-2 完成后，下游立刻放行（不等整轮）
+      expect(
+        readyTables({
+          codes,
+          depsOf,
+          started: new Set(["表1-2", "表2-2"]),
+          finished: new Set(["表1-2", "表2-2"]),
+          limit: 5,
+        }),
+      ).toEqual(["表2-3", "表2-4"]);
+      // 表2-2 还没起跑时，先起它
+      expect(
+        readyTables({
+          codes,
+          depsOf,
+          started: new Set(["表1-2"]),
+          finished: new Set(["表1-2"]),
+          limit: 5,
+        }),
+      ).toEqual(["表2-2"]);
+      // 环/死锁兜底：两个表互相依赖时谁都不许起跑 → 直接放行，不让分析卡死
+      const cyclic = (c: string): readonly string[] => (c === "表1-2" ? ["表1-3"] : ["表1-2"]);
+      expect(
+        readyTables({
+          codes: ["表1-2", "表1-3"],
+          depsOf: cyclic,
+          started: new Set(),
+          finished: new Set(),
+          limit: 5,
+        }),
+      ).toEqual(["表1-2", "表1-3"]);
+    });
+
+    it("依赖表跑在它依赖的表之后，并拿到刚生成的行（口径一致）", async () => {
+      db = createMockDb({ scenario: { current_stage: 1 } });
+      const probe = createConcurrencyProbe(makeStage1DshOutput());
+      deps = { db, dshClient: probe.client };
+
+      await collectEvents(createAdvanceStageCommand(deps).execute({ scenarioId: "sc-1", stage: 1 }));
+
+      // 表2-4（要素间关系）依赖表2-2（要素清单）：它的 prompt 里必须出现表2-2 刚产出的要素名
+      const relationPrompt = probe.promptOf("表2-4");
+      expect(relationPrompt).toBeDefined();
+      const upstreamSection = relationPrompt!.split("## 上游数据")[1] ?? "";
+      expect(upstreamSection).toContain("网络摄像机");
+      // 表2-2 先跑，它的 prompt 里不该有下游表的内容
+      expect(probe.promptOf("表2-2")).toBeDefined();
+    });
+
+    it("最后才起始的依赖表也必须落库（不准「全部开始了」就收工）", async () => {
+      // 事故回归：调度循环原来以"全部开始"为退出条件，表2-3/表2-4 刚起始就被丢下——
+      // 整步报 done、用户却少了两张表的数据（实机：本次只落了 5 张表 60 行）。
+      db = createMockDb({ scenario: { current_stage: 1 } });
+      dshClient = {
+        createSession: vi.fn(async () => ({ sessionId: "mock-slow-tail" })),
+        prompt: vi.fn(async function* (
+          _h: unknown,
+          input: { outputContract: Record<string, unknown> },
+        ): AsyncGenerator<FollowEvent> {
+          const code = allowedTablesOf(input.outputContract)[0] ?? "";
+          // 依赖表故意慢：不修的话它们一定还在跑
+          await new Promise((r) => setTimeout(r, code === "表2-3" || code === "表2-4" ? 60 : 10));
+          const rows = makeStage1DshOutput().rows.filter((r) => r["table_code"] === code);
+          yield { type: "text", text: JSON.stringify({ rows }) };
+          yield { type: "done" };
+        }),
+        cancel: vi.fn(async () => {}),
+      };
+      deps = { db, dshClient };
+
+      const events = await collectEvents(
+        createAdvanceStageCommand(deps).execute({ scenarioId: "sc-1", stage: 1 }),
+      );
+
+      const rows = events.filter((e) => e.type === "row").map((e) => String(e.tableCode));
+      expect(rows).toContain("表2-3"); // 样本里 表2-3 有一行：它必须落库
+      expect(db.stageDataRepo.insert).toHaveBeenCalledTimes(5);
+      expect(events.at(-1)!.type).toBe("done");
+    });
+
+    it("单张表失败不拖垮整步：其余表照常落库，失败表沿用原有内容并明确报出", async () => {
+      // 样本里故意缺 表2-2 的行 → 该表这次没有产出
+      const partial = makeStage1DshOutput();
+      partial.rows = partial.rows.filter((r) => r["table_code"] !== "表2-2");
+      db = createMockDb({ scenario: { current_stage: 1 } });
+      dshClient = createTableAwareDshClient(partial);
+      deps = { db, dshClient };
+
+      const events = await collectEvents(
+        createAdvanceStageCommand(deps).execute({ scenarioId: "sc-1", stage: 1 }),
+      );
+
+      const done = events.find((e) => e.type === "done") as { tablesFailed?: string[] };
+      expect(done.tablesFailed).toContain("表2-2");
+      // 失败表**不删**（原有内容保留），成功的表才逐表覆盖
+      const deleted = (db.stageDataRepo.deleteByScenarioStageTable as ReturnType<typeof vi.fn>)
+        .mock.calls.map((c) => String(c[2]));
+      for (const code of done.tablesFailed ?? []) expect(deleted).not.toContain(code);
+      expect(deleted).toContain("表1-2");
+      // 命令别再整阶段删了：那会把失败表的原有内容一起清掉
+      expect(db.stageDataRepo.deleteByScenarioStage).not.toHaveBeenCalled();
+      expect(db.stageDataRepo.insert).toHaveBeenCalled();
+      // 失败必须在进度里说出来，不能悄悄过去
+      expect(
+        events.some(
+          (e) =>
+            e.type === "progress" &&
+            String((e as { message?: string }).message ?? "").includes("表2-2"),
+        ),
+      ).toBe(true);
+    });
+
+    it("全部表都没产出 → 报错且一行不写、旧数据一行不删", async () => {
+      db = createMockDb({ scenario: { current_stage: 1 } });
+      dshClient = createMockDshClient("这不是 JSON");
+      deps = { db, dshClient };
+
+      const events = await collectEvents(
+        createAdvanceStageCommand(deps).execute({ scenarioId: "sc-1", stage: 1 }),
+      );
+
+      expect(events.at(-1)!.type).toBe("error");
+      expect(db.stageDataRepo.insert).not.toHaveBeenCalled();
+      expect(db.stageDataRepo.deleteByScenarioStageTable).not.toHaveBeenCalled();
+    });
   });
+});
 });

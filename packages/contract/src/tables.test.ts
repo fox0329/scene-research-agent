@@ -260,3 +260,29 @@ describe("列级 filledInStages — 后续阶段的列不许提前填", () => {
     expect(filterRowByStage("表1-2", 1, row)).toEqual(row);
   });
 });
+
+
+describe("dependsOnTables — 本步内的真实依赖（按表并发的调度依据）", () => {
+  it("只对确有其事的表声明依赖（不为了稳而随手加，会把并发收益吃光）", () => {
+    // 要素清单 → 分层架构/要素间关系（架构与关系都引用要素名）
+    expect(tableDef("表2-3")?.dependsOnTables).toEqual(["表2-2"]);
+    expect(tableDef("表2-4")?.dependsOnTables).toEqual(["表2-2"]);
+    // 能力清单 → 需求-能力对照
+    expect(tableDef("表4-3")?.dependsOnTables).toEqual(["表4-1"]);
+    // 架构 → 实施计划 → 成本估算（成本要按架构与实施项算）
+    expect(tableDef("表5-3")?.dependsOnTables).toEqual(["表5-1"]);
+    expect(tableDef("表5-5")?.dependsOnTables).toEqual(["表5-1", "表5-3"]);
+  });
+
+  it("依赖只在同阶段内声明（跨阶段靠上游上下文，不写在这里）", () => {
+    for (const t of TABLES) {
+      for (const dep of t.dependsOnTables ?? []) {
+        expect(tableDef(dep), `${t.code} 依赖了不存在的 ${dep}`).toBeDefined();
+        expect(
+          tableDef(dep)!.stage,
+          `${t.code} 跨阶段依赖 ${dep}：应改由上游上下文提供`,
+        ).toBe(t.stage);
+      }
+    }
+  });
+});

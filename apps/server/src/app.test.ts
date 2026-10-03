@@ -79,6 +79,15 @@ function createMockDb() {
     }),
     markStale: vi.fn(() => 0),
     deleteByScenarioStage: vi.fn(() => 0),
+    deleteByScenarioStageTable: vi.fn((_s: string, stage: number, tableCode: string) => {
+      const before = stageDataStore.length;
+      const kept = stageDataStore.filter(
+        (r) => !(r.stage === stage && r.table_code === tableCode),
+      );
+      stageDataStore.length = 0;
+      stageDataStore.push(...kept);
+      return before - stageDataStore.length;
+    }),
     getById: vi.fn(() => undefined),
     update: vi.fn(() => undefined),
   };

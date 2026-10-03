@@ -34,7 +34,13 @@ export function useStageAnalysis(opts: {
   stage: number;
   stepId?: number | undefined;
   /** 分析落库（收到 done）回调：父级可做轻量联动（如刷新项目列表） */
-  onDone?: () => void;
+  /**
+   * 本次分析收尾（成功）回调
+   *
+   * `info.tablesFailed` = 按表并发生成时没成功的那几张表（服务端会保留它们的原有内容）——
+   * 界面必须说出来，不能让用户以为"全好了"。
+   */
+  onDone?: (info?: { tablesFailed?: string[] }) => void;
   /**
    * 本次运行**结束**（正常完成 / 出错 / 连接续连失败）后回调一次
    *
@@ -98,8 +104,15 @@ export function useStageAnalysis(opts: {
               push(`【错误】${message}`);
               onError?.(message);
             } else if (ev.type === "done") {
-              push("【完成】分析结果已落库");
-              onDone?.();
+              const tablesFailed = Array.isArray(ev.tablesFailed)
+                ? (ev.tablesFailed as string[])
+                : [];
+              push(
+                tablesFailed.length > 0
+                  ? `【完成】分析结果已落库；${tablesFailed.join("、")} 未生成成功（沿用原有内容）`
+                  : "【完成】分析结果已落库",
+              );
+              onDone?.({ tablesFailed });
             }
           },
           onReconnect: (reason) => {

@@ -13,6 +13,7 @@
 import type {
   DshClient,
   FollowEvent,
+  SessionHandle,
   StageId,
   TableCode,
   Scenario,
@@ -32,6 +33,7 @@ import {
   filterRowByStage,
   isModelStage,
   stageDef,
+  tableDef,
   tablesOfStage,
   type InfoStageId,
 } from "@scene/contract";
@@ -144,6 +146,156 @@ function createEventReader<T>(iterator: AsyncIterator<T>): {
   };
 }
 
+/** 按表并发的上限（默认 5；STAGE_TABLE_CONCURRENCY 可覆盖，测试里压到 1 看串行顺序） */
+function tableConcurrency(): number {
+  const raw = Number(process.env["STAGE_TABLE_CONCURRENCY"] ?? 5);
+  return Number.isFinite(raw) && raw >= 1 ? Math.floor(raw) : 5;
+}
+
+/** 进度文案用的表标签（表号 + 表名） */
+function labelOf(code: string): string {
+  const t = tableDef(code);
+  return t ? `${code} ${t.name}` : code;
+}
+
+/** 单张表的生成结果 */
+interface TableGenResult {
+  code: string;
+  rows: DshStageOutput["rows"];
+  /** 已输出字数（进度诊断用） */
+  chars: number;
+  /** 本表失败原因；有值即视为该表没有产出 */
+  error?: string;
+}
+
+/**
+ * 就绪队列：前置都完成了的表立刻起跑（**不等整轮**）
+ *
+ * 为什么不等整轮：一轮等于把"依赖链最长的那些表"串起来跑——实测第 2 步按轮跑 3 轮约 65 秒，
+ * 而阶段 1 只有"要素清单 → 分层架构/要素间关系"一条两级链，等整轮白等一整个批次。
+ * 依赖不在本批里（跨阶段上游，已在上游上下文）视为已满足；出现环时剩余表直接放行——
+ * 分析不能因为一处声明笔误就卡死。纯函数，可单测。
+ */
+export function readyTables(args: {
+  codes: readonly string[];
+  depsOf: (code: string) => readonly string[];
+  started: ReadonlySet<string>;
+  /** 已**产出**的表（不是"已开始"）：依赖必须真的完成，下游才拿得到它的行 */
+  finished: ReadonlySet<string>;
+  limit: number;
+}): string[] {
+  const inBatch = new Set(args.codes);
+  const ready: string[] = [];
+  for (const code of args.codes) {
+    if (ready.length >= args.limit) break;
+    if (args.started.has(code)) continue;
+    const deps = args.depsOf(code).filter((d) => inBatch.has(d) && d !== code);
+    // 关键：等的是"完成"而不是"开始"——只判开始会让下游拿到空的依赖上下文（口径照样对不上）
+    if (deps.every((d) => args.finished.has(d))) ready.push(code);
+  }
+  // 环/死锁兜底：**没有任何在跑的**且一个都起不来，才把剩余表按序放行
+  // （只看"ready 为空"会在正常情况下误放行：依赖还在跑时下游本来就是没就绪的）
+  if (ready.length === 0 && args.started.size === args.finished.size) {
+    for (const code of args.codes) {
+      if (ready.length >= args.limit) break;
+      if (!args.started.has(code)) ready.push(code);
+    }
+  }
+  return ready;
+}
+
+/**
+ * 生成单张表（v1.22 按表并发的执行单元）
+ *
+ * 为什么按表拆：整步一次生成要 1–3 分钟（实测第 2 步 105 秒），而且**一个表里的畸形 JSON
+ * 会让整步失败**（实测第 3 步模型把行级 source 重复写了一次，30 KB 输出整份作废）。
+ * 拆成一张表一次调用后：延迟 ≈ 最慢那张表，单表失败只影响这张表（其余照常落库）。
+ *
+ * 进度事件通过 `push` 出口交给主循环统一编号——并发任务里不能 yield。
+ */
+async function generateOneTable(
+  code: string,
+  d: {
+    dshClient: DshClient;
+    session: SessionHandle;
+    stage: InfoStageId;
+    scenario: { name: string; description?: string | null; brief?: string | null };
+    upstreamData: Record<string, unknown>;
+    siblings: readonly string[];
+    keepaliveMs: number;
+    push: (event: FollowEvent) => void;
+  },
+): Promise<TableGenResult> {
+  const label = labelOf(code);
+  const progress = (message: string): void => {
+    d.push({ type: "progress", stage: d.stage, message });
+  };
+  const prompt = buildStagePrompt(d.stage, d.upstreamData, d.scenario, {
+    tables: [code],
+    siblings: d.siblings,
+  });
+  progress(`正在生成 ${label}…`);
+
+  let text = "";
+  try {
+    const stream = d.dshClient.prompt(d.session, {
+      system: prompt.system,
+      user: prompt.user,
+      outputContract: getStageOutputContract(d.stage, [code]),
+    });
+    const reader = createEventReader(stream[Symbol.asyncIterator]());
+    let waitingSince = Date.now();
+    let beatAt = 0;
+    let beatChars = 0;
+    for (;;) {
+      const step = await reader.race(d.keepaliveMs);
+      if (step.kind === "tick") {
+        progress(`${label}：模型仍在思考（已等待 ${Math.round((Date.now() - waitingSince) / 1000)} 秒）…`);
+        continue;
+      }
+      if (step.result.done) break;
+      const event = step.result.value;
+      waitingSince = Date.now();
+      if (event.type === "text") {
+        text += (event as { type: "text"; text: string }).text;
+        const now = Date.now();
+        if (now - beatAt >= 1500 && text.length - beatChars >= 80) {
+          beatAt = now;
+          beatChars = text.length;
+          progress(`${label}：已输出 ${text.length} 字…`);
+        }
+      }
+      if (event.type === "error") {
+        return {
+          code,
+          rows: [],
+          chars: text.length,
+          error: `${label}：${String((event as FollowEvent)["message"] ?? "模型调用出错")}`,
+        };
+      }
+      if (event.type === "done" && (event as { finishReason?: string }).finishReason === "length") {
+        return { code, rows: [], chars: text.length, error: `${label} 的输出被长度上限截断，请重试` };
+      }
+    }
+  } catch (err: unknown) {
+    return {
+      code,
+      rows: [],
+      chars: text.length,
+      error: `${label} 调用失败：${err instanceof Error ? err.message : String(err)}`,
+    };
+  }
+
+  dumpRawOutput(d.stage, text, code);
+  const parsed = parseDshOutput(text);
+  // 只认本表自己的行：模型多写别的表号时按表归位，避免重复入库
+  const rows = parsed.rows.filter((r) => String(r.table_code) === code);
+  if (rows.length === 0) {
+    return { code, rows: [], chars: text.length, error: `${label} 没有产出可解析的行` };
+  }
+  return { code, rows, chars: text.length };
+}
+
 export function createAdvanceStageCommand(deps: AdvanceStageDeps) {
   return {
     execute: (opts: { scenarioId: string; stage: StageId; tables?: readonly string[] }) =>
@@ -218,15 +370,12 @@ async function* executeAdvanceStage(
   // 2. 取上游数据（按阶段依赖）
   const upstreamData = collectUpstreamData(db, scenario, stage);
 
-  // 3. 组 prompt
+  // 3. 本步要产出的表集 —— 按表并发生成的调度单元（v1.22）
   const stepTables = opts.tables;
-  const stagePrompt = buildStagePrompt(
-    stage,
-    upstreamData,
-    { name: scenario.name, description: scenario.description },
-    stepTables ? { tables: stepTables } : undefined,
-  );
-  const outputContract = getStageOutputContract(stage, stepTables);
+  const coveredCodes = [
+    ...(stepTables ?? tablesOfStage(effectiveStage).map((t) => t.code)),
+  ];
+  const concurrency = tableConcurrency();
 
   // 4. 创建 DSH session
   const session = await dshClient.createSession({
@@ -241,116 +390,172 @@ async function* executeAdvanceStage(
     dsh_session_id: session.sessionId,
   });
 
-  // 6. DSH 流式调用
+  // 6. 按表并发生成：波内并发、波间串行（有真实依赖的表等前一层跑完，并把行喂给它）
+  //
+  //    为什么不是一次生成整步：① 延迟 —— 实测第 2 步 105 秒，按表拆开后 ≈ 最慢那张表；
+  //    ② 抗损 —— 一次输出里任何一处 JSON 畸形都会让整步失败（实测第 3 步 30 KB 输出因
+  //    行级 source 重复而整份作废），按表拆开后坏一张只丢一张。
   yield emit({
     type: "progress",
     stage,
-    message: "正在调用 AI 分析...（本步一次生成整步的表格，通常 1–3 分钟；可离开本页，结果会落库）",
+    message: `正在并行生成 ${coveredCodes.length} 张表（最多 ${concurrency} 张同时跑，依赖表等前置完成即开始）——可离开本页，结果会落库`,
   });
 
-  let fullText = "";
-  /** 生成过程的心跳：模型连上后可能几十秒不吐字，没有心跳用户会以为卡死 */
-  let lastBeatAt = 0;
-  let lastBeatChars = 0;
-  try {
-    const stream = dshClient.prompt(session, {
-      system: stagePrompt.system,
-      user: stagePrompt.user,
-      outputContract,
-    });
+  const keepaliveMs = keepaliveIntervalMs();
+  const results = new Map<string, TableGenResult>();
+  /** 本步已产出的行，按表号键：喂给依赖它的下游表（口径一致） */
+  const producedRows: Record<string, unknown[]> = {};
 
-    /**
-     * 逐事件读取模型流，**空闲时补一条"仍在思考"心跳**
-     *
-     * 原来的心跳只在"有字吐出来"时发：推理型模型先想几十秒到两分钟不吐字，这段时间
-     * 前端一条事件都收不到——用户看到的就是"一直显示在分析中"（实机反馈），
-     * 前端侧的连接看门狗也分不清"在思考"还是"连接死了"。按时间补心跳后：
-     * ① 界面上一直有动静（已等待 N 秒）；② 静默只可能来自真断线，看门狗判得准。
-     */
-    const keepaliveMs = keepaliveIntervalMs();
-    const reader = createEventReader(stream[Symbol.asyncIterator]());
-    let waitingSince = Date.now();
-    for (;;) {
-      const step = await reader.race(keepaliveMs);
-      if (step.kind === "tick") {
-        yield emit({
-          type: "progress",
-          stage,
-          message: `模型仍在思考（已等待 ${Math.round((Date.now() - waitingSince) / 1000)} 秒）…`,
-        });
-        continue;
-      }
-      if (step.result.done) break;
-      const event = step.result.value;
-      waitingSince = Date.now();
-      if (event.type === "text") {
-        fullText += (event as { type: "text"; text: string }).text;
-        const now = Date.now();
-        if (now - lastBeatAt >= 1500 && fullText.length - lastBeatChars >= 80) {
-          lastBeatAt = now;
-          lastBeatChars = fullText.length;
-          yield emit({
-            type: "progress",
-            stage,
-            message: `模型已输出 ${fullText.length} 字，正在生成…`,
+  // 并发任务不能 yield，进度事件先进队列，由主循环统一编号后发出（保持 id 单调，续传才准）
+  const queue: FollowEvent[] = [];
+  let wake: (() => void) | null = null;
+  const push = (event: FollowEvent): void => {
+    queue.push(event);
+    wake?.();
+    wake = null;
+  };
+  const depsOf = (code: string): readonly string[] => tableDef(code)?.dependsOnTables ?? [];
+  const started = new Set<string>();
+  const finished = new Set<string>();
+  let poolSettled = false;
+  let poolError: unknown = null;
+
+  const pool = (async (): Promise<void> => {
+    const running = new Map<string, Promise<void>>();
+    let settledCount = 0;
+    // 退出条件是"全部**结束**"而不是"全部**开始**"：只看开始会在最后几张表还在跑时提前收工
+    // （实测：表2-3/表2-4 刚起始就被丢下，整步 done 却少了这两张表的数据）
+    while (settledCount < coveredCodes.length) {
+      for (const code of readyTables({
+        codes: coveredCodes,
+        depsOf,
+        started,
+        finished,
+        limit: concurrency,
+      })) {
+        started.add(code);
+        push({ type: "progress", stage, message: `开始生成 ${labelOf(code)}…` });
+        const task = generateOneTable(code, {
+          dshClient,
+          session,
+          stage: effectiveStage,
+          scenario: { name: scenario.name, description: scenario.description },
+          upstreamData: {
+            ...upstreamData,
+            ...Object.fromEntries(
+              depsOf(code)
+                .filter((dep) => producedRows[dep])
+                .map((dep) => [dep, producedRows[dep]!]),
+            ),
+          },
+          siblings: coveredCodes.filter((c) => c !== code),
+          keepaliveMs,
+          push,
+        })
+          .then((result) => {
+            results.set(code, result);
+            if (result.rows.length > 0) {
+              producedRows[code] = result.rows.map((r) => ({ ...r.fields, source: r.source }));
+            }
+            // 不管成没成都要标记完成：失败的依赖不能让下游干等
+            finished.add(code);
+            // 单张表失败必须当场说出来（只在收尾汇总里提一句，用户看不到是哪张表卡住的）
+            if (result.error) {
+              push({ type: "progress", stage, message: `⚠️ ${result.error}` });
+            }
+          })
+          .catch((err: unknown) => {
+            const message = err instanceof Error ? err.message : String(err);
+            results.set(code, {
+              code,
+              rows: [],
+              chars: 0,
+              error: `${labelOf(code)} 生成失败：${message}`,
+            });
+            finished.add(code);
+            push({ type: "progress", stage, message: `⚠️ ${labelOf(code)} 生成失败：${message}` });
+          })
+          .finally(() => {
+            running.delete(code);
+            settledCount++;
           });
-        }
+        running.set(code, task);
       }
-      if (event.type === "error") {
-        yield emit({
-          type: "error",
-          message: (event as { type: "error"; message: string }).message,
-        });
-        return;
-      }
-      // 供应商因输出长度上限截断（finish_reason=length）：**不能当成功**——
-      // 截断的 JSON 解析必然失败，若继续走"清旧数据 + 写新数据"就会把用户原有的
-      // 本步数据清空且一条不写（实机事故：第 3 步重算后 30 行变 0 行）。
-      if (event.type === "done" && (event as { finishReason?: string }).finishReason === "length") {
-        yield emit({
-          type: "error",
-          message:
-            "模型输出被长度上限截断（本次未写入任何数据，本步原有内容已保留）——请重试；若反复出现，说明本步要一次生成的表太多，需要拆小后重算",
-        });
-        return;
-      }
+      if (running.size === 0) break; // 兜底：没有在跑的任务就收工，绝不空转
+      await Promise.race(running.values());
     }
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
-    yield emit({ type: "error", message: `AI 分析失败: ${message}` });
+  })().then(
+    () => {
+      poolSettled = true;
+      wake?.();
+      wake = null;
+    },
+    (err: unknown) => {
+      poolError = err;
+      poolSettled = true;
+      wake?.();
+      wake = null;
+    },
+  );
+
+  while (!poolSettled || queue.length > 0) {
+    while (queue.length > 0) {
+      const event = queue.shift()!;
+      yield emit(event);
+    }
+    if (poolSettled) break;
+    await new Promise<void>((resolve) => {
+      wake = resolve;
+    });
+  }
+  await pool;
+  if (poolError) {
+    yield emit({
+      type: "error",
+      message: `按表生成时出错：${poolError instanceof Error ? poolError.message : String(poolError)}`,
+    });
     return;
   }
 
-  // 7. 解析 DSH 输出
-  const dshOutput = parseDshOutput(fullText);
-  dumpRawOutput(stage, fullText);
+  // 单表失败不再拖垮整步：成功的照常落库，失败的保留原有内容并明确告诉用户是哪张表
+  const tableResults = coveredCodes
+    .map((code) => results.get(code))
+    .filter((r): r is TableGenResult => Boolean(r));
+  const failedTables = tableResults.filter((r) => r.rows.length === 0);
+  const dshOutput: DshStageOutput = { rows: tableResults.flatMap((r) => r.rows) };
+  const failureNote = failedTables.map((r) => r.error ?? `${r.code} 未产出`).join("；");
 
   /**
-   * 解析不出任何行 = 失败，**绝不能清库**
+   * 全部表都没产出 = 失败，**绝不能清库**
    *
    * 曾经的顺序是「先 deleteByScenarioStage 再 insert」：模型输出被截断或不是合法
    * JSON 时，parseDshOutput 静默返回 `{rows:[]}`，于是旧数据被删、新数据为 0，
    * 用户只看到「完成，共写入 0 条信息」——一步重算把本步数据清空（实机事故）。
-   * 现在先判定解析结果，再决定动不动旧数据。
+   * 现在先判定产出，再决定动不动旧数据；按表并发后失败粒度到表，只有全军覆没才整步报错。
    */
   if (dshOutput.rows.length === 0) {
     yield emit({
       type: "error",
-      message:
-        "模型这次没有产出可解析的表格数据（未写入任何内容，本步原有数据已保留）——可直接重试",
+      message: `模型这次没有产出可解析的表格数据（未写入任何内容，本步原有数据已保留）——可直接重试${
+        failureNote ? `。原因：${failureNote}` : ""
+      }`,
     });
     return;
   }
 
   // 8. 写入 stage_data → yield row 事件
-  //    重算覆盖（T4.2）：先清除该阶段旧数据行与旧质量关记录再写新结果；
-  //    旧数据在被重算前始终保留（§4.1 失效语义），重算即用户决定。
   yield emit({ type: "progress", stage, message: "正在写入分析结果..." });
 
   // 场景锚（表1-1）是跨阶段常驻的全链唯一场景定义：
   // 重算阶段不能把它一起删掉（且用户确认过的内容必须保留），故先快照后恢复。
   const anchorSnapshot = readAnchorRows(db, scenarioId);
-  db.stageDataRepo.deleteByScenarioStage(scenarioId, stage);
+  // 只删「本次确实产出」的表（重算覆盖，T4.2）：失败的表保留原有内容，用户不会白丢信息
+  const succeededCodes = new Set(tableResults.filter((r) => r.rows.length > 0).map((r) => r.code));
+  for (const code of coveredCodes) {
+    if (succeededCodes.has(code)) {
+      db.stageDataRepo.deleteByScenarioStageTable(scenarioId, stage, code);
+    }
+  }
   db.qualityGateRepo.deleteByScenarioStage(scenarioId, stage);
 
   // 未知表号的产出行不入库（无 schema 就无法渲染，入库只会污染数据）
@@ -399,15 +604,26 @@ async function* executeAdvanceStage(
     writeAnchorRows(db, scenarioId, anchorSnapshot);
   }
 
+  // 部分表失败：明确告诉用户是哪张表、原有内容已保留（不要把失败藏起来）
+  if (failedTables.length > 0) {
+    yield emit({
+      type: "progress",
+      stage,
+      message: `有 ${failedTables.length} 张表这次没生成成功：${failedTables
+        .map((r) => r.code)
+        .join("、")}（这些表沿用了原有内容，可单独重试）`,
+    });
+  }
+
   // 9. 信息完整度检查（**替代旧「质量关 + 建议三档」**）
   //    只输出"还缺什么"，不输出通过/不通过、不给建议；不齐备不阻断。
   yield emit({ type: "progress", stage, message: "正在检查信息完整度..." });
 
   // 按**本次分析的表集**算完整度：指定了步骤就只算本步的表（阶段 1 横跨第 1、2 两步，
   // 按整阶段算会把这步没产出的表1-1 也算成本步欠账）
-  const coveredCodes = stepTables ?? tablesOfStage(effectiveStage).map((t) => t.code);
+  const completenessCodes = coveredCodes;
   const rowsByTable: Record<string, InfoRow[]> = {};
-  for (const code of coveredCodes) {
+  for (const code of completenessCodes) {
     rowsByTable[code] = db.stageDataRepo
       .list({ where: "scenario_id = ? AND table_code = ?", params: [scenarioId, code] })
       .map((r) => r.row as InfoRow);
@@ -449,6 +665,7 @@ async function* executeAdvanceStage(
     type: "done",
     stage,
     rowsWritten: writtenRows.length,
+    ...(failedTables.length > 0 ? { tablesFailed: failedTables.map((r) => r.code) } : {}),
     conversationId: conversation.id,
   });
 }
@@ -595,16 +812,14 @@ export function collectUpstreamData(
  * 解析失败时最需要的就是"模型到底吐了什么"——之前没有任何留证，只能靠猜
  * （截断？截断在哪？）。默认关闭，排查时打开。
  */
-function dumpRawOutput(stage: number, text: string): void {
+function dumpRawOutput(stage: number, text: string, code?: string): void {
   const dir = process.env["SCENE_DUMP_RAW_DIR"];
   if (!dir) return;
   try {
     mkdirSync(dir, { recursive: true });
-    writeFileSync(
-      join(dir, `stage-${stage}-${new Date().toISOString().replace(/[:.]/g, "-")}.txt`),
-      text,
-      "utf8",
-    );
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const tag = code ? `${stage}-${code.replace(/[^\w\u4e00-\u9fa5-]/g, "")}` : String(stage);
+    writeFileSync(join(dir, `stage-${tag}-${stamp}.txt`), text, "utf8");
   } catch {
     /* 留证失败不影响分析 */
   }

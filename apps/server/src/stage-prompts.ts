@@ -175,6 +175,16 @@ function renderUpstream(upstreamData: Record<string, unknown>): string {
   return sections.length ? sections.join("\n\n") : "（暂无上游数据）";
 }
 
+/** 兄弟表清单（表号 + 名称 + 目的），供按表并发生成时对齐口径 */
+function siblingSpec(codes: readonly string[]): string {
+  return codes
+    .map((code) => {
+      const t = TABLES.find((x) => x.code === code);
+      return t ? `${t.code} ${t.name}（${t.purpose}）` : code;
+    })
+    .join("；");
+}
+
 /** 渲染场景锚（表1-1 当前内容） */
 function renderAnchor(anchorRows: Record<string, unknown>[]): string {
   if (anchorRows.length === 0) return "（场景锚尚未填写——本次请只填有依据的项，其余留「未提供」）";
@@ -201,7 +211,17 @@ export function buildStagePrompt(
    * 关键场景：阶段 1 的第 2 步（场景定义与边界）走"起草 + 用户确认"，
    * 第 3 步（认识场景）只做模型分析——**模型不该重复产出场景锚**。
    */
-  opts?: { tables?: readonly string[] },
+  opts?: {
+    tables?: readonly string[];
+    /**
+     * 本步的其它表（按表并发生成时用）
+     *
+     * 并发的代价是失去"一次看到整步"的视野：这里把兄弟表名列出来，让模型知道
+     * 同一批还有哪些表、口径要一致（如要素间关系引用的要素名要与要素清单一致），
+     * 同时明确要求**不要产出它们**。
+     */
+    siblings?: readonly string[];
+  },
 ): StagePrompt {
   // StageId 已收窄为 0-7，但**运行期仍可能被塞进老编号 8**（老数据/老调用）：
   // 这里按数值比较主动拦截并给出可执行的修正提示
@@ -252,6 +272,12 @@ export function buildStagePrompt(
     '{"rows":[{"table_code":"<本阶段表号>","fields":{...},"source":"文件名:页码","source_type":"AI提取|AI推断"}]}',
     "```",
     `- \`table_code\` 只能取：${tables.map((t) => t.code).join("、") || "（本阶段无表）"}`,
+    ...(opts?.siblings?.length
+      ? [
+          `- 本步的其它表（**由并行的另一次调用产出，你不要产出它们**，但口径要与它们一致：` +
+            `同一批信息里怎么称呼客户、环节、要素、竞品，就用同样的名字）：${siblingSpec(opts.siblings)}`,
+        ]
+      : []),
     "- `fields` 的键必须来自对应表的列定义（含右栏补充列）。",
     "- 依据不足的列填空字符串或「未提供」——**只对「本场景的具体事实」成立**；行业行情类列（毛利、玩家、采购机制、门槛、趋势、价格量级）必须按行业通例口径写满，不许留空。",
   ].join("\n");

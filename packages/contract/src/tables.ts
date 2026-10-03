@@ -152,6 +152,15 @@ export interface TableDef {
   completeness: readonly string[];
   /** 被哪些阶段引用 */
   consumedBy?: readonly InfoStageId[];
+  /**
+   * 同一阶段内**必须先有它**的表（按表号）
+   *
+   * 用途：阶段分析改为**按表并发生成**（v1.22）——并发的代价是失去"一次看到整步"的视野。
+   * 这里把真实的先后依赖声明出来：被依赖的表先跑，跑完把**刚生成的行**作为上游上下文
+   * 喂给下游表，保证口径一致（如成本要按架构与实施项算）。
+   * 没有真实依赖的表一律并发，不要为了"稳"随手加依赖——那会把并发收益吃光。
+   */
+  dependsOnTables?: readonly string[];
 }
 
 // ─── 列构造助手 ────────────────────────────────────────────
@@ -658,6 +667,7 @@ const TABLES_STAGE_1: readonly TableDef[] = [
       sup("source", "出处", { required: true }),
     ],
     completeness: ["layer/components/interface 非空", "接口协议须有来源"],
+    dependsOnTables: ["表2-2"],
     consumedBy: [4],
   },
   {
@@ -675,6 +685,7 @@ const TABLES_STAGE_1: readonly TableDef[] = [
       sup("source", "来源", { required: true }),
     ],
     completeness: ["from_to/method 非空", "方式（协议）须 T1/T2"],
+    dependsOnTables: ["表2-2"],
     consumedBy: [4],
   },
   {
@@ -948,6 +959,7 @@ const TABLES_STAGE_3: readonly TableDef[] = [
       sup("source", "来源", { required: true }),
     ],
     completeness: ["match 取值合法", "覆盖表3-8 每条缺口", "boundary_note 非空", "ability_basis 可回溯表4-1"],
+    dependsOnTables: ["表4-1"],
     consumedBy: [7],
   },
   {
@@ -1038,6 +1050,7 @@ const TABLES_STAGE_4: readonly TableDef[] = [
       sup("source", "出处"),
     ],
     completeness: ["六项必填非空", "man_days 为数值（与表5-5 人工成本对应）", "依赖不可控条件的项须显式标注"],
+    dependsOnTables: ["表5-1"],
     consumedBy: [7],
   },
   {
@@ -1082,6 +1095,7 @@ const TABLES_STAGE_4: readonly TableDef[] = [
       sup("source", "出处", { required: true }),
     ],
     completeness: ["三类成本齐全", "单价可回溯 M6 或标来源", "小计 = 数量 × 单价", "汇总 = 各子块之和"],
+    dependsOnTables: ["表5-1", "表5-3"],
     consumedBy: [5, 7],
   },
 ];

@@ -483,6 +483,13 @@ export interface StageDataRepo {
   markStale(scenarioId: string, stages: StageId[], isStale: boolean): number;
   /** 删除某场景某阶段全部数据行（重算覆盖，T4.2），返回删除条数 */
   deleteByScenarioStage(scenarioId: string, stage: StageId): number;
+  /**
+   * 删除某场景某阶段**某一张表**的数据行（按表并发生成的部分成功用）
+   *
+   * 为什么需要：按表并发后可能"这张表成了、那张表失败"。失败表必须保留原有内容
+   * （老口径：模型没产出就不许清库），所以不能再整阶段删——只能逐表删成功的那些。
+   */
+  deleteByScenarioStageTable(scenarioId: string, stage: StageId, tableCode: string): number;
   getById(id: string): StageData | undefined;
   /** 单元格编辑落库（M5 联真）：row 整体覆盖写回 JSON，可同步 source_type；返回更新后的行 */
   /**
@@ -555,6 +562,16 @@ function createStageDataRepo(db: Database.Database): StageDataRepo {
       .run(scenarioId, stage);
     return result.changes;
   };
+  const deleteByScenarioStageTable = (
+    scenarioId: string,
+    stage: StageId,
+    tableCode: string,
+  ): number => {
+    const result = db
+      .prepare(`DELETE FROM stage_data WHERE scenario_id = ? AND stage = ? AND table_code = ?`)
+      .run(scenarioId, stage, tableCode);
+    return result.changes;
+  };
 
   const getById = (id: string): StageData | undefined => {
     const raw = db.prepare(`SELECT * FROM stage_data WHERE id = ?`).get(id);
@@ -577,7 +594,16 @@ function createStageDataRepo(db: Database.Database): StageDataRepo {
     return getById(id);
   };
 
-  return { list, insert, listByScenarioStage, markStale, deleteByScenarioStage, getById, update };
+  return {
+    list,
+    insert,
+    listByScenarioStage,
+    markStale,
+    deleteByScenarioStage,
+    deleteByScenarioStageTable,
+    getById,
+    update,
+  };
 }
 
 function deserializeStageData(row: StageData): StageData {
