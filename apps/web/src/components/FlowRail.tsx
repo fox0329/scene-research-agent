@@ -17,9 +17,10 @@
  *  - **按钮位按数据换语义**（v1.20，用户定调「中栏不放按钮，上面有下一步」）：
  *    本步还没产出 → 这个位置是「开始本步分析」（跑完停在原步，看完再点「下一步」）；
  *    已产出 → 多一个次级「重算本步」，主按钮位还给「下一步」
- *  - **八步同形**（v1.23，用户定调「都与认识场景保持一致」）：第 1 步（确认步）的运行入口
- *    以前挂在中栏（「场景定义对话」按钮 + 「回到这一步重跑」提示条），现与其它 7 步完全同形：
- *    同一个位置、同一套按钮、同一套说法；回看历史步时多一个「回到这一步」（清完成标记）
+ *  - **八步同形**（v1.23/v1.24，用户定调「都与认识场景保持一致」「场景定义也只要重算本步、
+ *    下一步就行了」）：八步的动作一律只有这两个——「重算本步」（还没产出时是「开始本步分析」）
+ *    与「下一步」。**回到哪一步直接点阶段名称**（用户定调），所以流程轴上没有「回到这一步」
+ *    「回到当前步」这类导航按钮
  *  - 中栏调窄：关键词**永不隐藏**，先收紧间距，实在放不下时节点条横向可滚（按钮固定在最右）
  *
  * 无障碍：`role="tablist"` + `role="tab"` + `aria-selected`，左右方向键可移动；
@@ -52,8 +53,6 @@ export interface FlowRailProps {
   onComplete: () => void;
   /** 运行本步（分析步 = 跑模型；第 1 步 = 打开场景定义对话） */
   run?: RailRunAction;
-  /** 回看历史步时才有：回到这一步重跑（清该步及其后的完成标记，数据保留） */
-  reopen?: { title: string; onStart: () => void };
 }
 
 /** 步骤状态 → 节点样式后缀 */
@@ -71,7 +70,6 @@ export const FlowRail: React.FC<FlowRailProps> = ({
   onComplete,
   busy = false,
   run,
-  reopen,
 }) => {
   const nodeRefs = useRef<Record<number, HTMLButtonElement | null>>({});
 
@@ -155,7 +153,7 @@ export const FlowRail: React.FC<FlowRailProps> = ({
               disabled={busy || reviewing || !current?.ready}
               title={
                 reviewing
-                  ? `正在回看第 ${activeStep} 步；先回到当前步再推进`
+                  ? `正在回看第 ${activeStep} 步；点流程轴上的「${current?.short ?? ""}」回到当前步即可推进`
                   : (current?.readyHint ?? "")
               }
               onClick={onComplete}
@@ -164,17 +162,6 @@ export const FlowRail: React.FC<FlowRailProps> = ({
             </button>
           )}
 
-          {/* 回看历史步：回到这一步重跑（清该步及其后的完成标记，数据保留） */}
-          {reopen ? (
-            <button className="btn" type="button" disabled={busy} title={reopen.title} onClick={reopen.onStart}>
-              回到这一步
-            </button>
-          ) : null}
-          {reviewing ? (
-            <button className="btn" type="button" onClick={() => onSelectStep(status.currentStep)}>
-              回到当前步
-            </button>
-          ) : null}
       </div>
     </div>
   );

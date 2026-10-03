@@ -164,7 +164,16 @@ if ((await page.locator(".ws .schema-table--anchor").count()) > 0) {
       anchorInputs === 6,
     `残留 ${junk} 处 · 中栏无引导语 ${midStrip} · 表头 ${anchorTh} 列 · ${anchorRows} 行 / ${anchorInputs} 个可编辑格 · 属主标签 ${ownerTags} 个`,
   );
-  await rail.getByRole("button", { name: /回到当前步/ }).click().catch(() => undefined);
+  // 回到哪一步直接点阶段名称（用户定调）：回看后点当前步的名字即可回来
+  const currentStepNo = await page.evaluate(() => {
+    const el = document.querySelector(".flow-rail .flow-node--current");
+    const m = /第 (\d+) 步/.exec(el?.getAttribute("aria-label") ?? "");
+    return m ? Number(m[1]) : 1;
+  });
+  await rail
+    .getByRole("tab", { name: new RegExp(`^第 ${currentStepNo} 步`) })
+    .click()
+    .catch(() => undefined);
 }
 
 // 8. 流转一圈：完成本步 → 进度前移

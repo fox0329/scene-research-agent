@@ -504,7 +504,15 @@ check_contains "apps/web/src/views/ProjectView.tsx" "stepDef.kind === \"确认\"
 check_contains "apps/web/src/views/ProjectView.tsx" "definitionDialogOpen" "定义对话弹窗由流程轴按钮驱动"
 check_contains "apps/web/src/views/AnchorStepPanel.tsx" "definitionOpen" "联真第 1 步弹窗受控（入口在流程轴）"
 check_contains "apps/web/src/views/DemoFlowPanels.tsx" "definitionOpen" "演示态第 1 步同形（入口在流程轴）"
-check_contains "apps/web/src/components/FlowRail.tsx" "回到这一步" "回看重跑入口在流程轴上"
+check_contains "04-业务过程重定义.md" "v1.24" "业务过程 v1.24（流程轴只留两个按钮）"
+check_contains "docs/项目变更表.md" "| 82 |" "变更表 #82 导航按钮删除登记"
+# 反向守卫：流程轴上不再有导航按钮（用户定调：回到哪一步直接点阶段名称）
+if grep -qE ">[[:space:]]*回到(当前步|这一步)" "$ROOT/apps/web/src/components/FlowRail.tsx"; then
+  echo "❌ 流程轴又出现导航按钮（回到这一步/回到当前步）：回到哪一步直接点阶段名称"
+  FAIL=1
+else
+  echo "✅ 流程轴只留「重算本步/开始本步分析」+「下一步」"
+fi
 # 反向守卫：中栏不再有「场景定义对话」按钮，也不再有那条重跑提示条
 if grep -q "场景定义对话</button>" "$ROOT/apps/web/src/views/AnchorStepPanel.tsx" "$ROOT/apps/web/src/views/DemoFlowPanels.tsx"; then
   echo "❌ 中栏又出现「场景定义对话」按钮：动作只留流程轴（八步同形）"

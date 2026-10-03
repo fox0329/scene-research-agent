@@ -364,16 +364,22 @@ test("流程推进：完成本步 → 当前步前移；已完成步可回看重
   await expect(page.locator(".ws .table-chips").first()).toBeVisible();
   await expect(page.locator(".ws .completeness-bar")).toHaveCount(0);
 
-  // 点已完成节点回看：八步同形——动作全在流程轴上（中栏不再有「回到这一步重跑」提示条）
+  // 点已完成节点回看：八步同形——轴上只有「重算本步」与「下一步」，中栏没有重跑提示条，
+  // 也没有「回到这一步/回到当前步」这类导航按钮（用户定调：回到哪一步直接点阶段名称）
   await rail.getByRole("tab", { name: /^第 1 步 · 场景定义与边界（/ }).click();
   await expect(page.locator(".flow-reopen")).toHaveCount(0);
-  await expect(rail.getByRole("button", { name: "回到当前步" })).toBeVisible();
-  await expect(rail.getByRole("button", { name: "回到这一步" })).toBeVisible();
-  await expect(rail.getByRole("button", { name: /开始本步分析|重算本步/ })).toBeVisible();
-  await rail.getByRole("button", { name: "回到这一步" }).click();
-  await expect(rail.locator(".flow-node--current")).toContainText("场景定义");
-  await expect(rail.locator(".flow-node--done")).toHaveCount(0);
-  await expect(rail.locator(".flow-node--locked")).toHaveCount(7);
+  await expect(page.locator(".flow-actions button")).toHaveCount(2);
+  await expect(rail.getByRole("button", { name: "重算本步" })).toBeVisible();
+  const backNext = rail.getByRole("button", { name: "下一步" });
+  await expect(backNext).toBeVisible();
+  await expect(backNext).toBeDisabled(); // 回看中不推进
+  await expect(backNext).toHaveAttribute("title", /点流程轴上的「认识场景」回到当前步/);
+  await expect(rail.getByRole("button", { name: /回到/ })).toHaveCount(0);
+
+  // 点阶段名称 = 回到哪一步：点「认识场景」就回到当前步，标记不动
+  await rail.getByRole("tab", { name: /^第 2 步 · 认识场景（/ }).click();
+  await expect(rail.locator(".flow-node--current")).toContainText("认识场景");
+  await expect(rail.locator(".flow-node--done")).toHaveCount(1);
 });
 
 test("锁步推进：没有「解锁全部步骤」，未解锁节点点不动", async ({ page }) => {
@@ -394,13 +400,14 @@ test("锁步推进：没有「解锁全部步骤」，未解锁节点点不动",
   await expect(rail.locator(".flow-node--locked")).toHaveCount(6);
   await expect(rail.getByRole("button", { name: /解锁/ })).toHaveCount(0);
 
-  // 回看第 1 步：进度卡给出「回到当前步」，不出现完整度条（完整度只在右栏）
+  // 回看第 1 步：点阶段名称即可来回，轴上不留导航按钮；不出现完整度条（完整度只在右栏）
   await rail.getByRole("tab", { name: /^第 1 步 · 场景定义与边界（/ }).click();
-  await expect(rail.getByRole("button", { name: "回到当前步" })).toBeVisible();
+  await expect(page.locator(".ws .schema-table--anchor")).toBeVisible(); // 中栏回到表1-1
   await expect(page.locator(".ws .completeness-bar")).toHaveCount(0);
+  await expect(rail.getByRole("button", { name: /回到/ })).toHaveCount(0);
 
-  // 回到当前步后，第 8 步交付物仍锁着（锁步推进）；交付物面板由「完成本步」到第 8 步时才进
-  await rail.getByRole("button", { name: "回到当前步" }).click();
+  // 点回当前步的阶段名称后，第 8 步交付物仍锁着（锁步推进）
+  await rail.getByRole("tab", { name: /^第 2 步 · 认识场景（/ }).click();
   await expect(rail.getByRole("tab", { name: /交付物/ })).toBeDisabled();
 });
 

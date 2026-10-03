@@ -210,31 +210,6 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
     }
   }, [flow, busy, live, project.id, onProjectsChanged, showToast]);
 
-  /** 回到某一步重跑：清该步及其后的完成标记（数据保留） */
-  const handleReopen = useCallback(
-    async (n: number) => {
-      if (busy) return;
-      setBusy(true);
-      try {
-        if (live) {
-          const f = await api.reopenFlowStep(project.id, n);
-          setLiveFlow(f);
-          setActiveStep(n);
-          onProjectsChanged?.();
-        } else {
-          setDemoCompleted((prev) => prev.filter((id) => id < n));
-          setActiveStep(n);
-        }
-        showToast(`已回到第 ${n} 步重跑（该步及其后的完成标记已清，数据保留）`);
-      } catch (err: unknown) {
-        showToast(`回退失败：${err instanceof Error ? err.message : String(err)}`);
-      } finally {
-        setBusy(false);
-      }
-    },
-    [busy, live, project.id, onProjectsChanged, showToast],
-  );
-
   /** 演示态：确认 / 修改锚行（只改本地内存） */
   /**
    * 演示态：「确认无误」= 一次整表确认（与联真同义）
@@ -284,8 +259,8 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
    *  - 本步还没产出（服务端 ready=false）→ 主按钮「开始本步分析」
    *  - 已产出（含资料失效）              → 次级「重算本步」+ 主按钮「下一步」
    * 差别只在"运行"是什么：分析步跑模型；第 1 步打开场景定义对话（让智能体写出表1-1）。
-   * 回看历史步时多一个「回到这一步」（清该步及其后的完成标记，数据保留）——中栏那条
-   * 「已完成 · 回到这一步重跑」提示条据此删掉（同一个动作不留两种说法、两个位置）。
+   * **回到哪一步直接点阶段名称**（v1.24 用户定调）：回看任意一步都能就地重算，所以流程轴上
+   * 不再有「回到这一步」「回到当前步」这类导航按钮——要看/要重跑哪一步，点它的名字就是。
    */
   const stepStale = (stale.data?.stages ?? []).includes(stepStage);
   // 认步（第 1 步）不跑模型，只打开场景定义对话 —— 演示态与联真同形；
@@ -323,15 +298,6 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
           },
         }
       : undefined;
-  // 回看历史步：回到这一步重跑（清该步及其后的完成标记，数据保留）
-  const reopenAction =
-    flow !== null && stepDef?.state === "已完成" && step < flow.currentStep
-      ? {
-          title: `回到第 ${step} 步重跑：清掉该步及其后的完成标记，数据保留`,
-          onStart: () => void handleReopen(step),
-        }
-      : undefined;
-
   const renderStepBody = (): React.ReactNode => {
     if (!flow) return null;
     if (live) {
@@ -510,7 +476,6 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
           onSelectStep={setActiveStep}
           onComplete={() => void handleComplete()}
           run={runAction}
-          reopen={reopenAction}
         />
       ) : (
         <div className="flow-rail">
