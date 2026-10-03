@@ -55,7 +55,7 @@ describe("stage-prompts — 内容由注册表派生", () => {
   it("必填与枚举在字段清单里标注", () => {
     const p = buildStagePrompt(1, {}, scenario);
     expect(p.system).toContain("必填");
-    expect(p.system).toContain("枚举 is_digital");
+    expect(p.system).toContain("枚举 barrier_type");
   });
 
   it("表1-1 的固定行逐个列出，且只给「场景名称」标「用户输入」", () => {
@@ -83,11 +83,10 @@ describe("stage-prompts — 内容由注册表派生", () => {
     expect(p.system).toContain("`subtotal`");
   });
 
-  it("跨阶段填写的表在 system 里标注（阶段 1 的表2-5 / 阶段 2 的表3-6、表3-8）", () => {
-    expect(buildStagePrompt(1, {}, scenario).system).toContain("跨阶段填写");
-    expect(buildStagePrompt(2, {}, scenario).system).toContain("跨阶段填写");
-    // 阶段 4 产出的表不是跨阶段表，不应出现该标注
-    expect(buildStagePrompt(4, {}, scenario).system).not.toContain("跨阶段填写");
+  it("system 里不再有「跨阶段填写」标注（v1.25 删掉跨阶段补填）", () => {
+    for (const stage of [1, 2, 3, 4] as const) {
+      expect(buildStagePrompt(stage, {}, scenario).system).not.toContain("跨阶段填写");
+    }
   });
 });
 
@@ -117,13 +116,13 @@ describe("stage-prompts — 信息版口径（不产出判断）", () => {
    * 第 3 步（理解商业）的回归：这一阶段产出的是**行业行情**（毛利、玩家、采购机制、
    * 门槛、趋势），可旧口径「依据不足就填未提供」让它整列留白——用户原话「认识场景
    * 商业理解之后主要就是要了解市场信息，你全都不填，要用户自己填吗？」。
-   * 这里把口径钉住：行情必须写满并标 C/T4 待核实，具体事实才可留「未提供」。
+   * 这里把口径钉住：行情必须写满并标 C/T4（待验证由 authority 列表达），具体事实才可留「未提供」。
    */
-  it("阶段 2 的市场行情口径：必须写满 + 行业通例 C/T4 待核实（不许退回给用户）", () => {
+  it("阶段 2 的市场行情口径：必须写满 + 行业通例 C/T4（不许退回给用户）", () => {
     const market = buildStagePrompt(2, {}, scenario);
     expect(market.system).toContain("市场行情必须由你写出来");
     expect(market.system).toContain("不许整列留「未提供」");
-    expect(market.system).toContain("行业通例（模型知识·待核实）");
+    expect(market.system).toContain("行业通例（模型知识）");
     expect(market.system).toContain("毛利率");
     expect(market.system).toContain("主导者");
     expect(market.system).toContain("时间窗口");

@@ -64,7 +64,6 @@ function makeInput(): DeliverableInput {
       row("表1-1", { item: "买方类型", content: "市政水务集团" }),
       row("表1-2", {
         link: "制水",
-        is_digital: "可以联网采集",
         can_touch: "可以碰",
         our_role: "辅助",
         description: "加药与过滤",
@@ -74,7 +73,6 @@ function makeInput(): DeliverableInput {
         barrier_name: "等保三级",
         veto_holder: "",
         criteria: "GB/T 22239",
-        current_status: "过得了",
         judgment: "过得了",
       }),
       // 对外材料必须排除的表

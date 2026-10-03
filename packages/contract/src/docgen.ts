@@ -102,7 +102,6 @@ function renderTable(t: TableDef): string {
   const L: string[] = [];
   const badges: string[] = [];
   if (t.pinned) badges.push("**= 场景锚**，全链唯一场景定义");
-  if ((t.filledInStages?.length ?? 0) > 1) badges.push(`跨阶段填写：${stageNames(t.filledInStages)}`);
   const badge = badges.length ? `（${badges.join("；")}）` : "";
 
   L.push(`### ${t.code} ${t.name} ｜\`${t.tier}\`${badge}`);

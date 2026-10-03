@@ -12,16 +12,16 @@ const anchor: InfoRow[] = [
 const stage1Rows: Record<string, InfoRow[]> = {
   "表1-1": anchor,
   "表1-2": [
-    row({ link: "制水", is_digital: "可以联网采集", can_touch: "可以碰", our_role: "辅助", description: "加药与过滤" }),
-    row({ link: "输配", is_digital: "可以联网采集", can_touch: "可以碰", our_role: "替代", description: "管网调度" }),
-    row({ link: "原水取水", is_digital: "必须物理隔离", can_touch: "不能碰", our_role: "不参与", description: "水源安全" }),
+    row({ link: "制水", can_touch: "可以碰", our_role: "辅助", description: "加药与过滤" }),
+    row({ link: "输配", can_touch: "可以碰", our_role: "替代", description: "管网调度" }),
+    row({ link: "原水取水", can_touch: "不能碰", our_role: "不参与", description: "水源安全" }),
   ],
   "表1-3": [
-    row({ barrier_type: "技术", barrier_name: "等保三级", criteria: "GB/T 22239", current_status: "过得了", judgment: "过得了", evidence_level: "C" }),
-    row({ barrier_type: "行业准入", barrier_name: "计量认证", criteria: "CPA", current_status: "绕道", judgment: "绕道", source_type: "AI推断" }),
-    row({ barrier_type: "经济", barrier_name: "预算科目", criteria: "智慧水务专项", current_status: "不知道", judgment: "不知道" }),
-    row({ barrier_type: "生态锁定", barrier_name: "协议封闭", criteria: "厂商私有协议", current_status: "借道", judgment: "借道", strategy: "借道" }),
-    row({ barrier_type: "一票否决者", barrier_name: "水务安全条线", criteria: "供水安全条例", current_status: "过得了", judgment: "过得了" }),
+    row({ barrier_type: "技术", barrier_name: "等保三级", criteria: "GB/T 22239", judgment: "过得了", evidence_level: "C" }),
+    row({ barrier_type: "行业准入", barrier_name: "计量认证", criteria: "CPA", judgment: "绕道", source_type: "AI推断" }),
+    row({ barrier_type: "经济", barrier_name: "预算科目", criteria: "智慧水务专项", judgment: "不知道" }),
+    row({ barrier_type: "生态锁定", barrier_name: "协议封闭", criteria: "厂商私有协议", judgment: "借道", strategy: "借道" }),
+    row({ barrier_type: "一票否决者", barrier_name: "水务安全条线", criteria: "供水安全条例", judgment: "过得了" }),
   ],
 };
 
@@ -116,7 +116,8 @@ describe("stage-summary — 阶段级六段骨架（交付物装配口径）", (
   });
 
   it("二、关键信息清单逐表给行数与取值样例，缺表标「尚无数据」", () => {
-    expect(md).toContain("**表1-2 场景环节地图**：3 行——制水·可以联网采集；输配·可以联网采集；原水取水·必须物理隔离");
+    // 取样列跟着表定义走：表1-2 删掉「有无电子部分」后，样例回落到行标识（业务环节）
+    expect(md).toContain("**表1-2 场景环节地图**：3 行——制水；输配；原水取水");
     expect(md).toContain("**表2-2 场景要素清单**：尚无数据");
   });
 

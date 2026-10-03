@@ -116,8 +116,8 @@ describe("completeness — 单表规则", () => {
       stage: 1,
       rowsByTable: {
         "表1-3": [
-          row({ barrier_type: "技术", criteria: "GB/T 1", current_status: "过得了", judgment: "过得了" }),
-          row({ barrier_type: "经济", criteria: "预算 100 万", current_status: "不知道", judgment: "不知道" }),
+          row({ barrier_type: "技术", criteria: "GB/T 1", judgment: "过得了" }),
+          row({ barrier_type: "经济", criteria: "预算 100 万", judgment: "不知道" }),
         ],
       },
     });
@@ -172,7 +172,7 @@ describe("completeness — 单表规则", () => {
     const r = checkStageCompleteness({
       stage: 1,
       rowsByTable: {
-        "表1-3": [row({ barrier_type: "技术", barrier_name: "认证", criteria: "GB 1", current_status: "过得了", judgment: "过得了" })],
+        "表1-3": [row({ barrier_type: "技术", barrier_name: "认证", criteria: "GB 1", judgment: "过得了" })],
       },
     });
     // veto_holder 是条件必填（生态锁定类除外），不应被当成缺必填列

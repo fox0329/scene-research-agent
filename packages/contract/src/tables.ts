@@ -36,7 +36,6 @@ export const ENUMS = {
   maturity: ["已交付", "组件具备", "在研", "规划"],
   measured: ["实测", "宣称", "未提及"],
   barrier_type: ["技术", "行业准入", "经济", "生态锁定", "一票否决者"],
-  barrier_status: ["过得了", "过不了", "绕道", "借道", "等窗口", "不知道"],
   industry_practice: ["正面满足", "换技术路径", "借道合作", "等窗口", "行业普遍不做"],
   can_touch: ["可以碰", "只能配合", "不能碰"],
   our_role: ["替代", "辅助", "外围", "不参与"],
@@ -44,7 +43,6 @@ export const ENUMS = {
   level_hml: ["高", "中", "低"],
   optional_category: ["O1认证", "O2案例", "O3价格与授权", "O4开发资料", "O5路线图", "O6交付与生态"],
   element_type: ["硬件", "软件", "服务"],
-  is_digital: ["可以联网采集", "必须物理隔离", "不含电子部分"],
   competition: ["高", "中", "低", "未知"],
   has_plan: ["有", "无", "未定"],
   fix_status: ["已修复", "修复中", "无计划", "硬件限制"],
@@ -87,15 +85,6 @@ export interface TableColumn {
   block?: string;
   /** 说明（供提示词与 tooltip） */
   note?: string;
-  /**
-   * 该列只在哪些阶段填写（缺省 = 表所属阶段）
-   *
-   * 为什么需要：跨阶段表（表2-5 物理与合规约束、表3-8 没被满足的需求）里有几列是**后面阶段**才补的
-   * （如"实现路径/责任人"要等阶段 4）。没有这个标记时，模型会把它们在本步一起编出来——
-   * 实机就出现第 2 步填了「责任人」（那是我方的活，属公司侧），与"前两步只梳理场景现状"的口径冲突。
-   * 写入时按此字段过滤，**由契约保证，不靠提示词自觉**。
-   */
-  filledInStages?: readonly InfoStageId[];
 }
 
 /**
@@ -142,8 +131,6 @@ export interface TableDef {
   fixedRows?: readonly FixedRow[];
   /** 分组维度（该字段不进列，仅用于分组渲染，如表2 规格书按型号分组） */
   groupBy?: string;
-  /** 跨阶段填写：列分属多个阶段，回退时按列清除 */
-  filledInStages?: readonly InfoStageId[];
   /** 是否常驻中栏顶部（表1-1 = 场景锚） */
   pinned?: boolean;
   /** 动态 payload（可选材料：1 张表 6 种 payload，按 category 切换） */
@@ -583,7 +570,6 @@ const TABLES_STAGE_1: readonly TableDef[] = [
     purpose: "铺开场景的全部业务环节，把每个环节**现在是怎么做的**写清楚（谁在做、用什么、什么问题）",
     columns: [
       mid("link", "业务环节", { required: true }),
-      mid("is_digital", "有无电子部分", { required: true, enum: "is_digital" }),
       mid("owner_now", "现在谁在做", { required: true, note: "写角色或岗位（如「班组长人工抄表」），不写人名" }),
       mid("current_tool", "现在用什么", { required: true, note: "现有系统/设备/方式；纯人工也要写明" }),
       mid("current_flow", "现在怎么做", { required: true, note: "流程与频次（谁在什么时候做什么）" }),
@@ -598,7 +584,7 @@ const TABLES_STAGE_1: readonly TableDef[] = [
     completeness: [
       "业务环节 ≥3 个",
       "每环节 owner_now / current_tool / current_flow / pain 非空——本步只写现状",
-      "依据须可回溯材料或标「行业通例（模型知识·待核实）」",
+      "依据须可回溯材料；没有材料就按行业通例口径写（来源列标 AI推断）",
     ],
     consumedBy: [3, 4, 7],
   },
@@ -608,13 +594,12 @@ const TABLES_STAGE_1: readonly TableDef[] = [
     stage: 1,
     tier: "重要",
     rowUnit: "一道门槛（一票否决者类为一个角色；认证类为一项认证要求）",
-    purpose: "五类门槛 + 现在过不过得去 + 行业里一般怎么过（不写我方的行动）",
+    purpose: "五类门槛是什么、判据是什么、卡在谁手里、行业里一般怎么过（不写我方的行动，也不猜本客户的合规结论）",
     columns: [
       mid("barrier_type", "门槛类型", { required: true, enum: "barrier_type" }),
       mid("barrier_name", "门槛", { required: true }),
       mid("veto_holder", "否决者", { requiredWhen: "生态锁定类除外" }),
       mid("criteria", "判据", { required: true, type: "longText", truncate: TRUNCATE_DEFAULT }),
-      mid("current_status", "现状", { required: true, enum: "barrier_status", note: "这个场景现在过不过得去" }),
       mid("industry_practice", "行业通行处置", { enum: "industry_practice", note: "行业里这道门槛一般怎么过（市场知识）" }),
       sup("evidence", "证据", { required: true }),
       sup("held_certs", "已持有认证", { requiredWhen: "认证类必填", note: "该场景/客户目前持有的认证" }),
@@ -626,7 +611,7 @@ const TABLES_STAGE_1: readonly TableDef[] = [
     completeness: [
       "五类门槛各 ≥1 行",
       "criteria 含具体等级/标准号/数值（禁『较高』『相关』）",
-      "现状写具体（过得了/过不了/绕道/借道/等窗口/不知道），不知道的须说明缺什么信息",
+      "只针对本场景能问到的事实；没有材料依据的门槛照行业通例写，不猜本客户的合规结论",
     ],
     consumedBy: [4, 7],
   },
@@ -694,21 +679,17 @@ const TABLES_STAGE_1: readonly TableDef[] = [
     stage: 1,
     tier: "支撑",
     rowUnit: "一个约束项",
-    purpose: "这个场景的硬约束（要求与出处；实现路径到阶段 4 再补）",
-    filledInStages: [1, 4],
+    purpose: "这个场景的硬约束（要求与出处；怎么落地由后面的方案表回答）",
     columns: [
       mid("constraint_item", "约束项", { required: true }),
       mid("required_value", "具体要求值", { required: true }),
       mid("standard_no", "适用标准号"),
-      mid("compliance_path", "实现路径", { note: "阶段 4 补填", filledInStages: [4] }),
-      mid("owner", "责任人", { note: "阶段 4 补填", filledInStages: [4] }),
       sup("period", "周期"),
-      sup("status", "状态"),
       sup("source", "出处", { required: true }),
       sup("evidence_level", "证据等级", { required: true, enum: "evidence_level" }),
       sup("authority", "来源权威性", { required: true, enum: "authority" }),
     ],
-    completeness: ["constraint_item/required_value 非空且为具体数值或等级", "约束类须 T1", "进入阶段 4 后 compliance_path/owner 不得为空"],
+    completeness: ["constraint_item/required_value 非空且为具体数值或等级", "约束类须 T1"],
     consumedBy: [2, 4],
   },
   {
@@ -859,22 +840,21 @@ const TABLES_STAGE_2: readonly TableDef[] = [
     tier: "重要",
     rowUnit: "一个需求缺口",
     purpose: "『值得打的位置』的唯一来源 + 痛点排序",
-    filledInStages: [2, 3],
     columns: [
-      mid("rank", "排序", { note: "阶段 3 补填", filledInStages: [3] }),
+      mid("rank", "排序", { required: true, note: "按痛感从高到低排，1 = 最痛" }),
       mid("gap", "缺口描述", { required: true, type: "longText", truncate: TRUNCATE_DEFAULT }),
       mid("who_hurts", "谁在痛", { required: true }),
       mid("pain_level", "痛到什么程度", { required: true, enum: "level_hml" }),
       mid("current_alternative", "现有替代方案", { type: "longText", truncate: TRUNCATE_DEFAULT }),
-      mid("cross_validation", "多源验证", { note: "阶段 3 补填", filledInStages: [3] }),
+      mid("cross_validation", "多源验证", { required: true, note: "几条独立来源印证；只有模型知识就写「单一来源（模型知识）」" }),
       sup("why_unsatisfied", "为什么不满意", { required: true, type: "longText" }),
-      sup("budget_item", "对应预算科目", { note: "阶段 3 补填", filledInStages: [3] }),
+      sup("budget_item", "对应预算科目", { required: true, note: "按行业惯例的科目名写（如信息化建设/行政后勤改造），不写客户的具体预算编号" }),
       sup("gap_source", "缺口来源"),
       sup("source", "来源", { required: true }),
       sup("evidence_level", "证据等级", { required: true, enum: "evidence_level" }),
       sup("authority", "来源权威性", { required: true, enum: "authority" }),
     ],
-    completeness: ["≥3 条", "gap/who_hurts/pain_level/why_unsatisfied 非空", "每行有来源", "阶段 3 后 rank/多源验证/预算科目非空且多源 ≥2 独立来源"],
+    completeness: ["≥3 条", "gap/who_hurts/pain_level/why_unsatisfied 非空", "每行有来源", "rank/多源验证/对应预算科目 非空"],
     consumedBy: [3, 7],
   },
   {
@@ -1311,31 +1291,6 @@ export function tablesOfStage(id: InfoStageId): readonly TableDef[] {
 /** 常驻表（表1-1 场景锚） */
 export function pinnedTables(): readonly TableDef[] {
   return TABLES.filter((t) => t.pinned);
-}
-
-/** 跨阶段填写的表（回退时按列清除） */
-/**
- * 按阶段过滤一行：剥掉「本阶段不该填」的列（列级 filledInStages 不含当前阶段）
- *
- * 用途见 `TableColumn.filledInStages`：跨阶段表里属于后续阶段的列，模型即便写了也不入库，
- * 避免"我方视角/后续阶段内容"提前混进本步产出。
- */
-export function filterRowByStage(
-  tableCode: string,
-  stage: InfoStageId,
-  row: Record<string, unknown>,
-): Record<string, unknown> {
-  const t = TABLES_BY_CODE[tableCode as keyof typeof TABLES_BY_CODE] as TableDef | undefined;
-  if (!t) return row;
-  const notYet = new Set(
-    t.columns.filter((c) => c.filledInStages && !c.filledInStages.includes(stage)).map((c) => c.key),
-  );
-  if (notYet.size === 0) return row;
-  return Object.fromEntries(Object.entries(row).filter(([k]) => !notYet.has(k)));
-}
-
-export function crossStageTables(): readonly TableDef[] {
-  return TABLES.filter((t) => (t.filledInStages?.length ?? 0) > 1);
 }
 
 /** 枚举取值 */

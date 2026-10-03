@@ -189,7 +189,6 @@ export const DEMO_ROWS: Record<string, InfoRow[]> = {
   "表1-2": [
     {
       link: "制水",
-      is_digital: "可以联网采集",
       owner_now: "值班班组人工抄表",
       current_tool: "纸质记录 + Excel 汇总",
       current_flow: "每班两次抄表，下班前录入",
@@ -198,7 +197,6 @@ export const DEMO_ROWS: Record<string, InfoRow[]> = {
     },
     {
       link: "输配",
-      is_digital: "可以联网采集",
       owner_now: "调度中心",
       current_tool: "现有 SCADA + 人工巡线",
       current_flow: "调度值守 24 小时，巡线按周",
@@ -207,7 +205,6 @@ export const DEMO_ROWS: Record<string, InfoRow[]> = {
     },
     {
       link: "原水取水",
-      is_digital: "必须物理隔离",
       owner_now: "水源管理处",
       current_tool: "本地仪表 + 纸质台账",
       current_flow: "按班记录，按月汇总上报",
@@ -220,14 +217,12 @@ export const DEMO_ROWS: Record<string, InfoRow[]> = {
       barrier_type: "技术",
       barrier_name: "等保三级",
       criteria: "GB/T 22239",
-      current_status: "过得了",
       industry_practice: "正面满足",
     },
     {
       barrier_type: "行业准入",
       barrier_name: "计量器具型式批准",
       criteria: "CPA 认证",
-      current_status: "绕道",
       industry_practice: "换技术路径",
     },
   ],

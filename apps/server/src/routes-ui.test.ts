@@ -261,7 +261,7 @@ describe("项目路由", () => {
       scenario_id: scenarioId,
       stage: 1 as StageId,
       table_code: "表1-2",
-      row: { link: "视频监控", is_digital: "可以联网采集", can_touch: "可以碰", our_role: "替代", description: "接入" },
+      row: { link: "视频监控", can_touch: "可以碰", our_role: "替代", description: "接入" },
       is_stale: false,
       source_type: "AI提取",
     });

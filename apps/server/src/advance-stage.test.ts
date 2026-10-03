@@ -349,7 +349,6 @@ function makeStage1DshOutput() {
         table_code: "表1-2",
         fields: {
           link: "视频监控",
-          is_digital: "可以联网采集",
           can_touch: "可以碰",
           our_role: "替代",
           description: "园区摄像头接入与智能分析",
@@ -362,7 +361,6 @@ function makeStage1DshOutput() {
           barrier_type: "技术",
           barrier_name: "AI 识别准确率",
           criteria: "≥ 95%",
-          current_status: "过得了",
           judgment: "过得了",
         },
         source: "白皮书.pdf:12",
@@ -373,7 +371,6 @@ function makeStage1DshOutput() {
           barrier_type: "行业准入",
           barrier_name: "安防工程资质",
           criteria: "需安防资质二级",
-          current_status: "绕道",
           judgment: "绕道",
         },
         source: "资质目录.pdf:2",

@@ -45,7 +45,7 @@ function seed(): { db: DbInstance; scenarioId: string; lineId: string } {
     scenario_id: sc.id,
     stage: 1,
     table_code: "表1-2",
-    row: { link: "制水", is_digital: "可以联网采集", can_touch: "可以碰", our_role: "辅助", description: "加药" },
+    row: { link: "制水", can_touch: "可以碰", our_role: "辅助", description: "加药" },
     is_stale: false,
     source: "《招标》p.2",
   });

@@ -360,7 +360,27 @@ check_contains "docs/项目变更表.md" "| 74 |" "变更表 #74 中栏信息口
 check_contains "04-业务过程重定义.md" "v1.17" "业务过程 v1.17（商业理解的行业行情口径）"
 check_contains "docs/项目变更表.md" "| 75 |" "变更表 #75 市场行情口径登记"
 check_contains "apps/server/src/stage-prompts.ts" "市场行情必须由你写出来" "商业理解：行业行情必须由模型写满"
-check_contains "apps/server/src/stage-prompts.ts" "行业通例（模型知识·待核实）" "行业行情须标 C/T4 待核实"
+check_contains "apps/server/src/stage-prompts.ts" "行业通例（模型知识）" "行业行情须标 C/T4（待验证由 authority 列表达）"
+# v1.25：来源标记不再写进格子（用户定调「要谁去核实？没必要写」），且删掉跨阶段补填
+if grep -q "内容里用「（行业通例，待核实）」" "$ROOT/apps/server/src/stage-prompts.ts"; then
+  echo "❌ 提示词又要求把来源标记写进格子（用户已定调不写）"
+  FAIL=1
+else
+  echo "✅ 格子里不写来源标记（来源属性只进 source/evidence_level/authority 三列）"
+fi
+if grep -qE "filledInStages|filterRowByStage|crossStageTables" "$ROOT/packages/contract/src/tables.ts"; then
+  echo "❌ 契约里又出现跨阶段补填机制（后面的步不会回头更新上游表，那类列永远填不上）"
+  FAIL=1
+else
+  echo "✅ 无跨阶段补填机制（表2-5/表3-8 的死列已删）"
+fi
+for gone in "is_digital" "current_status" "compliance_path"; do
+  if grep -q "$gone" "$ROOT/packages/contract/src/tables.ts"; then
+    echo "❌ 已删的列又回来了：$gone"
+    FAIL=1
+  fi
+done
+echo "✅ 已删列不再出现（有无电子部分 / 门槛现状 / 实现路径·责任人·状态）"
 check_contains "packages/infra/src/dsh-client.ts" "LLM_MAX_TOKENS" "单次生成给足输出预算（避免中途截断）"
 # 反向守卫：连接超时只盖「等到响应头」，不得挂到 fetch 上（会把跑过 60 秒的分析整条掐断）
 if grep -qF "AbortSignal.timeout(connectTimeoutMs)" "$ROOT/packages/infra/src/dsh-client.ts"; then

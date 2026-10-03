@@ -30,7 +30,6 @@ import type { DbInstance } from "@scene/infra";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
-  filterRowByStage,
   isModelStage,
   stageDef,
   tableDef,
@@ -573,10 +572,9 @@ async function* executeAdvanceStage(
   for (const row of acceptedRows) {
     // 通用列从行里剥掉：`source_type`/`confirm_state` 由服务端掌握，
     // **模型自封的「用户确认」不得进入数据**（否则污染证据等级）
-    const { source_type: declared, confirm_state: _ignored, ...rawFields } = row.fields;
-    // 跨阶段表里属于后续阶段的列（如表2-5 的"实现路径/责任人"要到阶段 4）本步一律不入库：
-    // 由契约的列级 filledInStages 决定，不靠提示词自觉（实机曾把"责任人"这类我方内容填进第 2 步）
-    const fields = filterRowByStage(String(row.table_code), effectiveStage, rawFields);
+    // v1.25：原来这里还会按列级 filledInStages 剥掉"后续阶段才填"的列（表2-5 实现路径/责任人等）。
+    // 那套跨阶段补填已删——后面的步只跑自己的表，不会回头更新上游表，列永远填不上，留着只会让人以为"以后会填"。
+    const { source_type: declared, confirm_state: _ignored, ...fields } = row.fields;
     const sourceType = declared === "AI推断" || row.source_type === "AI推断" ? "AI推断" : "AI提取";
     const inserted = db.stageDataRepo.insert({
       scenario_id: scenarioId,

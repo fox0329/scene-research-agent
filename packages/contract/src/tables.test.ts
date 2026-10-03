@@ -16,10 +16,8 @@ import {
   middleColumnGroups,
   tablesOfStage,
   pinnedTables,
-  crossStageTables,
   tableDef,
   stageDef,
-  filterRowByStage,
 } from "./tables.js";
 
 describe("表定义注册表 — 完整性", () => {
@@ -144,10 +142,25 @@ describe("表定义注册表 — 关键结构", () => {
     expect(middleColumns(tableDef("表1-1")).map((c) => c.key)).toEqual(["item", "content"]);
   });
 
-  it("跨阶段填写的表为 表2-5 / 表3-8（回退时按列清除）", () => {
-    expect(crossStageTables().map((t) => t.code).sort()).toEqual(["表2-5", "表3-8"]);
-    expect(tableDef("表2-5").filledInStages).toEqual([1, 4]);
-    expect(tableDef("表3-8").filledInStages).toEqual([2, 3]);
+  it("不再有「跨阶段填写的表」：后面的步只跑自己的表，不会回头更新上游表（v1.25）", () => {
+    for (const code of ["表2-5", "表3-8"]) {
+      const cols = tableDef(code).columns.map((c) => c.key);
+      expect(cols, code).not.toContain("compliance_path");
+      expect(cols, code).not.toContain("owner");
+      expect(cols, code).not.toContain("current_status");
+      expect(cols, code).not.toContain("is_digital");
+    }
+    // 表3-8 的排序/多源验证/预算科目改为阶段 2 自己填
+    expect(tableDef("表3-8").columns.find((c) => c.key === "rank")?.required).toBe(true);
+    expect(tableDef("表2-5").columns.map((c) => c.key)).toEqual([
+      "constraint_item",
+      "required_value",
+      "standard_no",
+      "period",
+      "source",
+      "evidence_level",
+      "authority",
+    ]);
   });
 
   it("表2 规格书按型号分组（groupBy 不进列）", () => {
@@ -233,34 +246,6 @@ describe("表定义注册表 — 枚举", () => {
     expect(flat).not.toContain("建议不通过");
   });
 });
-
-describe("列级 filledInStages — 后续阶段的列不许提前填", () => {
-  it("跨阶段表里属后续阶段的列都标了 filledInStages", () => {
-    for (const code of ["表2-5", "表3-8"]) {
-      const t = tableDef(code);
-      const marked = t.columns.filter((c) => c.filledInStages);
-      expect(marked.length, `${code} 应有列标 filledInStages`).toBeGreaterThan(0);
-    }
-    expect(tableDef("表2-5").columns.find((c) => c.key === "owner")?.filledInStages).toEqual([4]);
-    expect(tableDef("表3-8").columns.find((c) => c.key === "rank")?.filledInStages).toEqual([3]);
-  });
-
-  it("filterRowByStage 剥掉本阶段不该填的列，其余原样保留", () => {
-    const row = { constraint_item: "等保三级", compliance_path: "换设备", owner: "我方交付" };
-    expect(filterRowByStage("表2-5", 1, row)).toEqual({ constraint_item: "等保三级" });
-    expect(filterRowByStage("表2-5", 4, row)).toEqual(row);
-    // 表3-8 的排序/多源验证/预算科目在阶段 2 不填、阶段 3 才填
-    const gap = { gap: "数据不全", rank: "1", cross_validation: "3 家" };
-    expect(filterRowByStage("表3-8", 2, gap)).toEqual({ gap: "数据不全" });
-    expect(filterRowByStage("表3-8", 3, gap)).toEqual(gap);
-  });
-
-  it("没有列级标记的表不受影响（原样返回）", () => {
-    const row = { link: "制水", current_flow: "每班抄表" };
-    expect(filterRowByStage("表1-2", 1, row)).toEqual(row);
-  });
-});
-
 
 describe("dependsOnTables — 本步内的真实依赖（按表并发的调度依据）", () => {
   it("只对确有其事的表声明依赖（不为了稳而随手加，会把并发收益吃光）", () => {

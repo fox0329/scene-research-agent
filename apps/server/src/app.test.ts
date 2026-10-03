@@ -164,7 +164,6 @@ function createMockDshClient(rowsText?: string): DshClient {
           table_code: "表1-2",
           fields: {
             link: "视频监控",
-            is_digital: "可以联网采集",
             can_touch: "可以碰",
             our_role: "替代",
             description: "园区摄像头接入",

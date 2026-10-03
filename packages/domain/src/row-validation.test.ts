@@ -43,7 +43,6 @@ describe("row-validation — 流程步限定表集", () => {
       [
         ok("表1-2", {
           link: "制水",
-          is_digital: "可以联网采集",
           owner_now: "值班班组人工抄表",
           current_tool: "纸质记录 + Excel 汇总",
           current_flow: "每班两次人工抄表，下班前录入",
@@ -61,9 +60,9 @@ describe("row-validation — 流程步限定表集", () => {
 
 describe("row-validation — 必填列", () => {
   it("缺必填列逐项报出（带列名与行号）", () => {
-    // 表1-2 必填：link / is_digital / owner_now / current_tool / current_flow / pain
+    // 表1-2 必填：link / owner_now / current_tool / current_flow / pain
     const v = validateIncomingRows(1, [
-      ok("表1-2", { link: "制水", is_digital: "可以联网采集", owner_now: "值班班组" }),
+      ok("表1-2", { link: "制水", owner_now: "值班班组" }),
     ]);
     const kinds = v.filter((x) => x.kind === "缺必填列").map((x) => x.column);
     expect(kinds).toContain("current_flow");
@@ -85,7 +84,6 @@ describe("row-validation — 必填列", () => {
         barrier_type: "技术",
         barrier_name: "认证",
         criteria: "GB/T 1",
-        current_status: "过得了",
         judgment: "过得了",
       }),
     ]);
@@ -100,7 +98,6 @@ describe("row-validation — 枚举", () => {
         barrier_type: "合规门槛", // 不在五类内
         barrier_name: "x",
         criteria: "y",
-        current_status: "过得了",
         judgment: "过得了",
       }),
     ]);
@@ -115,7 +112,6 @@ describe("row-validation — 枚举", () => {
         barrier_type: "",
         barrier_name: "x",
         criteria: "y",
-        current_status: "过得了",
         judgment: "过得了",
       }),
     ]);
@@ -141,7 +137,7 @@ describe("row-validation — 来源与证据归属", () => {
     const v = validateIncomingRows(1, [
       ok(
         "表1-2",
-        { link: "制水", is_digital: "可以联网采集", can_touch: "可以碰", our_role: "辅助", description: "x" },
+        { link: "制水", can_touch: "可以碰", our_role: "辅助", description: "x" },
         { source_type: "用户确认" },
       ),
     ]);

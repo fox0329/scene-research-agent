@@ -66,11 +66,10 @@ describe("文档生成 — 内容完整性", () => {
     expect(mine).toHaveLength(1);
   });
 
-  it("跨阶段填写的表标出所属阶段", () => {
-    for (const code of ["表2-5", "表3-8"]) {
-      const i = body.indexOf(`### ${code} `);
-      const section = body.slice(i, body.indexOf("\n### ", i + 1));
-      expect(section, code).toContain("跨阶段填写");
+  it("不再标「跨阶段填写」（v1.25 删掉跨阶段补填）", () => {
+    expect(body).not.toContain("跨阶段填写");
+    for (const gone of ["compliance_path", "is_digital", "current_status"]) {
+      expect(body, gone).not.toContain(`| \`${gone}\` |`);
     }
   });
 
@@ -91,8 +90,8 @@ describe("文档生成 — 内容完整性", () => {
     expect(body).toContain("**接口块**");
   });
 
-  it("列说明（note）被渲染出来（如表2-5 的「阶段 4 补填」）", () => {
-    expect(body).toContain("阶段 4 补填");
+  it("列说明（note）被渲染出来", () => {
+    expect(body).toContain("只有模型知识就写「单一来源（模型知识）」");
     expect(body).toContain("必须含『什么都不做』");
   });
 
