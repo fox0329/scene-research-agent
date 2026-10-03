@@ -374,13 +374,17 @@ if grep -qE "filledInStages|filterRowByStage|crossStageTables" "$ROOT/packages/c
 else
   echo "✅ 无跨阶段补填机制（表2-5/表3-8 的死列已删）"
 fi
-for gone in "is_digital" "current_status" "compliance_path"; do
+for gone in "is_digital" "current_status" "compliance_path" "held_certs"; do
   if grep -q "$gone" "$ROOT/packages/contract/src/tables.ts"; then
     echo "❌ 已删的列又回来了：$gone"
     FAIL=1
   fi
 done
-echo "✅ 已删列不再出现（有无电子部分 / 门槛现状 / 实现路径·责任人·状态）"
+if grep -q 'mid("our_product", "我方产品", { note:' "$ROOT/packages/contract/src/tables.ts"; then
+  echo "❌ 表4-2 的空列「我方产品」又回来了（产品名写在「角色判定依据」里）"
+  FAIL=1
+fi
+echo "✅ 已删列不再出现（有无电子部分 / 门槛现状 / 门槛证据·已持有认证 / 实现路径·责任人·状态 / 表4-2 我方产品）"
 check_contains "packages/infra/src/dsh-client.ts" "LLM_MAX_TOKENS" "单次生成给足输出预算（避免中途截断）"
 # 反向守卫：连接超时只盖「等到响应头」，不得挂到 fetch 上（会把跑过 60 秒的分析整条掐断）
 if grep -qF "AbortSignal.timeout(connectTimeoutMs)" "$ROOT/packages/infra/src/dsh-client.ts"; then
