@@ -58,6 +58,19 @@ describe("stage-prompts — 内容由注册表派生", () => {
     expect(p.system).toContain("枚举 barrier_type");
   });
 
+  it("枚举必须带**合法取值**（只给枚举名时模型会自己编：实机 61 处非法值）", () => {
+    const p = buildStagePrompt(1, {}, scenario);
+    // 五个门槛类型逐个列出，不再只写「枚举 barrier_type」
+    for (const v of ["技术", "行业准入", "经济", "生态锁定", "一票否决者"]) {
+      expect(p.system).toContain(v);
+    }
+    expect(p.system).toMatch(/枚举 barrier_type，只能取：/);
+    // 输出契约里同样带取值，模型两条通路都看得到
+    const contract = JSON.stringify(p.outputContract);
+    expect(contract).toContain("只能取：");
+    expect(contract).toContain("高 / 中 / 低");
+  });
+
   it("表1-1 的固定行逐个列出，且只给「场景名称」标「用户输入」", () => {
     const p = buildStagePrompt(1, {}, scenario);
     expect(p.system).toContain("固定行");

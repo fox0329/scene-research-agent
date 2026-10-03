@@ -14,6 +14,7 @@
 import {
   STAGE_DEFS,
   TABLES,
+  enumValues,
   middleColumns,
   stageDef,
   supplementColumns,
@@ -104,7 +105,9 @@ function renderColumn(c: TableColumn): string {
   const bits: string[] = [];
   if (c.required) bits.push("必填");
   else if (c.requiredWhen) bits.push(`条件必填：${c.requiredWhen}`);
-  if (c.enum) bits.push(`枚举 ${c.enum}`);
+  // 枚举必须把**合法取值**写出来：只给枚举名（如 level_hml）时模型会自己编
+  // （实机把「痛到什么程度」写成 high/mid/low、把门槛类型写成「资质门槛」——共 61 处非法值）
+  if (c.enum) bits.push(`枚举 ${c.enum}，只能取：${enumValues(c.enum).join(" / ")}`);
   if (c.type === "longText") bits.push(`长文本，中栏截断 ${c.truncate ?? 20} 字`);
   if (c.type === "number") bits.push("数值");
   if (c.type === "ref") bits.push(`引用 ${c.refTable ?? "其他表"}`);
@@ -319,7 +322,9 @@ export function getStageOutputContract(
     for (const c of all) {
       if (properties[c.key]) continue;
       properties[c.key] = {
-        description: `${c.label}${c.enum ? `（枚举：${c.enum}）` : ""}${c.required ? "｜必填" : ""}`,
+        description: `${c.label}${
+          c.enum ? `（枚举 ${c.enum}，只能取：${enumValues(c.enum).join(" / ")}）` : ""
+        }${c.required ? "｜必填" : ""}`,
       };
     }
   }
