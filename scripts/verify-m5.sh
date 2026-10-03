@@ -496,6 +496,26 @@ check_contains "package.json" "clean:stray" "pretest 清理残留编译产物"
 check_contains "docs/故障及解决清单.md" "测试跑的还是上次编译的产物" "故障 #24 登记（单测测旧代码）"
 check_contains "docs/故障及解决清单.md" "按表并发后整步报「完成」" "故障 #25 登记（并发提前收工/就绪判据）"
 
+# v1.23 守卫：八步同形（第 1 步的动作也在流程轴上，中栏不留按钮、不留重跑提示条）
+check_contains "04-业务过程重定义.md" "v1.23" "业务过程 v1.23（八步同形动作位）"
+check_contains "docs/项目变更表.md" "| 81 |" "变更表 #81 动作位同形登记"
+check_contains "apps/web/src/components/FlowRail.tsx" "RailRunAction" "流程轴只有一个运行按钮契约（八步共用）"
+check_contains "apps/web/src/views/ProjectView.tsx" "stepDef.kind === \"确认\"" "确认步也走流程轴运行按钮"
+check_contains "apps/web/src/views/ProjectView.tsx" "definitionDialogOpen" "定义对话弹窗由流程轴按钮驱动"
+check_contains "apps/web/src/views/AnchorStepPanel.tsx" "definitionOpen" "联真第 1 步弹窗受控（入口在流程轴）"
+check_contains "apps/web/src/views/DemoFlowPanels.tsx" "definitionOpen" "演示态第 1 步同形（入口在流程轴）"
+check_contains "apps/web/src/components/FlowRail.tsx" "回到这一步" "回看重跑入口在流程轴上"
+# 反向守卫：中栏不再有「场景定义对话」按钮，也不再有那条重跑提示条
+if grep -q "场景定义对话</button>" "$ROOT/apps/web/src/views/AnchorStepPanel.tsx" "$ROOT/apps/web/src/views/DemoFlowPanels.tsx"; then
+  echo "❌ 中栏又出现「场景定义对话」按钮：动作只留流程轴（八步同形）"
+  FAIL=1
+fi
+if grep -q "flow-reopen" "$ROOT/apps/web/src/views/ProjectView.tsx"; then
+  echo "❌ 中栏又出现重跑提示条（flow-reopen）：回看重跑走流程轴「回到这一步」"
+  FAIL=1
+fi
+check_contains "e2e/interaction.spec.ts" "八步同形" "八步同形有 E2E 用例"
+
 # v1.22 守卫：按表并发生成（延迟 ≈ 最慢那张表；单表失败不拖垮整步）
 check_contains "04-业务过程重定义.md" "v1.22" "业务过程 v1.22（按表并发生成）"
 check_contains "docs/项目变更表.md" "| 80 |" "变更表 #80 按表并发登记"
@@ -539,8 +559,8 @@ else
   echo "✅ 中栏不渲染进度行"
 fi
 # 正向守卫：运行中按钮 title 要能显示最新一行进度（否则只剩一个静止的计时）
-check_contains "apps/web/src/components/FlowRail.tsx" "analysis.progress" "运行中按钮 title 显示最新进度"
-check_contains "apps/web/src/components/FlowRail.tsx" "recompute.progress" "重算按钮运行中显示最新进度"
+check_contains "apps/web/src/components/FlowRail.tsx" "run.progress" "运行中按钮 title 显示最新进度"
+check_contains "apps/web/src/components/FlowRail.tsx" "run.elapsedLabel" "重算按钮运行中显示最新进度与计时"
 check_contains "apps/web/src/views/ProjectView.tsx" "analysis.streamLines.at(-1)" "最新一行进度喂给流程轴"
 # 非致命情况（续连没接回来）必须有可见出口：进度行不显示了，只能靠提示
 check_contains "apps/web/src/hooks/useStageAnalysis.ts" "onWarn" "非致命情况有可见提示出口"

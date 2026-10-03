@@ -329,16 +329,21 @@ test("流程轴：8 个节点、当前步高亮、未解锁不可点（v1.5 取�
   ]);
   await expect(nodes.nth(3)).toHaveAttribute("title", /第 4 步 · 能力匹配/);
 
-  // 就绪提示不占行：它是「下一步」按钮的悬停提示（新场景画像还没写出 → 未就绪）
-  const next = rail.getByRole("button", { name: "下一步" });
-  await expect(next).toBeDisabled();
-  await expect(next).toHaveAttribute("title", /场景业务画像/);
+  // 就绪提示不占行：它是运行按钮的悬停提示（新场景画像还没写出 → 未就绪）
+  // 八步同形：未产出时主按钮位是「开始本步分析」（第 1 步也不例外，只是它打开对话）
+  const start = rail.getByRole("button", { name: "开始本步分析" });
+  await expect(start).toBeEnabled();
+  await expect(start).toHaveAttribute("title", /场景业务画像/);
+  await expect(rail.getByRole("button", { name: "下一步" })).toHaveCount(0);
   await expect(page.locator(".ws .pnl").first()).toBeVisible();
 
-  // 智能体写出画像之后 → 就绪可推进（不要求用户逐项确认）
+  // 智能体写出画像之后 → 主按钮位变「下一步」，另给次级「重算本步」（与认识场景同形）
   await draftDefinition(page);
+  const next = rail.getByRole("button", { name: "下一步" });
   await expect(next).toBeEnabled();
   await expect(next).toHaveAttribute("title", /场景业务画像已写出/);
+  await expect(rail.getByRole("button", { name: "重算本步" })).toBeVisible();
+  await expect(rail.getByRole("button", { name: "开始本步分析" })).toHaveCount(0);
 });
 
 test("流程推进：完成本步 → 当前步前移；已完成步可回看重跑", async ({ page }) => {
@@ -359,11 +364,13 @@ test("流程推进：完成本步 → 当前步前移；已完成步可回看重
   await expect(page.locator(".ws .table-chips").first()).toBeVisible();
   await expect(page.locator(".ws .completeness-bar")).toHaveCount(0);
 
-  // 点已完成节点回看：显示该步内容 + 「回到这一步重跑」
+  // 点已完成节点回看：八步同形——动作全在流程轴上（中栏不再有「回到这一步重跑」提示条）
   await rail.getByRole("tab", { name: /^第 1 步 · 场景定义与边界（/ }).click();
+  await expect(page.locator(".flow-reopen")).toHaveCount(0);
   await expect(rail.getByRole("button", { name: "回到当前步" })).toBeVisible();
-  await expect(page.locator(".flow-reopen")).toBeVisible();
-  await page.getByRole("button", { name: "回到这一步重跑" }).click();
+  await expect(rail.getByRole("button", { name: "回到这一步" })).toBeVisible();
+  await expect(rail.getByRole("button", { name: /开始本步分析|重算本步/ })).toBeVisible();
+  await rail.getByRole("button", { name: "回到这一步" }).click();
   await expect(rail.locator(".flow-node--current")).toContainText("场景定义");
   await expect(rail.locator(".flow-node--done")).toHaveCount(0);
   await expect(rail.locator(".flow-node--locked")).toHaveCount(7);
@@ -414,12 +421,11 @@ test("第 1 步：中栏只有表1-1；步标题/引导语/状态行/完整度/�
   await expect(ws.locator(".definition-status")).toHaveCount(0);
   await expect(ws.locator(".definition-stat")).toHaveCount(0);
 
-  // 就绪提示不占行：它是进度卡「下一步」按钮的悬停提示（也不在中栏复述）
+  // 就绪提示不占行：它是流程轴运行按钮的悬停提示（也不在中栏复述）
+  // 八步同形：第 1 步未产出时主按钮位是「开始本步分析」（点了打开场景定义对话）
   await expect(page.locator(".flow-rail .flow-hint")).toHaveCount(0);
-  await expect(page.locator(".flow-rail").getByRole("button", { name: "下一步" })).toHaveAttribute(
-    "title",
-    /先说一句场景名称/,
-  );
+  const start = page.locator(".flow-actions").getByRole("button", { name: "开始本步分析" });
+  await expect(start).toHaveAttribute("title", /先说一句场景名称|场景业务画像/);
 
   // 不是表单：三段式字段已删除
   await expect(ws.locator(".brief-input")).toHaveCount(0);
@@ -432,8 +438,8 @@ test("第 1 步：中栏只有表1-1；步标题/引导语/状态行/完整度/�
   await expect(anchor.locator("textarea.cell-input")).toHaveCount(6);
   await expect(anchor.locator(".owner-tag")).toHaveCount(1);
 
-  // 独立弹窗（不是中栏、不是右下角抽屉）：入口是表头右侧那个按钮
-  const entry = ws.getByRole("button", { name: /场景定义对话/ });
+  // 独立弹窗（不是中栏、不是右下角抽屉）：入口是流程轴上的本步运行按钮（八步同形）
+  const entry = page.locator(".flow-actions").getByRole("button", { name: /开始本步分析|重算本步/ });
   await entry.click();
   const dlg = page.getByRole("dialog", { name: "场景定义" });
   await expect(dlg).toBeVisible();
@@ -470,7 +476,7 @@ test("第 1 步：中栏只有表1-1；步标题/引导语/状态行/完整度/�
 
 
 test("场景定义弹窗：Esc 关闭，且关闭后第 1 步仍只剩表1-1", async ({ page }) => {
-  await page.locator(".ws").getByRole("button", { name: /场景定义对话/ }).click();
+  await page.locator(".flow-actions").getByRole("button", { name: /开始本步分析|重算本步/ }).click();
   const dlg = page.getByRole("dialog", { name: "场景定义" });
   await expect(dlg).toBeVisible();
   await page.keyboard.press("Escape");
@@ -601,7 +607,7 @@ test("设置保存给出 Toast 反馈", async ({ page }) => {
  * 所以任何要走到第 2 步的用例都得先让智能体把画像写出来（这正是产品的第一步动作）。
  */
 async function draftDefinition(page: Page) {
-  await page.locator(".ws").getByRole("button", { name: /场景定义对话/ }).click();
+  await page.locator(".flow-actions").getByRole("button", { name: /开始本步分析|重算本步/ }).click();
   const dlg = page.getByRole("dialog", { name: "场景定义" });
   await expect(dlg).toBeVisible();
   await dlg.getByRole("button", { name: "整理成定义" }).click();
@@ -616,17 +622,41 @@ async function gotoStep2(page: Page) {
     await page.locator(".side .proj-hd").first().click();
   }
   const rail = page.locator(".flow-rail");
-  // 锁步推进（没有「解锁全部」）：让智能体写出画像 → 点「下一步」到第 2 步
-  const next = rail.getByRole("button", { name: "下一步" });
-  if (await next.isEnabled()) {
-    await next.click();
-  } else {
+  // 锁步推进（没有「解锁全部」）：第 1 步未产出时主按钮位是「开始本步分析」，
+  // 先让智能体写出画像（八步同形后不再有常驻的「下一步」）
+  if ((await rail.getByRole("button", { name: "下一步" }).count()) === 0) {
     await draftDefinition(page);
-    await expect(next).toBeEnabled();
-    await next.click();
   }
+  const next = rail.getByRole("button", { name: "下一步" });
+  await expect(next).toBeEnabled();
+  await next.click();
   await expect(page.locator(".ws .table-chips").first()).toBeVisible();
 }
+
+test("八步同形：第 1 步的动作也在流程轴上，中栏不留按钮、不留「回到这一步重跑」提示条", async ({
+  page,
+}) => {
+  const actions = page.locator(".flow-actions");
+  // 未产出：主按钮位是「开始本步分析」（与认识场景一字不差），中栏没有「场景定义对话」按钮
+  await expect(actions.getByRole("button", { name: "开始本步分析" })).toBeVisible();
+  await expect(actions.getByRole("button", { name: "重算本步" })).toHaveCount(0);
+  await expect(page.locator(".ws").getByRole("button", { name: /场景定义对话/ })).toHaveCount(0);
+  await expect(page.locator(".flow-reopen")).toHaveCount(0);
+
+  // 点流程轴上的运行按钮 → 打开场景定义对话（动作在轴上，中栏只放表）
+  await actions.getByRole("button", { name: "开始本步分析" }).click();
+  const dlg = page.getByRole("dialog", { name: "场景定义" });
+  await expect(dlg).toBeVisible();
+  await dlg.getByRole("button", { name: "整理成定义" }).click();
+  await expect(dlg.locator(".definition-summary")).toContainText("更新");
+  await dlg.getByRole("button", { name: "完成，回到第 1 步" }).click();
+  await expect(dlg).toBeHidden();
+
+  // 已产出：次级「重算本步」+ 主按钮「下一步」，与认识场景完全同形
+  await expect(actions.getByRole("button", { name: "重算本步" })).toBeVisible();
+  await expect(actions.getByRole("button", { name: "下一步" })).toBeVisible();
+  await expect(actions.getByRole("button", { name: "开始本步分析" })).toHaveCount(0);
+});
 
 test("分析步中栏：只有一行表名 + 表格，且不出现上一步的表1-1、不出现动作按钮", async ({ page }) => {
   await draftDefinition(page); // 先让智能体写出画像，才走得到第 2 步

@@ -131,6 +131,8 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
   const [analysisNotice, setAnalysisNotice] = useState<
     { kind: "error" | "info" | "warning"; text: string } | null
   >(null);
+  /** 场景定义对话弹窗：入口在流程轴（第 1 步的运行按钮），状态因此提到这一层 */
+  const [definitionDialogOpen, setDefinitionDialogOpen] = useState(false);
   const analysis = useStageAnalysis({
     projectId: project.id,
     stage: stepStage,
@@ -277,39 +279,56 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
   /**
    * 顶部按钮位（用户定调「中栏不放按钮，上面有下一步」）
    *
-   *  - 本步还没产出（服务端 ready=false）→ 这个位置是「开始本步分析」
-   *  - 已产出但有资料因上游改动失效    → 这个位置是「重算本步」
-   *  - 其余                            → 「下一步」（完成本步并前进）
-   * 只在「当前步 + 模型分析步」上接管，回看历史步与交付步不受影响。
+   * **八步同形**（v1.23，用户定调「都与认识场景保持一致」）：不管是分析步还是第 1 步这样的
+   * 确认步，运行入口都只有这一个位置、同一套按钮与说法：
+   *  - 本步还没产出（服务端 ready=false）→ 主按钮「开始本步分析」
+   *  - 已产出（含资料失效）              → 次级「重算本步」+ 主按钮「下一步」
+   * 差别只在"运行"是什么：分析步跑模型；第 1 步打开场景定义对话（让智能体写出表1-1）。
+   * 回看历史步时多一个「回到这一步」（清该步及其后的完成标记，数据保留）——中栏那条
+   * 「已完成 · 回到这一步重跑」提示条据此删掉（同一个动作不留两种说法、两个位置）。
    */
   const stepStale = (stale.data?.stages ?? []).includes(stepStage);
-  const isModelStep = live && stepDef?.state === "当前" && stepDef.kind === "分析";
-  // 主按钮位被分析接管：没产出（必须能发起）或资料已失效（必须能刷新）
-  const analysisAction =
-    isModelStep && (!stepDef.ready || stepStale)
+  // 认步（第 1 步）不跑模型，只打开场景定义对话 —— 演示态与联真同形；
+  // 分析步只有联真才有真正可跑的后端，演示态不装这个按钮（避免点了个没反应的入口）
+  const canRunStep =
+    stepDef !== undefined &&
+    (stepDef.kind === "确认" || (live && stepDef.kind === "分析")) &&
+    // 回看历史步也给「重算本步」：想换一版不必先退回去（与"中栏不留重跑入口"配套）
+    (stepDef.state === "当前" || stepDef.state === "已完成");
+  const runAction =
+    canRunStep
       ? {
           running: analysis.running,
           elapsedLabel: analysis.elapsedLabel,
+          ready: Boolean(stepDef.ready),
           hint: stepDef.readyHint,
-          recompute: stepDef.ready,
+          // 第 1 步的运行 = 打开场景定义对话（不跑表；表1-1 由对话里的「整理成定义」写）
+          ...(stepDef.kind === "确认"
+            ? {
+                title: stepDef.ready
+                  ? "重新打开场景定义对话，重做这一步的定义（会更新表1-1）"
+                  : "打开场景定义对话：说一句你对这个场景的想法，智能体写出场景业务画像",
+              }
+            : stepStale
+              ? { title: `本步资料因上游改动失效：${stepDef.readyHint}` }
+              : {}),
           progress: flow?.currentStep === step ? analysis.streamLines.at(-1) : undefined,
           onStart: () => {
             setAnalysisNotice(null);
+            if (stepDef.kind === "确认") {
+              setDefinitionDialogOpen(true);
+              return;
+            }
             analysis.start();
           },
         }
       : undefined;
-  // 已产出且没失效：主按钮位还给「下一步」，另给一个次级「重算本步」入口
-  const recomputeAction =
-    isModelStep && stepDef.ready && !stepStale
+  // 回看历史步：回到这一步重跑（清该步及其后的完成标记，数据保留）
+  const reopenAction =
+    flow !== null && stepDef?.state === "已完成" && step < flow.currentStep
       ? {
-          running: analysis.running,
-          elapsedLabel: analysis.elapsedLabel,
-          onStart: () => {
-            setAnalysisNotice(null);
-            analysis.start();
-          },
-          progress: flow?.currentStep === step ? analysis.streamLines.at(-1) : undefined,
+          title: `回到第 ${step} 步重跑：清掉该步及其后的完成标记，数据保留`,
+          onStart: () => void handleReopen(step),
         }
       : undefined;
 
@@ -325,6 +344,8 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
             onFlowChanged={() => void reloadFlow()}
             onStageSnapshot={onStageSnapshot}
             refreshToken={definitionRefresh}
+            definitionOpen={definitionDialogOpen}
+            onDefinitionOpenChange={setDefinitionDialogOpen}
           />
         );
       }
@@ -365,6 +386,8 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
           onConsolidated={handleDemoAnchorConsolidated}
           onAnchorEdit={handleDemoAnchorEdit}
           onStageSnapshot={onStageSnapshot}
+          definitionOpen={definitionDialogOpen}
+          onDefinitionOpenChange={setDefinitionDialogOpen}
         />
       );
     }
@@ -486,8 +509,8 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
           busy={busy}
           onSelectStep={setActiveStep}
           onComplete={() => void handleComplete()}
-          analysis={analysisAction}
-          recompute={recomputeAction}
+          run={runAction}
+          reopen={reopenAction}
         />
       ) : (
         <div className="flow-rail">
@@ -507,24 +530,8 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
         </div>
       )}
 
-      {/* 当前步面板 */}
+      {/* 当前步面板（动作都在流程轴上，中栏只放信息） */}
       <div className="ws">
-        {stepDef?.state === "已完成" ? (
-          <div className="flow-reopen" role="status">
-            <span className="badge success">已完成</span>
-            <span className="flow-reopen-text">
-              正在回看第 {step} 步「{stepDef.title}」；回到这一步重跑会清掉该步及其后的完成标记，数据保留
-            </span>
-            <button
-              className="btn btn-sm"
-              type="button"
-              disabled={busy}
-              onClick={() => void handleReopen(step)}
-            >
-              回到这一步重跑
-            </button>
-          </div>
-        ) : null}
         {renderStepBody()}
       </div>
     </>

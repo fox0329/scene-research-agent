@@ -194,7 +194,12 @@ await page
     { timeout: 20_000 },
   )
   .catch(() => undefined);
-const readyHint = (await page.locator(".flow-rail .flow-actions button").first().getAttribute("title")) ?? "";
+// 就绪提示挂在主按钮上：八步同形后「重算本步」也可能在第一位，它的 title 讲的是这个动作做什么
+const readyHint = await page.evaluate(() => {
+  const btns = Array.from(document.querySelectorAll(".flow-rail .flow-actions button"));
+  const next = btns.find((b) => (b.textContent ?? "").trim() === "下一步");
+  return (next ?? btns[0])?.getAttribute("title") ?? "";
+});
 ok(
   "3c 整理后第 1 步即可推进（业务画像已写出；界面不出现「待确认」）",
   /场景业务画像已写出/.test(readyHint) && !/待确认/.test(readyHint),

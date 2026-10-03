@@ -9,7 +9,8 @@
  * 用户定调"中栏只重点显示场景概述这个表格，其他的都不要干扰"，因此这一步删掉了：
  * 步标题 + 引导语（与流程轴上的同一句话重复）、就绪状态行、信息完整度条、
  * 「确认无误」按钮（确认动作改为"就地编辑即确认"，不再有整表确认这个来回）。
- * 唯一留下的旁路按钮是表头右侧的「场景定义对话」——它是让智能体写出画像的**唯一入口**。
+ * 让智能体写出画像的「场景定义对话」入口在**流程轴**上（第 1 步的运行按钮，v1.23 用户定调
+ * 「都与认识场景保持一致」）——中栏不留按钮，只放表。
  *
  * 就绪判定与提示由服务端给出（`/flow` 的 `readyHint`），只在流程轴上显示一次。
  */
@@ -41,6 +42,9 @@ export interface AnchorStepPanelProps {
    * 对话里发的消息与整理结果都在本面板之外发生——靠这个信号让本面板重取定义状态。
    */
   refreshToken?: number;
+  /** 场景定义对话弹窗的开合（入口在流程轴，状态由 ProjectView 持有） */
+  definitionOpen?: boolean;
+  onDefinitionOpenChange?: (open: boolean) => void;
 }
 
 export const AnchorStepPanel: React.FC<AnchorStepPanelProps> = ({
@@ -50,10 +54,16 @@ export const AnchorStepPanel: React.FC<AnchorStepPanelProps> = ({
   onFlowChanged,
   onStageSnapshot,
   refreshToken = 0,
+  definitionOpen = false,
+  onDefinitionOpenChange,
 }) => {
   const { showToast } = useToast();
   const step = flowStep(1);
-  const [dialogOpen, setDialogOpen] = useState(false);
+  const dialogOpen = definitionOpen;
+  const setDialogOpen = useCallback(
+    (open: boolean) => onDefinitionOpenChange?.(open),
+    [onDefinitionOpenChange],
+  );
   /** 本地即时生效的锚行（编辑 / 整理成定义后不等下一次拉取） */
   const [anchorOverride, setAnchorOverride] = useState<ApiAnchorRow[] | null>(null);
 
@@ -186,16 +196,6 @@ export const AnchorStepPanel: React.FC<AnchorStepPanelProps> = ({
         summary={anchorSummary(anchor)}
         defaultOpen
         onCellChange={handleCellChange}
-        actions={
-          <button
-            className="btn"
-            type="button"
-            disabled={def.status === "loading"}
-            onClick={() => setDialogOpen(true)}
-          >
-            场景定义对话
-          </button>
-        }
       />
 
       <ScenarioDefinitionDialog

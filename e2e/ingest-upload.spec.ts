@@ -222,10 +222,11 @@ test("场景定义对话（联真）：新建只输名称 → 自动开「场景
   await dlg.getByRole("button", { name: "完成，回到第 1 步" }).click();
   await expect(dlg).toBeHidden();
 
-  // 中栏第 1 步「场景定义与边界」：只有常驻的表1-1（表头右侧一个对话入口）
-  await expect(page.locator(".ws").getByRole("button", { name: /场景定义对话/ })).toBeVisible({
-    timeout: 20_000,
-  });
+  // 中栏第 1 步「场景定义与边界」：只有常驻的表1-1（动作全在流程轴上，中栏不留按钮）
+  await expect(page.locator(".ws").getByRole("button", { name: /场景定义对话/ })).toHaveCount(0);
+  await expect(
+    page.locator(".flow-actions").getByRole("button", { name: /开始本步分析|重算本步/ }),
+  ).toBeVisible({ timeout: 20_000 });
   await expect(page.locator(".ws .definition-step")).toHaveCount(0);
   await expect(page.locator(".ws .completeness-bar")).toHaveCount(0);
   const anchor = page.locator(".ws .schema-table--anchor").first();
@@ -277,16 +278,17 @@ test("流程逐页推进（联真）：完成本步走的是 /flow 接口，完�
   const rail = page.locator(".flow-rail");
   await expect(rail.locator(".flow-node--current")).toContainText("场景定义");
   // 就绪与否由服务端按表1-1 判定（前端只显示、不阻断）；这里只要求当前步就是第 1 步
-  // 进度卡只一行：就绪提示在「下一步」按钮的 title 里，不再占一行
+  // 进度卡只一行：就绪提示在运行按钮的 title 里，不再占一行
+  // 八步同形：第 1 步还没画像时主按钮位是「开始本步分析」（点了打开场景定义对话）
   await expect(rail.locator(".flow-hint")).toHaveCount(0);
-  await expect(rail.getByRole("button", { name: "下一步" })).toHaveAttribute(
-    "title",
-    /场景业务画像/,
-  );
-  const completeBtn = rail.getByRole("button", { name: "下一步" });
+  const startBtn = page.locator(".flow-actions").getByRole("button", { name: "开始本步分析" });
+  if (await startBtn.count()) {
+    await expect(startBtn).toHaveAttribute("title", /场景业务画像/);
+  }
 
   // 第 1 步：在独立「场景定义」对话里把场景聊清楚，点「整理成定义」写表1-1
-  await page.locator(".ws").getByRole("button", { name: /场景定义对话/ }).click();
+  await page.locator(".flow-actions").getByRole("button", { name: /开始本步分析|重算本步/ }).click();
+  const completeBtn = rail.getByRole("button", { name: "下一步" });
   const defDlg = page.getByRole("dialog", { name: "场景定义" });
   await expect(defDlg).toBeVisible({ timeout: 20_000 });
   await expect(

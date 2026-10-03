@@ -90,8 +90,17 @@ ok(
   keywords.join(" / "),
 );
 
-const completeBtn = rail.getByRole("button", { name: "下一步" });
-ok("4b 行末有「下一步」按钮，且就绪提示在它的 title 里", (await completeBtn.count()) === 1 && Boolean(await completeBtn.getAttribute("title")), `title=${(await completeBtn.getAttribute("title"))?.slice(0, 24)}…`);
+// 八步同形（v1.23）：行末动作位要么是「下一步」（本步已有产出），要么是「开始本步分析」（还没产出），
+// 第 1 步也不例外；就绪提示挂在主按钮的 title 上（不占第二行）
+const actions = page.locator(".flow-actions");
+const nextBtn = actions.getByRole("button", { name: "下一步" });
+const startBtn = actions.getByRole("button", { name: "开始本步分析" });
+const primary = (await nextBtn.count()) === 1 ? nextBtn : startBtn;
+ok(
+  "4b 行末主按钮是「下一步」或「开始本步分析」，且就绪提示在它的 title 里",
+  (await primary.count()) === 1 && Boolean(await primary.getAttribute("title")),
+  `title=${(await primary.getAttribute("title"))?.slice(0, 24)}…`,
+);
 
 // 5. 右栏双 Tab（补充说明 / 阶段总结）
 await page.locator(".det .det-tab").first().waitFor({ timeout: 8000 });
@@ -158,14 +167,25 @@ if ((await page.locator(".ws .schema-table--anchor").count()) > 0) {
   await rail.getByRole("button", { name: /回到当前步/ }).click().catch(() => undefined);
 }
 
-// 8. 流转一圈：完成本步 → 进度前移（在当前步 ready 时）
-const hint = String(await completeBtn.getAttribute("title"));
-if (!ALLOW_MUTATE) {
-  ok("8 「下一步」按钮按数据判定渲染（只读模式未点击）", true,
-    (await completeBtn.isDisabled()) ? "当前未就绪→禁用" : "当前就绪→可点");
-} else if (!(await completeBtn.isDisabled())) {
+// 8. 流转一圈：完成本步 → 进度前移
+// 八步同形（v1.23）：行末主按钮要么是「下一步」（本步已有产出），要么是「开始本步分析」
+// （还没产出，不能推进）。后者在只读核对里只做断言，不点。
+const canAdvance = (await nextBtn.count()) === 1;
+if (!canAdvance) {
+  ok(
+    "8 本步还没产出 → 主按钮位是「开始本步分析」，不提供推进",
+    (await startBtn.count()) === 1 && Boolean(await startBtn.getAttribute("title")),
+    `title=${String(await startBtn.getAttribute("title")).slice(0, 32)}…`,
+  );
+} else if (!ALLOW_MUTATE) {
+  ok(
+    "8 行末「下一步」按数据判定渲染（只读模式未点击）",
+    true,
+    (await nextBtn.isDisabled()) ? "当前未就绪→禁用" : "当前就绪→可点",
+  );
+} else if (!(await nextBtn.isDisabled())) {
   const before = await rail.locator(".flow-node--done").count();
-  await completeBtn.click();
+  await nextBtn.click();
   await page.waitForFunction(
     (n) => document.querySelectorAll(".flow-rail .flow-node--done").length > n,
     before,
@@ -173,7 +193,7 @@ if (!ALLOW_MUTATE) {
   );
   ok("8 点「下一步」→ 流程实际前移", true, `${before} → ${before + 1}`);
 } else {
-  ok("8 「下一步」按数据判定禁用（未就绪不可点）", true, hint.slice(0, 40));
+  ok("8 「下一步」按数据判定禁用（未就绪不可点）", true, String(await nextBtn.getAttribute("title")).slice(0, 40));
 }
 
 // 9. 用户要求的入口路径：新建**只输名称** → 自动弹出「场景定义」对话页

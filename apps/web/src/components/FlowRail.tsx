@@ -16,7 +16,10 @@
  *  - 就绪提示不单独占一行，改为按钮的悬停提示
  *  - **按钮位按数据换语义**（v1.20，用户定调「中栏不放按钮，上面有下一步」）：
  *    本步还没产出 → 这个位置是「开始本步分析」（跑完停在原步，看完再点「下一步」）；
- *    已产出但资料失效 → 「重算本步」；其余 → 「下一步」
+ *    已产出 → 多一个次级「重算本步」，主按钮位还给「下一步」
+ *  - **八步同形**（v1.23，用户定调「都与认识场景保持一致」）：第 1 步（确认步）的运行入口
+ *    以前挂在中栏（「场景定义对话」按钮 + 「回到这一步重跑」提示条），现与其它 7 步完全同形：
+ *    同一个位置、同一套按钮、同一套说法；回看历史步时多一个「回到这一步」（清完成标记）
  *  - 中栏调窄：关键词**永不隐藏**，先收紧间距，实在放不下时节点条横向可滚（按钮固定在最右）
  *
  * 无障碍：`role="tablist"` + `role="tab"` + `aria-selected`，左右方向键可移动；
@@ -26,44 +29,31 @@
 import React, { useCallback, useRef } from "react";
 import type { ApiFlowStatus } from "../api";
 
+/** 流程轴上的运行按钮（八步同形） */
+export interface RailRunAction {
+  running: boolean;
+  elapsedLabel: string;
+  /** 本步已有产出：主按钮位让给「下一步」，运行按钮降为次级「重算本步」 */
+  ready: boolean;
+  /** hover 说明（就绪提示只在流程轴出现，不占第二行） */
+  hint: string;
+  /** hover 覆盖：第 1 步要说清"点了会打开场景定义对话" */
+  title?: string;
+  /** 运行中的最新一行进度（只在当前步显示，回看历史步不显示） */
+  progress?: string;
+  onStart: () => void;
+}
+
 export interface FlowRailProps {
   status: ApiFlowStatus;
-  /** 当前正在看的步骤（可能是回看的已完成步骤） */
   activeStep: number;
-  onSelectStep: (step: number) => void;
-  /** 完成「当前步」并前进（就绪判定由 status 给出） */
+  busy: boolean;
+  onSelectStep: (id: number) => void;
   onComplete: () => void;
-  /** 请求进行中：动作按钮禁用，避免重复提交 */
-  busy?: boolean;
-  /**
-   * 本步还没产出/资料失效时，主按钮改为「跑分析」而不是「下一步」
-   *
-   * 中栏不再放分析按钮（用户定调），触发点就在这里。
-   */
-  analysis?: {
-    running: boolean;
-    elapsedLabel: string;
-    onStart: () => void;
-    /** 就绪提示（服务端给的人话） */
-    hint: string;
-    /** true = 已有产出，这次是重算 */
-    recompute: boolean;
-    /** 最新一行进度（运行中挂在按钮 title 上，鼠标悬停可见） */
-    progress?: string;
-  };
-  /**
-   * 「本步已产出、但用户想重跑一次」的次级入口（当前模型步专属）
-   *
-   * 主按钮位是「下一步」（用户定调：不再有第二个推进标签）；已产出的步要重跑，
-   * 就点这里——没有它的话，分析结果不理想时用户只能删库或回退才能重来。
-   */
-  recompute?: {
-    running: boolean;
-    elapsedLabel: string;
-    onStart: () => void;
-    /** 最新一行进度（运行中挂在按钮 title 上） */
-    progress?: string;
-  };
+  /** 运行本步（分析步 = 跑模型；第 1 步 = 打开场景定义对话） */
+  run?: RailRunAction;
+  /** 回看历史步时才有：回到这一步重跑（清该步及其后的完成标记，数据保留） */
+  reopen?: { title: string; onStart: () => void };
 }
 
 /** 步骤状态 → 节点样式后缀 */
@@ -80,8 +70,8 @@ export const FlowRail: React.FC<FlowRailProps> = ({
   onSelectStep,
   onComplete,
   busy = false,
-  analysis,
-  recompute,
+  run,
+  reopen,
 }) => {
   const nodeRefs = useRef<Record<number, HTMLButtonElement | null>>({});
 
@@ -135,40 +125,28 @@ export const FlowRail: React.FC<FlowRailProps> = ({
 
       {/* 行末动作：就绪提示进 title（不占第二行）；按钮不进 tablist，也不随节点滚动 */}
       <div className="flow-actions">
-          {recompute ? (
+          {/* 已有产出：运行按钮降为次级「重算本步」，主按钮位还给「下一步」 */}
+          {run?.ready ? (
             <button
               className="btn"
               type="button"
-              disabled={busy || recompute.running}
-              title={
-                recompute.running
-                  ? (recompute.progress ?? "分析进行中…")
-                  : "本步已经跑过一次：想换一版就重算（结果会覆盖本步表格）"
-              }
-              onClick={recompute.onStart}
+              disabled={busy || run.running}
+              title={run.running ? (run.progress ?? "分析进行中…") : (run.title ?? "本步已经跑过一次：想换一版就重算（结果会覆盖本步表格）")}
+              onClick={run.onStart}
             >
-              {recompute.running ? `分析中 ${recompute.elapsedLabel}` : "重算本步"}
+              {run.running ? `分析中 ${run.elapsedLabel}` : "重算本步"}
             </button>
           ) : null}
-          {analysis ? (
+
+          {run && !run.ready ? (
             <button
               className="btn primary"
               type="button"
-              disabled={busy || analysis.running}
-              title={
-                analysis.running
-                  ? (analysis.progress ?? "分析进行中…")
-                  : analysis.recompute
-                    ? `本步资料因上游改动失效：${analysis.hint}`
-                    : `${analysis.hint}——跑完停在这一步，看完结果再点「下一步」`
-              }
-              onClick={analysis.onStart}
+              disabled={busy || run.running}
+              title={run.running ? (run.progress ?? "分析进行中…") : (run.title ?? `${run.hint}——跑完停在这一步，看完结果再点「下一步」`)}
+              onClick={run.onStart}
             >
-              {analysis.running
-                ? `分析中 ${analysis.elapsedLabel}`
-                : analysis.recompute
-                  ? "重算本步"
-                  : "开始本步分析"}
+              {run.running ? `分析中 ${run.elapsedLabel}` : "开始本步分析"}
             </button>
           ) : (
             <button
@@ -185,6 +163,13 @@ export const FlowRail: React.FC<FlowRailProps> = ({
               下一步
             </button>
           )}
+
+          {/* 回看历史步：回到这一步重跑（清该步及其后的完成标记，数据保留） */}
+          {reopen ? (
+            <button className="btn" type="button" disabled={busy} title={reopen.title} onClick={reopen.onStart}>
+              回到这一步
+            </button>
+          ) : null}
           {reviewing ? (
             <button className="btn" type="button" onClick={() => onSelectStep(status.currentStep)}>
               回到当前步

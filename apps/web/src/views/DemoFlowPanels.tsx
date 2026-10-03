@@ -44,12 +44,15 @@ export interface DemoFirstStepProps {
   /** 就地编辑内容（本地内存，标为「用户补充」） */
   onAnchorEdit: (index: number, content: string) => void;
   onStageSnapshot?: (snap: StageSnapshot | null) => void;
+  /** 场景定义对话弹窗的开合（入口在流程轴，状态由 ProjectView 持有） */
+  definitionOpen?: boolean;
+  onDefinitionOpenChange?: (open: boolean) => void;
 }
 
 /**
  * 第 1 步「场景定义与边界」（演示）
  *
- * 与联真**同结构同文案**：中栏只有表1-1，表头右侧一个对话入口。
+ * 与联真**同结构同文案**：中栏只有表1-1；对话入口在**流程轴**上（八步同形）。
  */
 export const DemoFirstStep: React.FC<DemoFirstStepProps> = ({
   flow,
@@ -58,9 +61,11 @@ export const DemoFirstStep: React.FC<DemoFirstStepProps> = ({
   onConsolidated,
   onAnchorEdit,
   onStageSnapshot,
+  definitionOpen = false,
+  onDefinitionOpenChange,
 }) => {
   const step = flowStep(1);
-  const [dialogOpen, setDialogOpen] = useState(false);
+
 
   /** 回调经 ref 转发：快照 identity 只跟数据走（与联真同因） */
   const latest = useRef({ onAnchorEdit });
@@ -103,20 +108,15 @@ export const DemoFirstStep: React.FC<DemoFirstStepProps> = ({
         summary={anchorSummary(anchor)}
         defaultOpen
         onCellChange={handleCellChange}
-        actions={
-          <button className="btn" type="button" onClick={() => setDialogOpen(true)}>
-            场景定义对话
-          </button>
-        }
       />
 
       {/* 演示态：同一个定义对话弹窗，只是不发请求（demo 分支用本地预置对话与整理结果） */}
       <ScenarioDefinitionDialog
-        open={dialogOpen}
+        open={definitionOpen}
         projectId="demo"
         scenarioName={scenarioName}
         demo
-        onClose={() => setDialogOpen(false)}
+        onClose={() => onDefinitionOpenChange?.(false)}
         onConsolidated={onConsolidated}
       />
     </>
