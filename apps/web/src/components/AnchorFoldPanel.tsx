@@ -26,7 +26,6 @@ export interface AnchorFoldPanelProps {
   /** 就地编辑（联真落库 / 演示改内存）；不传即只读 */
   onCellChange?: (rowId: string, cell: string, value: string) => void;
   /** 表自身的动作（如第 1 步的「场景定义对话」入口），渲染在表头右侧 */
-  actions?: React.ReactNode;
 }
 
 export const AnchorFoldPanel: React.FC<AnchorFoldPanelProps> = ({
@@ -34,7 +33,6 @@ export const AnchorFoldPanel: React.FC<AnchorFoldPanelProps> = ({
   summary,
   defaultOpen = false,
   onCellChange,
-  actions,
 }) => {
   const [open, setOpen] = useState(defaultOpen);
   const bodyId = useId();
@@ -47,7 +45,6 @@ export const AnchorFoldPanel: React.FC<AnchorFoldPanelProps> = ({
           <h2>表1-1 场景概述{editable ? "（可就地编辑）" : ""}</h2>
         </div>
         <div className="pnl-actions">
-          {actions}
           <button
             type="button"
             className="btn-mini fold-toggle"
