@@ -79,6 +79,18 @@ function valuesOf(row: InfoRow, keys: readonly string[], n = 2): string {
   return out.join("·");
 }
 
+/**
+ * 权威性分布的文案（第一、第四节共用）
+ *
+ * v1.27 修：第四节原来只印 T1-T4，漏了「未标」——当整阶段都没标权威性时，
+ * 第四节会显示「T1 0 / T2 0 / T3 0 / T4 0；不同来源共 3 个」，自相矛盾。
+ */
+function authoritySummary(dist: Record<string, number>, unit = ""): string {
+  const parts = (["T1", "T2", "T3", "T4"] as const).map((k) => `${k} ${dist[k]}${unit}`);
+  if (dist["未标"]) parts.push(`未标 ${dist["未标"]}${unit}`);
+  return parts.join(" / ");
+}
+
 /** 来源权威性分布（T1-T4） */
 function authorityDistribution(rows: readonly InfoRow[]): Record<string, number> {
   const dist: Record<string, number> = { T1: 0, T2: 0, T3: 0, T4: 0, 未标: 0 };
@@ -181,7 +193,7 @@ export function buildStageSummary(input: StageSummaryInput): string {
   L.push("");
   L.push(
     `共获得 **${tables.length} 张表 / ${rows.length} 行**信息（其中 ${input.completeness.tablesWithData} 张表已有数据）；` +
-      `来源分布 T1 ${dist["T1"]} / T2 ${dist["T2"]} / T3 ${dist["T3"]} / T4 ${dist["T4"]}${dist["未标"] ? ` / 未标 ${dist["未标"]}` : ""}；` +
+      `来源分布 ${authoritySummary(dist)}；` +
       `标注为 C 级假设的条目 ${assumptions.length} 条、系统推断条目 ${inferred.length} 条。`,
   );
   L.push("");
@@ -264,7 +276,7 @@ export function buildStageSummary(input: StageSummaryInput): string {
     L.push("- 每条信息的核实理由（**准确**：对得上哪份材料、能否复算；**客观**：事实还是推断、谁的口径、有无利益相关方；**为什么**：凭什么采信、哪里不确定）见各表「核实说明」列。");
     if (sources.length > 0) {
       L.push(
-        `- 来源分布：T1 ${dist["T1"]} 条 / T2 ${dist["T2"]} 条 / T3 ${dist["T3"]} 条 / T4 ${dist["T4"]} 条；不同来源共 ${sources.length} 个`,
+        `- 来源分布：${authoritySummary(dist, " 条")}；不同来源共 ${sources.length} 个`,
       );
     } else {
       L.push("- 来源分布：本步尚未带来源的信息（来源是硬要求，见第五节待补清单）");

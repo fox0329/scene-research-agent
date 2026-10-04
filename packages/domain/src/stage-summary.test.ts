@@ -138,6 +138,15 @@ describe("stage-summary — 阶段级六段骨架（交付物装配口径）", (
     expect(md).not.toMatch(/建议抽查/);
   });
 
+  it("四、核实结论的来源分布带上「未标」（否则全 0 与「共 N 个来源」自相矛盾）", () => {
+    // 夹具里的行没有权威性字段 → 应显示「未标」
+    const seg = summaryFor();
+    const i = seg.indexOf("## 四、核实结论");
+    const section = seg.slice(i, seg.indexOf("## 五、"));
+    expect(section).toContain("未标");
+    expect(section).not.toMatch(/T1 0 条 \/ T2 0 条 \/ T3 0 条 \/ T4 0 条；不同来源共 [1-9]/);
+  });
+
   it("五、待补齐信息来自完整度报告", () => {
     expect(md).toContain("尚无数据");
     expect(md).toContain("表2-2 场景要素清单：尚无数据");
