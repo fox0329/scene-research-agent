@@ -236,6 +236,14 @@ async function generateOneTable(
   });
   progress(`正在生成 ${label}…`);
 
+  /**
+   * 流一次并返回原始文本（不做解析）
+   *
+   * 抽出来是为了失败重试：实跑里出现过"某张表这次没成功"（模型只吐 81 字、
+   * 或吐了 4.5k 字却解析不出行），而重新跑整步要 5 分钟、还会把其它 8 张表一起重生成。
+   * 单表原样重试一次，成本只与真失败的张数成正比。
+   */
+  async function streamOnce(): Promise<{ text: string; error?: string }> {
   let text = "";
   try {
     const stream = d.dshClient.prompt(d.session, {
@@ -267,33 +275,54 @@ async function generateOneTable(
       }
       if (event.type === "error") {
         return {
-          code,
-          rows: [],
-          chars: text.length,
+          text,
           error: `${label}：${String((event as FollowEvent)["message"] ?? "模型调用出错")}`,
         };
       }
       if (event.type === "done" && (event as { finishReason?: string }).finishReason === "length") {
-        return { code, rows: [], chars: text.length, error: `${label} 的输出被长度上限截断，请重试` };
+        return { text, error: `${label} 的输出被长度上限截断，请重试` };
       }
     }
   } catch (err: unknown) {
-    return {
-      code,
-      rows: [],
-      chars: text.length,
-      error: `${label} 调用失败：${err instanceof Error ? err.message : String(err)}`,
-    };
+    return { text, error: `${label} 调用失败：${err instanceof Error ? err.message : String(err)}` };
+  }
+    return { text };
   }
 
-  dumpRawOutput(d.stage, text, code);
-  const parsed = parseDshOutput(text);
-  // 只认本表自己的行：模型多写别的表号时按表归位，避免重复入库
-  const rows = parsed.rows.filter((r) => String(r.table_code) === code);
-  if (rows.length === 0) {
-    return { code, rows: [], chars: text.length, error: `${label} 没有产出可解析的行` };
+  /** 解析一次输出；解析不出本表的行时返回 null（由调用方决定是否重试） */
+  // 返回类型跟着 parseDshOutput 走（原始行形状），不要写成 InfoRow——那是落库后的形状
+  const parseOnce = (text: string) => {
+    const parsed = parseDshOutput(text);
+    // 只认本表自己的行：模型多写别的表号时按表归位，避免重复入库
+    const rows = parsed.rows.filter((r) => String(r.table_code) === code);
+    return rows.length > 0 ? rows : null;
+  };
+
+  const first = await streamOnce();
+  dumpRawOutput(d.stage, first.text, code, { failed: !parseOnce(first.text) });
+  if (first.error) {
+    dumpRawFailure(code, d.stage, first.text, first.error);
+    return { code, rows: [], chars: first.text.length, error: first.error };
   }
-  return { code, rows, chars: text.length };
+  const rows = parseOnce(first.text);
+  if (rows) return { code, rows, chars: first.text.length };
+
+  /**
+   * 解析不出行 → 原样重试一次（只这一张表；实跑里 81 字/无 JSON 的失败重试后能出结果）
+   *
+   * 失败必须留证：原始输出按表落盘（含"开头 200 字"写进提示），
+   * 否则事后只有一句"没有产出可解析的行"，连模型吐了什么都查不到（这是实跑踩过的坑）。
+   */
+  progress(`${label} 没产出可解析的行，重试一次…`);
+  const second = await streamOnce();
+  dumpRawOutput(d.stage, second.text, code, { failed: !parseOnce(second.text) });
+  const retried = second.error ? null : parseOnce(second.text);
+  if (retried) return { code, rows: retried, chars: second.text.length };
+
+  const detail = describeUnparseable(second.text || first.text);
+  const reason = `${label} 没有产出可解析的行（重试一次仍未成功。模型输出${detail}）`;
+  dumpRawFailure(code, d.stage, second.text || first.text, reason);
+  return { code, rows: [], chars: (second.text || first.text).length, error: reason };
 }
 
 export function createAdvanceStageCommand(deps: AdvanceStageDeps) {
@@ -869,23 +898,52 @@ export function collectUpstreamData(
 
 // ─── DSH 输出解析 ──────────────────────────────────────────
 
-/**
- * 把模型原始输出落盘留证（`SCENE_DUMP_RAW_DIR=/tmp/xxx` 时生效）
- *
- * 解析失败时最需要的就是"模型到底吐了什么"——之前没有任何留证，只能靠猜
- * （截断？截断在哪？）。默认关闭，排查时打开。
- */
-function dumpRawOutput(stage: number, text: string, code?: string): void {
-  const dir = process.env["SCENE_DUMP_RAW_DIR"];
-  if (!dir) return;
+/** 原始输出落盘的目录：默认落 `data/raw-output/`（相对仓库根），可用 `SCENE_DUMP_RAW_DIR` 覆盖 */
+function rawDumpDir(): string {
+  return process.env["SCENE_DUMP_RAW_DIR"] ?? join(process.cwd(), "data", "raw-output");
+}
+
+function writeRawDump(kind: string, stage: number, text: string, code?: string): void {
   try {
+    const dir = rawDumpDir();
     mkdirSync(dir, { recursive: true });
     const stamp = new Date().toISOString().replace(/[:.]/g, "-");
     const tag = code ? `${stage}-${code.replace(/[^\w\u4e00-\u9fa5-]/g, "")}` : String(stage);
-    writeFileSync(join(dir, `stage-${tag}-${stamp}.txt`), text, "utf8");
+    writeFileSync(join(dir, `${kind}-${tag}-${stamp}.txt`), text, "utf8");
   } catch {
     /* 留证失败不影响分析 */
   }
+}
+
+/**
+ * 把模型原始输出落盘留证
+ *
+ * 排查时要看"模型到底吐了什么"，但每次都存会把盘写满：
+ *  - 默认只存**解析失败的**（外加 `SCENE_DUMP_RAW_DIR` 打开时存全部）；
+ *  - 解析失败时最需要这段文本——实跑里出现过"模型只吐 81 字"与"吐了 4.5k 字却解析不出行"
+ *    两种失败，事后没有任何留证，连是什么都查不到。
+ */
+function dumpRawOutput(
+  stage: number,
+  text: string,
+  code?: string,
+  opts: { failed?: boolean } = {},
+): void {
+  const on = process.env["SCENE_DUMP_RAW_DIR"] !== undefined || opts.failed;
+  if (!on) return;
+  writeRawDump(opts.failed ? "fail" : "raw", stage, text, code);
+}
+
+/** 解析失败单独留证（带失败原因），与上面的原始 dump 区分开，便于一眼找到出问题的表 */
+function dumpRawFailure(code: string, stage: number, text: string, reason: string): void {
+  writeRawDump("fail", stage, `# ${reason}\n\n${text}`, code);
+}
+
+/** 把"解析不出行"的输出开头摘出来，写进给用户看的提示里（不许只说"没产出"） */
+function describeUnparseable(text: string): string {
+  const head = text.trim().replace(/\s+/g, " ").slice(0, 120);
+  if (head === "") return "为空";
+  return `开头是「${head}」`;
 }
 
 /**

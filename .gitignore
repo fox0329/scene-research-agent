@@ -38,3 +38,6 @@ dist/
 # 百度云同步产生的临时文件（不是项目产物）
 .baiduyun.uploading.cfg
 **/.baiduyun.uploading.cfg
+
+# 模型原始输出留证（解析失败必存；排查用，不进版本库）
+data/raw-output/

@@ -1049,6 +1049,53 @@ describe("createAdvanceStageCommand", () => {
       expect(events.at(-1)!.type).toBe("done");
     });
 
+    it("一张表解析不出行时自动重试一次：重试成功就照常落库，不再丢掉这 5 分钟", async () => {
+      // 实跑：表3-5 只吐 81 字、表3-6 吐 4.5k 字却解析不出行 → 用户得整步重跑（5 分钟）
+      const sample = makeStage1DshOutput();
+      let calls = 0;
+      const attemptFailures = new Set<string>();
+      dshClient = {
+        createSession: vi.fn(async () => ({ sessionId: "mock-session-stage" })),
+        prompt: vi.fn(async function* (
+          _h: unknown,
+          input: { outputContract: Record<string, unknown> },
+        ): AsyncGenerator<FollowEvent> {
+          const allowed = allowedTablesOf(input.outputContract);
+          const code = String(allowed[0] ?? "");
+          calls += 1;
+          // 第一次问 表2-2：回一句废话（解析不出行）；第二次问才回该表的行
+          if (code === "表2-2" && !attemptFailures.has(code)) {
+            attemptFailures.add(code);
+            yield { type: "text", text: "抱歉，这一张我暂时给不出结构化结果。" };
+            yield { type: "done" };
+            return;
+          }
+          const rows = sample.rows.filter((r) => allowed.includes(String(r["table_code"])));
+          yield { type: "text", text: JSON.stringify({ rows }) };
+          yield { type: "done" };
+        }),
+        cancel: vi.fn(async () => {}),
+      } as unknown as DshClient;
+      deps = { db, dshClient };
+
+      const events = await collectEvents(
+        createAdvanceStageCommand(deps).execute({ scenarioId: "sc-1", stage: 1 }),
+      );
+
+      const done = events.find((e) => e.type === "done") as { tablesFailed?: string[] };
+      // 重试成功 → 表2-2 不算失败（样本里本来就没覆盖的阶段 1 表不在此列）
+      expect(done.tablesFailed ?? []).not.toContain("表2-2");
+      const progress = events.filter((e) => e.type === "progress").map((e) => String(e.message));
+      expect(progress.some((m) => m.includes("没产出可解析的行，重试一次"))).toBe(true);
+      // 表2-2 被问了两次（首发 + 重试），且最终落库
+      expect(attemptFailures.has("表2-2")).toBe(true);
+      expect(calls).toBeGreaterThan(0);
+      const written = (db.stageDataRepo.insert as ReturnType<typeof vi.fn>).mock.calls.map((c) =>
+        String((c[0] as { table_code?: string }).table_code),
+      );
+      expect(written).toContain("表2-2");
+    });
+
     it("单张表失败不拖垮整步：其余表照常落库，失败表沿用原有内容并明确报出", async () => {
       // 样本里故意缺 表2-2 的行 → 该表这次没有产出
       const partial = makeStage1DshOutput();
