@@ -29,6 +29,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 // 复用项目自己的数据层（better-sqlite3 是 @scene/infra 的依赖，从根目录解析不到）
 import { createDb } from "../packages/infra/dist/index.js";
+import { snapshotDb } from "./lib/sqlite-snapshot.mjs";
 import { TABLES_BY_CODE } from "../packages/contract/dist/tables.js";
 
 const dbPath = process.env.DB_PATH ?? "data/scene-master.db";
@@ -87,7 +88,7 @@ function main() {
   let tmpCopy = null;
   if (!apply) {
     tmpCopy = join(tmpdir(), `scene-anchor-dry-${Date.now()}.db`);
-    copyFileSync(workPath, tmpCopy);
+    snapshotDb(workPath, tmpCopy); // 一致快照：只拷主文件会漏掉 WAL 里未落盘的写入
     workPath = tmpCopy;
   }
 
@@ -227,7 +228,7 @@ function main() {
 
   const now = new Date().toISOString();
   const backup = `${dbPath}.bak-${Date.now()}`;
-  copyFileSync(dbPath, backup);
+  snapshotDb(dbPath, backup); // 备份也走快照，否则备份里少最新数据
   console.log(`\n已备份数据库：${backup}`);
 
   const tx = db.transaction(() => {

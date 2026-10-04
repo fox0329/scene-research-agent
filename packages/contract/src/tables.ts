@@ -1,7 +1,7 @@
 /**
  * @scene/contract — 表定义注册表（单一事实源）
  *
- * 本文件是 35 张信息表的**唯一事实源**：表号、名称、阶段、级别、行粒度、列定义、
+ * 本文件是 36 张信息表的**唯一事实源**：表号、名称、阶段、级别、行粒度、列定义、
  * 栏位分配（中栏 / 右栏补充）、枚举、完整度规则。
  *
  * 派生关系（三处共用同一份定义，不再各写一遍）：
@@ -44,6 +44,12 @@ export const ENUMS = {
   optional_category: ["O1认证", "O2案例", "O3价格与授权", "O4开发资料", "O5路线图", "O6交付与生态"],
   element_type: ["硬件", "软件", "服务"],
   competition: ["高", "中", "低", "未知"],
+  /** 上游供给集中度（表3-5）：这一环是少数几家说了算，还是谁都能做 */
+  concentration: ["高度集中（1-2 家）", "较集中（3-5 家）", "分散（多家可选）", "未知"],
+  /** 可替代性（表3-5）：换供应商的代价 */
+  substitutability: ["多家可替代", "少数可替代", "难以替代（需重新认证）", "单一来源", "未知"],
+  /** 议价权（表3-5）：这一环的价格是谁定的 */
+  bargaining: ["在供给方", "在采购方", "相对均衡", "未知"],
   has_plan: ["有", "无", "未定"],
   fix_status: ["已修复", "修复中", "无计划", "硬件限制"],
   visibility: ["可提", "内部可提", "不可提"],
@@ -241,7 +247,7 @@ export const STAGE_DEFS: readonly StageDef[] = [
     name: "理解商业",
     producedBy: "模型分析",
     goal: "钱怎么分、有哪些方案形态、客户怎么买、对手位势、替代方案与价格、别人踩过的坑、没被满足的需求、行业趋势",
-    tableCodes: ["表3-1", "表3-2", "表3-3", "表3-4", "表3-6", "表3-7", "表3-8", "表3-9"],
+    tableCodes: ["表3-1", "表3-2", "表3-3", "表3-4", "表3-5", "表3-6", "表3-7", "表3-8", "表3-9"],
     summaryTitle: "③ 商业格局总结",
   },
   {
@@ -810,6 +816,26 @@ const TABLES_STAGE_2: readonly TableDef[] = [
     consumedBy: [3],
   },
   {
+    code: "表3-5",
+    name: "上游供给格局",
+    stage: 2,
+    tier: "重要",
+    rowUnit: "一个上游环节（关键器件 / 材料 / 基础软件 / 集成服务）",
+    purpose: "这个场景的上游是谁在供、集不集中、能不能换、交期撑不撑得住、有没有被卡的风险",
+    columns: [
+      mid("link", "上游环节", { required: true, note: "如：气体传感器、边缘控制器、通信模组、平台软件、集成实施" }),
+      mid("who_supplies", "主要供给方", { required: true, note: "写厂商/产品名或「多家分散、无主导厂商」；不许只写「供应商」" }),
+      mid("concentration", "供给集中度", { required: true, enum: "concentration", note: "这一环是少数几家说了算，还是谁都能做" }),
+      mid("substitutability", "可替代性", { required: true, enum: "substitutability", note: "换供应商的代价：能不能换、换谁、要不要重新认证" }),
+      mid("bargaining", "议价权在谁", { required: true, enum: "bargaining", note: "这一环的价格是谁定的" }),
+      mid("supply_risk", "被卡点", { required: true, type: "longText", truncate: TRUNCATE_DEFAULT, note: "交期/产能/单一来源/认证绑定/国产化替代——这一环最容易卡在哪" }),
+      sup("no", "编号"),
+      sup("source", "来源", { required: true }),
+    ],
+    completeness: ["≥3 个上游环节（覆盖关键器件、基础软件、集成服务）", "link/who_supplies/supply_risk 非空", "每条有来源"],
+    consumedBy: [4, 5],
+  },
+  {
     code: "表3-6",
     name: "替代方案与价格对照",
     stage: 2,
@@ -830,20 +856,21 @@ const TABLES_STAGE_2: readonly TableDef[] = [
   },
   {
     code: "表3-7",
-    name: "失败反模式",
+    name: "同行踩过的坑",
     stage: 2,
     tier: "支撑",
-    rowUnit: "一个失败原因",
-    purpose: "别人踩过的坑，供方案设计规避",
+    rowUnit: "一个坑（一条会被踩到的事）",
+    purpose: "同行在这类项目上踩过的坑，以及我们方案里怎么避（写成硬指标，不是口头承诺）",
     columns: [
-      mid("failure_reason", "失败原因", { required: true }),
-      mid("root_cause", "根因", { type: "longText", truncate: TRUNCATE_DEFAULT }),
-      mid("design_implication", "对方案设计的含义", { required: true, type: "longText", truncate: TRUNCATE_DEFAULT }),
+      mid("pitfall", "坑（现场会发生什么）", { required: true, note: "写具体场面：谁在什么环节干了什么、结果出了什么事" }),
+      mid("consequence", "后果（钱·工期·安全）", { required: true, type: "longText", truncate: TRUNCATE_DEFAULT, note: "落到钱、工期、安全、口碑——不写「影响较大」这类空话" }),
+      mid("avoid_in_design", "我们方案里怎么避", { required: true, type: "longText", truncate: TRUNCATE_DEFAULT, note: "写成可验收的硬指标或交付条款（如「验收含批量交付节拍」），不写「加强管理」" }),
       sup("no", "编号"),
-      sup("symptom", "表现"),
+      sup("symptom", "表现（现场细节）"),
+      sup("root_cause", "根因"),
       sup("source", "来源", { required: true }),
     ],
-    completeness: ["≥2 条", "failure_reason/design_implication 非空", "每条有来源"],
+    completeness: ["≥2 条", "pitfall/consequence/avoid_in_design 非空", "每条有来源"],
     consumedBy: [4],
   },
   {
@@ -1440,8 +1467,12 @@ export function columnBudgetViolations(): readonly { code: string; count: number
 export function registryIssues(): readonly string[] {
   const issues: string[] = [];
 
-  // 表数
-  if (TABLES.length !== 35) issues.push(`表数应为 35，实际 ${TABLES.length}`);
+  // 表数：由阶段表集求和推导——写死数字就要在两处同步，漏一处守卫就形同虚设
+  // （v1.29 加表3-5 时正是这样：这里还写着 35，测试却按注册表算 36）
+  const declared = STAGE_DEFS.reduce((n, s) => n + s.tableCodes.length, 0);
+  if (TABLES.length !== declared) {
+    issues.push(`表数应为 ${declared}（阶段表集求和），实际 ${TABLES.length}`);
+  }
 
   // 表号唯一
   const seen = new Set<string>();

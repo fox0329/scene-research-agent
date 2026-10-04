@@ -37,7 +37,7 @@ describe("flow — 流程定义（取自注册表）", () => {
   });
 
   it("步骤表集与注册表一致（不重抄表号）", () => {
-    expect(flowStep(3).tables).toEqual(["表3-1", "表3-2", "表3-3", "表3-4", "表3-6", "表3-7", "表3-8", "表3-9"]);
+    expect(flowStep(3).tables).toEqual(["表3-1", "表3-2", "表3-3", "表3-4", "表3-5", "表3-6", "表3-7", "表3-8", "表3-9"]);
     expect(flowStep(7).tables).toEqual(["表7-1"]);
     expect(flowStep(8).tables).toEqual([]);
   });
