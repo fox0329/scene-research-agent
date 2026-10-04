@@ -252,11 +252,16 @@ export type {
 export {
   runDeterministicPostcheck,
   enforceTruthfulDowngrade,
+  enforceMidCleanliness,
   summarizePostcheck,
   parseCitations,
   keyPhrases,
+  splitMidCitations,
+  hasMidCitation,
+  MID_CELL_MAX_CHARS,
 } from "./postcheck.js";
 export type {
+  MidSweepResult,
   PostcheckFinding,
   PostcheckInput,
   PostcheckKind,

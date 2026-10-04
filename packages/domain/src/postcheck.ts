@@ -17,7 +17,7 @@
  * 必须回答的问题清单，并负责最后一轮的确定性收口。
  */
 
-import { TABLES_BY_CODE } from "@scene/contract";
+import { TABLES_BY_CODE, middleColumns } from "@scene/contract";
 import type { InfoRow } from "./completeness.js";
 
 // ─── 类型 ────────────────────────────────────────────────
@@ -29,7 +29,9 @@ export type PostcheckKind =
   | "结论与证据矛盾"
   | "绝对化措辞"
   | "把推断写成客户事实"
-  | "价值不可验证";
+  | "价值不可验证"
+  | "中栏夹带出处"
+  | "中栏太长";
 
 export type PostcheckSeverity = "硬伤" | "存疑";
 
@@ -126,6 +128,101 @@ const GENERAL_VERDICTS: readonly string[] = ["行业通例", "无法核实", "�
 
 /** 硬伤类结论：模型没改掉就必须降级，不许继续挂"已核实" */
 const CLAIMED_VERIFIED = "已核实";
+
+/**
+ * 中栏内容格的位置上限（用户定调 v1.32：「要简要说价值，说结果」）
+ *
+ * 数字是拍的，但拍得有依据：实测智慧会议室阶段 3-4 有 28% 的格子在 60–296 字之间，
+ * 一格里塞了三件事 + 引用，读的人根本抓不到结论。
+ */
+export const MID_CELL_MAX_CHARS = 60;
+
+/**
+ * 中栏内容格里**不该出现**的引用痕迹（确定性判据，不靠模型自觉）
+ *
+ * 用户原话：「大量的文字在说明来源，我认为中栏的表格，要说价值，说结果，
+ * 来源、引用什么的可以放到右栏」。这些痕迹一律搬到右栏 `source`。
+ */
+const MID_CITATION_PATTERNS: readonly RegExp[] = [
+  // 文件名:页码 —— **必须第一个匹配**，整块吃掉（含 ingest- 前缀），
+  // 否则先把 `ingest-1` 摘掉会剩一个光秃秃的 `.pdf:2`（实跑踩过）
+  /[^\s，,；;、：:（）()「」【】]*\.(?:pdf|pptx|docx|xlsx|txt|md|csv|png|jpe?g)(?::\d+(?:[,\-–]\d+)*)?/gi,
+  /ingest-[0-9A-Za-z_-]+/g, // 没带扩展名的材料 id
+  /(?:来源|出处|摘自|参见|见附件|依据材料)\s*[：:]/g, // 「来源：…」
+  /[（(]\s*[MO]\s*[1-6]\s*[)）]/g, // （M5）（O2）
+  /\b[MO][1-6]_[\u4e00-\u9fa5A-Za-z]+/g, // M1_产品型号
+  /第\s*\d+\s*页/g,
+  /(?:材料|文档|资料)(?:中|里)?(?:未|没有|未见|未含)/g, // 材料未提供 / 文档里没有
+  /(?:文档|材料)未(?:说明|提及|提供|给出)/g,
+  /未见材料|材料未含|未查到材料/g,
+  /按\s*(?:XX|某)?(?:白皮书|报告|标准|材料)/g,
+];
+
+/** 句子切分：按中文句读切开，逐句判断是"纯引用"还是"正文夹带引用" */
+function splitSentences(text: string): string[] {
+  return text
+    .split(/(?<=[。；;!?！？\n])/)
+    .map((x) => x.trim())
+    .filter((x) => x !== "");
+}
+
+/** 这句是不是**只在说出处**（去掉引用痕迹后剩不下几个字） */
+function isCitationOnly(sentence: string): boolean {
+  const stripped = stripCitationMarks(sentence).replace(/[\s，,。.、；;：:（）()·—\-「」【】]/g, "");
+  return stripped.length <= 2;
+}
+
+/** 摘掉句子里夹带的引用痕迹（保留正文） */
+function stripCitationMarks(sentence: string): string {
+  let out = sentence;
+  for (const re of MID_CITATION_PATTERNS) out = out.replace(re, " ");
+  return out
+    .replace(/[（(]\s*[)）]/g, " ")
+    .replace(/\s*[，,；;]\s*(?=[，,；;。])/g, "")
+    .replace(/\s{2,}/g, " ")
+    // 摘掉引用后常留下「空格 + 中文标点」的疤（实跑：`量产交付 。`），一并收掉
+    .replace(/\s+([，,。；;：:、）)】」》])/g, "$1")
+    .replace(/([（(【「《])\s+/g, "$1")
+    .replace(/^[，,、；;：:\s]+|[，,、；;：:\s]+$/g, "")
+    .trim();
+}
+
+/**
+ * 把一个中栏内容格拆成「正文」+「被搬走的引用」
+ *
+ * 规则：纯引用的句子整句搬走；正文里夹带的引用片段摘掉、正文留下
+ * （**只摘引用痕迹，不删正文**——正文是用户的资产，宁可不动）。
+ */
+export function splitMidCitations(text: string): { cleaned: string; moved: string[] } {
+  const moved: string[] = [];
+  const kept: string[] = [];
+  for (const sentence of splitSentences(text)) {
+    if (isCitationOnly(sentence)) {
+      moved.push(sentence);
+      continue;
+    }
+    const cleaned = stripCitationMarks(sentence);
+    if (cleaned !== sentence.replace(/[\s]+$/, "")) moved.push(sentence);
+    if (cleaned !== "") kept.push(cleaned);
+  }
+  return { cleaned: kept.join(" ").trim(), moved };
+}
+
+/** 这一格夹带了出处吗 */
+export function hasMidCitation(text: string): boolean {
+  for (const re of MID_CITATION_PATTERNS) {
+    re.lastIndex = 0;
+    if (re.test(text)) return true;
+  }
+  return false;
+}
+
+/** 表的中栏列 key（含类别子表的列） */
+function midKeysOf(code: string): string[] {
+  const t = TABLES_BY_CODE[code];
+  if (!t) return [];
+  return middleColumns(t).map((c) => c.key);
+}
 
 // ─── 出处解析 ────────────────────────────────────────────
 
@@ -306,6 +403,37 @@ export function runDeterministicPostcheck(input: PostcheckInput): PostcheckFindi
       }
     }
 
+    // ⑦ 中栏说结果：内容格里不许夹带出处/引用（用户定调 v1.32「来源、引用什么的可以放到右栏」）
+    const midKeys = midKeysOf(r.tableCode);
+    const citedCells: string[] = [];
+    const longCells: string[] = [];
+    for (const key of midKeys) {
+      const v = r.row[key];
+      if (typeof v !== "string" || v.trim() === "") continue;
+      if (hasMidCitation(v)) citedCells.push(key);
+      if (v.trim().length > MID_CELL_MAX_CHARS) longCells.push(`${key}（${v.trim().length} 字）`);
+    }
+    if (citedCells.length > 0) {
+      findings.push({
+        tableCode: r.tableCode,
+        rowId: r.rowId,
+        label: r.label,
+        kind: "中栏夹带出处",
+        detail: `中栏这些格子里在讲来源/引用：${citedCells.join("、")}——出处搬右栏，格子只留结论与结果`,
+        severity: "存疑",
+      });
+    }
+    if (longCells.length > 0) {
+      findings.push({
+        tableCode: r.tableCode,
+        rowId: r.rowId,
+        label: r.label,
+        kind: "中栏太长",
+        detail: `中栏超过 ${MID_CELL_MAX_CHARS} 字：${longCells.join("、")}——一格只说一件事，压到一句话`,
+        severity: "存疑",
+      });
+    }
+
     // ⑥ 有价值：价值类表的收益必须"可验证"（有指标、有本客户基线）
     if (isValueTable(r.tableCode)) {
       const metric = String(r.row["metric"] ?? "").trim();
@@ -403,6 +531,49 @@ export function enforceTruthfulDowngrade(
       note,
       ...(noProvenance ? { sourceType: "AI推断" as const } : {}),
     });
+  }
+  return out;
+}
+
+/**
+ * 三轮之后仍未清掉的「中栏夹带出处」：确定性搬走（不靠模型自觉）
+ *
+ * 为什么必须兜底：模型改了四轮也可能照旧把「（M5）」「ingest-xxx.pdf:3」写进内容格，
+ * 而用户要的是**中栏说结果、右栏说来源**——这是版面口径，不能靠模型发挥。
+ * 只搬引用痕迹，**正文一个字不删**；搬空的格子留给完整度规则去报缺（不塞"待补"糊弄过去）。
+ */
+export interface MidSweepResult {
+  rowId: string;
+  row: InfoRow;
+  /** 被搬进右栏的引用片段数 */
+  movedCount: number;
+  /** 内容被搬空的中栏列（这些列现在没结果，要靠重填） */
+  emptied: string[];
+}
+
+export function enforceMidCleanliness(rows: readonly PostcheckRow[]): MidSweepResult[] {
+  const out: MidSweepResult[] = [];
+  for (const r of rows) {
+    const midKeys = midKeysOf(r.tableCode);
+    if (midKeys.length === 0) continue;
+    // InfoRow 的索引签名是只读的（防止下游误改契约字段），这里在本地可变副本上做清洗
+    const next: Record<string, unknown> = { ...r.row };
+    const moved: string[] = [];
+    const emptied: string[] = [];
+    for (const key of midKeys) {
+      const v = next[key];
+      if (typeof v !== "string" || v.trim() === "" || !hasMidCitation(v)) continue;
+      const { cleaned, moved: parts } = splitMidCitations(v);
+      next[key] = cleaned;
+      moved.push(...parts);
+      if (cleaned === "") emptied.push(key);
+    }
+    if (moved.length === 0 && emptied.length === 0) continue;
+    // 引用一条都不许丢：并进右栏「来源」（已存在就接在后面）
+    const prevSource = String(r.source ?? "").trim();
+    const addSource = moved.join("；");
+    if (addSource !== "") next["source"] = prevSource === "" ? addSource : `${prevSource}；${addSource}`;
+    out.push({ rowId: r.rowId, row: next as InfoRow, movedCount: moved.length, emptied });
   }
   return out;
 }

@@ -80,6 +80,32 @@ describe("表定义注册表 — 列预算（中栏 ≤6 列）", () => {
     }
   });
 
+  it("出处/引用类列一律右栏（中栏只说结果——用户定调 v1.32）", () => {
+    // 来源、出处、证据等级、权威性、证明材料：都是「引用」，不能占中栏（中栏要说价值、说结果）
+    const provenanceKeys = [
+      "source",
+      "evidence_level",
+      "authority",
+      "proof",
+      "data_source",
+      "gap_source",
+      "source_authority",
+    ];
+    for (const t of TABLES) {
+      for (const g of middleColumnGroups(t)) {
+        for (const c of g.cols) {
+          expect(provenanceKeys, `${t.code} ${g.label}.${c.key}`).not.toContain(c.key);
+        }
+      }
+    }
+  });
+
+  it("表5-1 架构与接口不带工作量列（工作量口径只在表5-3「人天」）", () => {
+    const t = tableDef("表5-1");
+    expect(t.columns.map((c) => c.key)).not.toContain("effort");
+    expect(t.completeness.join()).toContain("接口块三项非空");
+  });
+
   it("多子块表（成本估算 / 方案架构）每个子块中栏列 ≤ 上限", () => {
     for (const code of ["表5-5", "表5-1"]) {
       const byBlock = middleColumnsByBlock(tableDef(code));

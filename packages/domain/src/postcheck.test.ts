@@ -4,6 +4,10 @@ import {
   keyPhrases,
   runDeterministicPostcheck,
   enforceTruthfulDowngrade,
+  enforceMidCleanliness,
+  splitMidCitations,
+  hasMidCitation,
+  MID_CELL_MAX_CHARS,
   summarizePostcheck,
   type PostcheckRow,
   type SourceLookup,
@@ -289,5 +293,63 @@ describe("postcheck — 报告", () => {
     expect(rep.openFindings).toHaveLength(10);
     // 三轮会反复判出同一处问题，统计必须按「行+类型」去重（否则 20 行会统计成 80）
     expect(rep.byKind["结论与证据矛盾"]).toBe(12);
+  });
+});
+
+describe("postcheck — 中栏说结果、来源归右栏（v1.32）", () => {
+  it("识别中栏里的引用痕迹：材料 id / 文件名页码 / （M5）/ 材料未提供", () => {
+    expect(hasMidCitation("6TOPS NPU 可集成霉变检测（ingest-1790179276611-30.pdf:30）")).toBe(true);
+    expect(hasMidCitation("CT15 无 NPU、不支持 AI 推理（M5）")).toBe(true);
+    expect(hasMidCitation("来源：ingest-1.docx:7")).toBe(true);
+    expect(hasMidCitation("依赖边缘本地运维平台，需局域网访问设备 IP")).toBe(false);
+  });
+
+  it("拆格：纯引用的句子整句搬走，正文里夹带的引用片段只摘引用、正文一字不删", () => {
+    const r = splitMidCitations(
+      "已有 42 个产品型号量产交付（M1_产品型号 ingest-1.pdf:2）。依赖 NPU 硬件，CT15 无 NPU。",
+    );
+    expect(r.cleaned).toBe("已有 42 个产品型号量产交付。 依赖 NPU 硬件，CT15 无 NPU。");
+    expect(r.moved.join("")).toContain("ingest-1.pdf:2");
+    // 正文里的关键结论必须还在
+    expect(r.cleaned).toContain("42 个产品型号量产交付");
+    expect(r.cleaned).toContain("依赖 NPU 硬件");
+  });
+
+  it("中栏夹带出处 / 中栏太长 → 点名（存疑，交给第 2 轮改写）", () => {
+    const long = "按 10 间会议室各 1 套的参考规模，单价区间 1,500~4,000 元/套，取 2,500 元为量级参考，非厂商报价，另需考虑安装调试与三年维保";
+    const findings = runDeterministicPostcheck({
+      rows: [
+        row({ tableCode: "表5-5", rowId: "r9", label: "CT15", row: { item: long, note: "见 ingest-1.pdf:3" } }),
+      ],
+      lookup: fakeLookup({ "ingest-1.pdf:3": ["x"] }),
+    });
+    expect(findings.some((f) => f.kind === "中栏夹带出处")).toBe(true);
+    expect(findings.some((f) => f.kind === "中栏太长")).toBe(true);
+    expect(long.length).toBeGreaterThan(MID_CELL_MAX_CHARS);
+  });
+
+  it("确定性收口：残留引用搬进右栏 source，正文保留；只剩引用的格子留空（交给完整度报缺）", () => {
+    const sweptList = enforceMidCleanliness([
+      row({
+        tableCode: "表4-1",
+        rowId: "r7",
+        label: "AI 推理",
+        row: { ability: "AI 推理加速（M5）", maturity: "来源：ingest-9.pdf:4" },
+        source: "ingest-1.pdf:10",
+      }),
+    ]);
+    const swept = sweptList[0]!;
+    expect(swept.movedCount).toBeGreaterThan(0);
+    expect(String(swept.row["ability"])).toBe("AI 推理加速");
+    expect(String(swept.row["maturity"])).toBe("");
+    expect(swept.emptied).toEqual(["maturity"]);
+    // 引用不许丢：并进右栏来源
+    expect(String(swept.row["source"])).toContain("ingest-1.pdf:10");
+    expect(String(swept.row["source"])).toContain("ingest-9.pdf:4");
+  });
+
+  it("中栏本来干净的行走都不动（不做无谓改写）", () => {
+    const rows = [row({ tableCode: "表4-1", rowId: "r8", row: { ability: "AI 推理加速", maturity: "已交付" } })];
+    expect(enforceMidCleanliness(rows)).toEqual([]);
   });
 });

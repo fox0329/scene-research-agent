@@ -16,6 +16,7 @@
  */
 
 import {
+  enforceMidCleanliness,
   enforceTruthfulDowngrade,
   runDeterministicPostcheck,
   summarizePostcheck,
@@ -179,6 +180,11 @@ const SYSTEM = `你是「生成后自检」环节的执行者。刚刚由你（�
    - 出处对不上 → **不要把出处改成别的**（你不许编造来源）；把核实结论按实降级（单一来源/无法核实），
      并在核实说明里写清"哪一处对不上"
    - 价值缺基线 → 基线条写「未提供（本客户材料未含）」，并在核实说明里点明"价值不可验证"
+   - **中栏夹带出处**（用户在内容格里看到文件名/页码/「（M5）」/「材料未提供」）→ 把引用**移到 fix.source**，
+     内容格改写成**结论性的短句**（谁、做什么、多少、能不能、意味着什么）；搬空了的格子要用一句话补上结果，
+     不许把格子留空、也不许写"待补"
+   - **中栏太长**（一格塞了几件事）→ 压到一句话（≤40 字），只留结论 + 最关键的一个理由，
+     其余细节删掉（右栏核实说明里已有过程留痕）
 3. **不许把判断推给读者**：不写"待核实""建议抽查""请用户确认"。
 4. 没有问题的行**不要返回**（省 token）；返回的每一条必须给出可直接落库的字段值。
 5. 同一行可以同时有多个问题，合并成一条返回，fix 里带上所有要改的字段。
@@ -543,8 +549,28 @@ export async function runPostcheck(deps: PostcheckRunnerDeps): Promise<Postcheck
     if (provenanceOnly > 0) parts.push(`${provenanceOnly} 行出处给不出来、按实标为「AI 推断」`);
     progress(`三轮后仍有硬伤 ${downgrades.length} 行：${parts.join("，")}（都不许当结论用）`);
   }
+  // 三轮后中栏仍夹带出处的：确定性搬走（版面口径，不靠模型自觉）
+  const sweeps = enforceMidCleanliness(all);
+  for (const sw of sweeps) {
+    deps.applyFix(sw.rowId, {
+      row: sw.row,
+      ...(typeof sw.row["source"] === "string" ? { source: String(sw.row["source"]) } : {}),
+    });
+    all = all.map((r) => (r.rowId === sw.rowId ? { ...r, row: sw.row, source: String(sw.row["source"] ?? r.source ?? "") } : r));
+  }
+  if (sweeps.length > 0) {
+    const movedAll = sweeps.reduce((n, sw) => n + sw.movedCount, 0);
+    const emptyAll = sweeps.reduce((n, sw) => n + sw.emptied.length, 0);
+    progress(
+      `中栏夹带出处 ${sweeps.length} 行：已把 ${movedAll} 处引用搬到右栏「来源」，正文一字未删` +
+        (emptyAll > 0 ? `；有 ${emptyAll} 个格子只剩引用、已留空（完整度会报缺，需要重填）` : ""),
+    );
+  }
+
   // 降级行的矛盾已消解，不再是"待办"；但 byKind 仍保留，便于看这一轮抓到了什么
-  const open = findings.filter((f) => !downgradedIds.has(f.rowId));
+  const open = findings.filter(
+    (f) => !downgradedIds.has(f.rowId) && !sweeps.some((sw) => sw.rowId === f.rowId),
+  );
 
   const report = summarizePostcheck({
     checked: all.length,

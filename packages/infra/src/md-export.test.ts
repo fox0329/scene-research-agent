@@ -93,7 +93,6 @@ function makeInput(): DeliverableInput {
         interface_name: "",
         type: "",
         protocol: "",
-        effort: "",
       }),
       row("表6-1", {
         benefit: "降低漏损",
