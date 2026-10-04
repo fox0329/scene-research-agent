@@ -2002,7 +2002,10 @@ td.ed {
 /* 阶段表切换 chips */
 .table-chips { display: flex; flex-wrap: wrap; gap: var(--s1); margin-bottom: var(--s3); }
 /* 主芯片行固定一行（用户定调 v1.26：不分两级、一行显示）；块多时横向滚动，不折成两行 */
-.table-chips--single { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: thin; }
+/* 表 chip 一行放不下就换行——**宽度绝不超过中栏**（用户定调 2026-10-04：「宽度不要超出中栏的宽度」）
+   原来是 nowrap + overflow-x:auto：容器不超宽，但最后一个 chip 被切掉一半，看着就是"超出去了"。
+   宁可换到第二行，也不让用户看到半截表名。 */
+.table-chips--single { flex-wrap: wrap; }
 .table-chips--single .chip { flex: 0 0 auto; white-space: nowrap; }
 .table-chips.sub { margin-top: calc(-1 * var(--s2)); }
 .chip {

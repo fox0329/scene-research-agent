@@ -658,7 +658,7 @@ const TABLES_STAGE_1: readonly TableDef[] = [
   },
   {
     code: "表2-3",
-    name: "分层架构表",
+    name: "分层架构",
     stage: 1,
     tier: "过程",
     rowUnit: "一个层级",
@@ -676,7 +676,7 @@ const TABLES_STAGE_1: readonly TableDef[] = [
   },
   {
     code: "表2-4",
-    name: "要素间关系表",
+    name: "要素间关系",
     stage: 1,
     tier: "过程",
     rowUnit: "一条交互关系",
@@ -752,7 +752,7 @@ const TABLES_STAGE_2: readonly TableDef[] = [
   },
   {
     code: "表3-2",
-    name: "主流方案形态",
+    name: "方案形态",
     stage: 2,
     tier: "重要",
     rowUnit: "一种方案形态",
@@ -771,7 +771,7 @@ const TABLES_STAGE_2: readonly TableDef[] = [
   },
   {
     code: "表3-3",
-    name: "购买路径与采购机制",
+    name: "采购机制",
     stage: 2,
     tier: "支撑",
     rowUnit: "一类客户",
@@ -837,7 +837,7 @@ const TABLES_STAGE_2: readonly TableDef[] = [
   },
   {
     code: "表3-6",
-    name: "替代方案与价格对照",
+    name: "替代方案",
     stage: 2,
     tier: "重要",
     rowUnit: "一个可对照方案（必须含「什么都不做」）",
@@ -875,7 +875,7 @@ const TABLES_STAGE_2: readonly TableDef[] = [
   },
   {
     code: "表3-8",
-    name: "没被满足的需求",
+    name: "未满足需求",
     stage: 2,
     tier: "重要",
     rowUnit: "一个需求缺口",
@@ -1031,7 +1031,7 @@ const TABLES_STAGE_3: readonly TableDef[] = [
 const TABLES_STAGE_4: readonly TableDef[] = [
   {
     code: "表5-1",
-    name: "方案架构与接口",
+    name: "架构与接口",
     stage: 4,
     tier: "重要",
     rowUnit: "架构块 = 一个层级；接口块 = 一个接口",
@@ -1171,7 +1171,7 @@ const TABLES_STAGE_5: readonly TableDef[] = [
 const TABLES_STAGE_6: readonly TableDef[] = [
   {
     code: "表7-1",
-    name: "资产回写清单",
+    name: "资产回写",
     stage: 6,
     tier: "过程",
     rowUnit: "一条回写项",

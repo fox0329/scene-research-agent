@@ -196,7 +196,7 @@ describe("exportDeliverables — 对外汇报材料", () => {
     expect(external_report).toContain("**表1-1 场景概述**");
     expect(external_report).toContain("| 项 | 内容 |");
     expect(external_report).toContain("市政水务集团");
-    expect(external_report).toContain("**表5-1 方案架构与接口（架构块）**");
+    expect(external_report).toContain("**表5-1 架构与接口（架构块）**");
     // 接口块没有数据 → 不应渲染一张全空的块表
     expect(external_report).not.toContain("（接口块）");
   });
