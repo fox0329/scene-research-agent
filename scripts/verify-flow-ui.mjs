@@ -1,5 +1,5 @@
 /**
- * 真实应用（4081）流程 UI 验收脚本
+ * 真实应用（46172）流程 UI 验收脚本
  *
  * 与 e2e/*.spec.ts 的区别：不启动任何 webServer，直接驱动**正在运行的应用**，
  * 验证的正是用户刷新页面后会看到的东西。用于集成时的人工/自动核对。
@@ -9,11 +9,11 @@
 // @playwright/test 是根 devDependency，且 re-export 浏览器 API（playwright 本体未提升到根）
 import { chromium } from "@playwright/test";
 
-const BASE = process.env.BASE_URL ?? "http://127.0.0.1:4081";
+const BASE = process.env.BASE_URL ?? "http://127.0.0.1:46172";
 /**
  * 是否允许**写操作**（推进流程 / 新建场景）。
  *
- * 默认只读：这个脚本常被用来核对用户正在用的实例（4081，真实开发库），
+ * 默认只读：这个脚本常被用来核对用户正在用的实例（46172，真实开发库），
  * 不该顺手改用户的数据。验收脚本用临时库时会设 ALLOW_MUTATE=1。
  */
 const ALLOW_MUTATE = process.env.ALLOW_MUTATE === "1";
@@ -41,9 +41,9 @@ ok(
     (await page.getByRole("button", { name: "知识库" }).count()) > 0,
 );
 
-// 2. 场景列表显示流程进度「第 n/8 步」
+// 2. 场景列表显示流程进度「第 n/7 步」（v1.31 删「总结沉淀」后为 7 步）
 const listText = await page.locator(".side").innerText();
-ok("2 场景列表显示「第 n/8 步」", /第 \d+\/8 步/.test(listText), (listText.match(/第 \d+\/8 步/) ?? [""])[0]);
+ok("2 场景列表显示「第 n/7 步」", /第 \d+\/7 步/.test(listText), (listText.match(/第 \d+\/7 步/) ?? [""])[0]);
 
 // 3. 进入一个场景 → 顶部是流程进度轴（不再是 8 个阶段 tab）
 const rail = page.locator(".flow-rail");
@@ -56,7 +56,7 @@ if (!(await rail.isVisible().catch(() => false))) {
 }
 await rail.waitFor({ timeout: 15_000 });
 const nodes = await rail.locator(".flow-node").count();
-ok("3 进入场景后是流程进度轴（8 步），不再是阶段 tab", nodes === 8, `${nodes} 个节点`);
+ok("3 进入场景后是流程进度轴（7 步），不再是阶段 tab", nodes === 7, `${nodes} 个节点`);
 ok("3b 旧的 8 阶段 tab 已移除", (await page.locator(".stabs").count()) === 0);
 
 // 4. 三态与推进按钮

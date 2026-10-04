@@ -175,7 +175,7 @@ const STAGE_CHAPTER: Readonly<Record<number, string>> = {
   3: "## 五、阶段 3 · 能力匹配",
   4: "## 六、阶段 4 · 方案与实现",
   5: "## 七、阶段 5 · 价值与验证",
-  6: "## 八、阶段 6 · 总结沉淀",
+  6: "## 八、阶段 6 · 最终交付物（无信息表：文档组装）",
 };
 
 export function renderTables(): string {

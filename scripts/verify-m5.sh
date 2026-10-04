@@ -159,12 +159,12 @@ else
     FAIL=1
   fi
   # ── 流程 UI 真机验收（v1.5 逐页推进）─────────────────────
-  # 先建一个场景（脚本会驱动浏览器进入它并断言 8 步流程轴）
+  # 先建一个场景（脚本会驱动浏览器进入它并断言 7 步流程轴）
   curl -s -X POST "http://127.0.0.1:${PORT}/api/v1/projects" \
     -H 'content-type: application/json' \
     -d '{"name":"流程验收场景","intent":"验收逐页推进"}' >/dev/null 2>&1 || true
   if BASE_URL="http://127.0.0.1:${PORT}" ALLOW_MUTATE=1 node scripts/verify-flow-ui.mjs >"$SDIR/flowui.log" 2>&1; then
-    echo "✅ 流程 UI 真机验收（8 步流程轴 / 四态 / 双 Tab / 无判断产出）"
+    echo "✅ 流程 UI 真机验收（7 步流程轴 / 四态 / 双 Tab / 无判断产出）"
   else
     echo "❌ 流程 UI 真机验收失败："
     tail -8 "$SDIR/flowui.log"
@@ -333,8 +333,8 @@ check_contains "03-数据契约与API.md" "只在用户点「整理成定义」�
 check_contains "04-业务过程重定义.md" "v1.6" "业务过程 v1.6（对话式定义）"
 # ── v2.3 流程收成 8 步 ───────────────────────────────────
 check_contains "03-数据契约与API.md" "v2.3" "契约版本记录 v2.3（流程收成 8 步）"
-check_contains "07-业务流程总表.md" "用户可见的 8 步流程" "流程总表改为 8 步"
-check_contains "01-产品定义.md" "8 个阶段（0-7，数据落库口径）" "产品定义流程概览为 8 阶段 0-7"
+check_contains "07-业务流程总表.md" "用户可见的 7 步流程" "流程总表改为 7 步（v1.31 删总结沉淀）"
+check_contains "01-产品定义.md" "7 个阶段（0-6，数据落库口径）" "产品定义流程概览为 7 阶段 0-6"
 # ── v2.4 放松场景定义 ────────────────────────────────────
 check_contains "03-数据契约与API.md" "v2.4" "契约版本记录 v2.4（放松定义口径）"
 check_contains "03-数据契约与API.md" "定义已整理" "第 1 步就绪降为「定义已整理」"
