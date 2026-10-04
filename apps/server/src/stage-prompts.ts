@@ -7,8 +7,9 @@
  *   - 输出契约的 `table_code` 枚举与 `fields` 合法字段名 → 由注册表派生
  *   - 产出行由 `@scene/domain` 的 `validateIncomingRows` 本地校验（补「契约空壳」）
  *
- * 阶段口径：**8 阶段（0-7）**——阶段 6 总结沉淀、阶段 7 最终交付物。
- * 旧编号的阶段 8（交付物）已合并为阶段 7；以 8 调用会抛出明确错误。
+ * 阶段口径：**7 阶段（0-6）**——阶段 1-5 是分析步，阶段 6 是最终交付物（系统组装，不填表）。
+ * v1.31 删掉原阶段 6「总结沉淀」（只产表7-1，且回写没有执行路径），交付物由阶段 7 收到阶段 6；
+ * 老编号 8（交付物）与老编号 7（总结沉淀）都以 8/7 调用会被拦下并给出可执行的修正提示。
  */
 
 import {
@@ -243,11 +244,11 @@ export function buildStagePrompt(
     siblings?: readonly string[];
   },
 ): StagePrompt {
-  // StageId 已收窄为 0-7，但**运行期仍可能被塞进老编号 8**（老数据/老调用）：
+  // StageId 已收窄为 0-6，但**运行期仍可能被塞进老编号 7/8**（老数据/老调用）：
   // 这里按数值比较主动拦截并给出可执行的修正提示
-  if ((stage as number) === 8) {
+  if ((stage as number) === 7 || (stage as number) === 8) {
     throw new Error(
-      "阶段 8 已合并为阶段 7（8 阶段口径：6 总结沉淀、7 最终交付物）——请改用 0-7",
+      "阶段 7/8 都是老编号：总结沉淀（老 6）已删除，交付物现为阶段 6——请改用 0-6",
     );
   }
   const id = stage as InfoStage;
@@ -318,13 +319,13 @@ export function getStageOutputContract(
   stage: StageId,
   allowedTables?: readonly string[],
 ): Record<string, unknown> {
-  if ((stage as number) === 8) {
-    throw new Error("阶段 8 已合并为阶段 7——请改用 0-7");
+  if ((stage as number) === 7 || (stage as number) === 8) {
+    throw new Error("阶段 7/8 都是老编号（总结沉淀已删除、交付物现为阶段 6）——请改用 0-6");
   }
   const all = tablesOfStage(stage as InfoStage);
   const tables = allowedTables ? all.filter((t) => allowedTables.includes(t.code)) : all;
   if (tables.length === 0) {
-    // 阶段 7（交付物）：不填表，产出两份文档
+    // 阶段 6（交付物）：不填表，产出两份文档
     return {
       type: "object",
       properties: {

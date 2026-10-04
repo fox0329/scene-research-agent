@@ -501,7 +501,7 @@ describe("createAdvanceStageCommand", () => {
       );
     });
 
-    it("阶段 8 终态运行不抛错、current_stage 保持 8", async () => {
+    it("老编号 8（交付物）按现行阶段 6 处理、不抛错且不改 current_stage", async () => {
       db = createMockDb({ scenario: { current_stage: 8 as never } });
       const cmd = createAdvanceStageCommand({ db, dshClient });
       const events = await collectEvents(

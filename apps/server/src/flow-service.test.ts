@@ -129,12 +129,12 @@ describe("flow-service — 锁步与就绪", () => {
     expect(s2.progress.expectedTables).toBe(7);
   });
 
-  it("完成第 2 步推进 current_stage 到 1；完成第 8 步把场景标记为已完成", () => {
+  it("完成第 2 步推进 current_stage 到 1；完成第 7 步把场景标记为已完成", () => {
     const { db, scenarioId } = setup();
     completeFlowStep(db, db.scenarioRepo.getById(scenarioId)!, 2);
     expect(db.scenarioRepo.getById(scenarioId)!.current_stage).toBe(1);
 
-    for (const n of [1, 3, 4, 5, 6, 7, 8]) {
+    for (const n of [1, 3, 4, 5, 6, 7]) {
       completeFlowStep(db, db.scenarioRepo.getById(scenarioId)!, n);
     }
     const sc = db.scenarioRepo.getById(scenarioId)!;
@@ -153,7 +153,7 @@ describe("flow-service — 锁步与就绪", () => {
 describe("flow-service — 回到某步重跑", () => {
   it("reopen 清掉该步及其后标记、场景回到进行中、数据保留", () => {
     const { db, scenarioId } = setup();
-    for (const n of [1, 2, 3, 4, 5, 6, 7, 8]) {
+    for (const n of [1, 2, 3, 4, 5, 6, 7]) {
       completeFlowStep(db, db.scenarioRepo.getById(scenarioId)!, n);
     }
     expect(db.scenarioRepo.getById(scenarioId)!.status).toBe("已完成");
@@ -192,11 +192,11 @@ describe("flow-service — 路由", () => {
     app = createApp({ db, dshClient: mockDsh(), hub: createSseHub() });
   });
 
-  it("GET /flow 返回 8 步三态", async () => {
+  it("GET /flow 返回 7 步三态", async () => {
     const res = await app.inject({ method: "GET", url: `/api/v1/projects/${scenarioId}/flow` });
     expect(res.statusCode).toBe(200);
     const body = res.json() as { steps: unknown[]; currentStep: number; finished: boolean };
-    expect(body.steps).toHaveLength(8);
+    expect(body.steps).toHaveLength(7);
     expect(body.currentStep).toBe(1);
     expect(body.finished).toBe(false);
   });

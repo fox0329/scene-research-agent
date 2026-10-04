@@ -72,7 +72,7 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
 
   const snapshot = useMemo<StageSnapshot>(
     () => ({
-      stage: 7,
+      stage: 6,
       stageLabel: step.title,
       title: `第 ${FLOW_TOTAL}/${FLOW_TOTAL} 步 · ${step.title}`,
       rows: [],

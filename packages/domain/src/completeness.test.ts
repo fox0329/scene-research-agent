@@ -29,8 +29,8 @@ describe("completeness — 阶段级", () => {
     expect(r.gaps.every((g) => g.kind === "缺表")).toBe(true);
   });
 
-  it("阶段 7 没有信息表，视为齐备（交付物是文档）", () => {
-    const r = checkStageCompleteness({ stage: 7, rowsByTable: {} });
+  it("交付物阶段（6）没有信息表，视为齐备（它是文档组装）", () => {
+    const r = checkStageCompleteness({ stage: 6, rowsByTable: {} });
     expect(r.expectedTables).toBe(0);
     expect(r.percent).toBe(100);
     expect(r.gaps).toEqual([]);
@@ -91,14 +91,18 @@ describe("completeness — 缺口分属主（智能体的欠账不找用户）",
 describe("completeness — 单表规则", () => {
   it("必填列空缺按列汇总行数", () => {
     const r = checkStageCompleteness({
-      stage: 6,
+      stage: 2,
       rowsByTable: {
-        "表7-1": [row({ target: "产品路线图", content: "", basis: "阶段 2 表3-8" }), row({ target: "", content: "x", basis: "y" })],
+        // 表3-5 上游供给格局：link / who_supplies 必填（v1.31 起用现存表做这条用例，原表7-1 已删）
+        "表3-5": [
+          row({ link: "气体传感器", who_supplies: "", supply_risk: "进口交期长" }),
+          row({ link: "", who_supplies: "某厂", supply_risk: "x" }),
+        ],
       },
     });
-    const g = r.gaps.find((x) => x.kind === "缺必填列" && x.column === "content");
+    const g = r.gaps.find((x) => x.kind === "缺必填列" && x.column === "who_supplies");
     expect(g?.count).toBe(1);
-    expect(r.gaps.some((x) => x.kind === "缺必填列" && x.column === "target")).toBe(true);
+    expect(r.gaps.some((x) => x.kind === "缺必填列" && x.column === "link")).toBe(true);
   });
 
   it("覆盖度：min-rows（表1-2 业务环节 ≥3）", () => {
@@ -182,12 +186,12 @@ describe("completeness — 单表规则", () => {
 
 describe("completeness — 输出到总结文档", () => {
   it("gapsToSummaryLines 分「需要你补充 / 我将补充」两栏", () => {
-    const withGaps = checkStageCompleteness({ stage: 6, rowsByTable: {} });
+    const withGaps = checkStageCompleteness({ stage: 2, rowsByTable: {} });
     const lines = gapsToSummaryLines(withGaps);
-    // 阶段 6 的缺口全是智能体侧的 → 只出现「我将补充」，不向用户要东西
+    // 缺表/缺必填列都由智能体侧补 → 只出现「我将补充」，不向用户要东西
     expect(lines.some((l) => l.includes("我将补充"))).toBe(true);
     expect(lines.some((l) => l.includes("需要你补充"))).toBe(false);
-    const clean = checkStageCompleteness({ stage: 7, rowsByTable: {} });
+    const clean = checkStageCompleteness({ stage: 6, rowsByTable: {} }); // 交付物阶段无表 = 齐备
     expect(gapsToSummaryLines(clean)[0]).toContain("齐备");
   });
 

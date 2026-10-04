@@ -664,9 +664,9 @@ function registerProjectRoutes(app: FastifyInstance, deps: UiRoutesDeps) {
     // v1.4：不再返回质量关与建议档位——改为信息完整度（缺口清单）+ 总结是否已生成。
     // gates/advice 保留为空值仅为过渡期兼容旧前端（P4 前端改造后移除）。
     const completeness = stageCompletenessOf(db, id, stage, parseStepQuery(request.query));
-    // 兼容旧数据：历史 stage=8（老 9 阶段）按现行阶段 7 查总结（同 advance-stage 的垫片）
+    // 兼容旧数据：历史 stage=7/8（老口径的交付物）按现行阶段 6 查总结（同 advance-stage 的垫片）
     const summaryReady = Boolean(
-      db.stageSummaryRepo.get(id, ((stage as number) === 8 ? 7 : stage) as InfoStageId),
+      db.stageSummaryRepo.get(id, ((stage as number) >= 7 ? 6 : stage) as InfoStageId),
     );
     return { rows, gates: [], advice: null, completeness, summary_ready: summaryReady };
   });

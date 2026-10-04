@@ -1,7 +1,7 @@
 /**
  * @scene/contract — 表定义注册表（单一事实源）
  *
- * 本文件是 36 张信息表的**唯一事实源**：表号、名称、阶段、级别、行粒度、列定义、
+ * 本文件是 35 张信息表的**唯一事实源**：表号、名称、阶段、级别、行粒度、列定义、
  * 栏位分配（中栏 / 右栏补充）、枚举、完整度规则。
  *
  * 派生关系（三处共用同一份定义，不再各写一遍）：
@@ -18,7 +18,7 @@
 // ─── 阶段（8 阶段方法论骨架，0-7） ──────────────────────────
 
 /** 阶段编号（0-7）：阶段 0 材料入库 → 阶段 7 最终交付物 */
-export type InfoStageId = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7;
+export type InfoStageId = 0 | 1 | 2 | 3 | 4 | 5 | 6;
 
 /** 表级别：决定中栏默认状态与右栏归属（**不再表示"是否需要决策"**） */
 export type TableTier = "重要" | "支撑" | "过程";
@@ -276,19 +276,11 @@ export const STAGE_DEFS: readonly StageDef[] = [
   },
   {
     id: 6,
-    name: "总结沉淀",
-    producedBy: "模型分析",
-    goal: "哪些结论应回写成资产（产品路线图 / 能力底账 / 新发现的限制 / 销售打法）",
-    tableCodes: ["表7-1"],
-    summaryTitle: "⑦ 沉淀总结",
-  },
-  {
-    id: 7,
     name: "最终交付物",
     producedBy: "系统组装",
     goal: "内部调研报告 + 对外汇报材料（文档产出，非表）",
     tableCodes: [],
-    summaryTitle: "⑧ 交付说明",
+    summaryTitle: "⑦ 交付说明",
   },
 ];
 
@@ -580,7 +572,7 @@ const TABLES_STAGE_1: readonly TableDef[] = [
       "其余 5 项由智能体从业务角度写出；买方/采购类应带来源",
       "允许抽象、可留「待定」——不阻断后续阶段",
     ],
-    consumedBy: [2, 3, 4, 5, 6, 7],
+    consumedBy: [2, 3, 4, 5, 6, 6],
   },
   {
     code: "表1-2",
@@ -607,7 +599,7 @@ const TABLES_STAGE_1: readonly TableDef[] = [
       "每环节 owner_now / current_tool / current_flow / pain 非空——本步只写现状",
       "依据须可回溯材料；没有材料就按行业通例口径写（来源列标 AI推断）",
     ],
-    consumedBy: [3, 4, 7],
+    consumedBy: [3, 4, 6],
   },
   {
     code: "表1-3",
@@ -632,7 +624,7 @@ const TABLES_STAGE_1: readonly TableDef[] = [
       "criteria 含具体等级/标准号/数值（禁『较高』『相关』）",
       "只针对本场景能问到的事实；没有材料依据的门槛照行业通例写，不猜本客户的合规结论",
     ],
-    consumedBy: [4, 7],
+    consumedBy: [4, 6],
   },
   {
     code: "表2-2",
@@ -748,7 +740,7 @@ const TABLES_STAGE_2: readonly TableDef[] = [
       sup("authority", "来源权威性", { required: true, enum: "authority" }),
     ],
     completeness: ["覆盖 ≥3 个环节", "每行必须有来源"],
-    consumedBy: [7],
+    consumedBy: [6],
   },
   {
     code: "表3-2",
@@ -767,7 +759,7 @@ const TABLES_STAGE_2: readonly TableDef[] = [
       sup("source", "来源", { required: true }),
     ],
     completeness: ["≥3 种形态", "form/key_points/leader/fit_for 非空"],
-    consumedBy: [3, 7],
+    consumedBy: [3, 6],
   },
   {
     code: "表3-3",
@@ -852,7 +844,7 @@ const TABLES_STAGE_2: readonly TableDef[] = [
       sup("source", "来源", { required: true }),
     ],
     completeness: ["≥2 个对照方案（含「什么都不做」）", "alternative/customer_gets/cost_structure/unit_cost/chosen_when 非空", "成本须有来源或标『估算』"],
-    consumedBy: [3, 4, 7],
+    consumedBy: [3, 4, 6],
   },
   {
     code: "表3-7",
@@ -895,7 +887,7 @@ const TABLES_STAGE_2: readonly TableDef[] = [
       sup("authority", "来源权威性", { required: true, enum: "authority" }),
     ],
     completeness: ["≥3 条", "gap/who_hurts/pain_level/why_unsatisfied 非空", "每行有来源", "rank/多源验证/对应预算科目 非空"],
-    consumedBy: [3, 7],
+    consumedBy: [3, 6],
   },
   {
     code: "表3-9",
@@ -913,7 +905,7 @@ const TABLES_STAGE_2: readonly TableDef[] = [
       sup("source", "来源", { required: true }),
     ],
     completeness: ["趋势/对场景各方的影响 非空", "时间窗口须为具体时间段"],
-    consumedBy: [3, 7],
+    consumedBy: [3, 6],
   },
 ];
 
@@ -936,7 +928,7 @@ const TABLES_STAGE_3: readonly TableDef[] = [
       sup("source", "来源", { required: true }),
     ],
     completeness: ["ability/maturity/proof 非空", "已交付行须有案例或验收数据"],
-    consumedBy: [7],
+    consumedBy: [6],
   },
   {
     code: "表4-2",
@@ -959,7 +951,7 @@ const TABLES_STAGE_3: readonly TableDef[] = [
       "can_touch 与 our_role 非空且取值合法",
       "判定依据须引用 M3/M4/M5 的具体条目",
     ],
-    consumedBy: [4, 5, 7],
+    consumedBy: [4, 5, 6],
   },
   {
     code: "表4-3",
@@ -979,7 +971,7 @@ const TABLES_STAGE_3: readonly TableDef[] = [
     ],
     completeness: ["match 取值合法", "覆盖表3-8 每条缺口", "boundary_note 非空", "ability_basis 可回溯表4-1"],
     dependsOnTables: ["表4-1"],
-    consumedBy: [7],
+    consumedBy: [6],
   },
   {
     code: "表4-4",
@@ -1001,7 +993,7 @@ const TABLES_STAGE_3: readonly TableDef[] = [
       sup("source", "来源", { required: true }),
     ],
     completeness: ["≥2 个细分场景", "四维度非空", "必须给出排名第一的结论"],
-    consumedBy: [7],
+    consumedBy: [6],
   },
   {
     code: "表4-5",
@@ -1022,7 +1014,7 @@ const TABLES_STAGE_3: readonly TableDef[] = [
       sup("source", "来源"),
     ],
     completeness: ["维度 ≥4 个", "权重之和 = 100%", "总分 = Σ(权重 × 评分)"],
-    consumedBy: [7],
+    consumedBy: [6],
   },
 ];
 
@@ -1050,7 +1042,7 @@ const TABLES_STAGE_4: readonly TableDef[] = [
       sup("source", "出处", { required: true }),
     ],
     completeness: ["架构块五项非空", "接口块四项非空且接口 ≥1 条", "boundary 不得为空"],
-    consumedBy: [7],
+    consumedBy: [6],
   },
   {
     code: "表5-3",
@@ -1071,7 +1063,7 @@ const TABLES_STAGE_4: readonly TableDef[] = [
     ],
     completeness: ["六项必填非空", "man_days 为数值（与表5-5 人工成本对应）", "依赖不可控条件的项须显式标注"],
     dependsOnTables: ["表5-1"],
-    consumedBy: [7],
+    consumedBy: [6],
   },
   {
     code: "表5-4",
@@ -1088,7 +1080,7 @@ const TABLES_STAGE_4: readonly TableDef[] = [
       sup("source", "出处"),
     ],
     completeness: ["item/content/SLA 非空", "SLA 须含响应时限与故障处理时限"],
-    consumedBy: [7],
+    consumedBy: [6],
   },
   {
     code: "表5-5",
@@ -1117,7 +1109,7 @@ const TABLES_STAGE_4: readonly TableDef[] = [
     ],
     completeness: ["三类成本齐全", "单价可回溯 M6 或标来源", "小计 = 数量 × 单价", "汇总 = 各子块之和"],
     dependsOnTables: ["表5-1", "表5-3"],
-    consumedBy: [5, 7],
+    consumedBy: [5, 6],
   },
 ];
 
@@ -1145,7 +1137,7 @@ const TABLES_STAGE_5: readonly TableDef[] = [
       sup("source", "来源", { required: true }),
     ],
     completeness: ["≥2 条", "baseline/how_to_measure/user_feeling 非空", "无基线行强制标 C 级假设"],
-    consumedBy: [7],
+    consumedBy: [6],
   },
   {
     code: "表6-4",
@@ -1162,34 +1154,11 @@ const TABLES_STAGE_5: readonly TableDef[] = [
       sup("source", "来源"),
     ],
     completeness: ["kind 覆盖『成功判据』与『验收口径』两类", "条件必填项在该类下非空"],
-    consumedBy: [7],
+    consumedBy: [6],
   },
 ];
 
-// ─── 阶段 6 · 总结沉淀（1 张） ──────────────────────────────
-
-const TABLES_STAGE_6: readonly TableDef[] = [
-  {
-    code: "表7-1",
-    name: "资产回写",
-    stage: 6,
-    tier: "过程",
-    rowUnit: "一条回写项",
-    purpose: "结论变资产（路线图 / 能力底账 / 限制 / 销售打法）",
-    columns: [
-      mid("target", "目标资产", { required: true, enum: "asset_target" }),
-      mid("content", "回写内容", { required: true, type: "longText", truncate: TRUNCATE_DEFAULT }),
-      mid("priority", "优先级"),
-      mid("status", "状态"),
-      sup("basis", "依据", { required: true, note: "须可回溯到某阶段的信息表" }),
-      sup("field_patch", "结构化补丁"),
-      sup("source", "来源"),
-    ],
-    completeness: ["target/content/basis 非空", "basis 必须可回溯到某阶段信息表"],
-  },
-];
-
-// ─── 35 张表总表 ───────────────────────────────────────────
+// ─── 35 张表总表（阶段 0–6） ───────────────────────────────────────────
 
 /**
  * 核实两列：**每张表每一行**都要回答「这条信息准确吗、客观吗、为什么」
@@ -1226,7 +1195,6 @@ export const TABLES: readonly TableDef[] = [
   ...TABLES_STAGE_3,
   ...TABLES_STAGE_4,
   ...TABLES_STAGE_5,
-  ...TABLES_STAGE_6,
 ].map((t) => ({ ...t, columns: [...t.columns, ...VERIFICATION_COLUMNS] }));
 
 /** 信息表表号联合类型（由注册表派生，供数据层使用） */
@@ -1517,8 +1485,8 @@ export function registryIssues(): readonly string[] {
     }
   }
 
-  // 阶段 7 无表
-  if (tablesOfStage(7).length !== 0) issues.push("阶段 7 不应有信息表（交付物是文档）");
+  // 最后一步（交付物）无表：它是系统组装，不产信息表
+  if (tablesOfStage(6).length !== 0) issues.push("交付物阶段（6）不应有信息表（它是文档组装）");
 
   // 覆盖度规则只能挂在存在的表上，且列名必须真实存在
   for (const [code, rules] of Object.entries(COVERAGE_RULES)) {

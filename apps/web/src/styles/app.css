@@ -2234,9 +2234,10 @@ td.ed {
   color: var(--cs-h);
 }
 
+/* 流程当前步：主色文字 + 主色描边（**不填底色**）——底色专门留给「正在看的那一步」，
+   这样回看历史步时只有一个节点有底色，不会出现"两个都高亮、看不出在看哪个"（用户定调 2026-10-04） */
 .flow-node--current {
   color: var(--cp);
-  background: var(--cp-s);
   border-color: var(--cp);
 }
 
@@ -2420,11 +2421,19 @@ td.ed {
   border-top: 1px solid var(--cb);
 }
 
-/* 回看时选中的非当前步：与「可推进」区分开（否则看不出正在看哪一步） */
+/* 「正在看的那一步」一律带底色（用户定调 2026-10-04：「用个底色渲染标注一下，要不然都不知道当前在哪个阶段看信息」）
+   原实现只覆盖 `--ready`：点已完成的步（如「能力匹配」）回看时**没有任何底色**，
+   而中栏又不显示步标题（见 RealStagePanel 顶部注释）→ 用户确实看不出在看哪一步。
+   现在任何状态选中都给底色；文字颜色继续表达状态（完成=绿、当前=主色），两个信号互不抢占。 */
+.flow-node[aria-selected="true"] {
+  background: var(--cp-s);
+  border-color: var(--cp);
+}
 .flow-node--ready[aria-selected="true"] {
-  background: var(--cm);
   color: var(--ct);
-  border-color: var(--ct3);
+}
+.flow-node--done[aria-selected="true"] {
+  color: var(--cs-h);
 }
 
 .flow-actions .btn.primary:disabled {

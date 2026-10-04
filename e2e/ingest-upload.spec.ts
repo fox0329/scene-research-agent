@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 /**
- * 上传入库联真 e2e（第二个 webServer：127.0.0.1:4181，真应用服务 + 真模型链路）
+ * 上传入库联真 e2e（第二个 webServer：127.0.0.1:46175，真应用服务 + 真模型链路）
  *
  * 覆盖：
  * 1. 回归——浏览器 FormData 字段顺序（file 部件在前）也能入库
@@ -13,7 +13,7 @@ import { join } from "node:path";
  * 3. 对话窗「导入材料」：进度气泡 + 导入结果回发模型（模型感知新资料）
  */
 
-const LIVE = "http://127.0.0.1:4181";
+const LIVE = "http://127.0.0.1:46175";
 
 /**
  * 点「整理成定义」并等对照表出现
@@ -21,7 +21,7 @@ const LIVE = "http://127.0.0.1:4181";
  * 对照表选行 = **核心必确认项 ∪ 模型实际填了/推断的项**（领域层给）——
  * 行数按返回数组派生，不写死（曾经写死 6 行）。
  *
- * 联真用例跑真模型 + 本机共享端口，工作区里可能有并行 E2E 实例在抢 4181：
+ * 联真用例跑真模型 + 本机共享端口，工作区里可能有并行 E2E 实例在抢 46175：
  * 观察到偶发的网络层失败（弹窗内出现「Failed to fetch」，重跑即好）。
  * 这里在**不降低断言强度**的前提下重试一次；业务错误仍会原样失败。
  */
@@ -320,7 +320,7 @@ test("流程逐页推进（联真）：完成本步走的是 /flow 接口，完�
   // 第 2 步「认识场景」：只显示本步表集，左栏场景列表同步显示第 2/8 步
   await expect(rail.locator(".flow-node--current")).toContainText("认识场景");
   await expect(page.locator(".ws .table-chips").first()).toBeVisible({ timeout: 20_000 });
-  await expect(page.locator(".proj-hd.active .proj-step")).toContainText("第 2/8 步", {
+  await expect(page.locator(".proj-hd.active .proj-step")).toContainText("第 2/7 步", {
     timeout: 20_000,
   });
   // 项目确实落库了：flow 接口与 UI 一致

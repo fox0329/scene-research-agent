@@ -262,7 +262,7 @@ describe("@scene/contract API 类型", () => {
   });
 
   it("SystemStatus dsh+db 二态", () => {
-    const v: SystemStatus = { dsh: "ok", dsh_port: 3081, db: "ok" };
+    const v: SystemStatus = { dsh: "ok", dsh_port: 46171, db: "ok" };
     expect(v.dsh).toBe("ok");
   });
 

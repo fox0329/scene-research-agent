@@ -81,13 +81,12 @@ export const projects: Project[] = [
     id: "p3",
     name: "智慧园区",
     status: "done",
-    stage: 8,
+    stage: 6, // 交付物（旧口径 8 = 交付物，v1.31 收到阶段 6）
     productLine: "综合解决方案",
     conversations: [
       { id: "p3c1", name: "生成交付物" },
       { id: "p3c2", name: "价值验证完成" },
       { id: "p3c3", name: "方案与成本分析" },
-      { id: "p3c4", name: "总结沉淀回写" },
     ],
   },
 ];
@@ -492,7 +491,7 @@ export const pilotDesign: PilotDesign[] = [
   { phase: "第三阶段", scope: "全楼层", duration: "3个月", successCriteria: "ROI>15%", risk: "中", source: "推断" },
 ];
 
-/* ═══ 阶段 7：内部报告 ═══ */
+/* ═══ 阶段 6：内部报告 ═══ */
 
 /** 内部调研报告（表 7-1） */
 export type InternalReport = {

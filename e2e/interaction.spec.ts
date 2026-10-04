@@ -322,28 +322,28 @@ test("表1-1 只有「项 / 内容」两列：无状态列、无 ✓、无待确
   await expect(anchor.locator(".owner-tag")).toHaveCount(1);
 });
 
-test("流程轴：8 个节点、当前步高亮、未解锁不可点（v1.5 取代阶段 Tab）", async ({ page }) => {
+test("流程轴：7 个节点、当前步高亮、未解锁不可点（v1.5 取代阶段 Tab）", async ({ page }) => {
   const rail = page.locator(".flow-rail");
   await expect(rail).toBeVisible();
   const nodes = rail.getByRole("tab");
-  await expect(nodes).toHaveCount(8);
+  await expect(nodes).toHaveCount(7);
 
   // 当前步唯一且高亮；初始 0 步完成 → 第 1 步是当前步，其余锁着
   await expect(rail.locator(".flow-node--current")).toHaveCount(1);
   await expect(rail.locator(".flow-node--current")).toHaveAttribute("aria-selected", "true");
   await expect(rail.locator(".flow-node--current")).toContainText("场景定义");
   await expect(rail.locator(".flow-node--done")).toHaveCount(0);
-  await expect(rail.locator(".flow-node--locked")).toHaveCount(7);
+  await expect(rail.locator(".flow-node--locked")).toHaveCount(6);
   await expect(nodes.nth(1)).toBeDisabled();
   await expect(nodes.nth(1)).toHaveAttribute("aria-label", /认识场景/);
 
-  // 进度卡只一行：8 个节点 + 行末「下一步」，没有第二行提示、没有「解锁全部步骤」
+  // 进度卡只一行：7 个节点 + 行末「下一步」，没有第二行提示、没有「解锁全部步骤」
   await expect(rail.locator(".flow-hint")).toHaveCount(0);
   await expect(rail.getByRole("button", { name: /解锁/ })).toHaveCount(0);
   await expect(rail.locator(".flow-node-no")).toHaveCount(0); // 序号已去掉
   await expect(rail.locator(".flow-node-dot")).toHaveCount(0); // 圆点也不要
-  // 保留关键词（用户定调）：8 个节点各显示简化标题，完整标题在 aria-label / title 里
-  await expect(rail.locator(".flow-node-tt")).toHaveCount(8);
+  // 保留关键词（用户定调）：7 个节点各显示简化标题，完整标题在 aria-label / title 里
+  await expect(rail.locator(".flow-node-tt")).toHaveCount(7);
   const keywords = await rail.locator(".flow-node-tt").allTextContents();
   expect(keywords).toEqual([
     "场景定义",
@@ -352,13 +352,12 @@ test("流程轴：8 个节点、当前步高亮、未解锁不可点（v1.5 取�
     "能力匹配",
     "方案实现",
     "价值验证",
-    "总结沉淀",
     "交付物",
   ]);
   await expect(nodes.nth(3)).toHaveAttribute("title", /第 4 步 · 能力匹配/);
 
   // 就绪提示不占行：它是运行按钮的悬停提示（新场景画像还没写出 → 未就绪）
-  // 八步同形：未产出时主按钮位是「开始本步分析」（第 1 步也不例外，只是它打开对话）
+  // 七步同形：未产出时主按钮位是「开始本步分析」（第 1 步也不例外，只是它打开对话）
   const start = rail.getByRole("button", { name: "开始本步分析" });
   await expect(start).toBeEnabled();
   await expect(start).toHaveAttribute("title", /场景业务画像/);
@@ -387,12 +386,12 @@ test("流程推进：完成本步 → 当前步前移；已完成步可回看重
   await expect(rail.locator(".flow-node--done")).toHaveCount(1);
   await expect(rail.locator(".flow-node--done")).toContainText("场景定义");
   await expect(rail.locator(".flow-node--current")).toContainText("认识场景");
-  await expect(rail.locator(".flow-node--locked")).toHaveCount(6);
+  await expect(rail.locator(".flow-node--locked")).toHaveCount(5);
   // 第 2 步「认识场景」：中栏只有本步表集（步标题/完整度都在别处）
   await expect(page.locator(".ws .table-chips").first()).toBeVisible();
   await expect(page.locator(".ws .completeness-bar")).toHaveCount(0);
 
-  // 点已完成节点回看：八步同形——轴上只有「重算本步」与「下一步」，中栏没有重跑提示条，
+  // 点已完成节点回看：七步同形——轴上只有「重算本步」与「下一步」，中栏没有重跑提示条，
   // 也没有「回到这一步/回到当前步」这类导航按钮（用户定调：回到哪一步直接点阶段名称）
   await rail.getByRole("tab", { name: /^第 1 步 · 场景定义与边界（/ }).click();
   await expect(page.locator(".flow-reopen")).toHaveCount(0);
@@ -410,6 +409,38 @@ test("流程推进：完成本步 → 当前步前移；已完成步可回看重
   await expect(rail.locator(".flow-node--done")).toHaveCount(1);
 });
 
+test("回看已完成步：轴上只有「正在看的那一步」有底色", async ({ page }) => {
+  // 用户定调 2026-10-04：「点某个阶段查看信息……用个底色渲染标注一下，
+  // 要不然都不知道当前在哪个阶段看信息」。
+  // 原实现只给「可推进」的选中步底色，点已完成的步（如「能力匹配」）回看时没有任何底色。
+  const rail = page.locator(".flow-rail");
+  await draftDefinition(page);
+  await rail.getByRole("button", { name: "下一步" }).click();
+  await expect(rail.locator(".flow-node--current")).toContainText("认识场景");
+
+  // 回看第 1 步（已完成）
+  await rail.getByRole("tab", { name: /第 1 步 · 场景定义与边界/ }).click();
+  await page.mouse.move(5, 850); // 移开鼠标，排除 hover 底色的干扰
+  await page.waitForTimeout(250);
+
+  const tinted = await rail.locator(".flow-node").evaluateAll((nodes) =>
+    nodes
+      .filter((n) => getComputedStyle(n).backgroundColor !== "rgba(0, 0, 0, 0)")
+      .map((n) => n.textContent?.trim()),
+  );
+  expect(tinted).toEqual(["场景定义"]); // 有且只有正在看的那一步
+
+  // 当前步（认识场景）改用描边表达，不再抢底色
+  const current = rail.locator(".flow-node--current");
+  await expect(current).toContainText("认识场景");
+  expect(
+    await current.evaluate((n) => ({
+      bg: getComputedStyle(n).backgroundColor,
+      border: getComputedStyle(n).borderColor,
+    })),
+  ).toEqual({ bg: "rgba(0, 0, 0, 0)", border: "rgb(37, 99, 235)" });
+});
+
 test("锁步推进：没有「解锁全部步骤」，未解锁节点点不动", async ({ page }) => {
   const rail = page.locator(".flow-rail");
   // 用户定调：不需要「解锁全部步骤」这个功能
@@ -425,7 +456,7 @@ test("锁步推进：没有「解锁全部步骤」，未解锁节点点不动",
   await draftDefinition(page);
   await rail.getByRole("button", { name: "下一步" }).click();
   await expect(rail.locator(".flow-node--current")).toContainText("认识场景");
-  await expect(rail.locator(".flow-node--locked")).toHaveCount(6);
+  await expect(rail.locator(".flow-node--locked")).toHaveCount(5); // 第 3-7 步
   await expect(rail.getByRole("button", { name: /解锁/ })).toHaveCount(0);
 
   // 回看第 1 步：点阶段名称即可来回，轴上不留导航按钮；不出现完整度条（完整度只在右栏）
@@ -434,7 +465,7 @@ test("锁步推进：没有「解锁全部步骤」，未解锁节点点不动",
   await expect(page.locator(".ws .completeness-bar")).toHaveCount(0);
   await expect(rail.getByRole("button", { name: /回到/ })).toHaveCount(0);
 
-  // 点回当前步的阶段名称后，第 8 步交付物仍锁着（锁步推进）
+  // 点回当前步的阶段名称后，第 7 步交付物仍锁着（锁步推进）
   await rail.getByRole("tab", { name: /^第 2 步 · 认识场景（/ }).click();
   await expect(rail.getByRole("tab", { name: /交付物/ })).toBeDisabled();
 });
@@ -457,7 +488,7 @@ test("第 1 步：中栏只有表1-1；步标题/引导语/状态行/完整度/�
   await expect(ws.locator(".definition-stat")).toHaveCount(0);
 
   // 就绪提示不占行：它是流程轴运行按钮的悬停提示（也不在中栏复述）
-  // 八步同形：第 1 步未产出时主按钮位是「开始本步分析」（点了打开场景定义对话）
+  // 七步同形：第 1 步未产出时主按钮位是「开始本步分析」（点了打开场景定义对话）
   await expect(page.locator(".flow-rail .flow-hint")).toHaveCount(0);
   const start = page.locator(".flow-actions").getByRole("button", { name: "开始本步分析" });
   await expect(start).toHaveAttribute("title", /先说一句场景名称|场景业务画像/);

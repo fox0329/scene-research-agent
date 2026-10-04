@@ -25,9 +25,10 @@ describe("stage-prompts — 阶段覆盖（8 阶段口径）", () => {
     }
   });
 
-  it("旧编号的阶段 8 明确报错（已合并为阶段 7）", () => {
-    expect(() => buildStagePrompt(8 as never, {})).toThrow(/阶段 8 已合并为阶段 7/);
-    expect(() => getStageOutputContract(8 as never)).toThrow(/阶段 8 已合并为阶段 7/);
+  it("老编号的阶段 7/8 明确报错（总结沉淀已删、交付物现为阶段 6）", () => {
+    expect(() => buildStagePrompt(8 as never, {})).toThrow(/老编号/);
+    expect(() => getStageOutputContract(8 as never)).toThrow(/老编号/);
+    expect(() => buildStagePrompt(7 as never, {})).toThrow(/老编号/);
   });
 });
 
@@ -218,8 +219,8 @@ describe("stage-prompts — 输出契约（补契约空壳）", () => {
     expect(c.properties.rows.items.properties.source_type.enum).toEqual(["AI提取", "AI推断"]);
   });
 
-  it("阶段 7（交付物）不要求 rows，而要两份文档", () => {
-    const c = getStageOutputContract(7) as { required: string[]; properties: Record<string, unknown> };
+  it("阶段 6（交付物）不要求 rows，而要两份文档", () => {
+    const c = getStageOutputContract(6) as { required: string[]; properties: Record<string, unknown> };
     expect(c.required).toEqual(["internal_report", "external_report"]);
     expect(c.properties["rows"]).toBeUndefined();
   });
@@ -247,13 +248,13 @@ describe("stage-prompts — 流程步限定表集（v1.5）", () => {
 });
 
 describe("stage-prompts — 阶段元信息", () => {
-  it("stageMeta 覆盖 8 阶段且表清单与注册表一致", () => {
+  it("stageMeta 覆盖 7 阶段（0-6）且表清单与注册表一致", () => {
     const meta = stageMeta();
-    expect(meta).toHaveLength(8);
+    expect(meta).toHaveLength(7);
     for (const m of meta) {
       expect(m.name.length).toBeGreaterThan(0);
       expect(m.tables).toEqual(tablesOfStage(m.id as 0).map((t) => t.code));
     }
-    expect(meta[7]?.tables).toEqual([]);
+    expect(meta[6]?.tables).toEqual([]); // 交付物阶段无表
   });
 });

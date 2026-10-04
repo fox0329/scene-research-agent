@@ -139,12 +139,12 @@ describe("stage-summary-service — 生成与落库", () => {
     for (const bad of ["建议进", "不通过", "红线"]) expect(text).not.toContain(bad);
   });
 
-  it("交付阶段（7 / 旧 8）也能生成说明性总结", () => {
+  it("交付物阶段（6，老编号 7/8）也能生成说明性总结", () => {
     const { db, scenarioId } = seed();
     const sc = db.scenarioRepo.getById(scenarioId)!;
-    const r = generateStageSummary(db, sc, 8 as never);
-    expect(r.stage).toBe(7);
-    expect(r.markdown).toContain("阶段 7 · 最终交付物");
+    const r = generateStageSummary(db, sc, 6);
+    expect(r.stage).toBe(6);
+    expect(r.markdown).toContain("阶段 6 · 最终交付物");
     expect(r.markdown).toContain("不给决策建议");
     expect(r.markdown).toContain("核实结论");
   });

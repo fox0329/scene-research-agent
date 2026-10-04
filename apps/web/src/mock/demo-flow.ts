@@ -305,13 +305,6 @@ export const DEMO_ROWS: Record<string, InfoRow[]> = {
       evidence_level: "C",
     },
   ],
-  "表7-1": [
-    {
-      target: "内部能力沉淀",
-      content: "沉淀水务行业方案模板与报价基线",
-      basis: "阶段 2 表3-8 需求缺口",
-    },
-  ],
 };
 
 /** 某表集在演示数据下的产出规模（与联真 `progress` 同形状） */

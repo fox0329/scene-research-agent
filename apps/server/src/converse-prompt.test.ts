@@ -17,9 +17,9 @@ import {
 } from "./converse.js";
 
 describe("对话助手操作手册口径", () => {
-  it("描述现行 8 阶段（0-7）与 8 流程步", () => {
-    expect(CONVERSE_SYSTEM_PROMPT).toContain("8 个阶段（0-7）");
-    expect(CONVERSE_SYSTEM_PROMPT).toContain("共 8 步");
+  it("描述现行 7 阶段（0-6）与 7 流程步", () => {
+    expect(CONVERSE_SYSTEM_PROMPT).toContain("7 个阶段（0-6）");
+    expect(CONVERSE_SYSTEM_PROMPT).toContain("共 7 步");
     expect(CONVERSE_SYSTEM_PROMPT).toContain("材料解析与入库");
   });
 

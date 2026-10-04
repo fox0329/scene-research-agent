@@ -52,7 +52,7 @@ export const DemoStagePanel: React.FC<DemoStagePanelProps> = ({
   anchor,
   onStageSnapshot,
 }) => {
-  const id = (stage === 8 ? 7 : stage) as InfoStageId;
+  const id = (stage >= 7 ? 6 : stage) as InfoStageId;
   const def = STAGE_DEFS.find((s) => s.id === id);
   const stageTables = useMemo(() => {
     const all = tablesOfStage(id).filter((t) => t.code !== "表1-1");
