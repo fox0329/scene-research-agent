@@ -177,6 +177,31 @@ describe("postcheck-pass — 三轮自检", () => {
     expect(out.report.byKind["结论与证据矛盾"]).toBeGreaterThan(0);
   });
 
+  it("行情行只降来源属性时，进度文案说的是「按实标为 AI 推断」而不是「降为无法核实」", async () => {
+    // 用户实跑发现：这行结论保留「行业通例」，报的却是"降为无法核实"——说的和做的不一致
+    const rows = [
+      {
+        id: "r9",
+        // 声称来自材料（AI提取）却给不出"文件名:页码" → 只命中"声称有据但无出处"
+        row: { content: "现场气体检测多为手持仪表巡检", verification_verdict: "行业通例" },
+        source: "",
+        sourceType: "AI提取" as const,
+      },
+    ];
+    const { client } = fakeDsh(['{"problems":[]}']);
+    const progress: string[] = [];
+    const fixes: { rowId: string; row?: InfoRow; source?: string | null; source_type?: string | null }[] = [];
+    const out = await runPostcheck(
+      deps(rows, { dsh: client, lookup: lookupWith({}), progress, fixes: fixes as never }),
+    );
+    expect(out.downgraded).toBe(1);
+    expect(rows[0]?.row["verification_verdict"]).toBe("行业通例"); // 结论没动
+    expect(fixes[0]?.source_type).toBe("AI推断"); // 降的是来源属性
+    const line = progress.filter((m) => m.includes("三轮后仍有硬伤")).join(" ");
+    expect(line).toContain("按实标为「AI 推断」");
+    expect(line).not.toContain("结论按实降为「无法核实」");
+  });
+
   it("模型调用失败不阻断：按确定性结果收口", async () => {
     const rows = [{ id: "r1", row: badRow(), source: "幽灵.pdf:9", sourceType: "AI提取" }];
     const failing: DshClient = {

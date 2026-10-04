@@ -230,7 +230,9 @@ describe("postcheck — 三轮后确定性收口", () => {
     const fixed = enforceTruthfulDowngrade([r], findings);
     expect(fixed).toHaveLength(1);
     expect(fixed[0]?.row["verification_verdict"]).toBe("无法核实");
-    expect(String(fixed[0]?.row["verification"])).toContain("生成后自检");
+    const note = String(fixed[0]?.row["verification"]);
+    expect(note).toContain("生成后自检");
+    expect(note).toContain("按实降为「无法核实」");
     expect(String(fixed[0]?.row["verification"])).toContain("不得当结论用");
   });
 
@@ -257,7 +259,11 @@ describe("postcheck — 三轮后确定性收口", () => {
     expect(fixed).toHaveLength(1);
     expect(fixed[0]?.sourceType).toBe("AI推断");
     expect(fixed[0]?.row["verification_verdict"]).toBe("行业通例");
-    expect(String(fixed[0]?.row["verification"])).toContain("生成后自检");
+    const note = String(fixed[0]?.row["verification"]);
+    expect(note).toContain("生成后自检");
+    // 留痕必须与做法一致：这行降的是来源属性，不是结论（v1.29 实跑发现文案与行为不符）
+    expect(note).toContain("AI 推断");
+    expect(note).not.toContain("按实降为「无法核实」");
   });
 
   it("只有头号硬伤才降级；措辞类存疑不降级（那是模型该改的）", () => {

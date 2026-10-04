@@ -367,13 +367,8 @@ export function enforceTruthfulDowngrade(
   for (const r of rows) {
     const bad = badByRow.get(r.rowId);
     if (!bad || bad.length === 0) continue;
-    const note = `${SELF_CHECK_MARK}${bad.map((f) => `${f.kind}：${f.detail}`).join("；")}；出处无法定位，核实结论按实降为「无法核实」，不得当结论用。`;
+    const reason = `${SELF_CHECK_MARK}${bad.map((f) => `${f.kind}：${f.detail}`).join("；")}`;
     const old = String(r.row["verification"] ?? "").trim();
-    const next: InfoRow = {
-      ...r.row,
-      verification_verdict: "无法核实",
-      verification: old === "" ? note : `${old}\n${note}`,
-    };
     const noProvenance = bad.some((f) => f.kind === "声称有据但无出处");
     /**
      * 只"声称有据却给不出出处"的行，还要看它的结论档位：
@@ -384,10 +379,23 @@ export function enforceTruthfulDowngrade(
     const claimsSource = ["已核实", "交叉一致", "单一来源"].includes(String(r.row["verification_verdict"] ?? "").trim());
     const onlyProvenance = bad.every((f) => f.kind === "声称有据但无出处");
     const keepVerdict = onlyProvenance && !claimsSource;
+    /**
+     * 留痕文字必须与**实际做法**一致（v1.29 实跑发现）：
+     * 保留档位的那条原来也写"核实结论按实降为无法核实"，可实际降的是来源属性——
+     * 说的和做的不一致，用户看到的是"被降级了"，库里却是"行业通例 + AI推断"。
+     */
+    const note = keepVerdict
+      ? `${reason}；出处给不出来，来源属性按实标为「AI 推断」，核实结论保留「行业通例」——行情不因缺本客户材料就打成无法核实。`
+      : `${reason}；出处无法定位，核实结论按实降为「无法核实」，不得当结论用。`;
+    const next: InfoRow = {
+      ...r.row,
+      verification_verdict: "无法核实",
+      verification: old === "" ? note : `${old}\n${note}`,
+    };
     // 保留原档位时，核实说明仍要留下自检留痕（来源属性确实被改过）
     const keepRow: InfoRow = {
       ...r.row,
-      verification: String(r.row["verification"] ?? "").trim() === "" ? note : `${String(r.row["verification"]).trim()}\n${note}`,
+      verification: old === "" ? note : `${old}\n${note}`,
     };
     out.push({
       rowId: r.rowId,

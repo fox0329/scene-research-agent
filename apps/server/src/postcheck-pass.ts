@@ -533,7 +533,15 @@ export async function runPostcheck(deps: PostcheckRunnerDeps): Promise<Postcheck
     });
   }
   if (downgrades.length > 0) {
-    progress(`三轮后仍有硬伤 ${downgrades.length} 行，已按实降为「无法核实」（不许当结论用）`);
+    // 报出来的必须是**实际做了什么**：有的行是结论降级，有的行只是来源属性改成 AI 推断（行情不动结论）
+    const verdictDown = downgrades.filter(
+      (d) => String(d.row["verification_verdict"] ?? "").trim() === "无法核实",
+    ).length;
+    const provenanceOnly = downgrades.length - verdictDown;
+    const parts: string[] = [];
+    if (verdictDown > 0) parts.push(`${verdictDown} 行结论按实降为「无法核实」`);
+    if (provenanceOnly > 0) parts.push(`${provenanceOnly} 行出处给不出来、按实标为「AI 推断」`);
+    progress(`三轮后仍有硬伤 ${downgrades.length} 行：${parts.join("，")}（都不许当结论用）`);
   }
   // 降级行的矛盾已消解，不再是"待办"；但 byKind 仍保留，便于看这一轮抓到了什么
   const open = findings.filter((f) => !downgradedIds.has(f.rowId));
