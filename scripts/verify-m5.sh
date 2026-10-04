@@ -160,15 +160,22 @@ else
   fi
   # ── 流程 UI 真机验收（v1.5 逐页推进）─────────────────────
   # 先建一个场景（脚本会驱动浏览器进入它并断言 7 步流程轴）
-  curl -s -X POST "http://127.0.0.1:${PORT}/api/v1/projects" \
+  # 注意：**验收结束后必须删掉它**——否则每跑一次验收就在用户库里留一个
+  #       「流程验收场景」，用户左栏会堆一排测试项目（v1.31 修）。
+  UIPROJ=$(curl -s -X POST "http://127.0.0.1:${PORT}/api/v1/projects" \
     -H 'content-type: application/json' \
-    -d '{"name":"流程验收场景","intent":"验收逐页推进"}' >/dev/null 2>&1 || true
+    -d '{"name":"流程验收场景","intent":"验收逐页推进"}' 2>/dev/null \
+    | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')
   if BASE_URL="http://127.0.0.1:${PORT}" ALLOW_MUTATE=1 node scripts/verify-flow-ui.mjs >"$SDIR/flowui.log" 2>&1; then
     echo "✅ 流程 UI 真机验收（7 步流程轴 / 四态 / 双 Tab / 无判断产出）"
   else
     echo "❌ 流程 UI 真机验收失败："
     tail -8 "$SDIR/flowui.log"
     FAIL=1
+  fi
+  # 收尾：删掉临时验收场景，不给用户留垃圾
+  if [ -n "$UIPROJ" ]; then
+    curl -s -X DELETE "http://127.0.0.1:${PORT}/api/v1/projects/${UIPROJ}" >/dev/null 2>&1 || true
   fi
 
   # 会话重连端点（契约 v1.5）：未知会话 404
