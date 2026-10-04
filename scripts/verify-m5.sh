@@ -114,7 +114,37 @@ else
   FAIL=1
 fi
 
+# ── 按端口清理「上一次遗留的本项目服务」（46174–46179 全都是本脚本的端口）──
+# 为什么必须清：残留服务会**接走健康检查**（/api/v1/health 照回 200），于是新服务起不来
+# 也看不出来，走查就会打到"临时目录已被删掉"的空壳上——表现为 page.waitForSelector 超时，
+# 极易误判成产品缺陷（2026-10-04 真踩过：46178 上挂了 1 小时的僵尸，白跑两轮验收）。
+#
+# 安全约束（重要）：**只杀白名单命令的进程**。本脚本的父进程是 DSH 桌面宿主，
+# 按端口取到的裸 PID 若不校验命令就 kill，一旦取到宿主进程会直接杀掉用户会话。
+kill_our_server_on_port() {
+  local port="$1" pid cmd
+  for pid in $(lsof -nP -iTCP:"$port" -sTCP:LISTEN -t 2>/dev/null | sort -u); do
+    cmd=$(ps -o command= -p "$pid" 2>/dev/null || true)
+    case "$cmd" in
+      # 注意：vite preview 的真实命令行是 `node .../vite.js preview --port 46174`，
+      # 用 *"vite preview"* 匹配不上（中间隔着 vite.js）——曾导致残留服务没被清掉，
+      # 下一次 E2E 直接因「46174 already in use」起不来（而不是测试失败，极易误判）
+      *vite*preview*|*apps/server/dist/index.js*)
+        echo "· 清理上一次遗留的 :$port 服务（PID ${pid}）"
+        kill "$pid" 2>/dev/null || true
+        ;;
+      "")
+        ;;
+      *)
+        echo "· 注意：:$port 被非本项目进程占用（PID ${pid}），跳过：$(printf '%s' "$cmd" | cut -c1-70)"
+        ;;
+    esac
+  done
+}
+
 PORT=46176
+kill_our_server_on_port "$PORT"
+sleep 1
 SDIR=$(mktemp -d)
 # 验收服务不读用户真实配置：显式指向不存在的登记表 → 「默认未配置」语义确定
 APP_PORT=$PORT DB_PATH="$SDIR/verify.db" SCENE_PROVIDERS_FILE="$SDIR/providers.none.json" WEB_DIST="$ROOT/apps/web/dist" \
@@ -125,8 +155,8 @@ for _ in $(seq 1 20); do
   if curl -sf "http://127.0.0.1:${PORT}/api/v1/health" >/dev/null 2>&1; then ready=1; break; fi
   sleep 0.3
 done
-if [ -z "$ready" ]; then
-  echo "❌ 构建产物服务未就绪（见 $SDIR/server.log）"
+if [ -z "$ready" ] || ! kill -0 "$SRV" 2>/dev/null; then
+  echo "❌ 构建产物服务未就绪（见 $SDIR/server.log；端口被占时健康检查会误判，日志里有 EADDRINUSE）"
   FAIL=1
 else
   # 静态页：SPA 首页 + 挂载探测
@@ -198,6 +228,8 @@ echo "=== [M5 验收] 5/6 真实链路走查（Playwright · 构建产物 :46178
 PF="$ROOT/data/providers.local.json"
 HAS_KEY=0
 PORT2=46178
+kill_our_server_on_port "$PORT2"
+sleep 1
 SDIR2=$(mktemp -d)
 PROVIDERS_FILE="$SDIR2/providers.none.json"
 PROVIDERS_LABEL="登记表未配置（走无密钥降级分支，真实 LLM 段待用户在设置页添加供应商后复跑）"
@@ -231,8 +263,8 @@ for _ in $(seq 1 20); do
   if curl -sf "http://127.0.0.1:${PORT2}/api/v1/health" >/dev/null 2>&1; then ready2=1; break; fi
   sleep 0.3
 done
-if [ -z "$ready2" ]; then
-  echo "❌ 走查服务未就绪（见 $SDIR2/server.log）"
+if [ -z "$ready2" ] || ! kill -0 "$SRV2" 2>/dev/null; then
+  echo "❌ 走查服务未就绪（见 $SDIR2/server.log；端口被占时健康检查会误判，日志里有 EADDRINUSE）"
   FAIL=1
 else
   echo "· $PROVIDERS_LABEL"
@@ -250,31 +282,6 @@ kill "$SRV2" 2>/dev/null || true
 wait "$SRV2" 2>/dev/null || true
 rm -rf "$SDIR2"
 
-# E2E 用固定端口 46174/46175：上一次失败可能留下服务，先把端口清干净再跑，
-# 否则 playwright 会以「46175 already used」直接失败（而不是测试失败，容易误判）。
-#
-# 安全约束（重要）：**只杀白名单命令的进程**。本脚本的父进程是 DSH 桌面宿主，
-# 按端口取到的裸 PID 若不校验命令就 kill，一旦取到宿主进程会直接杀掉用户会话。
-kill_our_server_on_port() {
-  local port="$1" pid cmd
-  for pid in $(lsof -nP -iTCP:"$port" -sTCP:LISTEN -t 2>/dev/null | sort -u); do
-    cmd=$(ps -o command= -p "$pid" 2>/dev/null || true)
-    case "$cmd" in
-      # 注意：vite preview 的真实命令行是 `node .../vite.js preview --port 46174`，
-      # 用 *"vite preview"* 匹配不上（中间隔着 vite.js）——曾导致残留服务没被清掉，
-      # 下一次 E2E 直接因「46174 already in use」起不来（而不是测试失败，极易误判）
-      *vite*preview*|*apps/server/dist/index.js*)
-        echo "· 清理上一次遗留的 :$port 服务（PID ${pid}）"
-        kill "$pid" 2>/dev/null || true
-        ;;
-      "")
-        ;;
-      *)
-        echo "· 注意：:$port 被非本项目进程占用（PID ${pid}），跳过：$(printf '%s' "$cmd" | cut -c1-70)"
-        ;;
-    esac
-  done
-}
 for P in 46174 46175; do kill_our_server_on_port "$P"; sleep 1; done
 
 E2E_OUT=$(npm run test:e2e 2>&1) && E2E_OK=1 || E2E_OK=0

@@ -31,7 +31,8 @@ export type PostcheckKind =
   | "把推断写成客户事实"
   | "价值不可验证"
   | "中栏夹带出处"
-  | "中栏太长";
+  | "中栏太长"
+  | "依据未落到事实";
 
 export type PostcheckSeverity = "硬伤" | "存疑";
 
@@ -215,6 +216,48 @@ export function hasMidCitation(text: string): boolean {
     if (re.test(text)) return true;
   }
   return false;
+}
+
+/** 「判定依据 / 打分依据」类列：写"凭什么"，不写结论复述与行业套话 */
+const BASIS_LABEL_RE = /依据|理由/;
+
+/** 行业套话：换任何一家公司都成立的句子，等于没给依据 */
+const INDUSTRY_FILLER_RE = /(?:通常|一般|大多|普遍|往往)(?:都)?由[^，。；]{0,14}(?:承载|提供|负责|厂商|供应商)/;
+
+/**
+ * 这一行的「依据列」写废话了吗（用户定调 2026-10-04：「角色判定依据 里面有不少的废话」）
+ *
+ * 两种废话都能确定性认出来：
+ *  ① **复述结论**——依据里又写一遍「属外围配合」，而「程度/角色」两列已经说过了；
+ *  ② **行业套话**——「通常由第三方软件承载」这种换谁都成立的句子，不是我方凭什么。
+ * 判据用的是**同一行里枚举列的取值**（复述 = 依据文本里又出现该取值），不需要语义模型。
+ */
+function basisFluff(r: PostcheckRow): string[] {
+  const def = TABLES_BY_CODE[r.tableCode];
+  if (!def) return [];
+  // 只认**中栏**枚举列（程度／角色／判定那几列）——右栏枚举值（`authority=T3`、`evidence_level=B`）
+  // 拿来比会误伤：型号串「CT31/CT32/CT33」里就含 "T3"（2026-10-04 实测误报，已加回归测试）
+  const verdicts: string[] = [];
+  for (const c of def.columns) {
+    if (!c.enum || c.slot !== "中栏") continue;
+    const v = String(r.row[c.key] ?? "").trim();
+    if (v.length >= 2) verdicts.push(v);
+  }
+  const out: string[] = [];
+  for (const c of def.columns) {
+    if (c.slot !== "中栏" || !BASIS_LABEL_RE.test(c.label)) continue;
+    const text = String(r.row[c.key] ?? "");
+    if (text.trim() === "") continue;
+    for (const v of verdicts) {
+      if (text.includes(v)) {
+        out.push(`${c.label} 复述了「${v}」（那一列已经说了）`);
+        break;
+      }
+    }
+    const filler = text.match(INDUSTRY_FILLER_RE);
+    if (filler) out.push(`${c.label} 写的是行业套话「${filler[0]}」，不是我方凭什么`);
+  }
+  return out;
 }
 
 /** 表的中栏列 key（含类别子表的列） */
@@ -430,6 +473,19 @@ export function runDeterministicPostcheck(input: PostcheckInput): PostcheckFindi
         label: r.label,
         kind: "中栏太长",
         detail: `中栏超过 ${MID_CELL_MAX_CHARS} 字：${longCells.join("、")}——一格只说一件事，压到一句话`,
+        severity: "存疑",
+      });
+    }
+
+    // ⑧ 依据列不许写废话：复述结论 / 行业套话（用户定调：「角色判定依据 里面有不少的废话」）
+    const fluff = basisFluff(r);
+    if (fluff.length > 0) {
+      findings.push({
+        tableCode: r.tableCode,
+        rowId: r.rowId,
+        label: r.label,
+        kind: "依据未落到事实",
+        detail: `${fluff.join("；")}——依据只写我方有什么/没有什么（型号、能力、边界），一句到底`,
         severity: "存疑",
       });
     }

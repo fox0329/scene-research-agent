@@ -353,3 +353,62 @@ describe("postcheck — 中栏说结果、来源归右栏（v1.32）", () => {
     expect(enforceMidCleanliness(rows)).toEqual([]);
   });
 });
+
+describe("postcheck — 依据列不许写废话（v1.32 追加）", () => {
+  const t42 = (roleReason: string, extra: Record<string, unknown> = {}): PostcheckRow => ({
+    tableCode: "表4-2",
+    rowId: "r42",
+    label: "会议预约与空间管理",
+    row: { link: "会议预约与空间管理", can_touch: "只能配合", our_role: "外围", role_reason: roleReason, ...extra },
+    source: "行业通例（模型知识）",
+    sourceType: "AI推断",
+  });
+
+  it("依据里复述结论（「属外围配合」）→ 点名", () => {
+    const f = runDeterministicPostcheck({
+      rows: [t42("预约与日历通常由第三方软件承载，我方仅提供门牌状态显示与近场拉起入口，属外围配合。")],
+      lookup: fakeLookup({}),
+    });
+    const hit = f.find((x) => x.kind === "依据未落到事实");
+    expect(hit).toBeTruthy();
+    expect(hit?.detail).toContain("复述");
+  });
+
+  it("依据写行业套话（「通常由专业厂商承载」）→ 点名", () => {
+    const f = runDeterministicPostcheck({
+      rows: [t42("会议 MCU、音视频编解码通常由专业厂商承载，我方仅提供平板显示入口。")],
+      lookup: fakeLookup({}),
+    });
+    const hit = f.find((x) => x.kind === "依据未落到事实");
+    expect(hit).toBeTruthy();
+    expect(hit?.detail).toContain("行业套话");
+  });
+
+  it("右栏枚举值不得参与判据：型号串含「CT31/CT32/CT33」不该被误判成复述「T3」", () => {
+    const f = runDeterministicPostcheck({
+      rows: [
+        {
+          ...t42("CT31/CT32/CT33 在售，支持 200+ 工业协议接入与 MQTT 上云。"),
+          row: {
+            link: "网络与设备接入",
+            can_touch: "可以碰",
+            our_role: "替代",
+            role_reason: "CT31/CT32/CT33 在售，支持 200+ 工业协议接入与 MQTT 上云。",
+            authority: "T3",
+            evidence_level: "B",
+          },
+        },
+      ],
+      lookup: fakeLookup({}),
+    });
+    expect(f.some((x) => x.kind === "依据未落到事实")).toBe(false);
+  });
+
+  it("依据落到我方事实（型号 + 边界）→ 不点名（不误伤）", () => {
+    const f = runDeterministicPostcheck({
+      rows: [t42("CT15/CT16 IO 模块覆盖 DI/DO/AI/AO，可替代传统 PLC 做灯光空调联动。")],
+      lookup: fakeLookup({}),
+    });
+    expect(f.some((x) => x.kind === "依据未落到事实")).toBe(false);
+  });
+});
