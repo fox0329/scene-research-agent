@@ -412,3 +412,75 @@ describe("postcheck — 依据列不许写废话（v1.32 追加）", () => {
     expect(f.some((x) => x.kind === "依据未落到事实")).toBe(false);
   });
 });
+
+describe("postcheck — 硬结论必须有依据（v1.33，用户质问「结论没有核实吗」）", () => {
+  const ledgerRow = (ability: string, limitation = ""): PostcheckRow => ({
+    tableCode: "表4-1",
+    rowId: "led-1",
+    label: ability,
+    row: { no: "4-1-01", ability, maturity: "已交付", limitation },
+    source: "ingest-1.pdf:2",
+    sourceType: "AI提取",
+  });
+  const mapRow = (link: string, canTouch: string, role: string, reason: string, verdict: string): PostcheckRow => ({
+    tableCode: "表4-2",
+    rowId: "map-1",
+    label: link,
+    row: {
+      link,
+      can_touch: canTouch,
+      our_role: role,
+      role_reason: reason,
+      verification_verdict: verdict,
+    },
+    source: "ingest-1.pdf:2",
+    sourceType: "AI提取",
+  });
+
+  it("判「不能碰」但依据里是单品限制、底账里有该能力 → 跨表矛盾点名", () => {
+    const f = runDeterministicPostcheck({
+      rows: [
+        ledgerRow("边缘 AI 推理算力（AI Box 边缘算力，6TOPS NPU）", "算力就绪但场景算法需另配"),
+        mapRow("危害辨识与风险评估", "不能碰", "不参与", "无风险辨识与评估类能力；CT15 无 NPU、不支持 AI 推理，研判靠人工。", "无法核实"),
+      ],
+      lookup: fakeLookup({}),
+    });
+    expect(f.some((x) => x.kind === "判定与能力底账矛盾")).toBe(true);
+    expect(f.some((x) => x.kind === "硬结论无依据")).toBe(true);
+  });
+
+  it("底账里的「限制条件」不能反过来当能力（曾误报 6 处）", () => {
+    const f = runDeterministicPostcheck({
+      rows: [
+        ledgerRow("CT 系列在鸿控制器近场/远程设备控制（灯光、窗帘、空调等点位）", "CT15 无 NPU，不支持 AI 推理"),
+        mapRow("语音转写与会议纪要", "不能碰", "不参与", "无 NPU 硬件，转写靠第三方。", "无法核实"),
+      ],
+      lookup: fakeLookup({}),
+    });
+    expect(f.some((x) => x.kind === "判定与能力底账矛盾")).toBe(false);
+  });
+
+  it("没下硬否定结论的行不查底账（「CT15 无 NPU」只是补充说明）→ 不点名", () => {
+    const f = runDeterministicPostcheck({
+      rows: [
+        ledgerRow("边缘 AI 推理算力（AI Box 边缘算力，6TOPS NPU）"),
+        mapRow("语音转写与会议纪要", "只能配合", "辅助", "AI Box 有 6TOPS NPU 可跑轻量模型；CT15 无 NPU。", "已核实"),
+      ],
+      lookup: fakeLookup({}),
+    });
+    expect(f.some((x) => x.kind === "判定与能力底账矛盾")).toBe(false);
+    expect(f.some((x) => x.kind === "硬结论无依据")).toBe(false);
+  });
+
+  it("判「不能碰」但依据确凿（核实结论已核实）→ 不点名（不误伤正常边界）", () => {
+    const f = runDeterministicPostcheck({
+      rows: [
+        ledgerRow("边缘 AI 推理算力（AI Box 边缘算力，6TOPS NPU）"),
+        mapRow("个体防护装备配备", "不能碰", "不参与", "无防护装备产品线，能力集中在控制器、网关与终端侧。", "已核实"),
+      ],
+      lookup: fakeLookup({}),
+    });
+    expect(f.some((x) => x.kind === "硬结论无依据")).toBe(false);
+    expect(f.some((x) => x.kind === "判定与能力底账矛盾")).toBe(false);
+  });
+});

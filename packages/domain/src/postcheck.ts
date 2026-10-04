@@ -32,7 +32,9 @@ export type PostcheckKind =
   | "价值不可验证"
   | "中栏夹带出处"
   | "中栏太长"
-  | "依据未落到事实";
+  | "依据未落到事实"
+  | "硬结论无依据"
+  | "判定与能力底账矛盾";
 
 export type PostcheckSeverity = "硬伤" | "存疑";
 
@@ -260,6 +262,100 @@ function basisFluff(r: PostcheckRow): string[] {
   return out;
 }
 
+/** 能力底账（阶段 3 的权威表）：判"能不能碰"要看它，不是看某一个型号的规格页 */
+const LEDGER_TABLE = "表4-1";
+
+/** 否定断言里的能力词：「无 X 能力」「不支持 AI 推理」「无 NPU」 */
+const NEGATION_ABILITY_RE =
+  /(?:无|没有|不支持|不具备|缺乏)\s*([\u4e00-\u9fa5]{2,10}(?:能力|产品|功能|算法|硬件|模块|引擎|平台|方案))/g;
+const NEGATION_TECH_RE =
+  /(?:无|没有|不支持|不具备|缺乏)\s*([A-Za-z][A-Za-z0-9 ]{0,10}(?:推理|模型|算力)?)/g;
+
+/**
+ * 跨表确定性校验①：**硬结论缺依据**（用户质问「每一个表格的结论没有核实吗？」）
+ *
+ * 「不能碰／不参与」是最重的判定，等于告诉客户"这块别找我们"。可这一行自己的
+ * 核实结论若是「无法核实／有反证」，就是**自认没有依据还下了硬结论**——按 G-R2
+ * （C 级不写结论）只能降级为「只能配合／辅助」，或补足依据再说。
+ * 实跑实例：有限空间安全作业 表4-2「危害辨识与风险评估」判"不能碰"，
+ * 而该行核实结论正是「无法核实」（依据为 CT15 单品限制）。
+ */
+function hardVerdictWithoutBasis(r: PostcheckRow): PostcheckFinding | null {
+  const def = TABLES_BY_CODE[r.tableCode];
+  if (!def) return null;
+  const verdictCol = def.columns.find((c) => c.key === "verification_verdict");
+  if (!verdictCol) return null;
+  const canTouch = String(r.row["can_touch"] ?? "").trim();
+  const verdict = String(r.row["verification_verdict"] ?? "").trim();
+  if (canTouch !== "不能碰") return null;
+  if (verdict !== "无法核实" && verdict !== "有反证") return null;
+  return {
+    tableCode: r.tableCode,
+    rowId: r.rowId,
+    label: r.label,
+    kind: "硬结论无依据",
+    detail: `判「不能碰」，可这一行自己的核实结论是「${verdict}」——自认没依据的判定不能当结论用，只能写「只能配合／辅助」或不下判定（G-R2：C 级不写结论）`,
+    severity: "硬伤",
+  };
+}
+
+/**
+ * 跨表确定性校验②：**判定与能力底账矛盾**（用户质问「为什么是不能碰」）
+ *
+ * 拿**一个型号的短板**否定**公司级能力**是最容易犯的错——实跑实例：
+ * 依据写「CT15 无 NPU、不支持 AI 推理」→ 判"不参与"，可同一场景的能力底账里明明有
+ * 「边缘 AI 推理算力（AI Box 边缘算力，6TOPS NPU）」已交付；同一张表 4-2 的另一行
+ * 还写着「边缘侧有 AI 推理能力」判"可以碰"。判据不看措辞、只看底账对不对得上。
+ */
+function ledgerContradictions(
+  rows: readonly PostcheckRow[],
+): PostcheckFinding[] {
+  // 只比「能力名」，**不比限制条件**——限制条件正是"我方缺什么"的记录，
+  // 拿它去证否"无 X"会得出"底账自己都说无 X"的鬼话（2026-10-04 实测 6 处全是误报）
+  const ledger = rows
+    .filter((r) => r.tableCode === LEDGER_TABLE)
+    .map((r) => String(r.row["ability"] ?? "").trim())
+    .filter((a) => a !== "");
+  if (ledger.length === 0) return [];
+
+  const out: PostcheckFinding[] = [];
+  for (const r of rows) {
+    if (r.tableCode === LEDGER_TABLE) continue;
+    // 只在**这一行自己下了硬否定结论**时才对底账——"能不能碰"才是要负责的判定；
+    // 其他行里的"CT15 无 NPU"是补充说明（同一行判的是"只能配合"），不该点名
+    const hardNo =
+      String(r.row["can_touch"] ?? "").trim() === "不能碰" ||
+      String(r.row["our_role"] ?? "").trim() === "不参与";
+    if (!hardNo) continue;
+    const def = TABLES_BY_CODE[r.tableCode];
+    if (!def) continue;
+    for (const c of def.columns) {
+      if (c.slot !== "中栏") continue;
+      const text = String(r.row[c.key] ?? "");
+      if (text === "") continue;
+      const terms = [
+        ...text.matchAll(NEGATION_ABILITY_RE),
+        ...text.matchAll(NEGATION_TECH_RE),
+      ].map((m) => (m[1] ?? "").trim());
+      for (const term of terms) {
+        if (term.length < 2) continue;
+        const hit = ledger.find((a) => a.includes(term));
+        if (hit === undefined) continue;
+        out.push({
+          tableCode: r.tableCode,
+          rowId: r.rowId,
+          label: r.label,
+          kind: "判定与能力底账矛盾",
+          detail: `${c.label} 写「无／不支持 ${term}」，但能力底账（${LEDGER_TABLE}）里有「${hit}」——一个型号的限制不能当公司级结论，请改判或补依据`,
+          severity: "存疑",
+        });
+        break;
+      }
+    }
+  }
+  return out;
+}
+
 /** 表的中栏列 key（含类别子表的列） */
 function midKeysOf(code: string): string[] {
   const t = TABLES_BY_CODE[code];
@@ -348,7 +444,11 @@ function proseOf(r: PostcheckRow): string {
  */
 export function runDeterministicPostcheck(input: PostcheckInput): PostcheckFinding[] {
   const findings: PostcheckFinding[] = [];
+  // 跨表校验先跑（判据要对照整批行，不能只看当前行）
+  findings.push(...ledgerContradictions(input.rows));
   for (const r of input.rows) {
+    const hard = hardVerdictWithoutBasis(r);
+    if (hard) findings.push(hard);
     const citations = parseCitations(r.source);
     const verdict = verdictOf(r);
     const prose = proseOf(r);
