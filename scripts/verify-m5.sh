@@ -80,7 +80,33 @@ for f in \
 done
 
 echo ""
-echo "=== [M5 验收] 4/6 构建产物 · 单端口整应用冒烟（:4096）==="
+# ─── v1.28 守卫：生成后三问自检（规则 G-R8）必须真的在每次生成之后跑 ──────────
+echo "=== [M5 验收] 0/6 生成后自检（G-R8）落点守卫 ==="
+fail=0
+check() { # check <描述> <文件> <正则>
+  if grep -qE "$3" "$2" 2>/dev/null; then
+    echo "  ✓ $1"
+  else
+    echo "  ✗ $1（未在 $2 命中 /$3/）"
+    fail=1
+  fi
+}
+check "领域层有确定性判定（来源真实性/措辞/价值/结论矛盾）" packages/domain/src/postcheck.ts "runDeterministicPostcheck"
+check "领域层有三轮后的按实降级" packages/domain/src/postcheck.ts "enforceTruthfulDowngrade"
+check "价值类表按列推导（不许手写表号——表6-4 曾因此被误判 20 行）" packages/domain/src/postcheck.ts 'keys\.has\("metric"\) && keys\.has\("baseline"\)'
+check "材料库真查：出处存在性 + 该页是否真有这句话" packages/infra/src/source-index.ts "source_fts MATCH"
+check "自检三轮：全量只报告 → 只改被点名的 → 复查仍存疑" apps/server/src/postcheck-pass.ts '只改被点名的|复查仍有存疑'
+
+check "模型不许把结论升级成「已核实」" apps/server/src/postcheck-pass.ts "只允许按实降级"
+check "阶段推进里接上自检（写库后、完整度前）" apps/server/src/advance-stage.ts "runPostcheck\("
+check "第 1 步「整理成定义」也过自检" apps/server/src/routes-ui.ts "definition/consolidate"
+check "SSE 有 postcheck 事件" packages/contract/src/index.ts "\| \"postcheck\""
+check "阶段总结第四段留痕" packages/domain/src/stage-summary.ts "生成后自检"
+check "提示词预告三问自检（产出时就知道会被查）" apps/server/src/stage-prompts.ts "产出后你还会被三问自检"
+check "规则入册 AGENTS（G-R8）" AGENTS.md "G-R8"
+if [ "$fail" -ne 0 ]; then echo "生成后自检守卫未通过"; exit 1; fi
+
+echo "=== [M5 验收] 4/6 构建产物 · 单端口整应用冒烟（:46176）==="
 if pnpm -r --if-present build >/dev/null 2>&1; then
   echo "✅ 全量构建成功（tsc ×4 + vite）"
 else
@@ -88,7 +114,7 @@ else
   FAIL=1
 fi
 
-PORT=4096
+PORT=46176
 SDIR=$(mktemp -d)
 # 验收服务不读用户真实配置：显式指向不存在的登记表 → 「默认未配置」语义确定
 APP_PORT=$PORT DB_PATH="$SDIR/verify.db" SCENE_PROVIDERS_FILE="$SDIR/providers.none.json" WEB_DIST="$ROOT/apps/web/dist" \
@@ -159,12 +185,12 @@ wait "$SRV" 2>/dev/null || true
 rm -rf "$SDIR"
 
 echo ""
-echo "=== [M5 验收] 5/6 真实链路走查（Playwright · 构建产物 :4098）+ 演示 E2E ==="
+echo "=== [M5 验收] 5/6 真实链路走查（Playwright · 构建产物 :46178）+ 演示 E2E ==="
 # 密钥探测（变更表 #16：模型配置应用自持后）：登记表 data/providers.local.json 中
 # 默认供应商已填 API Key → SCENE_HAS_KEY=1 走真实 LLM 分支；否则服务指向不存在的登记表，走「默认未配置」降级分支。
 PF="$ROOT/data/providers.local.json"
 HAS_KEY=0
-PORT2=4098
+PORT2=46178
 SDIR2=$(mktemp -d)
 PROVIDERS_FILE="$SDIR2/providers.none.json"
 PROVIDERS_LABEL="登记表未配置（走无密钥降级分支，真实 LLM 段待用户在设置页添加供应商后复跑）"
@@ -217,8 +243,8 @@ kill "$SRV2" 2>/dev/null || true
 wait "$SRV2" 2>/dev/null || true
 rm -rf "$SDIR2"
 
-# E2E 用固定端口 4180/4181：上一次失败可能留下服务，先把端口清干净再跑，
-# 否则 playwright 会以「4181 already used」直接失败（而不是测试失败，容易误判）。
+# E2E 用固定端口 46174/46175：上一次失败可能留下服务，先把端口清干净再跑，
+# 否则 playwright 会以「46175 already used」直接失败（而不是测试失败，容易误判）。
 #
 # 安全约束（重要）：**只杀白名单命令的进程**。本脚本的父进程是 DSH 桌面宿主，
 # 按端口取到的裸 PID 若不校验命令就 kill，一旦取到宿主进程会直接杀掉用户会话。
@@ -227,9 +253,9 @@ kill_our_server_on_port() {
   for pid in $(lsof -nP -iTCP:"$port" -sTCP:LISTEN -t 2>/dev/null | sort -u); do
     cmd=$(ps -o command= -p "$pid" 2>/dev/null || true)
     case "$cmd" in
-      # 注意：vite preview 的真实命令行是 `node .../vite.js preview --port 4180`，
+      # 注意：vite preview 的真实命令行是 `node .../vite.js preview --port 46174`，
       # 用 *"vite preview"* 匹配不上（中间隔着 vite.js）——曾导致残留服务没被清掉，
-      # 下一次 E2E 直接因「4180 already in use」起不来（而不是测试失败，极易误判）
+      # 下一次 E2E 直接因「46174 already in use」起不来（而不是测试失败，极易误判）
       *vite*preview*|*apps/server/dist/index.js*)
         echo "· 清理上一次遗留的 :$port 服务（PID ${pid}）"
         kill "$pid" 2>/dev/null || true
@@ -242,12 +268,12 @@ kill_our_server_on_port() {
     esac
   done
 }
-for P in 4180 4181; do kill_our_server_on_port "$P"; sleep 1; done
+for P in 46174 46175; do kill_our_server_on_port "$P"; sleep 1; done
 
 E2E_OUT=$(npm run test:e2e 2>&1) && E2E_OK=1 || E2E_OK=0
 
 # 收尾：无论成败都清掉 E2E 起的服务，避免污染后续手工验证（同样只杀白名单）
-for P in 4180 4181; do kill_our_server_on_port "$P"; done
+for P in 46174 46175; do kill_our_server_on_port "$P"; done
 if [ "$E2E_OK" = "1" ]; then
   EN=$(printf '%s' "$E2E_OUT" | grep -Eo "[0-9]+ passed" | tail -1 || echo "?")
   echo "✅ 演示模式 E2E 通过（${EN}）"

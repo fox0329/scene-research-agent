@@ -103,6 +103,20 @@ export function useStageAnalysis(opts: {
               const message = String(ev.message ?? "");
               push(`【错误】${message}`);
               onError?.(message);
+            } else if (ev.type === "postcheck") {
+              // 生成后三问自检（规则 G-R8）：这是每次生成都会走的固定环节，
+              // 用户要能看见"查了多少、改了多少、有没有降级"——不能只在后台悄悄跑。
+              const rep = (ev.report ?? {}) as {
+                checked?: number;
+                fixed?: number;
+                downgraded?: number;
+                remaining?: number;
+              };
+              push(
+                `【自检】三问（真实·客观·价值）检 ${rep.checked ?? 0} 行，自动改正 ${rep.fixed ?? 0} 行` +
+                  (rep.downgraded ? `，${rep.downgraded} 行按实降级` : "") +
+                  (rep.remaining ? `，仍有 ${rep.remaining} 处存疑` : "，无遗留存疑"),
+              );
             } else if (ev.type === "done") {
               const tablesFailed = Array.isArray(ev.tablesFailed)
                 ? (ev.tablesFailed as string[])

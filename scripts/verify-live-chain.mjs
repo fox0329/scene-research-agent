@@ -4,8 +4,8 @@
  * → 项目 CRUD → 阶段面板（有密钥走真实分析落库；无密钥断言降级横幅）
  * → 右栏决策支撑真实快照 → 双口径导出落盘 md → decide 推进 → 对话 converse。
  * 由 scripts/verify-m5.sh 拉起配套服务后调用；也可手动：
- *   APP_PORT=4098 DB_PATH=... EXPORT_DIR=... WEB_DIST=apps/web/dist node apps/server/dist/index.js &
- *   BASE_URL=http://127.0.0.1:4098 EXPORT_DIR=/tmp/... node scripts/verify-live-chain.mjs
+ *   APP_PORT=46178 DB_PATH=... EXPORT_DIR=... WEB_DIST=apps/web/dist node apps/server/dist/index.js &
+ *   BASE_URL=http://127.0.0.1:46178 EXPORT_DIR=/tmp/... node scripts/verify-live-chain.mjs
  * 密钥可用性由 SCENE_HAS_KEY=1 显式声明（verify-m5.sh 按应用登记表 data/providers.local.json
  * 的默认供应商是否已填 Key 自动探测，并通过 SCENE_PROVIDERS_FILE 注入对应文件）。
  */
@@ -19,7 +19,7 @@ const require = createRequire(ROOT + "/");
 /* 根 devDependency 是 @playwright/test（其再导出 chromium）；playwright 裸包未提升，不直接 require */
 const { chromium } = require("@playwright/test");
 
-const BASE = process.env.BASE_URL ?? "http://127.0.0.1:4098";
+const BASE = process.env.BASE_URL ?? "http://127.0.0.1:46178";
 const EXPORT_DIR = process.env.EXPORT_DIR ?? "/tmp/scene-verify-exports";
 const PDF = join(ROOT, "scripts/spike/s3/sample.pdf");
 const HAS_KEY = process.env.SCENE_HAS_KEY === "1";
@@ -298,7 +298,10 @@ if (HAS_KEY) {
       return labels.some((t) => /重算本步/.test(t)) && !!document.querySelector(".ws table");
     },
     null,
-    { timeout: 300_000 },
+    /* v1.28：一次分析现在包含「生成后三问自检」（G-R8，第 1 轮全量 + 2 轮增量），
+       实测第 2 步纯生成 ~110 秒、自检再 ~6 分钟（与行数相关）——预算必须按产品实际耗时给，
+       否则守卫会误报成"分析失败"。 */
+    { timeout: 900_000 },
   );
   analysisNote = "真实分析落库完成（按钮收回「重算本步」，本步表格已渲染）";
 } else {

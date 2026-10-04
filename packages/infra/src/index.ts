@@ -65,4 +65,4 @@ export type { ConnectionCheckResult, ModelsFetchResult } from "./provider-check.
 export { exportDeliverables, exportFileName } from "./md-export.js";
 
 /** 文件存储适配器 — TODO M1 实现 */
-export {};
+export {};export * from "./source-index.js";

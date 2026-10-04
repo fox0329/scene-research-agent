@@ -23,8 +23,8 @@ import type {
   StageId,
   StageData,
 } from "@scene/contract";
-import { FLOW_LAST_STEP, type InfoStageId } from "@scene/contract";
-import { alignmentWithBrief, anchorFixedRows, buildFlowStatus } from "@scene/domain";
+import { ANCHOR_TABLE_CODE, FLOW_LAST_STEP, type InfoStageId } from "@scene/contract";
+import { alignmentWithBrief, anchorFixedRows, buildFlowStatus, type InfoRow } from "@scene/domain";
 import type { DbInstance } from "@scene/infra";
 import {
   parseDocument,
@@ -42,6 +42,7 @@ import type { ProviderModelEntry } from "@scene/infra";
 import type { SseHub } from "./sse-hub.js";
 import { createConverseCommand, type ChatImportOutcome } from "./converse.js";
 import { requestScenarioClarify } from "./scenario-clarify.js";
+import { makeSourceLookup, runPostcheck } from "./postcheck-pass.js";
 import {
   collectStageSummaries,
   generateStageSummary,
@@ -896,6 +897,27 @@ function registerConversationRoutes(
     if (!scenario) return notFound(reply, `场景 ${id} 不存在`);
     const conversationId = await ensureDefinitionConversation(db, deps.dshClient, scenario);
     const out = await consolidateDefinition(db, deps.dshClient, scenario, conversationId);
+    // 生成后三问自检（规则 G-R8）：第 1 步也是"生成"，同样不许跳过自检。
+    // 用户定调"这是生成过程的一个步骤，为什么要用户判断"→ 自动查、自动改、改不掉按实降级。
+    const postcheckOutcome = await runPostcheck({
+      listRows: () =>
+        db.stageDataRepo.listByScenarioStage(id, 1 as never)
+          .filter((r) => r.table_code === ANCHOR_TABLE_CODE)
+          .map((r) => ({
+            id: r.id,
+            tableCode: r.table_code,
+            row: r.row as InfoRow,
+            source: r.source,
+            sourceType: r.source_type,
+          })),
+      lookup: makeSourceLookup(db),
+      dshClient: deps.dshClient,
+      applyFix: (rowId, patch) => {
+        db.stageDataRepo.update(rowId, patch);
+      },
+      scenarioName: scenario.name,
+      stage: 1 as never,
+    });
     const alignment = alignmentWithBrief(
       out.rows.map((r) => ({
         item: r.item,
@@ -914,6 +936,8 @@ function registerConversationRoutes(
       dropped: out.dropped,
       // 模型顺手推断、按"只收用户说过的"规则丢弃的项数（定义页去噪的可观测指标）
       inferred_dropped: out.inferredDropped,
+      // 生成后自检结果：第 1 步也要让用户看得见"查了什么、改了什么"
+      postcheck: postcheckOutcome.report,
     };
   });
 

@@ -43,10 +43,11 @@ import {
   gapsBrief,
   validateIncomingRows,
 } from "@scene/domain";
-import type { InfoRow } from "@scene/domain";
+import type { InfoRow, PostcheckReport } from "@scene/domain";
 import { buildStagePrompt, getStageOutputContract } from "./stage-prompts.js";
 import { runScenarioClarify, clarifyAbortEvent } from "./scenario-clarify.js";
 import { generateStageSummary } from "./stage-summary-service.js";
+import { makeSourceLookup, runPostcheck } from "./postcheck-pass.js";
 import { readAnchorRows, writeAnchorRows } from "./scenario-anchor.js";
 
 // ─── 依赖注入接口 ──────────────────────────────────────────
@@ -613,6 +614,65 @@ async function* executeAdvanceStage(
     });
   }
 
+  // 8.5 生成后三问自检（规则 G-R8，v1.28）
+  //
+  // 用户定调：「每个阶段生成后有没有 1、确认来源的真实性 2、确认表述的准确、客观性
+  // 3、问三次这真实吗？客观吗？有价值吗？把这个要作为规则在每次生成后检查」，
+  // 并且明确「这是生成过程的一个步骤，为什么要用户判断」——所以它在这里、不在界面上：
+  // 自动查（确定性层真查材料 + 模型三问）→ 自动改 → 改不掉的按实降级 → 继续往下走。
+  yield emit({ type: "progress", stage, message: "正在做生成后自检（真实吗·客观吗·有价值吗）..." });
+  const pcQueue: string[] = [];
+  let pcSettled = false;
+  let pcReport: PostcheckReport | undefined;
+  const pcPromise = runPostcheck({
+    listRows: () =>
+      coveredCodes.flatMap((code) =>
+        db.stageDataRepo
+          .list({
+            where: "scenario_id = ? AND stage = ? AND table_code = ?",
+            params: [scenarioId, stage, code],
+          })
+          .map((r) => ({
+            id: r.id,
+            tableCode: code,
+            row: r.row as InfoRow,
+            source: r.source,
+            sourceType: r.source_type,
+          })),
+      ),
+    lookup: makeSourceLookup(db),
+    dshClient,
+    applyFix: (rowId, patch) => {
+      db.stageDataRepo.update(rowId, patch);
+    },
+    onProgress: (message) => pcQueue.push(message),
+    scenarioName: scenario.name,
+    stage,
+  })
+    .then((outcome) => {
+      pcReport = outcome.report;
+      return outcome;
+    })
+    .catch((err: unknown) => {
+      // 自检失败绝不能连累本次生成（宁可少一轮自检，也不能丢用户的产出）
+      pcQueue.push(`自检未完成（不影响本次产出）：${err instanceof Error ? err.message : String(err)}`);
+      return undefined;
+    })
+    .finally(() => {
+      pcSettled = true;
+    });
+  while (!pcSettled || pcQueue.length > 0) {
+    while (pcQueue.length > 0) {
+      yield emit({ type: "progress", stage, message: pcQueue.shift()! });
+    }
+    if (pcSettled) break;
+    await new Promise<void>((resolve) => setTimeout(resolve, 250));
+  }
+  await pcPromise;
+  if (pcReport) {
+    yield emit({ type: "postcheck", stage, report: pcReport });
+  }
+
   // 9. 信息完整度检查（**替代旧「质量关 + 建议三档」**）
   //    只输出"还缺什么"，不输出通过/不通过、不给建议；不齐备不阻断。
   yield emit({ type: "progress", stage, message: "正在检查信息完整度..." });
@@ -645,6 +705,11 @@ async function* executeAdvanceStage(
       `阶段 ${stage} 分析完成，共写入 ${writtenRows.length} 条信息。`,
       gapsBrief(completeness),
       violations.length > 0 ? `产出行校验：${violations.length} 处需修正（见右栏）。` : "",
+      pcReport
+        ? `生成后自检：检 ${pcReport.checked} 行，自动改正 ${pcReport.fixed} 行${
+            pcReport.downgraded > 0 ? `，${pcReport.downgraded} 行因出处无法定位按实降级` : ""
+          }${pcReport.remaining > 0 ? `，仍有 ${pcReport.remaining} 处存疑（见总结第四段）` : ""}。`
+        : "",
       "右栏已生成阶段总结文档。",
     ]
       .filter(Boolean)

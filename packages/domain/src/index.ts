@@ -246,3 +246,22 @@ export type {
   FlowStepStatus,
   FlowStatus,
 } from "./flow.js";
+
+// ─── 生成后三问自检（规则 G-R8，v1.28） ──────────────────────
+// 用户定调：「这是生成过程的一个步骤，为什么要用户判断」→ 自动查、自动改、改不掉按实降级。
+export {
+  runDeterministicPostcheck,
+  enforceTruthfulDowngrade,
+  summarizePostcheck,
+  parseCitations,
+  keyPhrases,
+} from "./postcheck.js";
+export type {
+  PostcheckFinding,
+  PostcheckInput,
+  PostcheckKind,
+  PostcheckReport,
+  PostcheckRow,
+  PostcheckSeverity,
+  SourceLookup,
+} from "./postcheck.js";

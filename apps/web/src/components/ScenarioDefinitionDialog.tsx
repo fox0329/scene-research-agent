@@ -329,6 +329,16 @@ export const ScenarioDefinitionDialog: React.FC<ScenarioDefinitionDialogProps> =
                   （补充不齐也不影响往下走）
                 </p>
               )}
+              {result?.postcheck ? (
+                <p className="definition-postcheck" role="status">
+                  生成后自检（真实吗 · 客观吗 · 有价值吗）：检{" "}
+                  <strong>{result.postcheck.checked}</strong> 项，自动改正{" "}
+                  <strong>{result.postcheck.fixed}</strong> 项
+                  {result.postcheck.downgraded > 0
+                    ? `，${result.postcheck.downgraded} 项因出处无法定位按实降为「无法核实」`
+                    : ""}
+                </p>
+              ) : null}
               <AlignmentTable
                 items={result?.alignment ?? []}
                 questions={result?.open_questions ?? []}

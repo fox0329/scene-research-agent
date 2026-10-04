@@ -2,7 +2,7 @@
  * @scene/web — 后端 API 客户端（M5-T5.3 联真）
  *
  * 约定（契约 v1.4 联真口径）：
- * - 基址 /api/v1，开发态由 vite proxy 转发到 4081，构建产物由 server 单端口托管
+ * - 基址 /api/v1，开发态由 vite proxy 转发到 46172，构建产物由 server 单端口托管
  * - 错误统一 { error: "中文说明" } → ApiError(message, status)
  * - SSE（advance/ingest/converse）走 fetch 流解析，支持 Last-Event-ID 重连
  */
@@ -216,6 +216,21 @@ export interface ApiDefinitionConsolidation {
   updated: number;
   skipped: number;
   open_questions: string[];
+  /**
+   * 生成后三问自检结果（规则 G-R8）
+   *
+   * 第 1 步同样是"生成"，同样要过自检——查了多少行、自动改了多少、有没有按实降级。
+   */
+  postcheck?: ApiPostcheckReport;
+}
+
+/** 生成后自检报告（规则 G-R8：真实吗 · 客观吗 · 有价值吗，三轮） */
+export interface ApiPostcheckReport {
+  checked: number;
+  fixed: number;
+  downgraded: number;
+  remaining: number;
+  byKind: Record<string, number>;
 }
 
 /** 阶段总结文档（六段骨架 Markdown） */

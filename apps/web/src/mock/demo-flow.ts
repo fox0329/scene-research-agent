@@ -174,6 +174,8 @@ export function demoDefinitionConsolidation(): ApiDefinitionConsolidation {
     updated: rows.length,
     skipped: 0,
     open_questions: [...DEMO_DEFINITION_OPEN_QUESTIONS],
+    // 演示同样走"生成后自检"这一步（规则 G-R8）：演示里也不能让用户以为没这道工序
+    postcheck: { checked: rows.length, fixed: 1, downgraded: 0, remaining: 0, byKind: {} },
   };
 }
 

@@ -117,6 +117,9 @@ function allEntries(input: StageSummaryInput, tables: readonly TableDef[]): RowE
 }
 
 /** 核实结论的五个取值（顺序：从最强到最弱） */
+/** 生成后自检留下的降级标记（写在核实说明里，总结据此留痕） */
+export const SELF_CHECK_MARK = "【生成后自检】";
+
 export const VERIFICATION_VERDICTS = [
   "已核实",
   "交叉一致",
@@ -274,6 +277,22 @@ export function buildStageSummary(input: StageSummaryInput): string {
       if (list.length > 10) L.push(`  - （其余 ${list.length - 10} 条见各表）`);
     }
     L.push("- 每条信息的核实理由（**准确**：对得上哪份材料、能否复算；**客观**：事实还是推断、谁的口径、有无利益相关方；**为什么**：凭什么采信、哪里不确定）见各表「核实说明」列。");
+    // 生成后自检的留痕（v1.28，规则 G-R8）
+    //
+    // 为什么不落库存报告：自检的结论已经写在行的核实说明里（降级标记「【生成后自检】」），
+    // 从行本身推导就能复现——总结是纯函数，随时重算都对得上（不依赖某次调用的内存态）。
+    const selfChecked = entries.filter((e) =>
+      String(e.row["verification"] ?? "").includes(SELF_CHECK_MARK),
+    );
+    L.push(
+      `- 生成后自检（每条信息都过了三问：真实吗 · 客观吗 · 有价值吗）：${
+        selfChecked.length > 0
+          ? `其中 ${selfChecked.length} 条在三轮自检后仍没给出可定位的出处，已按实降为「无法核实」`
+          : "本轮没有「已核实却没有可定位出处」的条目"
+      }。`,
+    );
+    for (const e of selfChecked.slice(0, 5)) L.push(`  - ${e.code}｜${labelOf(e)}`);
+    if (selfChecked.length > 5) L.push(`  - （其余 ${selfChecked.length - 5} 条见各表核实说明）`);
     if (sources.length > 0) {
       L.push(
         `- 来源分布：${authoritySummary(dist, " 条")}；不同来源共 ${sources.length} 个`,

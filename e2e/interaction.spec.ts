@@ -812,3 +812,16 @@ test("右栏完整度状态行不再喊「缺口 N 项」", async ({ page }) => 
   expect(text).not.toContain("缺口");
   expect(text).not.toContain("不阻断");
 });
+
+test("第 1 步「整理成定义」结果里带生成后自检（真实吗·客观吗·有价值吗）", async ({ page }) => {
+  // G-R8：自检是生成过程的固定环节——第 1 步同样是"生成"，界面上必须看得见它跑过
+  await page.goto("/");
+  await page.locator(".flow-actions").getByRole("button", { name: /开始本步分析|重算本步/ }).click();
+  const dlg = page.getByRole("dialog", { name: "场景定义" });
+  await expect(dlg).toBeVisible();
+  await dlg.getByRole("button", { name: "整理成定义" }).click();
+  // 结果区：写表统计之后紧跟一行自检（检了多少项 / 自动改正多少项）
+  await expect(dlg.getByText(/生成后自检/)).toBeVisible();
+  await expect(dlg.getByText(/检\s*\d+\s*项/)).toBeVisible();
+});
+

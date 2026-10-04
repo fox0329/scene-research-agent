@@ -377,6 +377,13 @@ export type SseEventType =
   | "row"
   | "completeness"
   | "summary"
+  /**
+   * v1.28：生成后三问自检的结果（规则 G-R8）
+   *
+   * 单独一种事件而不是塞进 progress：它是**每次生成都会有的固定环节**，
+   * 前端要能稳定拿到"检了多少行 / 自动改了多少 / 降级多少 / 还剩多少存疑"。
+   */
+  | "postcheck"
   | "done"
   | "error";
 

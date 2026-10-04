@@ -2121,6 +2121,7 @@ td.ed {
 .definition-status-line { margin: 0; font-size: var(--txs); color: var(--ct2); }
 .definition-result { display: flex; flex-direction: column; gap: var(--s3); }
 .definition-summary { margin: 0; font-size: var(--ts); color: var(--ct); }
+.definition-postcheck{ margin: 0; font-size: var(--ts); color: var(--ct); }
 .definition-f {
   display: flex;
   align-items: flex-end;

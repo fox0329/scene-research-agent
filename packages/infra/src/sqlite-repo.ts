@@ -498,9 +498,13 @@ export interface StageDataRepo {
    * 为什么需要 null：行被清空内容后（如"重新整理定义"清掉旧推断），来源标记必须一起清，
    * 否则会留下"空内容 + AI推断"这种自相矛盾的行。
    */
+  /**
+   * v1.28 起支持改 `source`：生成后自检发现"出处查不到/该页没有这句话"时，
+   * 必须能把站不住的出处改掉或清掉（`source: null` = 显式清空），否则自检只能报告不能修。
+   */
   update(
     id: string,
-    patch: { row?: Record<string, unknown>; source_type?: string | null },
+    patch: { row?: Record<string, unknown>; source_type?: string | null; source?: string | null },
   ): StageData | undefined;
 }
 
@@ -580,13 +584,14 @@ function createStageDataRepo(db: Database.Database): StageDataRepo {
 
   const update = (
     id: string,
-    patch: { row?: Record<string, unknown>; source_type?: string | null },
+    patch: { row?: Record<string, unknown>; source_type?: string | null; source?: string | null },
   ): StageData | undefined => {
     const existing = getById(id);
     if (!existing) return undefined;
     const entries: [string, unknown][] = [];
     if (patch.row !== undefined) entries.push(["row", JSON.stringify(patch.row)]);
     if (patch.source_type !== undefined) entries.push(["source_type", patch.source_type]);
+    if (patch.source !== undefined) entries.push(["source", patch.source]);
     if (entries.length === 0) return existing;
     const setClauses = entries.map(([k]) => `${k} = ?`).join(", ");
     db.prepare(`UPDATE stage_data SET ${setClauses}, updated_at = ? WHERE id = ?`)
