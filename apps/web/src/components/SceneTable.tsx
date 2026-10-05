@@ -176,18 +176,36 @@ export function SceneTable<T extends Record<string, unknown>>({
   colKeysSigRef.current = colKeysSig;
   /** 用户手动拖过（或读到留存值）后不再自动重排 */
   const manualRef = useRef(widths !== null);
-  /** 拖拽基线：起点 X、被拖列的起点宽、冻结的全表宽 */
+  /** 拖拽基线：起点 X、被拖列的起点宽、拖拽开始那一刻的全表列宽（冻结） */
   const dragRef = useRef<{
     key: string;
     startX: number;
     startW: number;
-    /** 被拖列允许的最大宽（末列让到可读下限为止） */
-    maxW: number;
     base: Widths;
   } | null>(null);
 
   /* 测量阶段（无留存宽度）：整表单行自然宽渲染，量完立即适配容器（绘制前完成，无闪烁） */
   const measuring = widths === null;
+
+  /**
+   * 余量给末列，其余列一律不动（v1.34 用户定调）
+   *
+   * 为什么要有这一步：中栏表格恒占满中栏宽，**必须有一列承接余量**。
+   * 旧实现把"让宽"的活派给末列、并且**拖宽时也从末列身上取**——于是拖宽第 3 列，
+   * 第 4/5 列看着没动、末列却在缩，用户看到的就是「往右调整后面的列宽会联动」。
+   * 现在的规矩：**拖宽只动被拖列，表宽涨出去、超出中栏就横向滚动**；
+   * 拖窄/中栏变宽多出来的余量才补给末列（用户认可"往左调整没问题"）。
+   */
+  const padToContainer = useCallback((w: Widths): Widths => {
+    const cols = columnsRef.current;
+    const last = cols[cols.length - 1]?.key;
+    if (last === undefined || cols.length < 2) return w;
+    const container = Math.max(0, (wrapRef.current?.clientWidth ?? 0) - 1);
+    if (container <= 0) return w;
+    const sum = cols.reduce((a, c) => a + (w[c.key] ?? 0), 0);
+    if (sum >= container) return w;
+    return { ...w, [last]: (w[last] ?? 0) + (container - sum) };
+  }, []);
 
   /** 自动适配：按各列内容需求求「总行高最小」的列宽（px） */
   const fitToContainer = useCallback(() => {
@@ -289,27 +307,17 @@ export function SceneTable<T extends Record<string, unknown>>({
         fitToContainer();
         return;
       }
-      /* 手动列宽遇到中栏变窄：末列最多让到可读下限，再不够就按比例收（绝不出横滚） */
-      const cols = columnsRef.current;
-      const last = cols[cols.length - 1]?.key;
-      const sumOthers = cols
-        .filter((c) => c.key !== last)
-        .reduce((a, c) => a + (widthsRef.current?.[c.key] ?? 0), 0);
-      const room = wrap.clientWidth - sumOthers;
-      if (room >= MIN_COL_WIDTH) return;
-      const scale = Math.max(0.1, (wrap.clientWidth - MIN_COL_WIDTH) / Math.max(1, sumOthers));
-      const next: Widths = {};
-      for (const c of cols) {
-        const w = widthsRef.current?.[c.key];
-        if (typeof w === "number") next[c.key] = Math.max(MIN_COL_WIDTH, Math.round(w * scale));
-      }
-      setWidths(next);
+      /* 手动列宽遇到中栏变化：**用户拖过的宽度不动**。
+         中栏变宽 → 多出的余量给末列；中栏变窄 → 表宽涨出去，由 .tw 横向滚动兜底。
+         （旧实现在这里按比例缩所有列，那同样是一次"联动"，且把用户拖好的比例破坏掉） */
+      const w = widthsRef.current;
+      if (w) setWidths(padToContainer(w));
     };
     sync();
     const ro = new ResizeObserver(sync);
     ro.observe(wrap);
     return () => ro.disconnect();
-  }, [measuring, fitToContainer]);
+  }, [measuring, fitToContainer, padToContainer]);
 
   /* 同一实例切换表（storageKey 或列集变了）：重新读留存宽度；读不到就回测量态——
      否则会把上一张表的列宽套到新表上（列 key 对不上 → 宽度全是 0） */
@@ -350,23 +358,19 @@ export function SceneTable<T extends Record<string, unknown>>({
   );
 
   /**
-   * 拖某列右缘的分割线：**只有这一列变宽/变窄**。
+   * 拖某列右缘的分割线：**只有这一列变宽/变窄**（v1.34 修正）
    *
-   * 不做「左右两列交换宽度」——那会把右边那一列一起挪动（用户明确不要）。
-   * 变宽到超过中栏宽时由 `.tw` 出横向滚动；变窄时空出的宽由填充列承接，
-   * 所以其他列既不变宽也不变窄。
+   * 旧实现把"加宽上限"定在"末列还能让出多少"（`末列宽 - 可读下限`），于是拖宽时
+   * 末列被挤窄——手柄上写着「只影响这一列」，实际却连着后面的列一起动（用户实测反馈：
+   * 「往左调整没问题，往右调整后面的列宽会联动」）。现在**不设这种上限**：
+   * 拖宽就涨表宽，超出中栏由 `.tw` 横向滚动；拖窄空出的宽由 padToContainer 补给末列。
    */
   const startResize = useCallback(
     (key: string, e: React.MouseEvent) => {
       e.preventDefault();
       const base = { ...(widths ?? {}) };
       const startW = base[key] ?? FALLBACK_COL_WIDTH;
-      /* 末列不设固定宽（承接余量）：它能让出的最多是"降到可读下限"那点，
-         所以被拖列的加宽上限 = 自身宽 + 末列余量。表宽因此恒等于中栏宽，不出横滚。 */
-      const lastTh = tableRef.current?.querySelector("th:last-child");
-      const lastW = lastTh ? lastTh.getBoundingClientRect().width : 0;
-      const maxW = startW + Math.max(0, lastW - MIN_COL_WIDTH);
-      dragRef.current = { key, startX: e.clientX, startW, maxW, base };
+      dragRef.current = { key, startX: e.clientX, startW, base };
       setIsResizing(true);
       manualRef.current = true;
 
@@ -374,8 +378,8 @@ export function SceneTable<T extends Record<string, unknown>>({
         const drag = dragRef.current;
         if (!drag) return;
         const raw = Math.round(drag.startW + (ev.clientX - drag.startX));
-        const next = Math.min(Math.max(raw, MIN_COL_WIDTH), Math.round(drag.maxW));
-        setWidths({ ...drag.base, [drag.key]: next });
+        const next = Math.max(MIN_COL_WIDTH, raw);
+        setWidths(padToContainer({ ...drag.base, [drag.key]: next }));
       };
       const onUp = () => {
         dragRef.current = null;
@@ -386,7 +390,7 @@ export function SceneTable<T extends Record<string, unknown>>({
       window.addEventListener("mousemove", onMove);
       window.addEventListener("mouseup", onUp);
     },
-    [widths],
+    [widths, padToContainer],
   );
 
   /** 双击分割线：该表回到「按内容自适应」（撤销手动列宽） */
@@ -401,8 +405,6 @@ export function SceneTable<T extends Record<string, unknown>>({
     }
   }, [storageKey]);
 
-  /** 末列宽不写死：它承接各列宽之和与中栏宽之间的余量（表宽恒等于中栏宽，不出横向滚动） */
-  const lastKey = columns.length > 0 ? columns[columns.length - 1]!.key : undefined;
   const placeholderOf = (col: ColumnDef<T>, row: T): string =>
     typeof col.placeholder === "function" ? col.placeholder(row) : (col.placeholder ?? "");
   const resizeHandle = (col: ColumnDef<T>): React.ReactElement => (
@@ -422,19 +424,24 @@ export function SceneTable<T extends Record<string, unknown>>({
       <table
         ref={tableRef}
         className={measuring ? "measure" : tableClassName}
-        style={measuring ? undefined : { tableLayout: "fixed", width: "100%" }}
+        style={
+          measuring
+            ? undefined
+            : {
+                tableLayout: "fixed",
+                /* 表宽 = 各列宽之和（不是 100%）：拖宽只改一列，表宽随之涨出去，
+                   超出中栏时由 .tw 横向滚动；列宽之和不足中栏时由末列承接余量补齐 */
+                width: widths ? Object.values(widths).reduce((a, w) => a + w, 0) : undefined,
+              }
+        }
       >
         {!measuring && (
           <colgroup>
             {columns.map((col) => (
               <col
                 key={col.key}
-                /* 末列不给宽：余量归它，表宽才恒等于中栏宽 */
-                style={
-                  col.key === lastKey && columns.length > 1
-                    ? undefined
-                    : { width: `${widths?.[col.key] ?? FALLBACK_COL_WIDTH}px` }
-                }
+                /* 每列（含末列）都写死宽：谁都不许替别人变宽变窄（v1.34） */
+                style={{ width: `${widths?.[col.key] ?? FALLBACK_COL_WIDTH}px` }}
               />
             ))}
           </colgroup>

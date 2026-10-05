@@ -1060,15 +1060,6 @@ describe("系统路由", () => {
     });
     expect(nf.statusCode).toBe(404);
   });
-
-  it("GET knowledge：返回数组且支持类别过滤", async () => {
-    const res = await h.app.inject({
-      method: "GET",
-      url: "/api/v1/knowledge?category=竞品",
-    });
-    expect(res.statusCode).toBe(200);
-    expect(Array.isArray(res.json())).toBe(true);
-  });
 });
 
 // ─── 静态托管与错误面 ──────────────────────────────────────

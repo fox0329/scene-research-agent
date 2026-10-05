@@ -10,14 +10,12 @@ import { ToastProvider, useToast } from "./components/Toast";
 import { LibraryView } from "./views/LibraryView";
 import { ProjectView } from "./views/ProjectView";
 import { SettingsView } from "./views/SettingsView";
-import { KnowledgeView } from "./views/KnowledgeView";
-import { RealKnowledgeView } from "./views/RealKnowledgeView";
 import { useColumnLayout } from "./hooks/useColumnLayout";
 import { api, type ApiConversation, type ApiProductLine, type ApiProject } from "./api";
 import { conversationMessages, projects, type Project } from "./mock/project-data";
 
-/** 主视图：project 项目工作台（默认）/ library 资料库 / knowledge 知识库 / settings 设置 */
-type ViewName = "project" | "library" | "knowledge" | "settings";
+/** 主视图：project 项目工作台（默认）/ library 资料库 / settings 设置 */
+type ViewName = "project" | "library" | "settings";
 
 /** 后端探测超时：超过即按演示模式渲染，避免首屏空等 */
 const PROBE_TIMEOUT_MS = 1500;
@@ -76,7 +74,6 @@ const AppShell: React.FC = () => {
   const [liveProjects, setLiveProjects] = useState<Project[] | null>(null);
   /** 侧栏真实计数（联真模式） */
   const [lineCount, setLineCount] = useState<number | null>(null);
-  const [knowledgeCount, setKnowledgeCount] = useState<number | null>(null);
   /** 产品线快照（含 row_counts），供资料库视图常驻渲染不重挂 */
   const [lines, setLines] = useState<ApiProductLine[]>([]);
   const [activeProjectId, setActiveProjectId] = useState(projects[0].id);
@@ -150,10 +147,6 @@ const AppShell: React.FC = () => {
         await withTimeout(api.health(), PROBE_TIMEOUT_MS);
         if (!cancelled) {
           await refreshProjects();
-          api
-            .knowledge()
-            .then((k) => !cancelled && setKnowledgeCount(k.length))
-            .catch(() => {});
         }
       } catch {
         /* 后端未启动：演示模式 */
@@ -180,7 +173,7 @@ const AppShell: React.FC = () => {
 
   /** 左栏底部入口：切换主视图（收窄 string 到 ViewName） */
   const handleViewChange = useCallback((v: string) => {
-    if (v === "library" || v === "knowledge" || v === "settings") {
+    if (v === "library" || v === "settings") {
       setView(v);
     }
   }, []);
@@ -323,7 +316,6 @@ const AppShell: React.FC = () => {
           (p, cid, cname, a) => void handleConversationAction(p, cid, cname, a)
         }
         libraryCount={lineCount}
-        knowledgeCount={knowledgeCount}
       />
 
       {/* 中栏：内容区 + 常驻输入栏 */}
@@ -351,7 +343,6 @@ const AppShell: React.FC = () => {
             onRowSelect={live ? setRowDetail : undefined}
           />
         )}
-        {view === "knowledge" && (live ? <RealKnowledgeView /> : <KnowledgeView />)}
         {view === "settings" && <SettingsView live={live} />}
         {/* 对话抽屉：联真模式走 converse SSE；演示模式保持本地 mock */}
         <ConversationDrawer

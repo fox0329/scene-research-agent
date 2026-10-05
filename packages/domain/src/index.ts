@@ -150,27 +150,6 @@ export {
   normalizeTitle,
 } from "./session.js";
 
-// 全局 — 知识库
-export {
-  calculateSimilarity,
-  findDuplicates,
-  createKnowledgeItem,
-  extractKnowledgeFromStage3,
-  extractKnowledgeFromStage4,
-  extractKnowledgeFromStage5,
-  batchCreateKnowledge,
-  queryKnowledge,
-  getKnowledgeStats,
-} from "./knowledge.js";
-export type {
-  KnowledgeCategory,
-  KnowledgeSource,
-  CreateKnowledgeInput,
-  KnowledgeItem,
-  WritebackTrigger,
-  KnowledgeQuery,
-} from "./knowledge.js";
-
 // ─── 对话即导入：消息内文件路径提取 ─────────────────────────
 
 export { extractImportablePaths, expandHomePath, IMPORTABLE_EXTS } from "./chat-import.js";

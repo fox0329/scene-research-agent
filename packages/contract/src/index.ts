@@ -315,21 +315,6 @@ export interface QualityGate {
   checked_at: string;
 }
 
-// ─── 第三层 · 知识库（1 表） ────────────────────────────────
-
-/** 知识库条目 */
-export interface Knowledge {
-  id: string;
-  product_line_id?: string;
-  scene?: string;
-  category: "竞品" | "需求" | "趋势" | "成本";
-  content: string;
-  source: string;
-  source_authority: Authority;
-  from_scenario_id: string;
-  created_at: string;
-}
-
 // ─── API 请求/响应类型（03-数据契约与API.md §三） ─────────
 
 /** 统一错误响应 */

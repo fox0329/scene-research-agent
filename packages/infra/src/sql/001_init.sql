@@ -266,24 +266,6 @@ CREATE INDEX IF NOT EXISTS idx_quality_gate_scenario_stage
   ON quality_gate (scenario_id, stage);
 
 -- ═══════════════════════════════════════════════════════════════
--- 第三层 · 知识库（1 表）
--- ═══════════════════════════════════════════════════════════════
-
-CREATE TABLE IF NOT EXISTS knowledge (
-  id               TEXT PRIMARY KEY,
-  product_line_id  TEXT,
-  scene            TEXT,
-  category         TEXT NOT NULL CHECK (category IN ('竞品','需求','趋势','成本')),
-  content          TEXT NOT NULL,
-  source           TEXT NOT NULL,
-  source_authority TEXT NOT NULL CHECK (source_authority IN ('T1','T2','T3','T4')),
-  from_scenario_id TEXT NOT NULL,
-  created_at       TEXT NOT NULL
-);
-CREATE INDEX IF NOT EXISTS idx_knowledge_category_created
-  ON knowledge (category, created_at);
-
--- ═══════════════════════════════════════════════════════════════
 -- FTS5 全文索引（来源抽查，Spike S4 已验证）
 -- 使用 content-bearing FTS5，触发器通过业务表 id 保持同步
 -- ═══════════════════════════════════════════════════════════════

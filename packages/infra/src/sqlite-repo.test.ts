@@ -49,9 +49,6 @@ describe("createDb", () => {
     expect(names).toContain("conversation");
     expect(names).toContain("message");
     expect(names).toContain("quality_gate");
-
-    // 知识表
-    expect(names).toContain("knowledge");
   });
 
   it("应创建 FTS5 虚表 source_fts", () => {

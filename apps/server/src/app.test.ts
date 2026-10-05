@@ -147,7 +147,6 @@ function createMockDb() {
     qualityGateRepo,
     scenarioLinkedLineRepo: createMockRepo(),
     scenarioMaterialRepo: createMockRepo(),
-    knowledgeRepo: { list: vi.fn(() => []) },
   } as unknown as DbInstance;
 
   return { db, scenarioRepo, conversationRepo, stageDataStore, messageStore };

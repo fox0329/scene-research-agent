@@ -28,7 +28,6 @@ import type {
   Conversation,
   Message,
   QualityGate,
-  Knowledge,
   ApiError,
   SseEventType,
   DecisionAction,
@@ -238,13 +237,6 @@ describe("@scene/contract 场景分析接口", () => {
       evidence_refs: {}, checked_at: "",
     };
     expect(v.result).toBe("通过");
-  });
-});
-
-describe("@scene/contract 知识库接口", () => {
-  it("Knowledge category 四种", () => {
-    const cats: Knowledge["category"][] = ["竞品", "需求", "趋势", "成本"];
-    expect(cats).toHaveLength(4);
   });
 });
 

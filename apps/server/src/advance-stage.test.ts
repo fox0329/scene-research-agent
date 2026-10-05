@@ -274,7 +274,6 @@ function createMockDb(opts: {
     qualityGateRepo: createMockQualityGateRepo(),
     scenarioLinkedLineRepo: { list: () => [], insert: vi.fn(), getById: vi.fn(), update: vi.fn(), deleteById: vi.fn() },
     scenarioMaterialRepo: createMockRepo(),
-    knowledgeRepo: { list: vi.fn(() => []) },
   };
 }
 

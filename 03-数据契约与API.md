@@ -57,10 +57,6 @@
 
 **quality_gate**：`id, scenario_id, stage, item_no, title, result(通过/不通过/未检), detail, evidence_refs(JSON，抽查采样记录), checked_at`　索引：`(scenario_id, stage)`
 
-### 第三层 · 知识库（1 表）
-
-**knowledge**：`id, product_line_id?, scene?, category(竞品/需求/趋势/成本), content, source, source_authority, from_scenario_id, created_at`　索引：`(category, created_at)`
-
 ## 三、REST API（按 command 分组，技术方案 §3.2）
 
 ### 资料库（ingest / edit-cell）
@@ -82,7 +78,7 @@
 | POST | `/projects` | 新建（`{ name, product_line_id }`），材料引用自动建立 |
 | GET | `/projects` | 列表（含 current_stage、stale 概要） |
 | PATCH | `/projects/{id}` | 重命名 / 归档（`{ name? , status? }`） |
-| DELETE | `/projects/{id}` | 删除（连带场景层数据；知识库保留） |
+| DELETE | `/projects/{id}` | 删除（连带场景层数据） |
 | GET | `/projects/{id}/stale` | 失效横幅数据：受影响阶段 + 涉及表 |
 | POST | `/projects/{id}/stages/{n}/advance` | 推进阶段 n 分析；**SSE**（事件见 §四） |
 | GET | `/projects/{id}/resume` | 断点续做对账（T4.1）：`{ action: fresh|resume|rerun|complete, stage, needsRecompute, danglingConversationIds, banner }` |
@@ -103,11 +99,10 @@
 | GET | `/conversations/{id}/messages?after_id=` | 断线补拉 |
 | GET | `/conversations/{id}/messages/events` | 回复流断线重连（`Last-Event-ID` 头或 `?lastEventId=` 增量重放，v1.5） |
 
-### 知识库 / 交付物 / 系统
+### 交付物 / 系统
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| GET | `/knowledge?category=&product_line_id=` | 知识查询 |
 | POST | `/projects/{id}/deliverables/export` | 双口径导出，返回 md 文件路径 |
 | GET | `/system/status` | 探活 + 配置快照：`{ db, model_configured, provider_count, default_model }`（v1.6） |
 | GET | `/system/providers` | 供应商登记表（v1.6）：`{ providers, default_model }`，密钥不回显（`has_key` + `key_masked`） |

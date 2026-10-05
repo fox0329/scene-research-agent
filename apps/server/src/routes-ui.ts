@@ -16,7 +16,6 @@ import type {
   Conversation,
   DshClient,
   FollowEvent,
-  Knowledge,
   OptionalMaterial,
   Product,
   Scenario,
@@ -1310,24 +1309,6 @@ function registerSystemRoutes(app: FastifyInstance, deps: UiRoutesDeps) {
     }
   });
 
-  app.get("/api/v1/knowledge", async (request) => {
-    const query = request.query as { category?: string; product_line_id?: string };
-    const where: string[] = [];
-    const params: unknown[] = [];
-    if (query.category) {
-      where.push("category = ?");
-      params.push(query.category);
-    }
-    if (query.product_line_id) {
-      where.push("product_line_id = ?");
-      params.push(query.product_line_id);
-    }
-    return db.knowledgeRepo.list({
-      where: where.length ? where.join(" AND ") : undefined,
-      params: params.length ? params : undefined,
-      orderBy: "created_at DESC",
-    }) as Knowledge[];
-  });
 }
 
 // 引用不直改：占位防 lint 未用告警（OptionalMaterial 用于类型面）

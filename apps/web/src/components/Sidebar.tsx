@@ -26,13 +26,12 @@ interface SidebarProps {
   ) => void;
   /** 真实计数（联真模式）；缺省显示演示占位 */
   libraryCount?: number | null;
-  knowledgeCount?: number | null;
 }
 
 /**
  * 左栏导航
  * 顶部：产品名 + 新建按钮
- * 基础设施区（常驻，与场景无关）：产品资料库 / 知识库
+ * 基础设施区（常驻，与场景无关）：产品资料库
  * 场景区：场景列表（项目/会话管理，见 ProjectList）——每项显示「第 n/8 步」
  * 底部：设置
  */
@@ -48,7 +47,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onProjectAction,
   onConversationAction,
   libraryCount,
-  knowledgeCount,
 }) => {
   return (
     <nav className="side">
@@ -64,7 +62,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </button>
       </div>
 
-      {/* 基础设施区：与场景无关的常驻入口（资料库 / 知识库） */}
+      {/* 基础设施区：与场景无关的常驻入口（资料库） */}
       <div className="side-group">
         <div className="side-group-title">基础设施</div>
         <button
@@ -77,17 +75,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </svg>
           <span>产品资料库</span>
           <span className="count">{libraryCount != null ? `${libraryCount} 线` : "2 线"}</span>
-        </button>
-        <button
-          className={`nav-item${activeView === "knowledge" ? " active" : ""}`}
-          onClick={() => onViewChange("knowledge")}
-        >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
-            <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
-          </svg>
-          <span>知识库</span>
-          <span className="count">{knowledgeCount != null ? `${knowledgeCount} 条` : "23 条"}</span>
         </button>
       </div>
 

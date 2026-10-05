@@ -274,19 +274,6 @@ export interface ApiQualitySummary {
   };
 }
 
-/** 知识库条目（契约 Knowledge 对齐） */
-export interface ApiKnowledge {
-  id: string;
-  product_line_id?: string;
-  scene?: string;
-  category: "竞品" | "需求" | "趋势" | "成本";
-  content: string;
-  source: string;
-  source_authority: string;
-  from_scenario_id: string;
-  created_at: string;
-}
-
 /** 供应商公共摘要（契约 v1.6：应用自持登记表，密钥脱敏不回显） */
 export interface ApiProviderPublic {
   name: string;
@@ -603,10 +590,6 @@ export const api = {
       `/library/quality-summary?product_line_id=${encodeURIComponent(productLineId)}`,
     ),
 
-  knowledge: (category?: string) =>
-    req<ApiKnowledge[]>(
-      `/knowledge${category ? `?category=${encodeURIComponent(category)}` : ""}`,
-    ),
 
   /** 系统状态（DB 健康 + 模型配置概览） */
   systemStatus: () => req<ApiSystemStatus>("/system/status"),

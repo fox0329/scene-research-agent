@@ -29,7 +29,6 @@ import type {
   ScenarioLinkedLine,
   StageData,
   QualityGate,
-  Knowledge,
   StageId,
 } from "@scene/contract";
 
@@ -627,19 +626,6 @@ function deserializeStageData(row: StageData): StageData {
 
 // ─── 知识库只读仓库（M5 联真） ──────────────────────────────
 
-/** 知识库为只读资产（属主：回写链路由领域/命令负责），HTTP 层仅查询 */
-export interface KnowledgeRepo {
-  list(filters?: ListFilters): Knowledge[];
-}
-
-function createKnowledgeRepo(db: Database.Database): KnowledgeRepo {
-  const list = (filters?: ListFilters): Knowledge[] => {
-    const { sql, params } = buildListSql("knowledge", filters);
-    return db.prepare(sql).all(...params) as Knowledge[];
-  };
-  return { list };
-}
-
 // ─── 可选材料仓库（payload JSON 往返） ─────────────────────
 
 /**
@@ -706,7 +692,6 @@ export interface DbInstance {
   qualityGateRepo: QualityGateRepo;
   scenarioMaterialRepo: Repo<ScenarioMaterial>;
   scenarioLinkedLineRepo: Repo<ScenarioLinkedLine>;
-  knowledgeRepo: KnowledgeRepo;
 }
 
 /**
@@ -746,7 +731,6 @@ export function createDb(dbPath?: string): DbInstance {
     qualityGateRepo: createQualityGateRepo(db),
     scenarioMaterialRepo: createRepo<ScenarioMaterial>(db, "scenario_material"),
     scenarioLinkedLineRepo: createRepo<ScenarioLinkedLine>(db, "scenario_linked_line"),
-    knowledgeRepo: createKnowledgeRepo(db),
   };
 }
 

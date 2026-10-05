@@ -219,7 +219,7 @@ test("右栏核实段：每条信息给出核实结论与「准确·客观·为�
   await expect(third.locator("select.verify-verdict")).not.toHaveClass(/warn/);
 });
 
-test("中栏表格：拖列间分割线只改这一列，末列承接余量，表宽不变、无横向滚动", async ({ page }) => {
+test("中栏表格：拖列宽只改这一列（拖宽涨表宽走横滚，拖窄余量给末列）", async ({ page }) => {
   await gotoStep2(page);
   const table = page.locator(".ws table").first();
   const geo = () =>
@@ -234,44 +234,49 @@ test("中栏表格：拖列间分割线只改这一列，末列承接余量，�
         scrollW: wrap.scrollWidth,
       };
     });
+  /** 只动第 1 列的右缘，其余列一律不许变（v1.34 用户定调：拖宽不该联动后面的列） */
+  const dragFirst = async (dx: number) => {
+    const rz = (await table.locator("th").first().locator(".th-resize").boundingBox())!;
+    await page.mouse.move(rz.x + 2, rz.y + 6);
+    await page.mouse.down();
+    await page.mouse.move(rz.x + 2 + dx, rz.y + 6, { steps: 6 });
+    await page.mouse.up();
+    await page.waitForTimeout(120);
+  };
 
   const g0 = await geo();
   expect(g0.cols).toBeGreaterThanOrEqual(3);
   // 手柄只装在"列与列之间"：末列右缘就是表右缘，没有边界可移
   expect(g0.handles).toBe(g0.cols - 1);
-  // 表宽恒等于中栏宽 —— 不出现横向滚动条
+  // 初始（按内容自适应）：表宽 = 中栏宽，不出横向滚动
   expect(Math.abs(g0.tableW - g0.wrapW)).toBeLessThanOrEqual(1);
   expect(g0.scrollW).toBeLessThanOrEqual(g0.wrapW);
 
-  // 拖第 1 条分割线 +70：只有第 1 列变宽，中间各列纹丝不动，末列承接余量
-  const rz = (await table.locator("th").first().locator(".th-resize").boundingBox())!;
-  await page.mouse.move(rz.x + rz.width / 2, rz.y + 6);
-  await page.mouse.down();
-  await page.mouse.move(rz.x + rz.width / 2 + 70, rz.y + 6, { steps: 6 });
-  await page.mouse.up();
+  // 拖宽 +70：**只有第 1 列变宽**，其余各列（含末列）纹丝不动；表宽涨出去 → 横向滚动
+  await dragFirst(70);
   const g1 = await geo();
   expect(g1.ths[0]!).toBeGreaterThan(g0.ths[0]! + 50);
-  for (let i = 1; i < g1.ths.length - 1; i += 1) {
-    expect(Math.abs(g1.ths[i]! - g0.ths[i]!)).toBeLessThanOrEqual(1);
+  for (let i = 1; i < g1.ths.length; i += 1) {
+    expect(Math.abs(g1.ths[i]! - g0.ths[i]!), `第 ${i + 1} 列不该被联动`).toBeLessThanOrEqual(1);
   }
-  expect(g1.ths[g1.ths.length - 1]!).toBeLessThan(g0.ths[g0.ths.length - 1]!);
-  expect(Math.abs(g1.tableW - g0.tableW)).toBeLessThanOrEqual(1);
-  expect(g1.scrollW).toBeLessThanOrEqual(g1.wrapW);
+  expect(g1.tableW).toBeGreaterThan(g0.tableW + 50);
+  expect(g1.scrollW).toBeGreaterThan(g1.wrapW);
 
-  // 拖到极限：末列让到可读下限就停住，表宽不涨、仍无横向滚动
-  const rz2 = (await table.locator("th").first().locator(".th-resize").boundingBox())!;
-  await page.mouse.move(rz2.x + rz2.width / 2, rz2.y + 6);
-  await page.mouse.down();
-  await page.mouse.move(rz2.x + 1200, rz2.y + 6, { steps: 8 });
-  await page.mouse.up();
+  // 拖窄回下限：被拖列变窄，空出的余量给**末列**（唯一该动的另一列），表宽回到中栏宽、无横滚
+  await dragFirst(-1200);
   const g2 = await geo();
-  expect(Math.abs(g2.tableW - g0.tableW)).toBeLessThanOrEqual(1);
+  expect(g2.ths[0]!).toBeLessThan(g0.ths[0]!);
+  for (let i = 1; i < g2.ths.length - 1; i += 1) {
+    expect(Math.abs(g2.ths[i]! - g0.ths[i]!), `第 ${i + 1} 列不该被联动`).toBeLessThanOrEqual(1);
+  }
+  expect(g2.ths[g2.ths.length - 1]!).toBeGreaterThan(g0.ths[g0.ths.length - 1]!);
+  expect(Math.abs(g2.tableW - g0.wrapW)).toBeLessThanOrEqual(1);
   expect(g2.scrollW).toBeLessThanOrEqual(g2.wrapW);
 
-  // 双击分割线 → 回到按内容自适应
+  // 双击分割线 → 回到按内容自适应（撤销手动列宽）
   const rz3 = (await table.locator("th").first().locator(".th-resize").boundingBox())!;
-  await page.mouse.dblclick(rz3.x + rz3.width / 2, rz3.y + 6);
-  await expect.poll(async () => (await geo()).ths[0]!).toBeLessThan(g2.ths[0]!);
+  await page.mouse.dblclick(rz3.x + 2, rz3.y + 6);
+  await expect.poll(async () => (await geo()).ths[0]!).toBeGreaterThan(g2.ths[0]!);
 });
 
 test("中栏表格：长内容换行显示，行高随内容长（表1-1 内容格是多行编辑器）", async ({ page }) => {
