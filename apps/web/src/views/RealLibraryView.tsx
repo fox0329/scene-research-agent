@@ -45,6 +45,14 @@ const M_TABS: { code: string; label: string }[] = [
 
 const O_CODES = ["O1", "O2", "O3", "O4", "O5", "O6"];
 
+/**
+ * O 可选材料：六类**共用一个面板**，用「类别」选择器切换（不再 6 张表叠一页）
+ *
+ * 为什么不并成一张表：六类字段完全不同（认证名称/项目名称/价格/SDK/特性/伙伴），
+ * 合成一张会得到 20+ 列、绝大多数格是空的稀疏表——那是"更宽"而不是"更简"。
+ */
+
+
 /** 通用列中文表头（溯源列等跨表字段） */
 const COMMON_FIELD_LABELS: Record<string, string> = {
   category: "类别",
@@ -145,6 +153,8 @@ interface TablePanelProps {
   onChanged?: () => void;
   /** 行点击上报右栏行详情（变更表 #19） */
   onRowSelect?: (detail: RowDetail) => void;
+  /** 表头右侧插槽（O 类别切换等） */
+  headerExtra?: React.ReactNode;
 }
 
 const TablePanel: React.FC<TablePanelProps> = ({
@@ -155,6 +165,7 @@ const TablePanel: React.FC<TablePanelProps> = ({
   reloadTick,
   onChanged,
   onRowSelect,
+  headerExtra,
 }) => {
   const { showToast } = useToast();
   const { status, data, error, reload } = useAsync(
@@ -248,21 +259,8 @@ const TablePanel: React.FC<TablePanelProps> = ({
         label: fieldLabel(code, key),
         editable: true,
       }));
-    // 溯源四列合并为一个徽标列：只显示等级（T3·B），来源全文悬停/右栏可见
-    cols.push({
-      key: "__trace",
-      label: "溯源",
-      render: (_v, row) => (
-        <span
-          className="trace-badge"
-          title={`来源类型：${cellText(row.source_type) || "—"}\n来源权威性：${cellText(row.source_authority) || "—"}\n证据等级：${cellText(row.evidence_level) || "—"}\n来源标注：${cellText(row.source) || "—"}`}
-        >
-          <span className="trace-tag">
-            {[cellText(row.source_authority), cellText(row.evidence_level)].filter(Boolean).join("·") || "—"}
-          </span>
-        </span>
-      ),
-    });
+    // 溯源不占列：点行即报右栏，来源类型/权威性/证据等级/来源标注在右栏可看可改
+    // （用户定调 2026-10-04：主表要简；「中栏说结果，来源归右栏」同一条口径）
     cols.push({
       key: "__ops",
       label: "操作",
@@ -419,6 +417,8 @@ const TablePanel: React.FC<TablePanelProps> = ({
           <h2>{label}</h2>
           <p>{rows.length} 行（单元格点击即改，自动保存并触发下游待重算标记）</p>
         </div>
+        {headerExtra}
+
         {code === "M1" && (
           <button className="btn" type="button" onClick={() => void handleDedupe()}>
             产品去重
@@ -609,6 +609,9 @@ export const RealLibraryView: React.FC<{
     }
   }, [lines, lineId, onChanged, showToast]);
 
+  /** O 可选材料当前查看的类别（六类共用面板） */
+  const [oPick, setOPick] = useState<string>("O1");
+
   const renderBody = () => {
     if (!lineId) {
       return (
@@ -648,23 +651,33 @@ export const RealLibraryView: React.FC<{
         return <QualityRealPanel summary={summary.data} />;
       case "O":
         return (
-          <>
-            {O_CODES.map((code) => (
-              <TablePanel
-                key={code}
-                code={code}
-                label={O_LABELS[code]}
-                lineId={lineId}
-                optional
-                reloadTick={reloadTick}
-                onRowSelect={onRowSelect}
-                onChanged={() => {
-                  setReloadTick((t) => t + 1);
-                  onChanged?.();
-                }}
-              />
-            ))}
-          </>
+          <TablePanel
+            key={`${oPick}-${lineId}`}
+            code={oPick}
+            label={O_LABELS[oPick] ?? "O 可选材料"}
+            lineId={lineId}
+            optional
+            reloadTick={reloadTick}
+            onRowSelect={onRowSelect}
+            onChanged={() => {
+              setReloadTick((t) => t + 1);
+              onChanged?.();
+            }}
+            headerExtra={
+              <select
+                className="settings-select"
+                value={oPick}
+                onChange={(e) => setOPick(e.target.value as typeof oPick)}
+                aria-label="选择可选材料类别"
+              >
+                {O_CODES.map((c) => (
+                  <option key={c} value={c}>
+                    {O_LABELS[c]}
+                  </option>
+                ))}
+              </select>
+            }
+          />
         );
       case "reminder": {
         const reminders = summary.data?.completeness.reminders ?? [];

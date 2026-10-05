@@ -39,7 +39,9 @@
 
 **limitation**（M5）：`id, product_line_id, product_name, description, impact(高/中/低), fix_status(已修复/修复中/无计划/硬件限制), external_visible(可提/内部可提/不可提), owner, + 通用列`
 
-**cost_rate**（M6）：`id, product_line_id, category(实施/商务), item, rate(单价), unit, standard_hours, data_source(历史项目/内部报价/行业均值/待确认)`　索引：`(product_line_id, category)`
+**cost_rate**（M6）：`id, product_line_id, category(实施/商务), item, rate(单价), unit, standard_hours, data_source(历史项目/内部报价/行业均值/待确认), note(说明), source_type, source, source_authority, evidence_level`　索引：`(product_line_id, category)`
+> 来源四列与 note 于 2026-10-04 补齐（原建表漏了，契约表M6 里 source 是必填、表5-5 要"单价可回溯 M6 或标来源"）；老库由 `runMigrations` 的幂等 ALTER 自愈。
+> **标准骨架**：新建产品线（含场景专属资料库）即播种 14 行标准费率（9 项实施工序 + 商务 5 项），`rate`/`standard_hours` 为 0、`data_source` 标「待确认」——契约 completeness 已规定「『待确认』行不得用于报价」，骨架不会被当成真实单价消费。用户只填数字，不用自己建表。
 
 **optional_material**（O1-O6）：`id, product_line_id, category(O1认证/O2案例/O3价格/O4SDK/O5路线图/O6生态), payload(JSON 按类异构), + 通用列`　索引：`(product_line_id, category)`
 
@@ -68,7 +70,7 @@
 | POST | `/library/ingest` | 上传材料（multipart）→ 解析入表；返回 ingest_job_id，进度走 SSE `/library/ingest/{id}/events` |
 | GET | `/library/tables/{code}` | 读表（M1-M6/O*，code 如 `M1`、`O2`）；支持 `?product_line_id=` |
 | PATCH | `/library/rows/{code}/{rowId}` | 单元格编辑（body: `{ cell, value }`）；source_type 自动转 `用户确认`；**服务端内联触发失效计算**（markStale 依赖反查，技术方案 F3），无需单独调用 |
-| POST | `/library/rows/{code}` / DELETE `/{rowId}` | 增行 / 删行（标 `用户补充`） |
+| POST | `/library/rows/{code}` / DELETE `/{rowId}` | 增行 / 删行（标 `用户补充`）。**入口校验**：M1 必填 `model`、M2 必填 `product_id/param_name/value`、M3 `name`、M4/M5 `description`、M6 `item`，缺了返回 400 并指明缺哪列；其余 NOT NULL 列按表给缺省值（M1 `status=待确认`、M2 `measured=未提及`、M3 `maturity=在研`、M4 `has_plan=未定`、M6 `category=实施/rate=0/unit=人天/data_source=待确认`）。M2 无 `product_line_id` 列，按 `product_id` 归属 |
 | GET | `/library/quality-summary?product_line_id=` | 六维总评 + 完成度检查 |
 
 ### 项目与阶段（advance-stage / sync-library）
@@ -113,7 +115,8 @@
 | POST | `/system/providers/models` | 模型列表发现（v1.7，仿 CC Switch）：`{ name?, base_url?, api_key? }`（同 test 取密钥规则）；候选端点探测 + 多格式解析（OpenAI/智谱目录），返回 `{ ok, models, resolved_base_url, latency_ms, error }`，`resolved_base_url` 供表单回填修正 |
 
 | PATCH | `/library/product-lines/{id}` | 产品线（资料库）重命名（v1.9）：`{ name }`；名称空 400、未知名 404 |
-| POST | `/library/product-lines/{id}/dedupe-products` | 产品去重（v1.9）：同型号产品合并（保留最早一条，缺位字段补全），M2 规格参数归并到保留产品，删重复行（F3 照打）；返回 `{ groups, products_removed, specs_moved, merged }` |
+| POST | `/library/product-lines/{id}/dedupe-products` | 资料库去重（v1.34 起同时清规格）：① 同型号产品行合并（**「在售」优先于「待确认」**，同状态留创建更早的；缺位字段补全、规格归并到保留行）；② 同产品内规格去重——完全相同留一条、一个值包含另一个的**留更完整那句**、值互相冲突的（如工作温度两个值）**不合并**；判定在领域层 `library-dedupe`（可单测、幂等）；返回 `{ groups, products_removed, specs_moved, specs_removed, spec_exact_groups, spec_near_groups, merged }` |
+| — | ingest 写入路径 | 同一把尺子：M1 按归一型号（去空白 + 大写）**匹配已有产品**，匹配上就并入（补缺位字段）不新建行；M2 走 upsert——完全相同不重写、新材料更完整则覆盖库里那条、值冲突并存。**这是"重复行"的根因修复**（旧实现每批材料都新建产品行） |
 
 | GET | `/projects/{id}/material-sources` | 场景资料来源（v2.8 起入口在「本场景资料」面板内）：`{ own, linked }`——专属库 + 引用的通用库。**v2.9：`linked` = 通用库里没被取消的那些，因此新建场景默认就是全引用** |
 | PUT | `/projects/{id}/material-sources` | 设置引用的通用库（v1.10）：`{ linked_line_ids }`；专属库不可被引用 400 |

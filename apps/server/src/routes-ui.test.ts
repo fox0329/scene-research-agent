@@ -663,6 +663,48 @@ describe("资料库路由", () => {
     expect(h.db.productRepo.list({ where: "product_line_id = ?", params: [line.id] })).toHaveLength(1);
   });
 
+  it("POST rows/M2：按 product_id 归属（spec_param 无 product_line_id 列，回归 500）", async () => {
+    const p = seedProduct();
+    const bad = await h.app.inject({
+      method: "POST",
+      url: "/api/v1/library/rows/M2",
+      payload: { product_line_id: plId, values: { param_class: "功耗", param_name: "电源", value: "DC24V" } },
+    });
+    expect(bad.statusCode).toBe(400);
+    expect(bad.json().error).toContain("product_id");
+    const ok = await h.app.inject({
+      method: "POST",
+      url: "/api/v1/library/rows/M2",
+      payload: {
+        product_line_id: plId,
+        values: { product_id: p.id, param_class: "功耗", param_name: "电源", value: "DC24V" },
+      },
+    });
+    expect(ok.statusCode).toBe(200);
+    expect(ok.json().product_id).toBe(p.id);
+    // measured 是 NOT NULL 枚举：不给也要有「未提及」兜底（旧实现 500）
+    expect(ok.json().measured).toBe("未提及");
+  });
+
+  it("POST rows/M1：必填缺失 400 说清缺哪列；缺省值补齐 NOT NULL 列（回归 500）", async () => {
+    const noModel = await h.app.inject({
+      method: "POST",
+      url: "/api/v1/library/rows/M1",
+      payload: { product_line_id: plId, values: { name: "只有名字" } },
+    });
+    expect(noModel.statusCode).toBe(400);
+    expect(noModel.json().error).toContain("model");
+    const ok = await h.app.inject({
+      method: "POST",
+      url: "/api/v1/library/rows/M1",
+      payload: { product_line_id: plId, values: { model: "M-1" } },
+    });
+    expect(ok.statusCode).toBe(200);
+    expect(ok.json().status).toBe("待确认");
+    expect(ok.json().launch_date).toBe("");
+    expect(ok.json().position_desc).toBe("");
+  });
+
   it("GET tables/M2 按产品线过滤走 product_id 子查询（不报 SQL 错）", async () => {
     const p = seedProduct();
     h.db.specParamRepo.insert({

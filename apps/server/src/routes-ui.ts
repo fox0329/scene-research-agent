@@ -95,18 +95,58 @@ type AnyRepo = DbInstance["productRepo"];
 
 const LIBRARY_TABLES: Record<
   string,
-  { repo: (db: DbInstance) => AnyRepo; category?: string; lineWhere?: string }
+  {
+    repo: (db: DbInstance) => AnyRepo;
+    category?: string;
+    lineWhere?: string;
+    /** 该表没有 product_line_id 列（靠 product_id 归属产品线）→ 新增行时不许塞这一列 */
+    viaProduct?: boolean;
+    /** 必填列（缺了直接 400 说清要什么，而不是落到 SQL 约束报 500） */
+    require?: string[];
+    /** 选填/枚举列的缺省值（NOT NULL 列不能空着插） */
+    defaults?: Record<string, unknown>;
+  }
 > = {
-  M1: { repo: (db) => db.productRepo as unknown as AnyRepo },
+  M1: {
+    repo: (db) => db.productRepo as unknown as AnyRepo,
+    require: ["model"],
+    defaults: { name: "", status: "待确认", launch_date: "", position_desc: "" },
+  },
   // spec_param 无 product_line_id 列，按产品归属过滤（001_init.sql）
   M2: {
     repo: (db) => db.specParamRepo as unknown as AnyRepo,
     lineWhere: "product_id IN (SELECT id FROM product WHERE product_line_id = ?)",
+    viaProduct: true,
+    require: ["product_id", "param_name", "value"],
+    // measured 是 NOT NULL 枚举：缺省「未提及」= 材料/用户没给口径，不是"实测"
+    defaults: { measured: "未提及", param_class: "未分类" },
   },
-  M3: { repo: (db) => db.capabilityRepo as unknown as AnyRepo },
-  M4: { repo: (db) => db.boundaryRepo as unknown as AnyRepo },
-  M5: { repo: (db) => db.limitationRepo as unknown as AnyRepo },
-  M6: { repo: (db) => db.costRateRepo as unknown as AnyRepo },
+  M3: {
+    repo: (db) => db.capabilityRepo as unknown as AnyRepo,
+    require: ["name"],
+    defaults: { domain: "未分类", description: "", maturity: "在研", dependency: "" },
+  },
+  M4: {
+    repo: (db) => db.boundaryRepo as unknown as AnyRepo,
+    require: ["description"],
+    defaults: { reason: "", has_plan: "未定", response: "", owner: "" },
+  },
+  M5: {
+    repo: (db) => db.limitationRepo as unknown as AnyRepo,
+    require: ["description"],
+    defaults: {
+      product_name: "",
+      impact: "低",
+      fix_status: "无计划",
+      external_visible: "不可提",
+      owner: "",
+    },
+  },
+  M6: {
+    repo: (db) => db.costRateRepo as unknown as AnyRepo,
+    require: ["item"],
+    defaults: { category: "实施", rate: 0, unit: "人天", standard_hours: 0, data_source: "待确认" },
+  },
   O1: { repo: (db) => db.optionalMaterialRepo as unknown as AnyRepo, category: "O1认证" },
   O2: { repo: (db) => db.optionalMaterialRepo as unknown as AnyRepo, category: "O2案例" },
   O3: { repo: (db) => db.optionalMaterialRepo as unknown as AnyRepo, category: "O3价格" },
@@ -1061,13 +1101,23 @@ function registerLibraryRoutes(app: FastifyInstance, deps: UiRoutesDeps) {
     if (!productLineId || !db.productLineRepo.getById(productLineId)) {
       return badRequest(reply, "需要已存在的 product_line_id");
     }
+    // 入口校验：必填列缺了就说清缺什么（旧实现直接落 SQL 约束 → 500，用户看不懂）
+    const missing = (spec.require ?? []).filter((k) => {
+      const v = values[k];
+      return v === undefined || v === null || String(v).trim() === "";
+    });
+    if (missing.length > 0) {
+      return badRequest(reply, `${code} 表必填列缺内容：${missing.join("、")}`);
+    }
     const extra: Record<string, unknown> = spec.category
       ? { category: spec.category, payload: values }
       : {};
     // O 表的字段值整体入 payload；M 表字段直接是行列（不能把未知键 spread 进 insert）
     const base: Record<string, unknown> = spec.category
       ? { product_line_id: productLineId, source_type: "用户补充", ...extra }
-      : { ...values, product_line_id: productLineId, source_type: "用户补充" };
+      : spec.viaProduct
+        ? { ...spec.defaults, ...values, source_type: "用户补充" }
+        : { ...spec.defaults, ...values, product_line_id: productLineId, source_type: "用户补充" };
     return spec.repo(db).insert(base as never);
   });
 
