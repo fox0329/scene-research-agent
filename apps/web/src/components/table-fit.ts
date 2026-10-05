@@ -144,3 +144,22 @@ export function fitWidthsMinHeight(
   });
   return out;
 }
+
+/**
+ * px 列宽 → 百分比列宽（**刚好 100%**）
+ *
+ * 为什么不能直接把 px 写进 colgroup：`table-layout: fixed` 下，表宽 = max(指定宽, 列宽之和)，
+ * 列宽之和只要比容器多出零点几像素（浏览器缩放、Retina 亚像素取整都会造成），`.tw` 就会
+ * 长出一条横向滚动条——用户明确要求"表格整体的宽度不能超过中栏的宽度""不能在底部加横向
+ * 移动条"。改成百分比后，各列之和**按定义就是 100%**，浏览器会把取整误差摊掉，
+ * 溢出在结构上不可能发生；列宽之和本来就等于容器宽，所以视觉上与原来一致。
+ */
+export function toPercentWidths(widths: Record<string, number>): Record<string, string> {
+  const keys = Object.keys(widths);
+  const total = keys.reduce((a, k) => a + (widths[k] ?? 0), 0);
+  const out: Record<string, string> = {};
+  for (const k of keys) {
+    out[k] = total > 0 ? `${(((widths[k] ?? 0) / total) * 100).toFixed(4)}%` : "0%";
+  }
+  return out;
+}

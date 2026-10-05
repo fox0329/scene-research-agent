@@ -234,6 +234,14 @@ test("中栏表格：拖分格线只与右邻列互换宽度，表宽恒等于�
         tableW: Math.round(el.getBoundingClientRect().width),
         wrapW: wrap.clientWidth,
         scrollW: wrap.scrollWidth,
+        /** 列宽写成百分比且**之和恰好 100%**：亚像素取整/浏览器缩放下也不会撑出中栏 */
+        pctSum: [...el.querySelectorAll("col")].reduce(
+          (a, c) => a + Number.parseFloat((c as HTMLElement).style.width || "0"),
+          0,
+        ),
+        pctAll: [...el.querySelectorAll("col")].every((c) =>
+          ((c as HTMLElement).style.width || "").endsWith("%"),
+        ),
       };
     });
   /** 只动第 1 列的右缘（用户定调：向右调整分格线不许影响所有右边的列） */
@@ -253,6 +261,9 @@ test("中栏表格：拖分格线只与右邻列互换宽度，表宽恒等于�
   // 初始（按内容自适应）：表宽 = 中栏宽，不出横向滚动
   expect(Math.abs(g0.tableW - g0.wrapW)).toBeLessThanOrEqual(1);
   expect(g0.scrollW).toBeLessThanOrEqual(g0.wrapW);
+  // 列宽一律百分比、且之和恰好 100%（这是"绝不超出中栏"的结构性保证）
+  expect(g0.pctAll).toBe(true);
+  expect(g0.pctSum).toBeCloseTo(100, 2);
 
   // 向右拖 +70：第 1 列加 70、右邻第 2 列等量减 70；第 3 列起**宽度与位置都不动**
   await dragFirst(70);
@@ -266,6 +277,7 @@ test("中栏表格：拖分格线只与右邻列互换宽度，表宽恒等于�
   // 表宽不变（= 中栏宽），底部不出现横向移动条
   expect(Math.abs(g1.tableW - g0.wrapW)).toBeLessThanOrEqual(1);
   expect(g1.scrollW).toBeLessThanOrEqual(g1.wrapW);
+  expect(g1.pctSum).toBeCloseTo(100, 2);
 
   // 一路向右拖到右邻的可读下限：到线即停，被拖列不再变宽
   await dragFirst(1200);

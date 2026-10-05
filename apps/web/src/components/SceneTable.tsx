@@ -1,8 +1,9 @@
-import { fitWidthsMinHeight, type FitColumn } from "./table-fit";
+import { fitWidthsMinHeight, toPercentWidths, type FitColumn } from "./table-fit";
 import React, {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -186,6 +187,9 @@ export function SceneTable<T extends Record<string, unknown>>({
 
   /* 测量阶段（无留存宽度）：整表单行自然宽渲染，量完立即适配容器（绘制前完成，无闪烁） */
   const measuring = widths === null;
+
+  /** 渲染用百分比列宽：由 px 列宽按"和"归一化，保证列宽之和恰好 100%（不撑出中栏） */
+  const percentWidths = useMemo(() => (widths ? toPercentWidths(widths) : {}), [widths]);
 
   /**
    * 让列宽之和**恒等于中栏宽**（不变式：表宽 = 中栏宽，永不超出、永不出横向滚动条）
@@ -486,8 +490,10 @@ export function SceneTable<T extends Record<string, unknown>>({
             {columns.map((col) => (
               <col
                 key={col.key}
-                /* 每列（含末列）都写死宽：谁都不许替别人变宽变窄（v1.34） */
-                style={{ width: `${widths?.[col.key] ?? FALLBACK_COL_WIDTH}px` }}
+                /* 每列（含末列）都写死宽：谁都不许替别人变宽变窄；
+                   写**百分比**而不是 px——各列之和恒为 100%，浏览器会摊掉亚像素取整，
+                   表宽绝不会比中栏多出半点、底部绝不会冒出横向移动条（v1.36 用户定调） */
+                style={{ width: percentWidths[col.key] ?? `${FALLBACK_COL_WIDTH}px` }}
               />
             ))}
           </colgroup>

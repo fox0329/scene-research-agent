@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fitWidthsMinHeight, type FitColumn } from "./table-fit";
+import { fitWidthsMinHeight, toPercentWidths, type FitColumn } from "./table-fit";
 
 /**
  * 列宽自动适配单测（用户定调：表格生成后自动到「行高最小」的状态）
@@ -157,5 +157,37 @@ describe("fitWidthsMinHeight 与穷举最优的差距", () => {
     }
     expect(compared).toBeGreaterThan(10);
     expect(worst).toBeLessThanOrEqual(2);
+  });
+});
+
+/**
+ * px → 百分比列宽（用户定调 2026-10-04：「表格整体的宽度不能超过中栏的宽度」
+ * 「列宽调整不能在底部加横向移动条」）
+ *
+ * 关键不变式：各列之和**恰好 100%**——哪怕浏览器缩放、Retina 亚像素取整，
+ * 浏览器也只会把误差摊掉，绝不会让表宽超出去冒出横向滚动条。
+ */
+describe("toPercentWidths：列宽之和恰好 100%", () => {
+  const sumPct = (m: Record<string, string>) =>
+    Object.values(m).reduce((a, v) => a + Number.parseFloat(v), 0);
+
+  it("按比例归一化，和恰好 100%（不至于 99.9999/100.0001 撑出横滚）", () => {
+    const out = toPercentWidths({ a: 199, b: 228, c: 403 });
+    expect(sumPct(out)).toBeCloseTo(100, 2);
+    expect(Number.parseFloat(out["c"]!)).toBeGreaterThan(Number.parseFloat(out["a"]!));
+  });
+
+  it("绝对值无关：px 之和比容器宽（历史残留的旧列宽）也照样归一化到 100%", () => {
+    const out = toPercentWidths({ a: 283, b: 230, c: 560 }); // 合计 1073 > 中栏 830
+    expect(sumPct(out)).toBeCloseTo(100, 2);
+  });
+
+  it("单列 = 100%", () => {
+    expect(toPercentWidths({ only: 500 })).toEqual({ only: "100.0000%" });
+  });
+
+  it("空集与全零不炸", () => {
+    expect(toPercentWidths({})).toEqual({});
+    expect(sumPct(toPercentWidths({ a: 0, b: 0 }))).toBe(0);
   });
 });
