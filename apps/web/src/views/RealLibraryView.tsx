@@ -9,6 +9,7 @@ import { SceneTable, type ColumnDef } from "../components/SceneTable";
 import { MaterialUpload } from "../components/MaterialUpload";
 import type { RowDetail } from "../components/RowDetailPanel";
 import { useToast } from "../components/Toast";
+import { TABLES_BY_CODE } from "@scene/contract";
 
 /**
  * 联真资料库视图（M5-T5.4）
@@ -84,6 +85,7 @@ const FIELD_LABELS: Record<string, Record<string, string>> = {
     has_plan: "有无计划",
     response: "客户要求时怎么办",
     owner: "负责人",
+    plan_date: "计划日期",
   },
   M5: {
     product_name: "产品名称",
@@ -100,6 +102,7 @@ const FIELD_LABELS: Record<string, Record<string, string>> = {
     unit: "单位",
     standard_hours: "标准工时",
     data_source: "数据来源",
+    note: "说明",
   },
   O1: { cert_name: "认证名称", cert_body: "认证机构", cert_date: "认证日期", scope: "认证范围" },
   O2: { project_name: "项目名称", client: "客户", year: "年份", scale: "规模", summary: "摘要" },
@@ -197,6 +200,38 @@ const TablePanel: React.FC<TablePanelProps> = ({
     });
   }, [data, optional, filterProductId]);
 
+  /**
+   * 表格简化（用户定调 2026-10-04「表格能不能简化？」）
+   *
+   * 规则：**整列一个值都没有、且不是必填列** → 默认不显示；「显示空列」可一键展开。
+   * 为什么加"不是必填列"这个条件：必填列空着是"还没填"，藏起来等于把待办藏了；
+   * 选填列整列全空纯粹是占位噪声（如 M6 骨架的 note、M1 全表的发布日期）。
+   * 判定来源是契约注册表（tables.ts）的 required 标记，不是这里拍的。
+   */
+  const requiredKeys = useMemo(() => {
+    const def = TABLES_BY_CODE[code];
+    if (!def) return new Set<string>();
+    return new Set(def.columns.filter((c) => c.required).map((c) => c.key));
+  }, [code]);
+
+  /** 是否显示"整列全空"的选填列（默认不显示：先给干净的简化视图） */
+  const [showEmptyCols, setShowEmptyCols] = useState(false);
+
+  /** 整列全空、且不是必填列的选填列（默认收起；判定不碰状态） */
+  const hiddenEmptyKeys = useMemo(() => {
+    const detailOnly = new Set(DETAIL_ONLY_KEYS[code] ?? []);
+    const keys = new Set<string>();
+    for (const r of rows) {
+      for (const k of Object.keys(r)) {
+        if (k === "__id" || TRACE_SET.has(k) || detailOnly.has(k)) continue;
+        keys.add(k);
+      }
+    }
+    return [...keys].filter(
+      (k) => !requiredKeys.has(k) && rows.every((r) => cellText(r[k]).trim() === ""),
+    );
+  }, [rows, code, requiredKeys]);
+
   const columns = useMemo(() => {
     const detailOnly = new Set(DETAIL_ONLY_KEYS[code] ?? []);
     const seen = new Set<string>();
@@ -206,11 +241,13 @@ const TablePanel: React.FC<TablePanelProps> = ({
         seen.add(k);
       }
     }
-    const cols: ColumnDef<Record<string, unknown>>[] = [...seen].map((key) => ({
-      key,
-      label: fieldLabel(code, key),
-      editable: true,
-    }));
+    const cols: ColumnDef<Record<string, unknown>>[] = [...seen]
+      .filter((k) => showEmptyCols || !hiddenEmptyKeys.includes(k))
+      .map((key) => ({
+        key,
+        label: fieldLabel(code, key),
+        editable: true,
+      }));
     // 溯源四列合并为一个徽标列：只显示等级（T3·B），来源全文悬停/右栏可见
     cols.push({
       key: "__trace",
@@ -241,7 +278,7 @@ const TablePanel: React.FC<TablePanelProps> = ({
     });
     return cols;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rows]);
+  }, [rows, showEmptyCols, requiredKeys, hiddenEmptyKeys]);
 
   const handleCellChange = useCallback(
     async (rowIndex: number, key: string, value: string) => {
@@ -385,6 +422,16 @@ const TablePanel: React.FC<TablePanelProps> = ({
         {code === "M1" && (
           <button className="btn" type="button" onClick={() => void handleDedupe()}>
             产品去重
+          </button>
+        )}
+        {(hiddenEmptyKeys.length > 0 || showEmptyCols) && (
+          <button
+            className="btn"
+            type="button"
+            onClick={() => setShowEmptyCols((v) => !v)}
+            title="整列一个值都没有的选填列，默认收起来；点这里展开"
+          >
+            {showEmptyCols ? "收起空列" : `显示空列（${hiddenEmptyKeys.length}）`}
           </button>
         )}
         <button className="btn" type="button" onClick={() => void handleAdd()}>新增行</button>

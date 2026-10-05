@@ -127,6 +127,21 @@ function runMigrations(db: Database.Database): void {
   if (!linkCols.some((c) => c.name === "excluded")) {
     db.exec("ALTER TABLE scenario_linked_line ADD COLUMN excluded INTEGER NOT NULL DEFAULT 0");
   }
+  // v1.34：M6 内部费率补齐「说明」与溯源四列
+  // （契约表M6 里 source 是必填、表5-5 要「单价可回溯 M6 或标来源」，但建表时漏了这几列；
+  //   老库靠这段幂等 ALTER 自动补齐，新库由 001_init.sql 直接带）
+  const rateCols = db.pragma("table_info(cost_rate)") as { name: string }[];
+  for (const [name, type] of [
+    ["note", "TEXT"],
+    ["source_type", "TEXT"],
+    ["source", "TEXT"],
+    ["source_authority", "TEXT"],
+    ["evidence_level", "TEXT"],
+  ] as const) {
+    if (!rateCols.some((c) => c.name === name)) {
+      db.exec(`ALTER TABLE cost_rate ADD COLUMN ${name} ${type}`);
+    }
+  }
 }
 
 // ─── 场景流程步仓库（v1.5 逐页推进） ────────────────────────

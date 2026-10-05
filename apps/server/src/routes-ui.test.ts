@@ -618,6 +618,49 @@ describe("资料库路由", () => {
       payload: { name: "产品线B" },
     });
     expect(ok.json().name).toBe("产品线B");
+    // M6 内部费率：新建产品线即播种标准骨架（用户定调「就算是空表也得有，不能让用户自己建表」）
+    const m6 = await h.app.inject({
+      method: "GET",
+      url: `/api/v1/library/tables/M6?product_line_id=${ok.json().id}`,
+    });
+    const rows = m6.json();
+    expect(rows.length).toBeGreaterThanOrEqual(10);
+    expect(rows.every((r: { data_source: string }) => r.data_source === "待确认")).toBe(true);
+    expect(rows.every((r: { rate: number }) => r.rate === 0)).toBe(true);
+  });
+
+  it("POST dedupe-products：同型号行合并 + 重复规格删除（一次清完）", async () => {
+    const line = h.db.productLineRepo.insert({ name: "去重线" });
+    const mk = (model: string, status: string, created: string) =>
+      h.db.productRepo.insert({
+        product_line_id: line.id,
+        model,
+        name: `${model} 产品`,
+        status,
+        launch_date: "2025-01-01",
+        position_desc: "—",
+        created_at: created,
+      } as never);
+    const keep = mk("CT15", "在售", "2026-09-23T10:00");
+    const dupe = mk("CT15", "待确认", "2026-09-24T10:00");
+    const spec = (pid: string, value: string) =>
+      h.db.specParamRepo.insert({
+        product_id: pid,
+        param_class: "功耗",
+        param_name: "电源",
+        value,
+        measured: "未提及",
+      } as never);
+    spec(keep.id, "DC24V/1A");
+    spec(dupe.id, "DC24V/1A"); // 合并后会与上面那条完全相同 → 应被删掉
+    const res = await h.app.inject({
+      method: "POST",
+      url: `/api/v1/library/product-lines/${line.id}/dedupe-products`,
+    });
+    const report = res.json();
+    expect(report.products_removed).toBe(1);
+    expect(report.specs_removed).toBe(1);
+    expect(h.db.productRepo.list({ where: "product_line_id = ?", params: [line.id] })).toHaveLength(1);
   });
 
   it("GET tables/M2 按产品线过滤走 product_id 子查询（不报 SQL 错）", async () => {

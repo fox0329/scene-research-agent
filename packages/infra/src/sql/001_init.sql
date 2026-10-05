@@ -114,6 +114,11 @@ CREATE TABLE IF NOT EXISTS cost_rate (
   unit             TEXT NOT NULL,
   standard_hours   REAL NOT NULL,
   data_source      TEXT NOT NULL CHECK (data_source IN ('历史项目','内部报价','行业均值','待确认')),
+  note             TEXT,
+  source_type      TEXT CHECK (source_type IN ('AI提取','AI推断','用户确认','用户补充')),
+  source           TEXT,
+  source_authority TEXT CHECK (source_authority IN ('T1','T2','T3','T4')),
+  evidence_level   TEXT CHECK (evidence_level IN ('A','B','C','D')),
   created_at       TEXT NOT NULL,
   updated_at       TEXT NOT NULL
 );

@@ -187,16 +187,18 @@ export interface Limitation extends TraceableFields {
 }
 
 /** 成本单价（M6） */
-export interface CostRate {
+export interface CostRate extends TraceableFields {
   id: string;
   product_line_id: string;
   category: "实施" | "商务";
   item: string;
-  /** 单价（元/人天 或 元/趟 等） */
+  /** 单价（元/人天 或 元/趟 等）；0 = 结构已给、单价待填 */
   rate: number;
   unit: string;
   standard_hours: number;
   data_source: "历史项目" | "内部报价" | "行业均值" | "待确认";
+  /** 说明（标准骨架给了结构，这里写口径备注） */
+  note?: string;
   created_at: string;
   updated_at: string;
 }

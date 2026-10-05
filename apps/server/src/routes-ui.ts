@@ -25,6 +25,7 @@ import type {
 import { ANCHOR_TABLE_CODE, FLOW_LAST_STEP, type InfoStageId } from "@scene/contract";
 import { alignmentWithBrief, anchorFixedRows, buildFlowStatus, type InfoRow } from "@scene/domain";
 import type { DbInstance } from "@scene/infra";
+import { dedupeLibrary, seedRateSkeleton } from "./library-service.js";
 import {
   parseDocument,
   exportDeliverables,
@@ -745,7 +746,9 @@ function createOwnLineForScenario(db: UiRoutesDeps["db"], scenarioName: string):
   if (taken.has(lineName)) {
     lineName = `${lineName}-${randomUUID().slice(0, 4)}`;
   }
-  return db.productLineRepo.insert({ name: lineName }).id;
+  const line = db.productLineRepo.insert({ name: lineName });
+  seedRateSkeleton(db, line.id);
+  return line.id;
 }
 
 /** 删场景：手动级联（无外键级联），知识库条目保留；引用关联清理，专属库及其资料保留 */
@@ -1004,7 +1007,10 @@ function registerLibraryRoutes(app: FastifyInstance, deps: UiRoutesDeps) {
     const body = (request.body ?? {}) as { name?: unknown };
     const name = String(body.name ?? "").trim();
     if (!name) return badRequest(reply, "产品线名称不能为空");
-    return db.productLineRepo.insert({ name });
+    const line = db.productLineRepo.insert({ name });
+    // M6 内部费率：结构先给全（rate/工时 0 + 「待确认」），用户只填数字、不用自己建表
+    seedRateSkeleton(db, line.id);
+    return line;
   });
 
   app.get("/api/v1/library/tables/:code", async (request, reply) => {
@@ -1083,48 +1089,17 @@ function registerLibraryRoutes(app: FastifyInstance, deps: UiRoutesDeps) {
   app.post("/api/v1/library/product-lines/:id/dedupe-products", async (request, reply) => {
     const { id } = request.params as { id: string };
     if (!db.productLineRepo.getById(id)) return notFound(reply, "产品线不存在");
-    const products = db.productRepo.list({
-      where: "product_line_id = ?",
-      params: [id],
-      orderBy: "created_at ASC",
-    });
-    const groups = new Map<string, typeof products>();
-    for (const p of products) {
-      const key = p.model.trim().toLowerCase();
-      if (!key) continue;
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key)!.push(p);
-    }
-    const merged: { model: string; removed: number }[] = [];
-    let productsRemoved = 0;
-    let specsMoved = 0;
-    for (const [, list] of groups) {
-      if (list.length < 2) continue;
-      const [first, ...dupes] = list;
-      const keep = first!;
-      // 缺位字段（曾用名/定位描述）从重复条目补全到保留行
-      const patch: Record<string, unknown> = {};
-      if (!keep.former_name) {
-        const f = dupes.find((d) => d.former_name);
-        if (f) patch["former_name"] = f.former_name;
-      }
-      if (!keep.position_desc) {
-        const f = dupes.find((d) => d.position_desc);
-        if (f) patch["position_desc"] = f.position_desc;
-      }
-      if (Object.keys(patch).length) db.productRepo.update(keep.id, patch as never);
-      for (const d of dupes) {
-        for (const sp of db.specParamRepo.list({ where: "product_id = ?", params: [d.id] })) {
-          db.specParamRepo.update(sp.id, { product_id: keep.id } as never);
-          specsMoved++;
-        }
-        db.productRepo.deleteById(d.id);
-        markDependentStale(db, "M1", d.id);
-        productsRemoved++;
-      }
-      merged.push({ model: keep.model, removed: dupes.length });
-    }
-    return { groups: merged.length, products_removed: productsRemoved, specs_moved: specsMoved, merged };
+    // 判定在领域层（library-dedupe），这里只按计划落库；产品行与规格行一次清完
+    const report = dedupeLibrary(db, id);
+    return {
+      groups: report.productGroups,
+      products_removed: report.productsRemoved,
+      specs_moved: report.specsMoved,
+      specs_removed: report.specsRemoved,
+      spec_exact_groups: report.specExactGroups,
+      spec_near_groups: report.specNearGroups,
+      merged: report.groups,
+    };
   });
 
   /** 产品线重命名（多资料库管理：新建见 POST，此处改名） */

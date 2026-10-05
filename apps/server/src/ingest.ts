@@ -21,6 +21,8 @@ import type {
 } from "@scene/contract";
 import type { ParseResult } from "@scene/infra";
 import type { DbInstance } from "@scene/infra";
+import { resolveProductForModel, upsertSpecParam } from "./library-service.js";
+import { normalizeModel } from "@scene/domain";
 import type {
   QualityAssessment,
   CompletenessReport,
@@ -52,6 +54,8 @@ export interface IngestResult {
   rowsInserted: number;
   /** 每张表插入行数（M1-M6 / O1-O6），入库反馈用 */
   tableCounts: Record<string, number>;
+  /** 并入已有型号的 M1 行数（没新建产品行——旧实现每批材料都会造重复行） */
+  mergedProducts: number;
   qualityAssessment: QualityAssessment;
   completenessReport: CompletenessReport;
 }
@@ -188,13 +192,13 @@ async function executeIngest(
   const validRows = validateRows(dshOutput, fileName);
 
   // 5. 写入数据库
-  const { inserted, tableCounts } = writeRows(db, validRows, productLineId);
+  const { inserted, tableCounts, mergedProducts } = writeRows(db, validRows, productLineId);
 
   // 6. 质量评估 + 完成度检查
   const qualityAssessment = buildQualityAssessment(db, productLineId);
   const completenessReport = buildCompletenessReport(db, productLineId);
 
-  return { rowsInserted: inserted, tableCounts, qualityAssessment, completenessReport };
+  return { rowsInserted: inserted, tableCounts, mergedProducts, qualityAssessment, completenessReport };
 }
 
 // ─── 子函数：组 user prompt ────────────────────────────────
@@ -373,8 +377,10 @@ function writeRows(
   db: DbInstance,
   rows: ClassifiedRow[],
   productLineId: string,
-): { inserted: number; tableCounts: Record<string, number> } {
+): { inserted: number; tableCounts: Record<string, number>; mergedProducts: number } {
   let inserted = 0;
+  /** 并入已有型号的 M1 行数（没新建产品行，但材料内容已补进去） */
+  let mergedProducts = 0;
   const tableCounts: Record<string, number> = {};
   const count = (table: string) => {
     tableCounts[table] = (tableCounts[table] ?? 0) + 1;
@@ -383,14 +389,15 @@ function writeRows(
   // model → product_id 缓存（同一次 ingest 内共享）
   const modelToProductId = new Map<string, string>();
 
-  // 先遍历一次，把 M1 行写入，收集 model → id 映射
+  // 先遍历一次，把 M1 行落到产品（已有型号并入、没有才新建），收集 model → id 映射
   for (const row of rows) {
     if (row.table_code !== "M1") continue;
-    const product = insertProduct(db, row, productLineId);
-    if (product) {
-      modelToProductId.set(row.fields["model"] as string, product.id);
-      count("M1");
-    }
+    const { productId, created } = resolveProductForModel(db, productLineId, row.fields, row.source);
+    if (!productId) continue;
+    // 用归一型号做 key：材料里写出「在鸿 7885平板」时也要能接到已有「在鸿7885平板」
+    modelToProductId.set(normalizeModel(String(row.fields["model"] ?? "")), productId);
+    if (created) count("M1");
+    else mergedProducts += 1;
   }
 
   // 再遍历，写入其余表
@@ -434,32 +441,7 @@ function writeRows(
     }
   }
 
-  return { inserted, tableCounts };
-}
-
-function insertProduct(
-  db: DbInstance,
-  row: ClassifiedRow,
-  productLineId: string,
-): Product | null {
-  const f = row.fields;
-  try {
-    return db.productRepo.insert({
-      product_line_id: productLineId,
-      model: String(f["model"] ?? ""),
-      name: String(f["name"] ?? ""),
-      status: (f["status"] as Product["status"]) ?? "待确认",
-      launch_date: String(f["launch_date"] ?? ""),
-      former_name: f["former_name"] ? String(f["former_name"]) : undefined,
-      position_desc: String(f["position_desc"] ?? ""),
-      source_type: "AI提取",
-      source: row.source,
-      source_authority: "T3",
-      evidence_level: "B",
-    });
-  } catch {
-    return null;
-  }
+  return { inserted, tableCounts, mergedProducts };
 }
 
 function insertSpecParam(
@@ -470,22 +452,14 @@ function insertSpecParam(
 ): boolean {
   const f = row.fields;
   const productModel = String(f["product_model"] ?? "");
-  const productId = modelToProductId.get(productModel);
+  const productId =
+    modelToProductId.get(productModel) ?? modelToProductId.get(normalizeModel(productModel));
   if (!productId) return false;
 
   try {
-    db.specParamRepo.insert({
-      product_id: productId,
-      param_class: String(f["param_class"] ?? ""),
-      param_name: String(f["param_name"] ?? ""),
-      value: String(f["value"] ?? ""),
-      measured: (f["measured"] as SpecParam["measured"]) ?? "未提及",
-      source_type: "AI提取",
-      source: row.source,
-      source_authority: "T3",
-      evidence_level: "B",
-    });
-    return true;
+    // upsert：同产品 + 同类别 + 同名称下，完全相同的不再写第二遍，
+    // 新材料更完整时用完整那句覆盖（历史库里 843 行有 53 行完全重复就是这么来的）
+    return upsertSpecParam(db, productId, f as Record<string, unknown>, row.source);
   } catch {
     return false;
   }
