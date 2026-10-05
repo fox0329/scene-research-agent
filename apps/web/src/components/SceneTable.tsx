@@ -188,13 +188,10 @@ export function SceneTable<T extends Record<string, unknown>>({
   const measuring = widths === null;
 
   /**
-   * 余量给末列，其余列一律不动（v1.34 用户定调）
+   * 让列宽之和**恒等于中栏宽**（不变式：表宽 = 中栏宽，永不超出、永不出横向滚动条）
    *
-   * 为什么要有这一步：中栏表格恒占满中栏宽，**必须有一列承接余量**。
-   * 旧实现把"让宽"的活派给末列、并且**拖宽时也从末列身上取**——于是拖宽第 3 列，
-   * 第 4/5 列看着没动、末列却在缩，用户看到的就是「往右调整后面的列宽会联动」。
-   * 现在的规矩：**拖宽只动被拖列，表宽涨出去、超出中栏就横向滚动**；
-   * 拖窄/中栏变宽多出来的余量才补给末列（用户认可"往左调整没问题"）。
+   * 承接余量只认末列（其余列一律不动）——用户认可"往左调整没问题"，
+   * 而余量若摊给所有列，就是用户反复反馈的「列宽联动」。
    */
   const padToContainer = useCallback((w: Widths): Widths => {
     const cols = columnsRef.current;
@@ -205,6 +202,43 @@ export function SceneTable<T extends Record<string, unknown>>({
     const sum = cols.reduce((a, c) => a + (w[c.key] ?? 0), 0);
     if (sum >= container) return w;
     return { ...w, [last]: (w[last] ?? 0) + (container - sum) };
+  }, []);
+
+  /**
+   * 中栏宽变化时把列宽重新对齐到容器（**只准从最右一列往回让**，不搞全局比例缩放）
+   *
+   * 变宽：余量给末列（与 padToContainer 同一条规矩）。
+   * 变窄：从最右列起逐列让出、各列保底可读下限；全部到底线仍不够（列太多）才整体按比例兜底。
+   * 为什么不做全局比例缩放：那是把每一列都动一遍，正是"联动"的观感。
+   */
+  const syncToContainer = useCallback((w: Widths): Widths => {
+    const cols = columnsRef.current;
+    const keys = cols.map((c) => c.key);
+    if (keys.length < 2) return w;
+    const container = Math.max(0, (wrapRef.current?.clientWidth ?? 0) - 1);
+    if (container <= 0) return w;
+    const next = { ...w };
+    let diff = container - keys.reduce((a, k) => a + (next[k] ?? 0), 0);
+    if (diff === 0) return w;
+    if (diff > 0) {
+      const last = keys[keys.length - 1]!;
+      next[last] = (next[last] ?? 0) + diff;
+      return next;
+    }
+    for (let i = keys.length - 1; i >= 0 && diff < 0; i -= 1) {
+      const k = keys[i]!;
+      const give = Math.min(-diff, (next[k] ?? 0) - MIN_COL_WIDTH);
+      if (give > 0) {
+        next[k] = (next[k] ?? 0) - give;
+        diff += give;
+      }
+    }
+    if (diff < 0) {
+      const total = keys.reduce((a, k) => a + (next[k] ?? 0), 0);
+      const ratio = container / total;
+      for (const k of keys) next[k] = Math.max(1, Math.round((next[k] ?? 0) * ratio));
+    }
+    return next;
   }, []);
 
   /** 自动适配：按各列内容需求求「总行高最小」的列宽（px） */
@@ -307,17 +341,16 @@ export function SceneTable<T extends Record<string, unknown>>({
         fitToContainer();
         return;
       }
-      /* 手动列宽遇到中栏变化：**用户拖过的宽度不动**。
-         中栏变宽 → 多出的余量给末列；中栏变窄 → 表宽涨出去，由 .tw 横向滚动兜底。
-         （旧实现在这里按比例缩所有列，那同样是一次"联动"，且把用户拖好的比例破坏掉） */
+      /* 手动列宽遇到中栏变化：**用户拖过的宽度不动**，只把差值在右侧列上找平
+         （中栏变窄也从最右列往回让，绝不整体缩放、绝不超出中栏） */
       const w = widthsRef.current;
-      if (w) setWidths(padToContainer(w));
+      if (w) setWidths(syncToContainer(w));
     };
     sync();
     const ro = new ResizeObserver(sync);
     ro.observe(wrap);
     return () => ro.disconnect();
-  }, [measuring, fitToContainer, padToContainer]);
+  }, [measuring, fitToContainer, syncToContainer]);
 
   /* 同一实例切换表（storageKey 或列集变了）：重新读留存宽度；读不到就回测量态——
      否则会把上一张表的列宽套到新表上（列 key 对不上 → 宽度全是 0） */
@@ -358,18 +391,25 @@ export function SceneTable<T extends Record<string, unknown>>({
   );
 
   /**
-   * 拖某列右缘的分割线：**只有这一列变宽/变窄**（v1.34 修正）
+   * 拖某列右缘的分割线：**被拖列与它右边紧邻那一列互换宽度**（v1.35 用户定调）
    *
-   * 旧实现把"加宽上限"定在"末列还能让出多少"（`末列宽 - 可读下限`），于是拖宽时
-   * 末列被挤窄——手柄上写着「只影响这一列」，实际却连着后面的列一起动（用户实测反馈：
-   * 「往左调整没问题，往右调整后面的列宽会联动」）。现在**不设这种上限**：
-   * 拖宽就涨表宽，超出中栏由 `.tw` 横向滚动；拖窄空出的宽由 padToContainer 补给末列。
+   * 用户要求原话：「列宽调整不能在底部加横向移动条」「表格整体的宽度不能超过中栏的宽度」，
+   * 要改的是「向右调整列分格线不要影响所有右边的列」。
+   *
+   * 于是：给被拖列加多少，就从**紧挨着它的右邻**身上等量取多少（拖窄反之）——
+   *   ① 列宽之和不变 → 表宽恒等于中栏宽，永不出现横向滚动条；
+   *   ② 右邻之后的列，宽度与**位置**都不动（第 i 列加 x、第 i+1 列减 x，两者右边界不动）；
+   *   ③ 被拖列与右邻都不许越过可读下限，到线下限即停（不再"偷"别的列的宽度）。
    */
   const startResize = useCallback(
     (key: string, e: React.MouseEvent) => {
       e.preventDefault();
+      const cols = columnsRef.current;
+      const rightKey = cols[cols.findIndex((c) => c.key === key) + 1]?.key;
       const base = { ...(widths ?? {}) };
+      if (rightKey === undefined) return; // 末列右缘就是表右缘，没有可互换的邻居
       const startW = base[key] ?? FALLBACK_COL_WIDTH;
+      const startRight = base[rightKey] ?? FALLBACK_COL_WIDTH;
       dragRef.current = { key, startX: e.clientX, startW, base };
       setIsResizing(true);
       manualRef.current = true;
@@ -377,9 +417,14 @@ export function SceneTable<T extends Record<string, unknown>>({
       const onMove = (ev: MouseEvent) => {
         const drag = dragRef.current;
         if (!drag) return;
-        const raw = Math.round(drag.startW + (ev.clientX - drag.startX));
-        const next = Math.max(MIN_COL_WIDTH, raw);
-        setWidths(padToContainer({ ...drag.base, [drag.key]: next }));
+        const want = Math.round(drag.startW + (ev.clientX - drag.startX)) - startW;
+        // 两侧都保底：被拖列不许低于下限，右邻也不许被抽干
+        const delta = Math.max(Math.min(want, startRight - MIN_COL_WIDTH), MIN_COL_WIDTH - startW);
+        setWidths({
+          ...drag.base,
+          [key]: startW + delta,
+          [rightKey]: startRight - delta,
+        });
       };
       const onUp = () => {
         dragRef.current = null;
@@ -390,7 +435,7 @@ export function SceneTable<T extends Record<string, unknown>>({
       window.addEventListener("mousemove", onMove);
       window.addEventListener("mouseup", onUp);
     },
-    [widths, padToContainer],
+    [widths],
   );
 
   /** 双击分割线：该表回到「按内容自适应」（撤销手动列宽） */
@@ -429,9 +474,10 @@ export function SceneTable<T extends Record<string, unknown>>({
             ? undefined
             : {
                 tableLayout: "fixed",
-                /* 表宽 = 各列宽之和（不是 100%）：拖宽只改一列，表宽随之涨出去，
-                   超出中栏时由 .tw 横向滚动；列宽之和不足中栏时由末列承接余量补齐 */
-                width: widths ? Object.values(widths).reduce((a, w) => a + w, 0) : undefined,
+                /* 表宽恒为 100%（= 中栏宽）：列宽之和已经对齐到中栏宽，
+                   `width: 100%` 只是最后一道保险——即便某次求和差了几像素，
+                   浏览器也只会等比微调，绝不会撑出中栏、更不会出现横向滚动条 */
+                width: "100%",
               }
         }
       >
