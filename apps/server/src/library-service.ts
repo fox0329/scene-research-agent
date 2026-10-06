@@ -3,12 +3,11 @@
  *
  * 为什么单独成模块：这三件事都要**判定**（保留哪条、删哪条、骨架长什么样），
  * 判定按项目规则必须落确定性层（AGENTS §三.5），且要能单测。判定在领域层
- * （`@scene/domain` 的 library-dedupe / cost-rate），这里只负责按计划落库。
+ * （`@scene/domain` 的 library-dedupe），这里只负责按计划落库。
  *
  * 三件事：
  *   ① `dedupeLibrary`   —— 同型号产品行合并 + 同产品重复规格删除（历史数据清理与按钮共用）
- *   ② `seedRateSkeleton`—— M6 内部费率标准骨架（空表也得有，不让用户自己建表）
- *   ③ `resolveProductForModel` —— ingest 写入前匹配已有型号，从源头不再造重复行
+ *   ② `resolveProductForModel` —— ingest 写入前匹配已有型号，从源头不再造重复行
  */
 
 import {
@@ -16,7 +15,6 @@ import {
   normalizeValue,
   planProductMerge,
   planSpecDedupe,
-  RATE_SKELETON,
 } from "@scene/domain";
 import type { Product, SpecParam } from "@scene/contract";
 import type { DbInstance } from "@scene/infra";
@@ -109,32 +107,6 @@ export function dedupeLibrary(db: DbInstance, productLineId: string): DedupeRepo
     report.specNearGroups += plan.nearGroups;
   }
   return report;
-}
-
-/**
- * M6 内部费率标准骨架
- *
- * 只在**该产品线一条费率都没有**时播种（幂等）：用户填过之后再来不覆盖。
- * rate/standard_hours 给 0、data_source 标「待确认」——契约明确规定
- * 「『待确认』行不得用于报价」，所以骨架不会被当成真实单价消费。
- */
-export function seedRateSkeleton(db: DbInstance, productLineId: string): number {
-  const existing = db.costRateRepo.list({
-    where: "product_line_id = ?",
-    params: [productLineId],
-  });
-  if (existing.length > 0) return 0;
-  for (const row of RATE_SKELETON) {
-    db.costRateRepo.insert({
-      ...row,
-      product_line_id: productLineId,
-      // 溯源：结构是系统给的，原文出处等用户填单价时补；「待确认」= 还没报价
-      source: row.source,
-      source_authority: "T4",
-      evidence_level: "C",
-    } as never);
-  }
-  return RATE_SKELETON.length;
 }
 
 /** ingest 写入前的型号匹配结果 */

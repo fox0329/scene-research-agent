@@ -10,7 +10,6 @@ import type {
   Capability,
   Boundary,
   Limitation,
-  CostRate,
 } from "@scene/contract";
 import type {
   AnalysisWriteback,
@@ -94,22 +93,6 @@ function makeLimitation(overrides: Partial<Limitation> = {}): Limitation {
     fix_status: "硬件限制",
     external_visible: "不可提",
     owner: "产品",
-    created_at: "",
-    updated_at: "",
-    ...overrides,
-  };
-}
-
-function makeCostRate(overrides: Partial<CostRate> = {}): CostRate {
-  return {
-    id: "cr1",
-    product_line_id: "pl1",
-    category: "实施",
-    item: "安装部署",
-    rate: 800,
-    unit: "元/人天",
-    standard_hours: 0.5,
-    data_source: "历史项目",
     created_at: "",
     updated_at: "",
     ...overrides,
@@ -315,116 +298,103 @@ describe("checkCompleteness", () => {
     const capabilities = [makeCapability()];
     const boundaries = [makeBoundary()];
     const limitations = [makeLimitation()];
-    const costRates = [makeCostRate()];
 
-    const report = checkCompleteness(
-      products, specParams, capabilities,
-      boundaries, limitations, costRates,
-    );
+    const report = checkCompleteness(products, specParams, capabilities, boundaries, limitations);
 
-    expect(report.items).toHaveLength(8);
+    expect(report.items).toHaveLength(7);
 
-    // M1-M6 全部有数据
+    // M1-M5 全部有数据
     expect(report.items[0]!.status).toBe("✅ 1 项");
     expect(report.items[1]!.status).toBe("✅ 1 个");
     expect(report.items[2]!.status).toBe("✅ 1 项");
     expect(report.items[3]!.status).toBe("✅ 1 条");
     expect(report.items[4]!.status).toBe("✅ 1 条");
-    expect(report.items[5]!.status).toBe("✅ 1 项");
-
     // 来源抽查：产品有来源 → 通过
-    expect(report.items[6]!.status).toBe("✅ 已抽查");
-    expect(report.items[6]!.risk).toBe("—");
+    expect(report.items[5]!.status).toBe("✅ 已抽查");
+    expect(report.items[5]!.risk).toBe("—");
 
     // 质量六维：全部通过 → 已评估
-    expect(report.items[7]!.status).toBe("✅ 已评估");
-    expect(report.items[7]!.risk).toBe("—");
+    expect(report.items[6]!.status).toBe("✅ 已评估");
+    expect(report.items[6]!.risk).toBe("—");
 
     // 无缺失提醒
     expect(report.reminders).toHaveLength(0);
   });
 
-  it("全部 8 项失败 — 完全空数据", () => {
-    const report = checkCompleteness([], [], [], [], [], []);
+  it("全部 7 项失败 — 完全空数据", () => {
+    const report = checkCompleteness([], [], [], [], []);
 
-    expect(report.items).toHaveLength(8);
+    expect(report.items).toHaveLength(7);
 
-    // M1-M6 全部空白
-    for (let i = 0; i < 6; i++) {
+    // M1-M5 全部空白
+    for (let i = 0; i < 5; i++) {
       expect(report.items[i]!.status).toBe("❌ 空白");
       expect(report.items[i]!.risk).not.toBe("—");
     }
 
     // 来源抽查：无来源 → 未抽查
-    expect(report.items[6]!.status).toBe("⚠️ 未抽查");
-    expect(report.items[6]!.risk).toBe("证据可信度未验证");
+    expect(report.items[5]!.status).toBe("⚠️ 未抽查");
+    expect(report.items[5]!.risk).toBe("证据可信度未验证");
 
     // 质量六维：全部失败 → 未评估
-    expect(report.items[7]!.status).toBe("❌ 未评估");
-    expect(report.items[7]!.risk).toBe("材料质量未评估");
+    expect(report.items[6]!.status).toBe("❌ 未评估");
+    expect(report.items[6]!.risk).toBe("材料质量未评估");
 
     // 有缺失提醒
     expect(report.reminders.length).toBeGreaterThan(0);
   });
 
-  it("只有产品和规格参数 — M3-M6 空白", () => {
-    const report = checkCompleteness(
-      [makeProduct()], [makeSpecParam()],
-      [], [], [], [],
-    );
+  it("只有产品和规格参数 — M3-M5 空白", () => {
+    const report = checkCompleteness([makeProduct()], [makeSpecParam()], [], [], []);
 
     expect(report.items[0]!.status).toBe("✅ 1 项"); // M1
     expect(report.items[1]!.status).toBe("✅ 1 个"); // M2
     expect(report.items[2]!.status).toBe("❌ 空白"); // M3
     expect(report.items[3]!.status).toBe("❌ 空白"); // M4
     expect(report.items[4]!.status).toBe("❌ 空白"); // M5
-    expect(report.items[5]!.status).toBe("❌ 空白"); // M6
 
     // 来源抽查：产品有来源 → 通过
-    expect(report.items[6]!.status).toBe("✅ 已抽查");
+    expect(report.items[5]!.status).toBe("✅ 已抽查");
 
     // 质量六维：含边界/含反面会失败 → 未评估
-    expect(report.items[7]!.status).toBe("❌ 未评估");
+    expect(report.items[6]!.status).toBe("❌ 未评估");
 
-    // 提醒应包含 M3-M6 缺失
+    // 提醒应包含 M3-M5 缺失
     const tables = report.reminders.map((r) => r.table);
     expect(tables).toContain("M3");
     expect(tables).toContain("M4");
     expect(tables).toContain("M5");
-    expect(tables).toContain("M6");
   });
 
-  it("检查项 ID 连续 1-8", () => {
-    const report = checkCompleteness([], [], [], [], [], []);
-    for (let i = 0; i < 8; i++) {
+  it("检查项 ID 连续 1-7", () => {
+    const report = checkCompleteness([], [], [], [], []);
+    for (let i = 0; i < 7; i++) {
       expect(report.items[i]!.id).toBe(i + 1);
     }
   });
 
   it("检查项名称符合 §2.4 规范", () => {
-    const report = checkCompleteness([], [], [], [], [], []);
+    const report = checkCompleteness([], [], [], [], []);
     expect(report.items[0]!.name).toBe("M1 产品清单已填写");
     expect(report.items[1]!.name).toBe("M2 规格书已填写");
     expect(report.items[2]!.name).toBe("M3 能力清单已填写");
     expect(report.items[3]!.name).toBe("M4 边界声明已填写");
     expect(report.items[4]!.name).toBe("M5 已知限制已填写");
-    expect(report.items[5]!.name).toBe("M6 成本结构已填写");
-    expect(report.items[6]!.name).toBe("来源抽查");
-    expect(report.items[7]!.name).toBe("质量六维已评估");
+    expect(report.items[5]!.name).toBe("来源抽查");
+    expect(report.items[6]!.name).toBe("质量六维已评估");
   });
 
   it("缺失风险描述符合 §2.4", () => {
-    const report = checkCompleteness([], [], [], [], [], []);
+    const report = checkCompleteness([], [], [], [], []);
     expect(report.items[0]!.risk).toBe("阶段三匹配矩阵缺少候选池");
     expect(report.items[1]!.risk).toBe("阶段四选型缺少参数依据");
     expect(report.items[2]!.risk).toBe("阶段三匹配矩阵缺少行");
     expect(report.items[3]!.risk).toContain("门槛扫描");
     expect(report.items[4]!.risk).toBe("阶段五验收约束不完整");
-    expect(report.items[5]!.risk).toContain("行业均值");
   });
 
   it("缺失提醒结构（表 0-13 格式）", () => {
-    const report = checkCompleteness([], [], [], [], [], []);
+    const report = checkCompleteness([], [], [], [], []);
     for (const reminder of report.reminders) {
       expect(reminder).toHaveProperty("table");
       expect(reminder).toHaveProperty("missing");
@@ -446,7 +416,7 @@ describe("checkCompleteness", () => {
     ];
     const report = checkCompleteness(
       products, specParams, [makeCapability()],
-      [makeBoundary()], [makeLimitation()], [makeCostRate()],
+      [makeBoundary()], [makeLimitation()],
     );
 
     expect(report.items[0]!.status).toBe("✅ 2 项");
@@ -461,13 +431,12 @@ describe("checkCompleteness", () => {
       [makeCapability()],
       [], // 无边界 → 含边界 fail
       [], // 无限制 → 含反面 fail
-      [makeCostRate()],
     );
 
     // 来源抽查通过
-    expect(report.items[6]!.status).toBe("✅ 已抽查");
+    expect(report.items[5]!.status).toBe("✅ 已抽查");
     // 质量六维未评估
-    expect(report.items[7]!.status).toBe("❌ 未评估");
+    expect(report.items[6]!.status).toBe("❌ 未评估");
 
     // 提醒应包含 M4/M5 和六维
     const tables = report.reminders.map((r) => r.table);

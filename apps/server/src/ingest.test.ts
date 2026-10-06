@@ -15,7 +15,6 @@ import type {
   Capability,
   Boundary,
   Limitation,
-  CostRate,
   OptionalMaterial,
   Conversation,
   Scenario,
@@ -102,18 +101,6 @@ function makeDshOutput() {
         source: "whitepaper.pdf:12",
       },
       {
-        table_code: "M6",
-        fields: {
-          category: "实施",
-          item: "现场部署",
-          rate: 3000,
-          unit: "元/人天",
-          standard_hours: 8,
-          data_source: "历史项目",
-        },
-        source: "内部报价单.xlsx:1",
-      },
-      {
         table_code: "O2",
         fields: {
           project_name: "某市智慧园区",
@@ -180,7 +167,6 @@ function createMockDb(): DbInstance {
     capabilityRepo: createMockRepo<Capability>(),
     boundaryRepo: createMockRepo<Boundary>(),
     limitationRepo: createMockRepo<Limitation>(),
-    costRateRepo: createMockRepo<CostRate>(),
     optionalMaterialRepo: createMockRepo<OptionalMaterial>(),
     // ingest 流程不使用的仓库：占位 mock（Conversation 走 Repo，其余用空对象占位）
     conversationRepo: createMockRepo<Conversation>(),
@@ -230,8 +216,8 @@ describe("createIngestCommand", () => {
         productLineId: "pl1",
       });
 
-      // M1(1) + M2(1) + M3(1) + M4(1) + M5(1) + M6(1) + O2(1) = 7
-      expect(result.rowsInserted).toBe(7);
+      // M1(1) + M2(1) + M3(1) + M4(1) + M5(1) + O2(1) = 6（M6 已删，变更表 #106）
+      expect(result.rowsInserted).toBe(6);
     });
 
     it("应将 M1 产品写入 productRepo", async () => {
@@ -303,7 +289,7 @@ describe("createIngestCommand", () => {
       });
 
       expect(result.completenessReport).toBeDefined();
-      expect(result.completenessReport.items.length).toBeGreaterThanOrEqual(8);
+      expect(result.completenessReport.items.length).toBeGreaterThanOrEqual(7);
       expect(Array.isArray(result.completenessReport.reminders)).toBe(true);
     });
   });
@@ -322,7 +308,7 @@ describe("createIngestCommand", () => {
       });
 
       // M1 被丢弃，M2 因无关联的 product_id 也不会写入 → 总数少 2
-      expect(result.rowsInserted).toBe(5);
+      expect(result.rowsInserted).toBe(4);
     });
 
     it("source 缺少页码部分（无冒号）的行应被丢弃", async () => {
@@ -338,7 +324,7 @@ describe("createIngestCommand", () => {
       });
 
       // M3 被丢弃 → 6 行
-      expect(result.rowsInserted).toBe(6);
+      expect(result.rowsInserted).toBe(5);
     });
 
     it("source 页码为空的行应被丢弃", async () => {
@@ -354,7 +340,7 @@ describe("createIngestCommand", () => {
       });
 
       // M4 被丢弃 → 6 行
-      expect(result.rowsInserted).toBe(6);
+      expect(result.rowsInserted).toBe(5);
     });
 
     it("source 文件名为空的行应被丢弃", async () => {
@@ -370,7 +356,7 @@ describe("createIngestCommand", () => {
       });
 
       // M1 被丢弃，M2 也无关联 → 少 2
-      expect(result.rowsInserted).toBe(5);
+      expect(result.rowsInserted).toBe(4);
     });
 
     it("source 含文件名和'未知'页码应被保留", async () => {
@@ -386,7 +372,7 @@ describe("createIngestCommand", () => {
       });
 
       // M1 保留 → 7 行
-      expect(result.rowsInserted).toBe(7);
+      expect(result.rowsInserted).toBe(6);
     });
   });
 
@@ -483,8 +469,8 @@ describe("createIngestCommand", () => {
         productLineId: "pl1",
       });
 
-      // M1(1) + M3(1) + M4(1) + M5(1) + M6(1) + O2(1) = 6
-      expect(result.rowsInserted).toBe(6);
+      // M1(1) + M3(1) + M4(1) + M5(1) + O2(1) = 5（M6 已删，变更表 #106）
+      expect(result.rowsInserted).toBe(5);
     });
   });
 });
@@ -511,7 +497,7 @@ describe("consumeDshPrompt", () => {
     const session: SessionHandle = { sessionId: "s1" };
     const result = await consumeDshPrompt(client, session, "test prompt");
 
-    expect(result.rows).toHaveLength(7);
+    expect(result.rows).toHaveLength(6);
     expect(result.rows[0]!.table_code).toBe("M1");
   });
 
@@ -529,7 +515,7 @@ describe("consumeDshPrompt", () => {
     };
 
     const result = await consumeDshPrompt(client, { sessionId: "s2" }, "test");
-    expect(result.rows).toHaveLength(7);
+    expect(result.rows).toHaveLength(6);
   });
 
   it("JSON 前有文本前缀时仍应提取", async () => {
@@ -547,7 +533,7 @@ describe("consumeDshPrompt", () => {
     };
 
     const result = await consumeDshPrompt(client, { sessionId: "s3" }, "test");
-    expect(result.rows).toHaveLength(7);
+    expect(result.rows).toHaveLength(6);
   });
 
   it("流中出现 error 事件应返回空 rows", async () => {

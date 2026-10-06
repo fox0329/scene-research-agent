@@ -76,21 +76,6 @@ export type {
   SubScenePriority,
 } from "./capability-match.js";
 
-// 阶段 5 — 成本估算
-export {
-  estimateTotalCost,
-  positionPrice,
-  estimateLaborFromRates,
-} from "./cost-estimate.js";
-export type {
-  CostItem,
-  CostEstimate,
-  CostLineItem,
-  PricePosition,
-  PricePositionResult,
-  TaskEstimate,
-} from "./cost-estimate.js";
-
 // 阶段 6 — 价值验证
 export {
   calcRoi,
@@ -166,8 +151,6 @@ export type {
 } from "./library-dedupe.js";
 
 // 全局 — M6 内部费率标准骨架
-export { RATE_SKELETON, RATE_SKELETON_SOURCE, isSkeletonRow } from "./cost-rate.js";
-export type { RateSkeletonRow } from "./cost-rate.js";
 
 // ─── 对话即导入：消息内文件路径提取 ─────────────────────────
 

@@ -358,7 +358,7 @@ function summarizeMaterials(db: DbInstance, productLineId: string): string {
   const lines: string[] = [];
   const line = db.productLineRepo.getById(productLineId);
   if (line) lines.push(`资料库：${line.name}`);
-  for (const code of ["M1", "M2", "M3", "M4", "M5", "M6"]) {
+  for (const code of ["M1", "M2", "M3", "M4", "M5"]) {
     const c = n(code);
     if (c > 0) counts.push(`${code} ${c} 行`);
   }

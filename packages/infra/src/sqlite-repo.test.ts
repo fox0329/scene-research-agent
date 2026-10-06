@@ -39,7 +39,6 @@ describe("createDb", () => {
     expect(names).toContain("capability");
     expect(names).toContain("boundary");
     expect(names).toContain("limitation");
-    expect(names).toContain("cost_rate");
     expect(names).toContain("optional_material");
 
     // 场景层 6 表

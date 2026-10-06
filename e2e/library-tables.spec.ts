@@ -8,7 +8,7 @@ import { test, expect } from "@playwright/test";
  * 本套件直连真服务，并自己在临时库里造数，断言的是真链路（PATCH 落库 → 重新取数）。
  *
  * 覆盖（变更表 #98）：① M2 按参数类别分组折叠、组内编辑落到正确的行 ② O 六类共用一个
- * 面板 ③ M6 内部费率骨架（新建线即有 14 行） ④ 溯源不占列、详情落右栏。
+ * 面板 ③ 溯源不占列、详情落右栏。（原 ③ M6 内部费率骨架随 M6 删除，变更表 #106）
  */
 
 const LIVE = "http://127.0.0.1:46175";
@@ -115,29 +115,6 @@ test("O 可选材料：六类共用一个面板（类别选择器切换），不
   await expect(page.locator(".pnl-h h2", { hasText: "O1 认证" })).toHaveCount(0);
   // 这条线没有 O3 数据 → 面板体只有一张表的空态（而不是 6 张表叠着）
   await expect(page.locator(".ws .empty-state-title")).toHaveText(["本表暂无资料"]);
-});
-
-test("M6 内部费率：新建产品线即有标准骨架（填数字即可，不用自己建行）", async ({ page }) => {
-  const line = await newLine(page, "M6骨架");
-  await openLibrary(page, line.name);
-  await page.getByRole("button", { name: "M6 内部费率" }).click();
-  const rows = page.locator(".ws table tbody tr");
-  await expect(rows).toHaveCount(14);
-  // 单价与工时都是 0、「待确认」——契约明确这类行不得用于报价
-  await expect(rows.first().locator("td").nth(2)).toHaveText("0");
-  await expect(rows.first().locator("td").nth(5)).toHaveText("待确认");
-  // 整列全空的选填列（说明）默认收起，可一键展开
-  await expect(page.locator(".ws table thead th")).toHaveText([
-    "类别",
-    "项目",
-    "单价",
-    "单位",
-    "标准工时",
-    "数据来源",
-    "操作",
-  ]);
-  await page.getByRole("button", { name: /显示空列（\d+）/ }).click();
-  await expect(page.locator(".ws table thead th")).toContainText(["说明"]);
 });
 
 test("溯源不占列：主表只留业务列，来源信息在右栏行详情里", async ({ page }) => {

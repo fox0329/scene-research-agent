@@ -17,7 +17,6 @@ import type {
   Capability,
   Boundary,
   Limitation,
-  CostRate,
   Maturity,
 } from "@scene/contract";
 
@@ -306,9 +305,9 @@ export function assessQuality(
 }
 
 /**
- * 完成度检查（00b §2.4，8 项，不阻断）
+ * 完成度检查（00b §2.4，7 项，不阻断）
  *
- * 检查 M1-M6 必填表是否有数据 + 来源抽查 + 质量六维评估。
+ * 检查 M1-M5 必填表是否有数据 + 来源抽查 + 质量六维评估。
  * 不做通过/退回判定，仅记录当前状态和缺失风险。
  *
  * @param products - 产品型号列表（M1）
@@ -316,7 +315,6 @@ export function assessQuality(
  * @param capabilities - 能力清单列表（M3）
  * @param boundaries - 边界声明列表（M4）
  * @param limitations - 已知限制列表（M5）
- * @param costRates - 成本单价列表（M6）
  * @returns 完成度报告（8 项检查 + 缺失提醒列表）
  */
 export function checkCompleteness(
@@ -325,7 +323,6 @@ export function checkCompleteness(
   capabilities: Capability[],
   boundaries: Boundary[],
   limitations: Limitation[],
-  costRates: CostRate[],
 ): CompletenessReport {
   // 来源抽查：至少有一条记录带有来源标注
   const allRecords = [
@@ -384,13 +381,6 @@ export function checkCompleteness(
       unit: "条",
       risk: "阶段五验收约束不完整",
     },
-    {
-      name: "M6 成本结构已填写",
-      hasData: costRates.length > 0,
-      count: costRates.length,
-      unit: "项",
-      risk: "阶段四成本估算缺少内部数据，只能用行业均值",
-    },
   ];
 
   const items: CompletenessCheckItem[] = checks.map((c, i) => ({
@@ -402,17 +392,17 @@ export function checkCompleteness(
     risk: c.hasData ? "—" : c.risk,
   }));
 
-  // 第 7 项：来源抽查
+  // 第 6 项：来源抽查
   items.push({
-    id: 7,
+    id: 6,
     name: "来源抽查",
     status: hasSources ? "✅ 已抽查" : "⚠️ 未抽查",
     risk: hasSources ? "—" : "证据可信度未验证",
   });
 
-  // 第 8 项：质量六维已评估
+  // 第 7 项：质量六维已评估
   items.push({
-    id: 8,
+    id: 7,
     name: "质量六维已评估",
     status: hasAssessment ? "✅ 已评估" : "❌ 未评估",
     risk: hasAssessment ? "—" : "材料质量未评估",

@@ -206,7 +206,7 @@ describe("getAffectedStages", () => {
     expect(getAffectedStages("表3-6")).toEqual([4]);
   });
 
-  it("M6 内部费率：成本估算（表5-5）删掉后没有下游表 → 空数组（不再假报阶段 4）", () => {
+  it("M6 内部费率已整张删除 → 反查空数组（不再假报阶段 4）", () => {
     expect(getAffectedStages("M6")).toEqual([]);
   });
 

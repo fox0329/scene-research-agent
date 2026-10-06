@@ -1,16 +1,16 @@
 /**
- * @scene/server — 产品资料库整理（去重 + M6 费率骨架）
+ * @scene/server — 产品资料库整理（去重）
  *
- * 用户验收 2026-10-04 三条：
+ * 用户验收 2026-10-04：
  *   · 「表格能不能简化？」（本轮只动数据层与列级空值，见变更表 #97）
  *   · 「重复的内容能不能合并？」→ dedupeLibrary / resolveProductForModel / upsertSpecParam
- *   · 「内部费率就算是空表也得有，不能让用户自己建表」→ seedRateSkeleton
+ *
+ * 注：原「M6 内部费率骨架」（seedRateSkeleton）随 M6 一起删除（变更表 #106）。
  */
 
 import { describe, expect, it } from "vitest";
 import { createDb } from "@scene/infra";
-import { RATE_SKELETON } from "@scene/domain";
-import { dedupeLibrary, resolveProductForModel, seedRateSkeleton, upsertSpecParam } from "./library-service.js";
+import { dedupeLibrary, resolveProductForModel, upsertSpecParam } from "./library-service.js";
 
 function setup() {
   const db = createDb(":memory:");
@@ -30,37 +30,6 @@ const product = (lineId: string, model: string, status: string, created: string)
   } as never);
 
 let db0: ReturnType<typeof createDb>;
-
-describe("M6 内部费率骨架：空表也得有（用户定调）", () => {
-  it("空产品线播种 14 行：rate/工时 为 0、来源标「待确认」与骨架说明", () => {
-    const { db, lineId } = setup();
-    const n = seedRateSkeleton(db, lineId);
-    expect(n).toBe(RATE_SKELETON.length);
-    const rows = db.costRateRepo.list({ where: "product_line_id = ?", params: [lineId] });
-    expect(rows).toHaveLength(RATE_SKELETON.length);
-    for (const r of rows) {
-      expect(r.rate).toBe(0);
-      expect(r.data_source).toBe("待确认");
-      expect(String(r.source)).toContain("标准骨架");
-    }
-    // 类别限定在「实施/商务」，且工序名与表5-3 对齐
-    expect(rows.filter((r) => r.category === "实施").length).toBeGreaterThan(8);
-    expect(rows.some((r) => r.item.includes("现场勘察"))).toBe(true);
-    expect(rows.some((r) => r.category === "商务")).toBe(true);
-  });
-
-  it("幂等：用户填过之后再来不覆盖、不重复播种", () => {
-    const { db, lineId } = setup();
-    seedRateSkeleton(db, lineId);
-    const first = db.costRateRepo.list({ where: "product_line_id = ?", params: [lineId] });
-    const target = first[0]!;
-    db.costRateRepo.update(target.id, { rate: 1200, data_source: "历史项目" } as never);
-    expect(seedRateSkeleton(db, lineId)).toBe(0);
-    const after = db.costRateRepo.list({ where: "product_line_id = ?", params: [lineId] });
-    expect(after).toHaveLength(first.length);
-    expect(after.find((r) => r.id === target.id)!.rate).toBe(1200);
-  });
-});
 
 describe("资料库去重：同型号产品行合并 + 同产品重复规格删除", () => {
   it("保留在售行、删待确认行，并把重复行的规格与缺位字段并过去", () => {

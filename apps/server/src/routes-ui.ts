@@ -26,7 +26,7 @@ import { ANCHOR_TABLE_CODE, FLOW_LAST_STEP, type InfoStageId } from "@scene/cont
 import { alignmentWithBrief, anchorFixedRows, buildFlowStatus, type InfoRow } from "@scene/domain";
 import type { DbInstance } from "@scene/infra";
 import { scenarioLineContext } from "./scenario-lines.js";
-import { dedupeLibrary, seedRateSkeleton } from "./library-service.js";
+import { dedupeLibrary } from "./library-service.js";
 import {
   parseDocument,
   exportDeliverables,
@@ -142,11 +142,6 @@ const LIBRARY_TABLES: Record<
       external_visible: "不可提",
       owner: "",
     },
-  },
-  M6: {
-    repo: (db) => db.costRateRepo as unknown as AnyRepo,
-    require: ["item"],
-    defaults: { category: "实施", rate: 0, unit: "人天", standard_hours: 0, data_source: "待确认" },
   },
   O1: { repo: (db) => db.optionalMaterialRepo as unknown as AnyRepo, category: "O1认证" },
   O2: { repo: (db) => db.optionalMaterialRepo as unknown as AnyRepo, category: "O2案例" },
@@ -794,7 +789,6 @@ function createOwnLineForScenario(db: UiRoutesDeps["db"], scenarioName: string):
     lineName = `${lineName}-${randomUUID().slice(0, 4)}`;
   }
   const line = db.productLineRepo.insert({ name: lineName });
-  seedRateSkeleton(db, line.id);
   return line.id;
 }
 
@@ -1055,8 +1049,6 @@ function registerLibraryRoutes(app: FastifyInstance, deps: UiRoutesDeps) {
     const name = String(body.name ?? "").trim();
     if (!name) return badRequest(reply, "产品线名称不能为空");
     const line = db.productLineRepo.insert({ name });
-    // M6 内部费率：结构先给全（rate/工时 0 + 「待确认」），用户只填数字、不用自己建表
-    seedRateSkeleton(db, line.id);
     return line;
   });
 
@@ -1193,7 +1185,6 @@ function registerLibraryRoutes(app: FastifyInstance, deps: UiRoutesDeps) {
         listBy("M3"),
         listBy("M4"),
         listBy("M5"),
-        listBy("M6"),
       ),
     };
   });
@@ -1203,7 +1194,7 @@ function registerLibraryRoutes(app: FastifyInstance, deps: UiRoutesDeps) {
  * 资料行 → 它所属的产品线 id
  *
  * 为什么不能只查 `product` / `optional_material`：那两个 `getById` 只对 M1 产品行与 O*
- * 可选材料行有效；M3–M6 的行 id 在那两张表里必然查不到 → 拿不到产品线 → 一个场景都标不上。
+ * 可选材料行有效；M3–M5 的行 id 在那两张表里必然查不到 → 拿不到产品线 → 一个场景都标不上。
  * 实测（变更表 #101）：改 M6 一条费率，`stage_data.is_stale` 全 0，等于"改费率"这个动作
  * 在系统里没有任何反馈。现在改成**先读这一行本身**：库表都带 `product_line_id`；
  * M2 规格书例外（`spec_param` 没有该列）→ 经 `product_id` 上溯到产品行再取产品线。

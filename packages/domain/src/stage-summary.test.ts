@@ -193,7 +193,7 @@ describe("stage-summary — 确定性", () => {
       generatedAt: "2026-09-25",
     });
     expect(md).toContain("# 阶段 0 · 材料解析与入库 — 总结");
-    expect(md).toContain("本阶段产出：M1、M2、M3、M4、M5、M6、可选材料");
+    expect(md).toContain("本阶段产出：M1、M2、M3、M4、M5、可选材料");
     expect(md).toContain("**M1 产品清单**：1 行——IPC-3000·IPC");
   });
 });

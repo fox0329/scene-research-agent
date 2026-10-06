@@ -21,7 +21,6 @@ import type {
   Capability,
   Boundary,
   Limitation,
-  CostRate,
   OptionalMaterial,
   Scenario,
   StageData,
@@ -80,9 +79,9 @@ describe("@scene/contract 通用枚举", () => {
 
 describe("@scene/contract 表编号常量", () => {
   it("STAGE0 12 张表", () => {
-    expect(STAGE0_TABLES).toHaveLength(12);
+    expect(STAGE0_TABLES).toHaveLength(11); // M6 内部费率已删（变更表 #106）
     expect(STAGE0_TABLES[0]).toBe("M1");
-    expect(STAGE0_TABLES[11]).toBe("O6");
+    expect(STAGE0_TABLES[10]).toBe("O6");
   });
 
   it("STAGE1 5 张表", () => {
@@ -180,14 +179,6 @@ describe("@scene/contract 产品资料库接口", () => {
     expect(v.impact).toBe("低");
   });
 
-  it("CostRate 含 rate 和 data_source", () => {
-    const v: CostRate = {
-      id: "cr1", product_line_id: "pl1", category: "实施", item: "安装部署",
-      rate: 800, unit: "元/人天", standard_hours: 0.5, data_source: "历史项目",
-      created_at: "", updated_at: "",
-    };
-    expect(v.rate).toBe(800);
-  });
 
   it("OptionalMaterial category 六种", () => {
     const cats: OptionalMaterial["category"][] = ["O1认证", "O2案例", "O3价格", "O4SDK", "O5路线图", "O6生态"];

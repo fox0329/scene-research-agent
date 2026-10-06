@@ -23,7 +23,6 @@ import type {
   Capability,
   Boundary,
   Limitation,
-  CostRate,
   OptionalMaterial,
 } from "@scene/contract";
 import type { DbInstance } from "@scene/infra";
@@ -824,10 +823,10 @@ export function collectUpstreamData(
   const specByLines = `product_id IN (SELECT id FROM product WHERE product_line_id IN ${inLines})`;
 
   /**
-   * 公司材料（M1–M6 + 可选材料）**只从阶段 3（能力匹配）起注入**
+   * 公司材料（M1–M5 + 可选材料）**只从阶段 3（能力匹配）起注入**
    *
    * 用户定调（2026-10-02）：场景定义 / 认识场景 / 商业梳理这三步是**从不同角度理解场景本身**，
-   * 不需要公司产品能力；到能力匹配才把公司能力放进去评估。原先每个阶段都注入 M1–M6，
+   * 不需要公司产品能力；到能力匹配才把公司能力放进去评估。原先每个阶段都注入 M1–M5，
    * 模型是"看着我们自己的产品在写场景"，于是自然写出「我方切入点」「我方优势」「我方角色」——
    * 表里的公司侧列（表1-2 可参与程度、表3-2 我方切入点…）就是这么长出来的。
    * 现在阶段 0–2 只给场景侧上下文（场景锚 + 前几步的场景产出），公司材料在阶段 3 才进场。
@@ -855,10 +854,6 @@ export function collectUpstreamData(
       where: `product_line_id IN ${inLines}`,
       params: lineIds,
     }) as Limitation[]);
-    data["M6_成本单价"] = annotate(db.costRateRepo.list({
-      where: `product_line_id IN ${inLines}`,
-      params: lineIds,
-    }) as CostRate[]);
     data["O_可选材料"] = annotate(db.optionalMaterialRepo.list({
       where: `product_line_id IN ${inLines}`,
       params: lineIds,

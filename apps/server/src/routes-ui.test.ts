@@ -618,15 +618,7 @@ describe("资料库路由", () => {
       payload: { name: "产品线B" },
     });
     expect(ok.json().name).toBe("产品线B");
-    // M6 内部费率：新建产品线即播种标准骨架（用户定调「就算是空表也得有，不能让用户自己建表」）
-    const m6 = await h.app.inject({
-      method: "GET",
-      url: `/api/v1/library/tables/M6?product_line_id=${ok.json().id}`,
-    });
-    const rows = m6.json();
-    expect(rows.length).toBeGreaterThanOrEqual(10);
-    expect(rows.every((r: { data_source: string }) => r.data_source === "待确认")).toBe(true);
-    expect(rows.every((r: { rate: number }) => r.rate === 0)).toBe(true);
+
   });
 
   it("POST dedupe-products：同型号行合并 + 重复规格删除（一次清完）", async () => {

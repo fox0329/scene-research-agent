@@ -121,7 +121,6 @@ function createMockDb() {
     capabilityRepo: createMockRepo(),
     boundaryRepo: createMockRepo(),
     limitationRepo: createMockRepo(),
-    costRateRepo: createMockRepo(),
     optionalMaterialRepo: createMockRepo(),
     conversationRepo,
     messageRepo,

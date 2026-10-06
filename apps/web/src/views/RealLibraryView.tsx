@@ -40,7 +40,6 @@ const M_TABS: { code: string; label: string }[] = [
   { code: "M3", label: "M3 能力清单" },
   { code: "M4", label: "M4 边界声明" },
   { code: "M5", label: "M5 已知限制" },
-  { code: "M6", label: "M6 内部费率" },
 ];
 
 const O_CODES = ["O1", "O2", "O3", "O4", "O5", "O6"];
@@ -545,7 +544,7 @@ const QualityRealPanel: React.FC<{ summary: ApiQualitySummary }> = ({ summary })
 
 /* ═══ 视图主体 ═══ */
 
-type TabKey = "quality" | "M1" | "M2" | "M3" | "M4" | "M5" | "M6" | "O" | "reminder";
+type TabKey = "quality" | "M1" | "M2" | "M3" | "M4" | "M5" | "O" | "reminder";
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: "quality", label: "质量总评" },

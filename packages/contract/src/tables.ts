@@ -95,7 +95,7 @@ export interface TableColumn {
   truncate?: number;
   /** 引用哪张表（type=ref 时给） */
   refTable?: string;
-  /** 所属块（同一张表内多子块时使用，如成本估算的四个子块） */
+  /** 所属块（同一张表内多子块时使用，如方案架构的架构块/接口块） */
   block?: string;
   /** 说明（供提示词与 tooltip） */
   note?: string;
@@ -165,7 +165,7 @@ export interface TableDef {
    *
    * 用途：阶段分析改为**按表并发生成**（v1.22）——并发的代价是失去"一次看到整步"的视野。
    * 这里把真实的先后依赖声明出来：被依赖的表先跑，跑完把**刚生成的行**作为上游上下文
-   * 喂给下游表，保证口径一致（如成本要按架构与实施项算）。
+   * 喂给下游表，保证口径一致（如实施计划要按架构与接口项算）。
    * 没有真实依赖的表一律并发，不要为了"稳"随手加依赖——那会把并发收益吃光。
    */
   dependsOnTables?: readonly string[];
@@ -231,7 +231,7 @@ export const STAGE_DEFS: readonly StageDef[] = [
     name: "材料解析与入库",
     producedBy: "解析入库",
     goal: "我方有哪些产品、能力、边界、限制、费率；有哪些认证/案例/价格/资料/路线图/生态",
-    tableCodes: ["M1", "M2", "M3", "M4", "M5", "M6", "可选材料"],
+    tableCodes: ["M1", "M2", "M3", "M4", "M5", "可选材料"],
     summaryTitle: "① 材料入库总结",
   },
   {
@@ -262,15 +262,15 @@ export const STAGE_DEFS: readonly StageDef[] = [
     id: 4,
     name: "方案与实现",
     producedBy: "模型分析",
-    goal: "方案架构与接口、边界声明、约束满足路径、实施计划、交付运维与 SLA、成本构成",
+    goal: "方案架构与接口、边界声明、约束满足路径、实施计划、交付运维与 SLA",
     tableCodes: ["表5-1", "表5-3", "表5-4"],
-    summaryTitle: "⑤ 方案与成本总结",
+    summaryTitle: "⑤ 方案与实现总结",
   },
   {
     id: 5,
     name: "价值与验证",
     producedBy: "模型分析",
-    goal: "收益对应指标、怎么测、基线、预期改善、用户感受、投入产出、试点设计与验收口径",
+    goal: "收益对应指标、怎么测、基线、预期改善、用户感受、试点设计与验收口径",
     tableCodes: ["表6-1", "表6-4"],
     summaryTitle: "⑥ 价值与验证总结",
   },
@@ -348,7 +348,7 @@ export const SUMMARY_DOC_FORBIDDEN: readonly string[] = [
   "建议档位与通过/不通过",
 ];
 
-// ─── 阶段 0 · 材料解析与入库（7 张） ────────────────────────
+// ─── 阶段 0 · 材料解析与入库（6 张） ────────────────────────
 
 const TABLES_STAGE_0: readonly TableDef[] = [
   {
@@ -447,25 +447,6 @@ const TABLES_STAGE_0: readonly TableDef[] = [
     ],
     completeness: ["四项必填非空", "source_type ≥『用户确认』"],
     consumedBy: [4, 5],
-  },
-  {
-    code: "M6",
-    name: "内部费率",
-    stage: 0,
-    tier: "支撑",
-    rowUnit: "一个费率项目",
-    purpose: "成本单价的唯一来源",
-    columns: [
-      mid("category", "类别", { required: true, enum: "rate_category" }),
-      mid("item", "项目", { required: true }),
-      mid("rate", "单价", { required: true, type: "number" }),
-      mid("unit", "单位", { required: true }),
-      mid("standard_hours", "标准工时参考", { required: true, type: "number" }),
-      sup("note", "说明"),
-      sup("source", "出处", { required: true }),
-    ],
-    completeness: ["rate/standard_hours 为数值", "source 非空；『待确认』行不得用于报价"],
-    consumedBy: [4],
   },
   {
     code: "可选材料",
@@ -833,7 +814,7 @@ const TABLES_STAGE_2: readonly TableDef[] = [
     stage: 2,
     tier: "重要",
     rowUnit: "一个可对照方案（必须含「什么都不做」）",
-    purpose: "客户手上还有什么可选项、各自什么价格（我方的价格位置在阶段 4 成本估算）",
+    purpose: "客户手上还有什么可选项、各自什么价格",
     columns: [
       mid("alternative", "替代方案", { required: true, note: "必须含『什么都不做』" }),
       mid("customer_gets", "客户得到什么", { required: true, type: "longText", truncate: TRUNCATE_DEFAULT }),
@@ -1049,7 +1030,7 @@ const TABLES_STAGE_4: readonly TableDef[] = [
     stage: 4,
     tier: "重要",
     rowUnit: "一个实施项",
-    purpose: "落地路径与前置条件（人天进成本）；门槛应对行动也写在这里",
+    purpose: "落地路径与前置条件（人天用于排期与工作量核算）；门槛应对行动也写在这里",
     columns: [
       mid("item", "项", { required: true }),
       mid("content", "内容", { required: true, type: "longText", truncate: TRUNCATE_DEFAULT }),
@@ -1255,7 +1236,7 @@ export function detailColumns(t: TableDef, category?: string): readonly TableCol
   );
 }
 
-/** 按块分组的中栏列（用于成本估算、方案架构等多子块表） */
+/** 按块分组的中栏列（用于方案架构等多子块表） */
 export function middleColumnsByBlock(t: TableDef): Readonly<Record<string, readonly TableColumn[]>> {
   const out: Record<string, TableColumn[]> = {};
   for (const c of middleColumns(t)) {
@@ -1335,7 +1316,7 @@ export const MIDDLE_COLUMN_BUDGET = 6;
 /**
  * 按「块 / payload / 整表」分组取中栏列——**列预算的唯一核算口径**
  *
- * 多子块表（成本估算、方案架构）与 payload 表（可选材料）不能把各块列数相加，
+ * 多子块表（方案架构）与 payload 表（可选材料）不能把各块列数相加，
  * 因为界面同一时刻只渲染一个块/一种 payload。
  */
 export function middleColumnGroups(

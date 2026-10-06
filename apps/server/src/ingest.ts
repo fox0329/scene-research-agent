@@ -16,7 +16,6 @@ import type {
   Capability,
   Boundary,
   Limitation,
-  CostRate,
   OptionalMaterial,
 } from "@scene/contract";
 import type { ParseResult } from "@scene/infra";
@@ -52,7 +51,7 @@ export interface IngestOpts {
 /** ingest 返回结果 */
 export interface IngestResult {
   rowsInserted: number;
-  /** 每张表插入行数（M1-M6 / O1-O6），入库反馈用 */
+  /** 每张表插入行数（M1-M5 / O1-O6），入库反馈用 */
   tableCounts: Record<string, number>;
   /** 并入已有型号的 M1 行数（没新建产品行——旧实现每批材料都会造重复行） */
   mergedProducts: number;
@@ -64,7 +63,7 @@ export interface IngestResult {
 
 /** DSH 返回的单条归类记录 */
 interface ClassifiedRow {
-  /** 目标表编号：M1-M6 / O1-O6 */
+  /** 目标表编号：M1-M5 / O1-O6 */
   table_code: string;
   /** 该行字段值 */
   fields: Record<string, unknown>;
@@ -90,7 +89,7 @@ const OUTPUT_CONTRACT: Record<string, unknown> = {
         properties: {
           table_code: {
             type: "string",
-            enum: ["M1", "M2", "M3", "M4", "M5", "M6", "O1", "O2", "O3", "O4", "O5", "O6"],
+            enum: ["M1", "M2", "M3", "M4", "M5", "O1", "O2", "O3", "O4", "O5", "O6"],
             description: "目标表编号",
           },
           fields: {
@@ -132,10 +131,6 @@ const SYSTEM_PROMPT = `你是产品资料解析专家。你的任务是将输入
 ## M5 已知限制
 字段：product_name(产品名称), description(限制描述), impact(高/中/低), fix_status(已修复/修复中/无计划/硬件限制), external_visible(可提/内部可提/不可提), owner(负责人)
 必填：product_name, description, impact, fix_status, external_visible, owner
-
-## M6 成本单价
-字段：category(实施/商务), item(项目), rate(单价数字), unit(单位), standard_hours(标准工时), data_source(历史项目/内部报价/行业均值/待确认)
-必填：category, item, rate, unit, standard_hours, data_source
 
 ## O1-O6 可选材料
 - O1认证：fields 含 cert_name, cert_body, cert_date, scope
@@ -237,7 +232,7 @@ function buildUserPrompt(fileName: string, parseResult: ParseResult): string {
   }
 
   parts.push("");
-  parts.push("请将上述内容按 M1-M6、O1-O6 表格分类，输出 JSON。每条记录的 source 字段必须包含「文件名:页码」。");
+  parts.push("请将上述内容按 M1-M5、O1-O6 表格分类，输出 JSON。每条记录的 source 字段必须包含「文件名:页码」。");
 
   return parts.join("\n");
 }
@@ -329,7 +324,7 @@ function isDshOutput(val: unknown): val is DshOutput {
 /** 校验规则：table_code 和 source 必须合法，缺则丢弃 */
 function validateRows(output: DshOutput, fileName: string): ClassifiedRow[] {
   const validTables = new Set([
-    "M1", "M2", "M3", "M4", "M5", "M6",
+    "M1", "M2", "M3", "M4", "M5",
     "O1", "O2", "O3", "O4", "O5", "O6",
   ]);
   const valid: ClassifiedRow[] = [];
@@ -423,11 +418,6 @@ function writeRows(
       case "M5": {
         const ok = insertLimitation(db, row, productLineId);
         if (ok) count("M5");
-        break;
-      }
-      case "M6": {
-        const ok = insertCostRate(db, row, productLineId);
-        if (ok) count("M6");
         break;
       }
       default: {
@@ -546,28 +536,6 @@ function insertLimitation(
   }
 }
 
-function insertCostRate(
-  db: DbInstance,
-  row: ClassifiedRow,
-  productLineId: string,
-): boolean {
-  const f = row.fields;
-  try {
-    db.costRateRepo.insert({
-      product_line_id: productLineId,
-      category: (f["category"] as CostRate["category"]) ?? "实施",
-      item: String(f["item"] ?? ""),
-      rate: Number(f["rate"] ?? 0),
-      unit: String(f["unit"] ?? ""),
-      standard_hours: Number(f["standard_hours"] ?? 0),
-      data_source:
-        (f["data_source"] as CostRate["data_source"]) ?? "待确认",
-    });
-    return true;
-  } catch {
-    return false;
-  }
-}
 
 function insertOptionalMaterial(
   db: DbInstance,
@@ -653,10 +621,6 @@ function buildCompletenessReport(
     where: "product_line_id = ?",
     params: [productLineId],
   }) as Limitation[];
-  const costRates = db.costRateRepo.list({
-    where: "product_line_id = ?",
-    params: [productLineId],
-  }) as CostRate[];
 
   const productIds = new Set(products.map((p) => p.id));
   const filteredSpecParams = specParams.filter((sp) =>
@@ -669,6 +633,5 @@ function buildCompletenessReport(
     capabilities,
     boundaries,
     limitations,
-    costRates,
   );
 }

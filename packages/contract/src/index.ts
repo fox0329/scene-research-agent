@@ -74,7 +74,7 @@ export interface TraceableFields {
 // ─── stage_data 表编号常量（00b 表号，v1.1 补齐阶段 3-8） ──
 
 /** 阶段 0 表号 */
-export const STAGE0_TABLES = ["M1", "M2", "M3", "M4", "M5", "M6", "O1", "O2", "O3", "O4", "O5", "O6"] as const;
+export const STAGE0_TABLES = ["M1", "M2", "M3", "M4", "M5", "O1", "O2", "O3", "O4", "O5", "O6"] as const;
 /** 阶段 1 表号 */
 export const STAGE1_TABLES = ["表1-1", "表1-2", "表1-3", "表1-4", "表1-5"] as const;
 /** 阶段 2 表号 */
@@ -186,22 +186,6 @@ export interface Limitation extends TraceableFields {
   updated_at: string;
 }
 
-/** 成本单价（M6） */
-export interface CostRate extends TraceableFields {
-  id: string;
-  product_line_id: string;
-  category: "实施" | "商务";
-  item: string;
-  /** 单价（元/人天 或 元/趟 等）；0 = 结构已给、单价待填 */
-  rate: number;
-  unit: string;
-  standard_hours: number;
-  data_source: "历史项目" | "内部报价" | "行业均值" | "待确认";
-  /** 说明（标准骨架给了结构，这里写口径备注） */
-  note?: string;
-  created_at: string;
-  updated_at: string;
-}
 
 /** 可选材料（O1-O6，含溯源） */
 export interface OptionalMaterial extends TraceableFields {

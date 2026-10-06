@@ -23,7 +23,6 @@ function createMockDb(scenarios: Scenario[], rows: StageData[]): DbInstance {
     capabilityRepo: {} as never,
     boundaryRepo: {} as never,
     limitationRepo: {} as never,
-    costRateRepo: {} as never,
     optionalMaterialRepo: {} as never,
     conversationRepo: {} as never,
     messageRepo: {} as never,

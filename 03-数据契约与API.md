@@ -39,8 +39,7 @@
 
 **limitation**（M5）：`id, product_line_id, product_name, description, impact(高/中/低), fix_status(已修复/修复中/无计划/硬件限制), external_visible(可提/内部可提/不可提), owner, + 通用列`
 
-**cost_rate**（M6）：`id, product_line_id, category(实施/商务), item, rate(单价), unit, standard_hours, data_source(历史项目/内部报价/行业均值/待确认), note(说明), source_type, source, source_authority, evidence_level`　索引：`(product_line_id, category)`
-> 来源四列与 note 于 2026-10-04 补齐（原建表漏了，契约表M6 里 source 是必填；当时 表5-5 还要求"单价可回溯 M6 或标来源"，该表已于变更表 #105 删除）；老库由 `runMigrations` 的幂等 ALTER 自愈。
+> 说明：`cost_rate`（M6 内部费率）表已随 M6 删除（变更表 #106），物理表保留但不再有代码读写。
 > **标准骨架**：新建产品线（含场景专属资料库）即播种 14 行标准费率（9 项实施工序 + 商务 5 项），`rate`/`standard_hours` 为 0、`data_source` 标「待确认」——契约 completeness 已规定「『待确认』行不得用于报价」，骨架不会被当成真实单价消费。用户只填数字，不用自己建表。
 
 **optional_material**（O1-O6）：`id, product_line_id, category(O1认证/O2案例/O3价格/O4SDK/O5路线图/O6生态), payload(JSON 按类异构), + 通用列`　索引：`(product_line_id, category)`
@@ -68,9 +67,9 @@
 | GET | `/library/product-lines` | 产品线列表（含表计数） |
 | POST | `/library/product-lines` | 建产品线 |
 | POST | `/library/ingest` | 上传材料（multipart）→ 解析入表；返回 ingest_job_id，进度走 SSE `/library/ingest/{id}/events` |
-| GET | `/library/tables/{code}` | 读表（M1-M6/O*，code 如 `M1`、`O2`）；支持 `?product_line_id=` |
+| GET | `/library/tables/{code}` | 读表（M1-M5/O*，code 如 `M1`、`O2`）；支持 `?product_line_id=` |
 | PATCH | `/library/rows/{code}/{rowId}` | 单元格编辑（body: `{ cell, value }`）；source_type 自动转 `用户确认`；**服务端内联触发失效计算**（markStale 依赖反查，技术方案 F3），无需单独调用 |
-| POST | `/library/rows/{code}` / DELETE `/{rowId}` | 增行 / 删行（标 `用户补充`）。**入口校验**：M1 必填 `model`、M2 必填 `product_id/param_name/value`、M3 `name`、M4/M5 `description`、M6 `item`，缺了返回 400 并指明缺哪列；其余 NOT NULL 列按表给缺省值（M1 `status=待确认`、M2 `measured=未提及`、M3 `maturity=在研`、M4 `has_plan=未定`、M6 `category=实施/rate=0/unit=人天/data_source=待确认`）。M2 无 `product_line_id` 列，按 `product_id` 归属 |
+| POST | `/library/rows/{code}` / DELETE `/{rowId}` | 增行 / 删行（标 `用户补充`）。**入口校验**：M1 必填 `model`、M2 必填 `product_id/param_name/value`、M3 `name`、M4/M5 `description`，缺了返回 400 并指明缺哪列；其余 NOT NULL 列按表给缺省值（M1 `status=待确认`、M2 `measured=未提及`、M3 `maturity=在研`、M4 `has_plan=未定`）。M2 无 `product_line_id` 列，按 `product_id` 归属 |
 | GET | `/library/quality-summary?product_line_id=` | 六维总评 + 完成度检查 |
 
 ### 项目与阶段（advance-stage / sync-library）
