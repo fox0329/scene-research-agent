@@ -1192,6 +1192,30 @@ function registerLibraryRoutes(app: FastifyInstance, deps: UiRoutesDeps) {
   });
 }
 
+/**
+ * 资料行 → 它所属的产品线 id
+ *
+ * 为什么不能只查 `product` / `optional_material`：那两个 `getById` 只对 M1 产品行与 O*
+ * 可选材料行有效；M3–M6 的行 id 在那两张表里必然查不到 → 拿不到产品线 → 一个场景都标不上。
+ * 实测（变更表 #101）：改 M6 一条费率，`stage_data.is_stale` 全 0，等于"改费率"这个动作
+ * 在系统里没有任何反馈。现在改成**先读这一行本身**：库表都带 `product_line_id`；
+ * M2 规格书例外（`spec_param` 没有该列）→ 经 `product_id` 上溯到产品行再取产品线。
+ */
+function resolveProductLineId(db: DbInstance, code: string, rowId: string): string | undefined {
+  const spec = LIBRARY_TABLES[code];
+  if (!spec) return undefined;
+  const row = spec.repo(db).getById(rowId) as Record<string, unknown> | undefined;
+  if (!row) return undefined;
+  const direct = row["product_line_id"];
+  if (typeof direct === "string" && direct) return direct;
+  const productId = row["product_id"];
+  if (typeof productId === "string" && productId) {
+    const product = db.productRepo.getById(productId) as { product_line_id?: string } | undefined;
+    return product?.product_line_id;
+  }
+  return undefined;
+}
+
 /** 资料行变更 → 按 TABLE_DEPENDENCIES 反查受影响场景阶段并标待重算 */
 function markDependentStale(db: DbInstance, code: string, rowId: string) {
   const stages = getAffectedStages(code);
@@ -1204,8 +1228,7 @@ function markDependentStale(db: DbInstance, code: string, rowId: string) {
     scenarioIds.add(ref.scenario_id);
   }
   // 场景-产品线归属：本产品线下的项目引用资料库整体
-  const first = db.productRepo.getById(rowId) ?? db.optionalMaterialRepo.getById(rowId);
-  const productLineId = (first as { product_line_id?: string } | undefined)?.product_line_id;
+  const productLineId = resolveProductLineId(db, code, rowId);
   if (productLineId) {
     for (const s of db.scenarioRepo.list({
       where: "product_line_id = ?",

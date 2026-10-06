@@ -8,6 +8,7 @@ import {
   getRiskChain,
   STAGES,
   getAffectedStages,
+  TABLE_DEPENDENCIES,
   createStaleMark,
   hasStaleMarks,
   getStaleBanners,
@@ -193,38 +194,53 @@ describe("STAGES 常量", () => {
 // ─── 表间依赖反查 ────────────────────────────────────────────
 
 describe("getAffectedStages", () => {
-  it("M1 产品清单 → 阶段 4,5", () => {
-    expect(getAffectedStages("M1")).toEqual([4, 5]);
+  it("M6 内部费率 → 阶段 4（方案与实现）——表5-5 成本估算直接吃费率，晚一个阶段就标错了", () => {
+    expect(getAffectedStages("M6")).toEqual([4]);
   });
 
-  it("M4 边界声明 → 阶段 1,5", () => {
-    expect(getAffectedStages("M4")).toEqual([1, 5]);
+  it("M1 产品清单 → 阶段 3,4（对照文档：阶段3 匹配候选池、阶段4 硬件成本）", () => {
+    expect(getAffectedStages("M1")).toEqual([3, 4]);
   });
 
-  it("表3-6 替代方案 → 阶段 5", () => {
-    expect(getAffectedStages("表3-6")).toEqual([5]);
+  it("M5 已知限制 → 阶段 4,5（阶段4 实施风险、阶段5 验收约束）", () => {
+    expect(getAffectedStages("M5")).toEqual([4, 5]);
   });
 
-  it("表5-5 成本估算 → 阶段 6,8", () => {
-    expect(getAffectedStages("表5-5")).toEqual([6, 7]);
+  it("表3-6 替代方案 → 阶段 4", () => {
+    expect(getAffectedStages("表3-6")).toEqual([4]);
+  });
+
+  it("表5-5 成本估算 → 阶段 5,6（阶段5 投入、阶段6 报告）", () => {
+    expect(getAffectedStages("表5-5")).toEqual([5, 6]);
   });
 
   it("未知表名 → 空数组", () => {
     expect(getAffectedStages("未知表")).toEqual([]);
   });
+
+  it("**所有取值都是合法的阶段 id**（0 基、且落在流程真实存在的 1–6 阶段内）", () => {
+    // 这条是给"人话（从 1 起）被当成 id（从 0 起）"那次错位上的锁：
+    // 阶段 0 是资料库自身、7 没有对应阶段，出现就说明又有人按 1 基填了
+    for (const [table, stages] of Object.entries(TABLE_DEPENDENCIES)) {
+      for (const stage of stages) {
+        expect(stage, `${table} 的依赖阶段 ${stage}`).toBeGreaterThanOrEqual(1);
+        expect(stage, `${table} 的依赖阶段 ${stage}`).toBeLessThanOrEqual(6);
+      }
+    }
+  });
 });
 
 describe("createStaleMark", () => {
-  it("M1 更新 → 自动反查到阶段 4,5", () => {
+  it("M1 更新 → 自动反查到阶段 3,4", () => {
     const mark = createStaleMark("S1", "M1", "P1");
-    expect(mark.affectedStages).toEqual([4, 5]);
-    expect(mark.banner).toContain("阶段 4-5");
+    expect(mark.affectedStages).toEqual([3, 4]);
+    expect(mark.banner).toContain("阶段 3-4");
   });
 
-  it("表3-6 更新 → 自动反查到阶段 5", () => {
-    const mark = createStaleMark("S1", "表3-6", "A1");
-    expect(mark.affectedStages).toEqual([5]);
-    expect(mark.banner).toContain("阶段 5");
+  it("M6 更新 → 自动反查到阶段 4", () => {
+    const mark = createStaleMark("S1", "M6", "R1");
+    expect(mark.affectedStages).toEqual([4]);
+    expect(mark.banner).toContain("阶段 4");
   });
 
   it("未知表名 → 无受影响阶段", () => {

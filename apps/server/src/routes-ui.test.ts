@@ -748,8 +748,8 @@ describe("资料库路由", () => {
     });
     h.db.stageDataRepo.insert({
       scenario_id: scenario.id,
-      stage: 4 as StageId, // M1 → 阶段 4/5（TABLE_DEPENDENCIES）
-      table_code: "表4-1",
+      stage: 4 as StageId, // M1 → 阶段 3、4（TABLE_DEPENDENCIES，0 基阶段 id）
+      table_code: "表5-5",
       row: {},
       is_stale: false,
     });
@@ -762,6 +762,84 @@ describe("资料库路由", () => {
     expect(res.json().status).toBe("停售");
     const stageRow = h.db.stageDataRepo.listByScenarioStage(scenario.id, 4 as StageId)[0]!;
     expect(stageRow.is_stale).toBe(true);
+  });
+
+  it("PATCH M6 内部费率 → 标「阶段 4 方案与实现」待重算（表5-5 直接吃费率）", async () => {
+    const scenario = h.db.scenarioRepo.insert({
+      name: "费率联动场景",
+      product_line_id: plId,
+      status: "进行中",
+      current_stage: 4,
+    });
+    for (const stage of [4, 5] as StageId[]) {
+      h.db.stageDataRepo.insert({
+        scenario_id: scenario.id,
+        stage,
+        table_code: stage === 4 ? "表5-5" : "表6-1",
+        row: {},
+        is_stale: false,
+      });
+    }
+    // M6 行 id 在 product / optional_material 里查不到——这正是原来"改费率啥都不标"的原因
+    const rate = h.db.costRateRepo.insert({
+      product_line_id: plId,
+      category: "实施",
+      item: "现场勘察与点位清点",
+      rate: 1200,
+      unit: "人天",
+      standard_hours: 8,
+      data_source: "内部报价",
+      note: null,
+      source_type: "用户确认",
+      source: "内部报价单",
+      source_authority: "T4",
+      evidence_level: "C",
+    } as never);
+    const res = await h.app.inject({
+      method: "PATCH",
+      url: `/api/v1/library/rows/M6/${rate.id}`,
+      payload: { cell: "rate", value: 1500 },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(h.db.stageDataRepo.listByScenarioStage(scenario.id, 4 as StageId)[0]!.is_stale).toBe(true);
+    // 阶段 5 不吃 M6 单价（它吃的是表5-5 的汇总）→ 不许被顺手标脏
+    expect(h.db.stageDataRepo.listByScenarioStage(scenario.id, 5 as StageId)[0]!.is_stale).toBe(false);
+  });
+
+  it("PATCH M2 规格行 → 经 product_id 上溯产品线，标阶段 3、4 待重算", async () => {
+    const p = seedProduct();
+    const scenario = h.db.scenarioRepo.insert({
+      name: "规格联动场景",
+      product_line_id: plId,
+      status: "进行中",
+      current_stage: 4,
+    });
+    for (const stage of [3, 4] as StageId[]) {
+      h.db.stageDataRepo.insert({
+        scenario_id: scenario.id,
+        stage,
+        table_code: "表4-3",
+        row: {},
+        is_stale: false,
+      });
+    }
+    // spec_param 没有 product_line_id 列（001_init.sql）→ 只能经产品上溯
+    const spec = h.db.specParamRepo.insert({
+      product_id: p.id,
+      param_class: "接口",
+      param_name: "网口",
+      value: "2 路千兆",
+      measured: "未提及",
+      source_type: "用户确认",
+    } as never);
+    const res = await h.app.inject({
+      method: "PATCH",
+      url: `/api/v1/library/rows/M2/${spec.id}`,
+      payload: { cell: "value", value: "4 路千兆" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(h.db.stageDataRepo.listByScenarioStage(scenario.id, 3 as StageId)[0]!.is_stale).toBe(true);
+    expect(h.db.stageDataRepo.listByScenarioStage(scenario.id, 4 as StageId)[0]!.is_stale).toBe(true);
   });
 
   it("POST rows/O1 → 值整体入 payload；O 表按 category 隔离", async () => {
