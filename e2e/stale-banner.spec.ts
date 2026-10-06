@@ -47,6 +47,52 @@ function seedStaleRow(dbPath: string, scenarioId: string): string {
   return id;
 }
 
+/**
+ * 种两行「都不带待重算标记」的正常结果：
+ * 阶段 3 的 表4-3（需求-能力对照，下游 = 阶段 4）+ 阶段 4 的 表5-1
+ *
+ * 用它们验证「改上游 → 横幅自己出现」：编辑 表4-3 的单元格会标阶段 4 待重算。
+ */
+function seedLinkedRows(dbPath: string, scenarioId: string): void {
+  const Database = require_("better-sqlite3") as new (path: string) => {
+    prepare: (sql: string) => { run: (...args: unknown[]) => unknown };
+    close: () => void;
+  };
+  const db = new Database(dbPath);
+  const now = new Date().toISOString();
+  const stmt = db.prepare(
+    `INSERT INTO stage_data
+       (id, scenario_id, stage, table_code, row, is_stale, source_type, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, 0, 'AI提取', ?, ?)`,
+  );
+  stmt.run(
+    `e2e-up-${Date.now()}`,
+    scenarioId,
+    3,
+    "表4-3",
+    JSON.stringify({
+      gap_ref: "G1",
+      match: "支撑",
+      our_product: "CT15 控制器",
+      ability_basis: "已量产",
+      boundary_note: "—",
+      risk: "低",
+    }),
+    now,
+    now,
+  );
+  stmt.run(
+    `e2e-down-${Date.now()}`,
+    scenarioId,
+    4,
+    "表5-1",
+    JSON.stringify({ layer: "感知层", components: "CT15" }),
+    now,
+    now,
+  );
+  db.close();
+}
+
 test("资料更新横幅：讲流程步 + 「已知悉」只清标记（联真）", async ({ page }) => {
   // 1) 建场景（API 更快更稳，界面新建会顺带拉起场景定义对话）
   const name = `E2E 失效横幅 ${Date.now()}`;
@@ -86,4 +132,46 @@ test("资料更新横幅：讲流程步 + 「已知悉」只清标记（联真�
   const kept = rows.find((r) => r.table_code === "表5-1");
   expect(kept?.is_stale).toBe(false);
   expect(kept?.row).toMatchObject({ layer: "感知层", components: "CT15" });
+});
+
+test("横幅跟着数据变：改一张上游阶段表 → 不刷新页面横幅自己出现（联真）", async ({ page }) => {
+  const name = `E2E 横幅联动 ${Date.now()}`;
+  const created = await page.request.post(`${LIVE}/api/v1/projects`, { data: { name } });
+  expect(created.ok()).toBe(true);
+  const project = (await created.json()) as { id: string };
+
+  // 前三步标完成 → 第 4 步（能力匹配）成为当前步，中栏就是它的表；不跑模型，纯造状态
+  for (const step of [1, 2, 3]) {
+    const res = await page.request.post(
+      `${LIVE}/api/v1/projects/${project.id}/flow/steps/${step}/complete`,
+    );
+    expect(res.ok()).toBe(true);
+  }
+  seedLinkedRows(newestDb(), project.id);
+
+  await page.goto(`${LIVE}/`);
+  await expect(page.locator(".shell")).toBeVisible();
+  await page.locator(".proj-hd", { hasText: name }).click();
+  // 打开时没有任何待重算 → 不该有横幅
+  await expect(page.locator(".stale-banner")).toHaveCount(0);
+
+  // 切到「需求-能力对照」（表4-3）改一个格子：失焦落库 → 下游阶段 4 标待重算
+  await page.getByRole("button", { name: "需求-能力对照" }).click();
+  const cell = page.locator(".ws .ed").first();
+  await expect(cell).toHaveAttribute("contenteditable", "true");
+  await cell.click();
+  await cell.evaluate((el) => {
+    el.textContent = "自动化改值-横幅联动";
+  });
+  await cell.blur();
+
+  // 关键断言：**不刷新页面**，横幅自己出现并指出下游是第 5 步
+  const banner = page.locator(".stale-banner").first();
+  await expect(banner).toBeVisible({ timeout: 15_000 });
+  await expect(banner).toContainText("1 步的分析因资料变更待重算");
+  await expect(banner).toContainText("第 5 步 方案与实现");
+
+  // 「已知悉」同样不刷新页面就消失
+  await banner.getByRole("button", { name: "已知悉" }).click();
+  await expect(page.locator(".stale-banner")).toHaveCount(0);
 });

@@ -117,6 +117,29 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
   const [ackStaleBusy, setAckStaleBusy] = useState(false);
 
   /**
+   * 数据被改（阶段表单元格 / 资料上传 / 场景锚确认 / 回退）→ 失效横幅一起重取
+   *
+   * 横幅说的就是"哪些步要重算"，而这些动作恰恰会改 `is_stale`：改了不重取，
+   * 横幅就停在打开页面那一刻的样子（用户实测：「重算完了，横幅没有变化」）。
+   */
+  const handleDataChanged = useCallback(() => {
+    onProjectsChanged?.();
+    stale.reload();
+  }, [onProjectsChanged, stale]);
+
+  /**
+   * 分析收尾（onDone / onSettled）后横幅也必须重取
+   *
+   * 重算会把重新生成的行 `is_stale` 改回 false —— 本步的待重算就此消失，
+   * 横幅要跟着少一条；不重取就会一直显示旧文案。用 `analysisRefresh` 当信号，
+   * 与中栏面板的 `refreshToken` 同源（收尾无条件自增，done/失败/断连都覆盖）。
+   */
+  useEffect(() => {
+    if (analysisRefresh > 0) stale.reload();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reload 是 useAsync 内 useCallback 稳定引用
+  }, [analysisRefresh]);
+
+  /**
    * 本步分析的运行态（v1.20）
    *
    * 用户定调「中栏只放信息，动作都在上面」：触发布钮上移到流程轴，
@@ -184,7 +207,10 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
    * 两条路径（App 弹窗 / 第 1 步面板弹窗）都会 bump definitionRefresh，这里统一接住。
    */
   useEffect(() => {
-    if (definitionRefresh > 0) void reloadFlow();
+    if (definitionRefresh > 0) {
+      void reloadFlow();
+      stale.reload();
+    }
   }, [definitionRefresh, reloadFlow]);
 
   /** 完成本步（导航动作，不判断信息齐备与否） */
@@ -329,8 +355,11 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
           <AnchorStepPanel
             projectId={project.id}
             scenarioName={project.name}
-            onChanged={onProjectsChanged}
-            onFlowChanged={() => void reloadFlow()}
+            onChanged={handleDataChanged}
+            onFlowChanged={() => {
+              void reloadFlow();
+              stale.reload();
+            }}
             onStageSnapshot={onStageSnapshot}
             refreshToken={definitionRefresh}
             definitionOpen={definitionDialogOpen}
@@ -359,7 +388,7 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
           tables={def.tables}
           stepId={step}
           refreshToken={isCurrent ? analysisRefresh : 0}
-          onChanged={onProjectsChanged}
+          onChanged={handleDataChanged}
           onStageSnapshot={onStageSnapshot}
         />
       );
@@ -442,7 +471,7 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
           </div>
           <div className="pnl-b">
             {live && project.product_line_id ? (
-              <MaterialUpload lineId={project.product_line_id} onDone={onProjectsChanged} />
+              <MaterialUpload lineId={project.product_line_id} onDone={handleDataChanged} />
             ) : (
               <div className="model-discover-row">
                 <button
@@ -461,7 +490,7 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
               <MaterialSourcesBar
                 projectId={project.id}
                 ownLineId={project.product_line_id}
-                onChanged={onProjectsChanged}
+                onChanged={handleDataChanged}
               />
             ) : null}
           </div>
