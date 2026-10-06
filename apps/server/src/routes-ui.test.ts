@@ -806,6 +806,58 @@ describe("资料库路由", () => {
     expect(h.db.stageDataRepo.listByScenarioStage(scenario.id, 5 as StageId)[0]!.is_stale).toBe(false);
   });
 
+  it("PATCH 通用库（scenario_id NULL）的费率 → 所有引用它的场景都标阶段 4；显式排除的场景不标", async () => {
+    // 通用库：scenario_id 为 null，被所有场景默认引用（拓维产品就是这种）
+    const global = h.db.productLineRepo.insert({ name: "通用产品库" });
+    const a = h.db.scenarioRepo.insert({
+      name: "场景A",
+      product_line_id: plId,
+      status: "进行中",
+      current_stage: 4,
+    });
+    const b = h.db.scenarioRepo.insert({
+      name: "场景B（显式排除通用库）",
+      product_line_id: plId,
+      status: "进行中",
+      current_stage: 4,
+    });
+    h.db.scenarioLinkedLineRepo.insert({
+      scenario_id: b.id,
+      product_line_id: global.id,
+      excluded: 1, // SQLite 布尔位（0/1）
+    });
+    for (const sid of [a.id, b.id]) {
+      h.db.stageDataRepo.insert({
+        scenario_id: sid,
+        stage: 4 as StageId,
+        table_code: "表5-5",
+        row: {},
+        is_stale: false,
+      });
+    }
+    const rate = h.db.costRateRepo.insert({
+      product_line_id: global.id,
+      category: "实施",
+      item: "设备安装与上电调试",
+      rate: 1000,
+      unit: "人天",
+      standard_hours: 8,
+      data_source: "待确认",
+      source_type: "用户确认",
+      source: "标准骨架·待填单价",
+      source_authority: "T4",
+      evidence_level: "C",
+    } as never);
+    const res = await h.app.inject({
+      method: "PATCH",
+      url: `/api/v1/library/rows/M6/${rate.id}`,
+      payload: { cell: "rate", value: 1200 },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(h.db.stageDataRepo.listByScenarioStage(a.id, 4 as StageId)[0]!.is_stale).toBe(true);
+    expect(h.db.stageDataRepo.listByScenarioStage(b.id, 4 as StageId)[0]!.is_stale).toBe(false);
+  });
+
   it("PATCH M2 规格行 → 经 product_id 上溯产品线，标阶段 3、4 待重算", async () => {
     const p = seedProduct();
     const scenario = h.db.scenarioRepo.insert({
