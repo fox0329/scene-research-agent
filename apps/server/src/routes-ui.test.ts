@@ -9,7 +9,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { existsSync, readFileSync, writeFileSync, mkdtempSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, writeFileSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { DshClient, FollowEvent, StageId } from "@scene/contract";
@@ -1145,6 +1145,39 @@ describe("交付物导出", () => {
     const res = await h.app.inject({
       method: "POST",
       url: "/api/v1/projects/nope/deliverables/export",
+    });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it("GET /deliverables：中栏取两份报告正文（装配但不落盘）", async () => {
+    const h = makeHarness();
+    const { scenarioId } = seedScenario(h.db, "取正文场景");
+    const outDir = process.env.EXPORT_DIR!;
+    const before = readdirSync(outDir).length;
+
+    const res = await h.app.inject({
+      method: "GET",
+      url: `/api/v1/projects/${scenarioId}/deliverables`,
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as {
+      internal_report: string;
+      external_report: string;
+      generated_at: string;
+    };
+    expect(body.internal_report).toContain("内部调研报告");
+    expect(body.internal_report).toContain("取正文场景");
+    expect(body.external_report).toContain("取正文场景");
+    expect(body.generated_at).toMatch(/^\d{4}-/);
+    // 只装配不写盘：目录文件数不变
+    expect(readdirSync(outDir).length).toBe(before);
+  });
+
+  it("GET /deliverables：场景不存在 404", async () => {
+    const h = makeHarness();
+    const res = await h.app.inject({
+      method: "GET",
+      url: "/api/v1/projects/nope/deliverables",
     });
     expect(res.statusCode).toBe(404);
   });

@@ -293,6 +293,34 @@ body {
   padding: 0;
 }
 
+/* ── 中栏两行粘性表头：阶段名称 + 表名（用户定调 2026-10-06） ──
+   为什么放 .pnl 里而不是 .ws 里：滚动容器是 .ws，粘性元素按包含块（.pnl）的边界吸附，
+   面板滚出视口时自然释放，不会盖住下一步的内容。
+   z-index 必须高于表格自带的 sticky thead（--z-sticky）：表格上滚经过表头区时，
+   要整块钻进表头下面，而不是用列名盖住表名行。 */
+.pnl-head {
+  position: sticky;
+  top: 0;
+  z-index: var(--z-overlay);
+  background: var(--csr);
+  border-bottom: 1px solid var(--cb);
+  border-radius: var(--r8) var(--r8) 0 0;
+}
+
+.pnl-head .pnl-h {
+  border-bottom: none;
+  padding-bottom: var(--s2);
+}
+
+.pnl-head .table-chips {
+  margin: 0 var(--s4) var(--s3);
+}
+
+/* 交付物正文：两份报告在中栏按 Markdown 渲染（与右栏同一渲染器） */
+.pnl-b > .md-body {
+  padding-bottom: var(--s2);
+}
+
 /* ── 表格 ── */
 /* 表宽恒等于中栏宽（末列承接余量），横滚只是极端窄容器下的兜底 */
 .tw {

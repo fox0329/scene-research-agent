@@ -13,6 +13,7 @@ import {
 import { api, type ApiStagePanel, type ApiStageRow } from "../api";
 import { useAsync } from "../hooks/useAsync";
 import { SchemaTable, tableBlocks, tableCategories } from "../components/SchemaTable";
+import { PanelHead } from "../components/PanelHead";
 import {
   asSourceType,
   type StageSnapshot,
@@ -284,9 +285,9 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
       {/* 本步的表：表名一行（不带表号/条数）+ SchemaTable */}
       {stageTables.length > 0 ? (
         <div className="pnl">
-          <div className="pnl-b">
-            <div className="table-chips table-chips--single">
-              {tableEntries.map((e) => {
+          {/* 两行粘性表头：阶段名称 + 表名（用户定调 2026-10-06，取代 v1.20「标题不进中栏」） */}
+          <PanelHead stepId={stepId} label={stageLabel}>
+            {tableEntries.map((e) => {
                 const active =
                   activeTable === e.code &&
                   (e.block ?? null) === (block ?? blocks[0] ?? null);
@@ -304,7 +305,8 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
                   </button>
                 );
               })}
-            </div>
+          </PanelHead>
+          <div className="pnl-b">
             {categories.length > 0 ? (
               <div className="table-chips sub">
                 {categories.map((c) => (

@@ -507,6 +507,11 @@ export const api = {
       { method: "POST", body: { action } },
     ),
   /** 交付物双口径导出（契约 §三：返回服务端 md 文件路径） */
+  /** 交付物正文（装配但不落盘）：中栏直接显示两份报告 */
+  getDeliverables: (id: string) =>
+    req<{ internal_report: string; external_report: string; generated_at: string }>(
+      `/projects/${encodeURIComponent(id)}/deliverables`,
+    ),
   exportDeliverables: (id: string) =>
     req<{ internal_path: string; external_path: string }>(
       `/projects/${encodeURIComponent(id)}/deliverables/export`,

@@ -12,6 +12,7 @@ import {
 } from "@scene/contract";
 import { buildStageSummary, checkStageCompleteness, type InfoRow } from "@scene/domain";
 import { SchemaTable, tableBlocks, tableCategories } from "../components/SchemaTable";
+import { PanelHead } from "../components/PanelHead";
 import { anchorSummary } from "../components/definition-progress";
 import {
   asSourceType,
@@ -200,14 +201,13 @@ export const DemoStagePanel: React.FC<DemoStagePanelProps> = ({
 
   return (
     <>
-      {/* 步标题与完整度都不进中栏：标题在流程轴，完整度在右栏 */}
+      {/* 完整度不进中栏（在右栏）；阶段名称进中栏并随滚动固定（用户定调 2026-10-06） */}
       {/* 表1-1 不在这一步显示（v1.20 与联真同口径：上一步的信息要回看自己回去看） */}
 
       {stageTables.length > 0 ? (
         <div className="pnl">
-          <div className="pnl-b">
-            <div className="table-chips table-chips--single">
-              {tableEntries.map((e) => {
+          <PanelHead stepId={stepId} label={def?.name ?? "本步"}>
+            {tableEntries.map((e) => {
                 const active =
                   activeTable === e.code &&
                   (e.block ?? null) === (block ?? blocks[0] ?? null);
@@ -225,7 +225,8 @@ export const DemoStagePanel: React.FC<DemoStagePanelProps> = ({
                   </button>
                 );
               })}
-            </div>
+          </PanelHead>
+          <div className="pnl-b">
             {categories.length > 0 ? (
               <div className="table-chips sub">
                 {categories.map((c) => (

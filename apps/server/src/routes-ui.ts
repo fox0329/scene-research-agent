@@ -309,7 +309,30 @@ export function registerUiRoutes(app: FastifyInstance, deps: UiRoutesDeps): void
     await streamEvents(hub, runId, request, reply, lastEventId);
   });
 
-  // ── 交付物双口径导出 ────────────────────────────────────
+  // ── 交付物双口径装配与导出 ──────────────────────────────
+  /**
+   * 取两份报告的正文（装配但不落盘）
+   *
+   * 为什么要有它：交付物这一步原先把"检查清单"当中栏内容——用户看不到交付物本身。
+   * 装配是**确定性的**（章节 ← 表映射，不跑模型），所以中栏可以直接展示正文，
+   * 不必先点导出再看文件；导出（写盘）仍是单独动作。
+   */
+  app.get("/api/v1/projects/:id/deliverables", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const scenario = db.scenarioRepo.getById(id);
+    if (!scenario) return notFound(reply, `场景 ${id} 不存在`);
+    const result = await exportDeliverables({
+      scenario,
+      stageSummaries: collectStageSummaries(db, scenario),
+      stageData: db.stageDataRepo.list({ where: "scenario_id = ?", params: [id] }),
+    });
+    return {
+      internal_report: result.internal_report,
+      external_report: result.external_report,
+      generated_at: new Date().toISOString(),
+    };
+  });
+
   app.post("/api/v1/projects/:id/deliverables/export", async (request, reply) => {
     const { id } = request.params as { id: string };
     const scenario = db.scenarioRepo.getById(id);
