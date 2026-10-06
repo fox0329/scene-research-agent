@@ -194,10 +194,6 @@ describe("STAGES 常量", () => {
 // ─── 表间依赖反查 ────────────────────────────────────────────
 
 describe("getAffectedStages", () => {
-  it("M6 内部费率 → 阶段 4（方案与实现）——表5-5 成本估算直接吃费率，晚一个阶段就标错了", () => {
-    expect(getAffectedStages("M6")).toEqual([4]);
-  });
-
   it("M1 产品清单 → 阶段 3,4（对照文档：阶段3 匹配候选池、阶段4 硬件成本）", () => {
     expect(getAffectedStages("M1")).toEqual([3, 4]);
   });
@@ -210,8 +206,8 @@ describe("getAffectedStages", () => {
     expect(getAffectedStages("表3-6")).toEqual([4]);
   });
 
-  it("表5-5 成本估算 → 阶段 5,6（阶段5 投入、阶段6 报告）", () => {
-    expect(getAffectedStages("表5-5")).toEqual([5, 6]);
+  it("M6 内部费率：成本估算（表5-5）删掉后没有下游表 → 空数组（不再假报阶段 4）", () => {
+    expect(getAffectedStages("M6")).toEqual([]);
   });
 
   it("未知表名 → 空数组", () => {
@@ -235,12 +231,6 @@ describe("createStaleMark", () => {
     const mark = createStaleMark("S1", "M1", "P1");
     expect(mark.affectedStages).toEqual([3, 4]);
     expect(mark.banner).toContain("阶段 3-4");
-  });
-
-  it("M6 更新 → 自动反查到阶段 4", () => {
-    const mark = createStaleMark("S1", "M6", "R1");
-    expect(mark.affectedStages).toEqual([4]);
-    expect(mark.banner).toContain("阶段 4");
   });
 
   it("未知表名 → 无受影响阶段", () => {

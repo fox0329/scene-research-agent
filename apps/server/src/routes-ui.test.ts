@@ -749,7 +749,7 @@ describe("资料库路由", () => {
     h.db.stageDataRepo.insert({
       scenario_id: scenario.id,
       stage: 4 as StageId, // M1 → 阶段 3、4（TABLE_DEPENDENCIES，0 基阶段 id）
-      table_code: "表5-5",
+      table_code: "表5-1",
       row: {},
       is_stale: false,
     });
@@ -764,49 +764,7 @@ describe("资料库路由", () => {
     expect(stageRow.is_stale).toBe(true);
   });
 
-  it("PATCH M6 内部费率 → 标「阶段 4 方案与实现」待重算（表5-5 直接吃费率）", async () => {
-    const scenario = h.db.scenarioRepo.insert({
-      name: "费率联动场景",
-      product_line_id: plId,
-      status: "进行中",
-      current_stage: 4,
-    });
-    for (const stage of [4, 5] as StageId[]) {
-      h.db.stageDataRepo.insert({
-        scenario_id: scenario.id,
-        stage,
-        table_code: stage === 4 ? "表5-5" : "表6-1",
-        row: {},
-        is_stale: false,
-      });
-    }
-    // M6 行 id 在 product / optional_material 里查不到——这正是原来"改费率啥都不标"的原因
-    const rate = h.db.costRateRepo.insert({
-      product_line_id: plId,
-      category: "实施",
-      item: "现场勘察与点位清点",
-      rate: 1200,
-      unit: "人天",
-      standard_hours: 8,
-      data_source: "内部报价",
-      note: null,
-      source_type: "用户确认",
-      source: "内部报价单",
-      source_authority: "T4",
-      evidence_level: "C",
-    } as never);
-    const res = await h.app.inject({
-      method: "PATCH",
-      url: `/api/v1/library/rows/M6/${rate.id}`,
-      payload: { cell: "rate", value: 1500 },
-    });
-    expect(res.statusCode).toBe(200);
-    expect(h.db.stageDataRepo.listByScenarioStage(scenario.id, 4 as StageId)[0]!.is_stale).toBe(true);
-    // 阶段 5 不吃 M6 单价（它吃的是表5-5 的汇总）→ 不许被顺手标脏
-    expect(h.db.stageDataRepo.listByScenarioStage(scenario.id, 5 as StageId)[0]!.is_stale).toBe(false);
-  });
-
-  it("PATCH 通用库（scenario_id NULL）的费率 → 所有引用它的场景都标阶段 4；显式排除的场景不标", async () => {
+  it("PATCH 通用库（scenario_id NULL）的规格行 → 所有引用它的场景都标阶段 3、4；显式排除的场景不标", async () => {
     // 通用库：scenario_id 为 null，被所有场景默认引用（拓维产品就是这种）
     const global = h.db.productLineRepo.insert({ name: "通用产品库" });
     const a = h.db.scenarioRepo.insert({
@@ -827,33 +785,40 @@ describe("资料库路由", () => {
       excluded: 1, // SQLite 布尔位（0/1）
     });
     for (const sid of [a.id, b.id]) {
-      h.db.stageDataRepo.insert({
-        scenario_id: sid,
-        stage: 4 as StageId,
-        table_code: "表5-5",
-        row: {},
-        is_stale: false,
-      });
+      for (const stage of [3, 4] as StageId[]) {
+        h.db.stageDataRepo.insert({
+          scenario_id: sid,
+          stage,
+          table_code: stage === 3 ? "表4-3" : "表5-1",
+          row: {},
+          is_stale: false,
+        });
+      }
     }
-    const rate = h.db.costRateRepo.insert({
+    // 通用库里的产品 + 它的规格行（M2 经 product_id 上溯到通用库）
+    const product = h.db.productRepo.insert({
       product_line_id: global.id,
-      category: "实施",
-      item: "设备安装与上电调试",
-      rate: 1000,
-      unit: "人天",
-      standard_hours: 8,
-      data_source: "待确认",
+      name: "在鸿 IO 控制器",
+      model: "CT15",
+      status: "在售",
+      launch_date: "2026-01-01",
+      position_desc: "通用库产品",
+    });
+    const specRow = h.db.specParamRepo.insert({
+      product_id: product.id,
+      param_class: "接口",
+      param_name: "网口",
+      value: "2 路千兆",
+      measured: "未提及",
       source_type: "用户确认",
-      source: "标准骨架·待填单价",
-      source_authority: "T4",
-      evidence_level: "C",
     } as never);
     const res = await h.app.inject({
       method: "PATCH",
-      url: `/api/v1/library/rows/M6/${rate.id}`,
-      payload: { cell: "rate", value: 1200 },
+      url: `/api/v1/library/rows/M2/${specRow.id}`,
+      payload: { cell: "value", value: "4 路千兆" },
     });
     expect(res.statusCode).toBe(200);
+    expect(h.db.stageDataRepo.listByScenarioStage(a.id, 3 as StageId)[0]!.is_stale).toBe(true);
     expect(h.db.stageDataRepo.listByScenarioStage(a.id, 4 as StageId)[0]!.is_stale).toBe(true);
     expect(h.db.stageDataRepo.listByScenarioStage(b.id, 4 as StageId)[0]!.is_stale).toBe(false);
   });
@@ -894,246 +859,39 @@ describe("资料库路由", () => {
     expect(h.db.stageDataRepo.listByScenarioStage(scenario.id, 4 as StageId)[0]!.is_stale).toBe(true);
   });
 
-  it("PATCH 表5-5 单元格 → 下游阶段 5、6 标待重算（表5-5 是报价的唯一来源）", async () => {
+  it("PATCH 阶段表单元格 → 下游阶段按依赖标待重算（表2-2 要素清单 → 阶段 2、4）", async () => {
+    /* 变更表 #105 前这条用的是 表5-5 → 阶段 5、6；表删了，改用仍在的 表2-2 */
     const scenario = h.db.scenarioRepo.insert({
-      name: "成本联动场景",
+      name: "要素联动场景",
       product_line_id: plId,
       status: "进行中",
       current_stage: 4,
     });
-    const cost = h.db.stageDataRepo.insert({
+    const cell = h.db.stageDataRepo.insert({
       scenario_id: scenario.id,
-      stage: 4 as StageId,
-      table_code: "表5-5",
-      row: { item: "在鸿 IO 控制器", qty: 1, unit_price: 1500, subtotal: 1500 },
+      stage: 2 as StageId,
+      table_code: "表2-2",
+      row: { element: "会议室数量", value: "10 间" },
       is_stale: false,
     });
-    for (const stage of [5, 6] as StageId[]) {
+    for (const stage of [2, 4] as StageId[]) {
       h.db.stageDataRepo.insert({
         scenario_id: scenario.id,
         stage,
-        table_code: "表6-1",
+        table_code: stage === 2 ? "表2-2" : "表5-1",
         row: {},
         is_stale: false,
       });
     }
     const res = await h.app.inject({
       method: "PATCH",
-      url: `/api/v1/projects/${scenario.id}/stage-data/${cost.id}`,
-      payload: { cell: "unit_price", value: 1800 },
+      url: `/api/v1/projects/${scenario.id}/stage-data/${cell.id}`,
+      payload: { cell: "value", value: "12 间" },
     });
     expect(res.statusCode).toBe(200);
-    expect(res.json().stale_marked_stages).toEqual([5, 6]);
-    expect(h.db.stageDataRepo.listByScenarioStage(scenario.id, 5 as StageId)[0]!.is_stale).toBe(true);
-    expect(h.db.stageDataRepo.listByScenarioStage(scenario.id, 6 as StageId)[0]!.is_stale).toBe(true);
-  });
-
-  it("POST recompute-cost → 硬件小计/人工费用/汇总全按公式算，并标下游待重算", async () => {
-    const scenario = h.db.scenarioRepo.insert({
-      name: "重算场景",
-      product_line_id: plId,
-      status: "进行中",
-      current_stage: 4,
-    });
-    h.db.costRateRepo.insert({
-      product_line_id: plId,
-      category: "实施",
-      item: "现场勘察与点位清点",
-      rate: 1000,
-      unit: "人天",
-      standard_hours: 8,
-      data_source: "内部报价",
-      source_type: "用户确认",
-      source: "内部报价单",
-      source_authority: "T2",
-      evidence_level: "B",
-    } as never);
-    h.db.stageDataRepo.insert({
-      scenario_id: scenario.id,
-      stage: 4 as StageId,
-      table_code: "表5-3",
-      row: { item: "现场勘察与点位清点", man_days: 2 },
-      is_stale: false,
-    });
-    // 模型写错的三行：硬件小计、人工费用（工时×单价乘不出来）、汇总
-    h.db.stageDataRepo.insert({
-      scenario_id: scenario.id,
-      stage: 4 as StageId,
-      table_code: "表5-5",
-      row: { item: "在鸿 IO 控制器", qty: 2, unit_price: 500, subtotal: 1 },
-      is_stale: false,
-    });
-    h.db.stageDataRepo.insert({
-      scenario_id: scenario.id,
-      stage: 4 as StageId,
-      table_code: "表5-5",
-      row: { item: "现场勘察与点位清点", hours: 99, day_rate: 1500, cost: 99 },
-      is_stale: false,
-    });
-    h.db.stageDataRepo.insert({
-      scenario_id: scenario.id,
-      stage: 4 as StageId,
-      table_code: "表5-5",
-      row: { item: "合计（硬件+人工）", amount: 0 },
-      is_stale: false,
-    });
-    h.db.stageDataRepo.insert({
-      scenario_id: scenario.id,
-      stage: 5 as StageId,
-      table_code: "表6-1",
-      row: {},
-      is_stale: false,
-    });
-
-    const res = await h.app.inject({ method: "POST", url: `/api/v1/projects/${scenario.id}/recompute-cost` });
-    expect(res.statusCode).toBe(200);
-    const report = res.json();
-    expect(report.tableRows).toBe(3);
-    expect(report.changedRows).toBe(3);
-    expect(report.totals).toEqual({ hardware: 1000, labor: 2000, operation: 0, total: 3000 });
-    expect(report.unmatchedLabor).toEqual([]);
-    expect(report.markedStages).toEqual([5, 6]);
-
-    const rows = h.db.stageDataRepo
-      .list({ where: "scenario_id = ? AND table_code = ?", params: [scenario.id, "表5-5"] })
-      .map((r) => r.row as Record<string, unknown>);
-    expect(rows.find((r) => r["item"] === "在鸿 IO 控制器")!["subtotal"]).toBe(1000);
-    const labor = rows.find((r) => r["item"] === "现场勘察与点位清点")!;
-    expect(labor["hours"]).toBe(16); // 2 人天 × 8 小时
-    expect(labor["day_rate"]).toBe(1000); // 取 M6，不是模型的 1500
-    expect(labor["cost"]).toBe(2000);
-    expect(rows.find((r) => String(r["item"]).startsWith("合计"))!["amount"]).toBe(3000);
-    expect(h.db.stageDataRepo.listByScenarioStage(scenario.id, 5 as StageId)[0]!.is_stale).toBe(true);
-
-    // 再算一次：数没变就不写库、不重复标脏
-    const again = await h.app.inject({ method: "POST", url: `/api/v1/projects/${scenario.id}/recompute-cost` });
-    expect(again.json().changedRows).toBe(0);
-    expect(again.json().markedStages).toEqual([]);
-  });
-
-  it("recompute-cost：M6 没单价不许算成 0，如实报告缺单价", async () => {
-    const scenario = h.db.scenarioRepo.insert({
-      name: "缺价场景",
-      product_line_id: plId,
-      status: "进行中",
-      current_stage: 4,
-    });
-    h.db.costRateRepo.insert({
-      product_line_id: plId,
-      category: "实施",
-      item: "协议接入与点位联调",
-      rate: 0,
-      unit: "人天",
-      standard_hours: 8,
-      data_source: "待确认",
-      source_type: "用户确认",
-      source: "标准骨架·待填单价",
-      source_authority: "T4",
-      evidence_level: "C",
-    } as never);
-    h.db.stageDataRepo.insert({
-      scenario_id: scenario.id,
-      stage: 4 as StageId,
-      table_code: "表5-5",
-      row: { item: "协议接入与点位联调", hours: 24, day_rate: 1500, cost: 4500 },
-      is_stale: false,
-    });
-    const res = await h.app.inject({ method: "POST", url: `/api/v1/projects/${scenario.id}/recompute-cost` });
-    const report = res.json();
-    expect(report.missingRates).toContain("协议接入与点位联调");
-    const row = h.db.stageDataRepo
-      .list({ where: "scenario_id = ? AND table_code = ?", params: [scenario.id, "表5-5"] })[0]!.row as Record<string, unknown>;
-    expect(row["cost"]).toBe(4500); // 沿用模型估价，不是 0
-  });
-
-  it("recompute-cost：表5-5 还没生成 → 如实返回 0 行，不硬造表；项目不存在 → 404", async () => {
-    const scenario = h.db.scenarioRepo.insert({
-      name: "无成本表场景",
-      product_line_id: plId,
-      status: "进行中",
-      current_stage: 4,
-    });
-    const empty = await h.app.inject({ method: "POST", url: `/api/v1/projects/${scenario.id}/recompute-cost` });
-    expect(empty.json().tableRows).toBe(0);
-    const missing = await h.app.inject({ method: "POST", url: "/api/v1/projects/不存在/recompute-cost" });
-    expect(missing.statusCode).toBe(404);
-  });
-
-  it("GET roi → 回收期 = 投入 ÷ 年收益；缺年收益的行如实报出", async () => {
-    const scenario = h.db.scenarioRepo.insert({
-      name: "投资回报场景",
-      product_line_id: plId,
-      status: "进行中",
-      current_stage: 5,
-    });
-    h.db.stageDataRepo.insert({
-      scenario_id: scenario.id,
-      stage: 4 as StageId,
-      table_code: "表5-5",
-      row: { item: "硬件成本合计", amount: 118500 },
-      is_stale: false,
-    });
-    h.db.stageDataRepo.insert({
-      scenario_id: scenario.id,
-      stage: 4 as StageId,
-      table_code: "表5-5",
-      row: { item: "项目总投入（含首年运营）", amount: 178650 },
-      is_stale: false,
-    });
-    h.db.stageDataRepo.insert({
-      scenario_id: scenario.id,
-      stage: 5 as StageId,
-      table_code: "表6-1",
-      row: { benefit: "巡检人力节省", metric: "巡检工时", annual_value: 120000 },
-      is_stale: false,
-    });
-    h.db.stageDataRepo.insert({
-      scenario_id: scenario.id,
-      stage: 5 as StageId,
-      table_code: "表6-1",
-      row: { benefit: "品牌提升", metric: "认知度" },
-      is_stale: false,
-    });
-
-    const res = await h.app.inject({ method: "GET", url: `/api/v1/projects/${scenario.id}/roi` });
-    expect(res.statusCode).toBe(200);
-    const roi = res.json();
-    /* 投入只认「项目总投入」行（不把 118500 再加一遍） */
-    expect(roi.investment).toBe(178650);
-    expect(roi.annualValue).toBe(120000);
-    expect(roi.paybackYears).toBeCloseTo(1.489, 3);
-    expect(roi.roiMultiple).toBeCloseTo(0.6717, 3);
-    expect(roi.blocked).toBeNull();
-    expect(roi.valuedRows).toBe(1);
-    expect(roi.totalRows).toBe(2);
-    expect(roi.missingAnnualValue).toEqual(["品牌提升"]);
-    expect(roi.costRows).toBe(2);
-    expect(roi.valueRows).toBe(2);
-  });
-
-  it("GET roi：表6-1 一条年收益都没填 → 算不出（说清缺什么），不拿 0 当结论", async () => {
-    const scenario = h.db.scenarioRepo.insert({
-      name: "无年收益场景",
-      product_line_id: plId,
-      status: "进行中",
-      current_stage: 5,
-    });
-    h.db.stageDataRepo.insert({
-      scenario_id: scenario.id,
-      stage: 5 as StageId,
-      table_code: "表6-1",
-      row: { benefit: "品牌提升" },
-      is_stale: false,
-    });
-    const res = await h.app.inject({ method: "GET", url: `/api/v1/projects/${scenario.id}/roi` });
-    const roi = res.json();
-    /* 投入与年收益两样都缺 → 一次说清两样（不许只报一样让用户来回试） */
-    expect(roi.blocked).toContain("投入");
-    expect(roi.blocked).toContain("年收益");
-    expect(roi.paybackYears).toBe(0);
-    expect(roi.missingAnnualValue).toEqual(["品牌提升"]);
-    const missing = await h.app.inject({ method: "GET", url: "/api/v1/projects/不存在/roi" });
-    expect(missing.statusCode).toBe(404);
+    expect(res.json().stale_marked_stages).toEqual([2, 4]);
+    expect(h.db.stageDataRepo.listByScenarioStage(scenario.id, 2 as StageId)[0]!.is_stale).toBe(true);
+    expect(h.db.stageDataRepo.listByScenarioStage(scenario.id, 4 as StageId)[0]!.is_stale).toBe(true);
   });
 
   it("POST rows/O1 → 值整体入 payload；O 表按 category 隔离", async () => {

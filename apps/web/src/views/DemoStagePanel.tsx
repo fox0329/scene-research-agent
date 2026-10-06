@@ -94,7 +94,7 @@ export const DemoStagePanel: React.FC<DemoStagePanelProps> = ({
   );
   useEffect(() => {
     // 块/类别只在「当前值对新表不成立」时才回落到第一个：v1.26 芯片一行后，
-    // 一次点击会同时切表与切块（如「成本汇总」= 表5-5 + 汇总块），无脑重置会把用户点的块冲掉
+    // 一次点击会同时切表与切块（如「接口清单」= 表5-1 + 接口块），无脑重置会把用户点的块冲掉
     if (block === null || !blocks.includes(block)) setBlock(blocks[0] ?? null);
     if (category === null || !categories.includes(category)) setCategory(categories[0] ?? null);
   }, [blocks, categories, block, category]);

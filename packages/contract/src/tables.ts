@@ -263,7 +263,7 @@ export const STAGE_DEFS: readonly StageDef[] = [
     name: "方案与实现",
     producedBy: "模型分析",
     goal: "方案架构与接口、边界声明、约束满足路径、实施计划、交付运维与 SLA、成本构成",
-    tableCodes: ["表5-1", "表5-3", "表5-4", "表5-5"],
+    tableCodes: ["表5-1", "表5-3", "表5-4"],
     summaryTitle: "⑤ 方案与成本总结",
   },
   {
@@ -1018,7 +1018,7 @@ const TABLES_STAGE_3: readonly TableDef[] = [
   },
 ];
 
-// ─── 阶段 4 · 方案与实现（4 张） ────────────────────────────
+// ─── 阶段 4 · 方案与实现（3 张） ────────────────────────────
 
 const TABLES_STAGE_4: readonly TableDef[] = [
   {
@@ -1060,7 +1060,7 @@ const TABLES_STAGE_4: readonly TableDef[] = [
       sup("owner", "负责人"),
       sup("source", "出处"),
     ],
-    completeness: ["六项必填非空", "man_days 为数值（与表5-5 人工成本对应）", "依赖不可控条件的项须显式标注"],
+    completeness: ["六项必填非空", "man_days 为数值", "依赖不可控条件的项须显式标注"],
     dependsOnTables: ["表5-1"],
     consumedBy: [6],
   },
@@ -1081,44 +1081,9 @@ const TABLES_STAGE_4: readonly TableDef[] = [
     completeness: ["item/content/SLA 非空", "SLA 须含响应时限与故障处理时限"],
     consumedBy: [6],
   },
-  {
-    code: "表5-5",
-    name: "成本估算",
-    stage: 4,
-    tier: "重要",
-    rowUnit: "一个成本项（硬件/人工/运营/汇总四个子块）",
-    blockLabels: { 硬件: "硬件成本", 人工: "人工成本", 运营: "运营成本", 汇总: "成本汇总" },
-    purpose: "报价的唯一来源（硬件 + 人工 + 运营）",
-    columns: [
-      mid("item", "项目", { required: true, block: "硬件" }),
-      mid("spec", "型号/规格", { required: true, block: "硬件" }),
-      mid("qty", "数量", { required: true, type: "number", block: "硬件" }),
-      mid("unit_price", "单价(元)", { required: true, type: "number", block: "硬件" }),
-      mid("subtotal", "小计(元)", { required: true, type: "number", block: "硬件" }),
-      mid("item", "项", { required: true, block: "人工" }),
-      mid("hours", "工时", { required: true, type: "number", block: "人工" }),
-      mid("day_rate", "人天单价(元)", { required: true, type: "number", block: "人工" }),
-      mid("cost", "费用(元)", { required: true, type: "number", block: "人工" }),
-      mid("item", "项", { required: true, block: "运营" }),
-      mid("annual_fee", "年费(元)", { required: true, type: "number", block: "运营" }),
-      mid("note", "说明", { block: "运营" }),
-      mid("item", "项", { required: true, block: "汇总" }),
-      mid("amount", "金额(元)", { required: true, type: "number", block: "汇总" }),
-      sup("source", "出处", { required: true }),
-    ],
-    completeness: [
-      "三类成本齐全",
-      "单价可回溯 M6 或标来源",
-      "小计 = 数量 × 单价",
-      "人工费用 = 人天 × 人天单价（1 人天 = 8 小时，工时列填小时）",
-      "汇总 = 各子块之和",
-    ],
-    dependsOnTables: ["表5-1", "表5-3"],
-    consumedBy: [5, 6],
-  },
 ];
 
-// ─── 阶段 5 · 价值与验证（2 张 + 1 张计算卡片） ─────────────
+// ─── 阶段 5 · 价值与验证（2 张） ────────────────────────
 
 const TABLES_STAGE_5: readonly TableDef[] = [
   {
@@ -1131,16 +1096,9 @@ const TABLES_STAGE_5: readonly TableDef[] = [
     columns: [
       mid("benefit", "收益", { required: true, type: "longText", truncate: TRUNCATE_DEFAULT }),
       mid("metric", "对应指标", { required: true }),
-      // 年收益是**回收期的唯一输入**（投资回报卡片的公式：回收期 = 投入 ÷ 年收益）。
-      // 只能放中栏：它是数值结论，藏右栏等于让用户翻抽屉找钱（G-R9 数值列不许用文字代替数字）。
-      mid("annual_value", "年收益(元)", {
-        type: "number",
-        note: "元/年，纯数字；算不出钱的收益行留空（回收期只认这一列）",
-      }),
       mid("baseline", "基线", { required: true, type: "longText", truncate: TRUNCATE_DEFAULT }),
       mid("expected", "预期改善", { required: true, type: "longText", truncate: TRUNCATE_DEFAULT }),
-      // 怎么测 = 方法/取数口径，属"判断依据"侧 → 右栏（G-R9：来源、依据归右栏），给年收益腾出中栏位
-      sup("how_to_measure", "怎么测", { required: true, type: "longText", truncate: TRUNCATE_DEFAULT }),
+      mid("how_to_measure", "怎么测", { required: true, type: "longText", truncate: TRUNCATE_DEFAULT }),
       mid("user_feeling", "用户感受", { required: true, type: "longText", truncate: TRUNCATE_DEFAULT, note: "必须用客户语言" }),
       sup("evidence_level", "证据级", { required: true, enum: "evidence_level" }),
       sup("metric_type", "指标类型", { required: true }),
@@ -1148,12 +1106,7 @@ const TABLES_STAGE_5: readonly TableDef[] = [
       sup("auto_collect", "自动采集方案"),
       sup("source", "来源", { required: true }),
     ],
-    completeness: [
-      "≥2 条",
-      "baseline/how_to_measure/user_feeling 非空",
-      "年收益(元) 填纯数字（元/年），算不出钱的收益行留空",
-      "无基线行强制标 C 级假设",
-    ],
+    completeness: ["≥2 条", "baseline/how_to_measure/user_feeling 非空", "无基线行强制标 C 级假设"],
     consumedBy: [6],
   },
   {
@@ -1266,33 +1219,6 @@ export const COVERAGE_RULES: Readonly<Record<string, readonly CoverageRule[]>> =
     },
   ],
 };
-
-// ─── 计算卡片（派生值，不是表） ────────────────────────────
-
-export interface ComputedCardDef {
-  key: string;
-  name: string;
-  stage: InfoStageId;
-  /** 计算口径 */
-  formula: string;
-  /** 输入来源 */
-  inputs: readonly string[];
-  fields: readonly string[];
-  /** 不得让模型「填」的理由 */
-  reason: string;
-}
-
-export const COMPUTED_CARDS: readonly ComputedCardDef[] = [
-  {
-    key: "roi",
-    name: "投资回报",
-    stage: 5,
-    formula: "回收期 = 投入 ÷ 年收益",
-    inputs: ["表5-5", "表6-1"],
-    fields: ["总投资", "总收益", "投资回报率", "回收期", "证据级"],
-    reason: "派生值若让模型填，必然与表5-5/表6-1 不一致",
-  },
-];
 
 // ─── 派生助手 ──────────────────────────────────────────────
 

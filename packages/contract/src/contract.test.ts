@@ -106,7 +106,7 @@ describe("@scene/contract 表编号常量", () => {
   });
 
   it("STAGE5 7 张表", () => {
-    expect(STAGE5_TABLES).toHaveLength(7);
+    expect(STAGE5_TABLES).toHaveLength(6); // 表5-5 已删（变更表 #105）
     expect(STAGE5_TABLES[0]).toBe("表5-1");
   });
 

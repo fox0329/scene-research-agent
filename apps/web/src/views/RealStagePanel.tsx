@@ -10,7 +10,7 @@ import {
   tablesOfStage,
   type InfoStageId,
 } from "@scene/contract";
-import { api, type ApiRoiReport, type ApiStagePanel, type ApiStageRow } from "../api";
+import { api, type ApiStagePanel, type ApiStageRow } from "../api";
 import { useAsync } from "../hooks/useAsync";
 import { SchemaTable, tableBlocks, tableCategories } from "../components/SchemaTable";
 import {
@@ -96,7 +96,7 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
   );
   useEffect(() => {
     // 块/类别只在「当前值对新表不成立」时才回落到第一个：v1.26 芯片一行后，
-    // 一次点击会同时切表与切块（如「成本汇总」= 表5-5 + 汇总块），无脑重置会把用户点的块冲掉
+    // 一次点击会同时切表与切块（如「接口清单」= 表5-1 + 接口块），无脑重置会把用户点的块冲掉
     if (block === null || !blocks.includes(block)) setBlock(blocks[0] ?? null);
     if (category === null || !categories.includes(category)) setCategory(categories[0] ?? null);
   }, [blocks, categories, block, category]);
@@ -162,75 +162,6 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
     void loadSummary(true);
   }, [refreshToken, reload, loadSummary]);
 
-  /**
-   * 投资回报（阶段 5 右栏卡片）：投入取表5-5、年收益取表6-1，读时按公式算
-   *
-   * 不做本地公式：回收期是客户拿去做决策的数字，唯一算法在 `@scene/domain/roi.ts`
-   * （能单测、能审计），界面只负责显示与说明缺什么。
-   */
-  const [roi, setRoi] = useState<ApiRoiReport | null>(null);
-  const [roiLoading, setRoiLoading] = useState(false);
-  const [roiError, setRoiError] = useState<string | null>(null);
-  const loadRoi = useCallback(async () => {
-    setRoiLoading(true);
-    try {
-      setRoi(await api.roi(projectId));
-      setRoiError(null);
-    } catch (err: unknown) {
-      setRoiError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setRoiLoading(false);
-    }
-  }, [projectId]);
-
-  useEffect(() => {
-    if (stage === 5) void loadRoi();
-  }, [stage, loadRoi]);
-
-  /**
-   * 成本重算（右栏动作，用户定调 2026-10-05「公式算完写回」）
-   *
-   * 表5-5 的金额本来由模型写，改完 M6 费率不会跟着变；这个入口只按公式把
-   * 小计/费用/各子块合计/汇总重算一遍，并把缺单价、仍标待确认的项如实报出来。
-   */
-  const [costBusy, setCostBusy] = useState(false);
-  const [costNote, setCostNote] = useState<string | null>(null);
-  const hasCostTable = useMemo(() => rows.some((r) => r.table_code === "表5-5"), [rows]);
-  const handleRecomputeCost = useCallback(async () => {
-    setCostBusy(true);
-    try {
-      const report = await api.recomputeCost(projectId);
-      const bits = [
-        `重算完成：改了 ${report.changedRows} 行、补了 ${report.addedRows} 行；合计 ${report.totals.total} 元（硬件 ${report.totals.hardware} / 人工 ${report.totals.labor} / 运营 ${report.totals.operation}）`,
-      ];
-      if (report.missingRates.length > 0) {
-        bits.push(`M6 缺可用单价（没算成 0，沿用了原估价）：${report.missingRates.join("、")}`);
-      }
-      if (report.pendingRates.length > 0) {
-        bits.push(`单价仍标待确认，报价前须确认来源：${report.pendingRates.join("、")}`);
-      }
-      if (report.missingTotals.length > 0) {
-        bits.push(`缺汇总行：${report.missingTotals.join("、")}`);
-      }
-      if (report.unmatchedLabor.length > 0) {
-        bits.push(
-          `人工块有 ${report.unmatchedLabor.length} 行是模型自己归并的项（${report.unmatchedLabor.join("、")}），既不属表5-3、M6 也认不出——未补行、未按 M6 改价，避免同一批工作算两遍；要按表5-3 × M6 口径算，先删掉这几行或重跑本步`,
-        );
-      }
-      if (report.markedStages.length > 0) {
-        bits.push(`已把阶段 ${report.markedStages.join("、")} 标为待重算`);
-      }
-      setCostNote(bits.join("；"));
-      showToast(bits[0]!);
-      reload();
-      onChanged?.();
-    } catch (err: unknown) {
-      showToast(`重算失败：${err instanceof Error ? err.message : String(err)}`);
-    } finally {
-      setCostBusy(false);
-    }
-  }, [projectId, reload, onChanged, showToast]);
-
   const handleCellChange = useCallback(
     async (rowId: string, cell: string, value: string) => {
       const row = rows.find((r) => r.id === rowId);
@@ -243,14 +174,12 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
       try {
         const updated = await api.patchStageCell(projectId, rowId, cell, value);
         setPatched((prev) => ({ ...prev, [rowId]: updated }));
-        /* 改了年收益（表6-1）→ 回收期立刻重算，不要求用户刷新页面 */
-        if (stage === 5) void loadRoi();
         onChanged?.();
       } catch (err: unknown) {
         showToast(`保存失败：${err instanceof Error ? err.message : String(err)}`);
       }
     },
-    [projectId, rows, onChanged, showToast, stage, loadRoi],
+    [projectId, rows, onChanged, showToast],
   );
 
   /* 右栏数据面：补充列（当前表的右栏补充列） */
@@ -293,16 +222,6 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
       supplements,
       onRefreshSummary: () => void loadSummary(true),
       onSupplementChange: (rowId, cell, value) => void handleCellChange(rowId, cell, value),
-      ...(stage === 5 ? { roi: { loading: roiLoading, data: roi, error: roiError } } : {}),
-      ...(hasCostTable
-        ? {
-            costRecompute: {
-              running: costBusy,
-              note: costNote,
-              onRun: () => void handleRecomputeCost(),
-            },
-          }
-        : {}),
     };
   }, [
     data,
@@ -310,13 +229,6 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
     summary,
     summaryLoading,
     stage,
-    roi,
-    roiLoading,
-    roiError,
-    hasCostTable,
-    costBusy,
-    costNote,
-    handleRecomputeCost,
     activeTable,
     category,
     stage,

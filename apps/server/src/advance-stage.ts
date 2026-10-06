@@ -46,7 +46,6 @@ import {
 import type { InfoRow, PostcheckReport } from "@scene/domain";
 import { buildStagePrompt, getStageOutputContract } from "./stage-prompts.js";
 import { scenarioLineContext } from "./scenario-lines.js";
-import { recomputeScenarioCost } from "./recompute-cost.js";
 import { runScenarioClarify, clarifyAbortEvent } from "./scenario-clarify.js";
 import { generateStageSummary } from "./stage-summary-service.js";
 import { makeSourceLookup, runPostcheck } from "./postcheck-pass.js";
@@ -644,41 +643,6 @@ async function* executeAdvanceStage(
         .map((r) => r.code)
         .join("、")}（这些表沿用了原有内容，可单独重试）`,
     });
-  }
-
-  // 8.4 表5-5 成本估算：金额按公式算一遍（模型只写说明，数字不由它负责）
-  //
-  // 用户定调（2026-10-05）：「公式算完写回，模型只写说明」。放在自检**之前**——
-  // 自检看到的就是算好的数，不会拿"模型心里的单价"去核对。
-  // 实测教训：模型把 2 人天写成 `工时 16`（小时）配 `人天单价 1000`，费用却填 2000，
-  // 同一行里乘不出来；人工块还会用行业通例 1500 而不是 M6 里的 1000。
-  if (stage === 4) {
-    try {
-      const report = recomputeScenarioCost(db, scenarioId);
-      if (report && report.tableRows > 0) {
-        const bits = [
-          `成本表按公式重算：改了 ${report.changedRows} 行、补了 ${report.addedRows} 行` +
-            `（硬件 ${report.totals.hardware} / 人工 ${report.totals.labor} / 运营 ${report.totals.operation} / 合计 ${report.totals.total} 元）`,
-        ];
-        if (report.missingRates.length > 0) {
-          bits.push(`M6 缺可用单价：${report.missingRates.join("、")}`);
-        }
-        if (report.pendingRates.length > 0) {
-          bits.push(`单价仍标待确认：${report.pendingRates.join("、")}`);
-        }
-        if (report.missingTotals.length > 0) {
-          bits.push(`缺汇总行：${report.missingTotals.join("、")}`);
-        }
-        yield emit({ type: "progress", stage, message: bits.join("；") });
-      }
-    } catch (err: unknown) {
-      // 重算失败不能连累本次生成（模型写的数还在，用户可点「按 M6 费率重算」重试）
-      yield emit({
-        type: "progress",
-        stage,
-        message: `成本重算未完成（不影响本次产出）：${err instanceof Error ? err.message : String(err)}`,
-      });
-    }
   }
 
   // 8.5 生成后三问自检（规则 G-R8，v1.28）

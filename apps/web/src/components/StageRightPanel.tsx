@@ -127,61 +127,6 @@ export function summarizeMarkdown(md: string): string {
   return parts.join(" ｜ ");
 }
 
-/** 金额显示：客户看钱，别用科学计数法/小数堆 */
-function fmtMoney(n: number): string {
-  return n.toLocaleString("zh-CN", { maximumFractionDigits: 0 });
-}
-
-/** 年数：超过 10 年就不必给小数（精度是假象） */
-function fmtYears(n: number): string {
-  return n >= 10 ? n.toFixed(0) : n.toFixed(1);
-}
-
-/**
- * 投资回报卡片（阶段 5）
- *
- * 数字全部来自 `GET /projects/:id/roi`（服务端调 `@scene/domain/roi.ts` 算），
- * 界面不自己算——否则同一张卡在两个地方各有一套算法，迟早对不上。
- * 算不出时**不显示数字**，只显示缺什么（缺年收益 / 缺投入），避免用户拿 0 当结论。
- */
-const RoiCard: React.FC<{ roi: NonNullable<StageSnapshot["roi"]> }> = ({ roi }) => (
-  <div className="det-section">
-    <div className="det-label">投资回报</div>
-    {roi.error ? <p className="schema-table-note">取不到数据：{roi.error}</p> : null}
-    {!roi.data && !roi.error ? <p className="schema-table-note">正在计算…</p> : null}
-    {roi.data?.blocked ? (
-      <p className="schema-table-note">
-        <span className="badge warning">算不出</span> {roi.data.blocked}
-      </p>
-    ) : null}
-    {roi.data && !roi.data.blocked ? (
-      <>
-        <p className="schema-table-note">
-          总投入 <b>{fmtMoney(roi.data.investment)} 元</b>（表5-5）
-        </p>
-        <p className="schema-table-note">
-          年收益 <b>{fmtMoney(roi.data.annualValue)} 元/年</b>（表6-1 有数的 {roi.data.valuedRows}/
-          {roi.data.totalRows} 条）
-        </p>
-        <p className="schema-table-note">
-          回收期 <b>{fmtYears(roi.data.paybackYears)} 年</b>｜投资回报率{" "}
-          <b>{roi.data.roiMultiple.toFixed(2)} 倍/年</b>
-        </p>
-        <p className="schema-table-note">
-          回收期 = 投入 ÷ 年收益（投入取表5-5 总投入，年收益取表6-1「年收益(元)」之和）
-        </p>
-      </>
-    ) : null}
-    {roi.data && roi.data.missingAnnualValue.length > 0 && !roi.data.blocked ? (
-      <p className="schema-table-note">
-        还有 {roi.data.missingAnnualValue.length} 条没填年收益（
-        {roi.data.missingAnnualValue.slice(0, 3).join("、")}
-        {roi.data.missingAnnualValue.length > 3 ? "…" : ""}），回收期只按已填的算
-      </p>
-    ) : null}
-  </div>
-);
-
 export const StageRightPanel: React.FC<StageRightPanelProps> = ({ snapshot, live }) => {
   const [tab, setTab] = useState<Tab>("supplement");
 
@@ -264,28 +209,6 @@ export const StageRightPanel: React.FC<StageRightPanelProps> = ({ snapshot, live
             信息完整度 {completeness.tablesWithData}/{completeness.expectedTables} 张表（
             {completeness.percent}%）
           </span>
-        </div>
-      ) : null}
-
-      {/* 投资回报：表5-5 与 表6-1 的派生值（读时按公式算，不存） */}
-      {snapshot.roi ? <RoiCard roi={snapshot.roi} /> : null}
-
-      {/* 成本重算：表5-5 的金额按公式算（改完 M6 费率不必整步重跑） */}
-      {snapshot.costRecompute ? (
-        <div className="det-section">
-          <div className="det-label">成本重算</div>
-          <button
-            className="btn"
-            type="button"
-            disabled={snapshot.costRecompute.running}
-            title="按 M6 内部费率重算表5-5 的金额（小计＝数量×单价、费用＝人天×单价、汇总＝各子块之和）；型号规格、说明、核实结论等文字不动"
-            onClick={snapshot.costRecompute.onRun}
-          >
-            {snapshot.costRecompute.running ? "重算中…" : "按 M6 费率重算成本"}
-          </button>
-          {snapshot.costRecompute.note ? (
-            <p className="schema-table-note">{snapshot.costRecompute.note}</p>
-          ) : null}
         </div>
       ) : null}
 

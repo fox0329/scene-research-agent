@@ -90,11 +90,12 @@ describe("stage-prompts — 内容由注册表派生", () => {
     }
   });
 
-  it("多子块表（成本估算）按块渲染字段", () => {
+  it("多子块表（方案架构 + 接口清单）按块渲染字段", () => {
+    /* 表5-5 成本估算已删（变更表 #105）→ 阶段 4 的多子块表只剩 表5-1 */
     const p = buildStagePrompt(4, {}, scenario);
-    expect(p.system).toContain("表5-5 成本估算");
-    expect(p.system).toContain("`annual_fee`");
-    expect(p.system).toContain("`subtotal`");
+    expect(p.system).toContain("表5-1 架构与接口");
+    expect(p.system).toContain("`layer`");
+    expect(p.system).toContain("`interface_name`");
   });
 
   it("system 里不再有「跨阶段填写」标注（v1.25 删掉跨阶段补填）", () => {

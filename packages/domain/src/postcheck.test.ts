@@ -319,7 +319,8 @@ describe("postcheck — 中栏说结果、来源归右栏（v1.32）", () => {
     const long = "按 10 间会议室各 1 套的参考规模，单价区间 1,500~4,000 元/套，取 2,500 元为量级参考，非厂商报价，另需考虑安装调试与三年维保";
     const findings = runDeterministicPostcheck({
       rows: [
-        row({ tableCode: "表5-5", rowId: "r9", label: "CT15", row: { item: long, note: "见 ingest-1.pdf:3" } }),
+        // 表5-5 已删（变更表 #105）→ 换一张仍在的中栏表：表5-3 的 content（长文本）带出处
+        row({ tableCode: "表5-3", rowId: "r9", label: "CT15", row: { content: long, rollback: "见 ingest-1.pdf:3" } }),
       ],
       lookup: fakeLookup({ "ingest-1.pdf:3": ["x"] }),
     });

@@ -4,7 +4,6 @@ import {
   TABLES_BY_CODE,
   STAGE_DEFS,
   ENUMS,
-  COMPUTED_CARDS,
   SCENARIO_BRIEF_FIELDS,
   SUMMARY_DOC_SECTIONS,
   MIDDLE_COLUMN_BUDGET,
@@ -28,22 +27,23 @@ describe("表定义注册表 — 完整性", () => {
     expect(registryIssues()).toEqual([]);
   });
 
-  it("共 35 张表，且表号唯一", () => {
-    expect(TABLES).toHaveLength(35);
-    expect(new Set(TABLES.map((t) => t.code)).size).toBe(35);
-    expect(Object.keys(TABLES_BY_CODE)).toHaveLength(35);
+  it("共 34 张表，且表号唯一", () => {
+    /* 35 → 34：表5-5 成本估算按用户定调删除（变更表 #105） */
+    expect(TABLES).toHaveLength(34);
+    expect(new Set(TABLES.map((t) => t.code)).size).toBe(34);
+    expect(Object.keys(TABLES_BY_CODE)).toHaveLength(34);
   });
 
-  it("级别分布：重要 19 / 支撑 12 / 过程 4", () => {
+  it("级别分布：重要 18 / 支撑 12 / 过程 4", () => {
     const count = (tier: string): number => TABLES.filter((t) => t.tier === tier).length;
-    expect(count("重要")).toBe(19);
+    expect(count("重要")).toBe(18);
     expect(count("支撑")).toBe(12);
     expect(count("过程")).toBe(4);
   });
 
-  it("阶段分布：0→7张、1→8张、2→9张、3→5张、4→4张、5→2张、6→0张", () => {
+  it("阶段分布：0→7张、1→8张、2→9张、3→5张、4→3张、5→2张、6→0张", () => {
     const dist = [0, 1, 2, 3, 4, 5, 6].map((s) => tablesOfStage(s as 0).length);
-    expect(dist).toEqual([7, 8, 9, 5, 4, 2, 0]);
+    expect(dist).toEqual([7, 8, 9, 5, 3, 2, 0]);
   });
 
   it("阶段定义的 tableCodes 与实际表一致（含交付物阶段无表）", () => {
@@ -106,24 +106,18 @@ describe("表定义注册表 — 列预算（中栏 ≤6 列）", () => {
     expect(t.completeness.join()).toContain("接口块三项非空");
   });
 
-  it("多子块表（成本估算 / 方案架构）每个子块中栏列 ≤ 上限", () => {
-    for (const code of ["表5-5", "表5-1"]) {
-      const byBlock = middleColumnsByBlock(tableDef(code));
-      for (const cols of Object.values(byBlock)) {
-        expect(cols.length).toBeLessThanOrEqual(MIDDLE_COLUMN_BUDGET);
-      }
+  it("多子块表（方案架构 / 接口清单）每个子块中栏列 ≤ 上限", () => {
+    /* 表5-5 成本估算已按用户定调删除（变更表 #105），多子块表现在只剩 表5-1 */
+    const byBlock = middleColumnsByBlock(tableDef("表5-1"));
+    for (const cols of Object.values(byBlock)) {
+      expect(cols.length).toBeLessThanOrEqual(MIDDLE_COLUMN_BUDGET);
     }
-    expect(Object.keys(middleColumnsByBlock(tableDef("表5-5"))).sort()).toEqual([
-      "人工",
-      "汇总",
-      "硬件",
-      "运营",
-    ]);
+    expect(Object.keys(byBlock).sort()).toEqual(["接口", "架构"]);
   });
 
   it("多子块表的每个块都有能独立看懂的显示名（v1.26：块在界面上一行各占一个表）", () => {
     // 缺了显示名就会退回「架构块」——脱离表名看不懂，而界面上不再有表名那一行做上下文
-    for (const code of ["表5-1", "表5-5"]) {
+    for (const code of ["表5-1"]) {
       const t = tableDef(code);
       for (const b of Object.keys(middleColumnsByBlock(t))) {
         const label = blockLabel(t, b);
@@ -260,13 +254,6 @@ describe("表定义注册表 — 关键结构", () => {
     expect(supplementColumns(t).map((c) => c.key)).toContain("product_id");
   });
 
-  it("投资回报是计算卡片而非表（派生值不让模型填）", () => {
-    expect(TABLES_BY_CODE["投资回报"]).toBeUndefined();
-    const roi = COMPUTED_CARDS.find((c) => c.key === "roi");
-    expect(roi?.inputs).toEqual(["表5-5", "表6-1"]);
-    expect(roi?.formula).toContain("回收期");
-  });
-
   it("每张表都有 purpose / rowUnit / completeness，且被引用阶段合法", () => {
     for (const t of TABLES) {
       expect(t.purpose.length, t.code).toBeGreaterThan(0);
@@ -344,9 +331,8 @@ describe("dependsOnTables — 本步内的真实依赖（按表并发的调度�
     expect(tableDef("表2-4")?.dependsOnTables).toEqual(["表2-2"]);
     // 能力清单 → 需求-能力对照
     expect(tableDef("表4-3")?.dependsOnTables).toEqual(["表4-1"]);
-    // 架构 → 实施计划 → 成本估算（成本要按架构与实施项算）
+    // 架构 → 实施计划（实施项要落在架构的组件上）
     expect(tableDef("表5-3")?.dependsOnTables).toEqual(["表5-1"]);
-    expect(tableDef("表5-5")?.dependsOnTables).toEqual(["表5-1", "表5-3"]);
   });
 
   it("依赖只在同阶段内声明（跨阶段靠上游上下文，不写在这里）", () => {

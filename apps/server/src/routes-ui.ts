@@ -26,8 +26,6 @@ import { ANCHOR_TABLE_CODE, FLOW_LAST_STEP, type InfoStageId } from "@scene/cont
 import { alignmentWithBrief, anchorFixedRows, buildFlowStatus, type InfoRow } from "@scene/domain";
 import type { DbInstance } from "@scene/infra";
 import { scenarioLineContext } from "./scenario-lines.js";
-import { recomputeScenarioCost } from "./recompute-cost.js";
-import { computeScenarioRoi } from "./roi.js";
 import { dedupeLibrary, seedRateSkeleton } from "./library-service.js";
 import {
   parseDocument,
@@ -778,40 +776,13 @@ function registerProjectRoutes(app: FastifyInstance, deps: UiRoutesDeps) {
       row: { ...row.row, [cell]: body.value },
       source_type: "用户确认",
     });
-    /* 改了这一格 → 引用这张表的下游阶段标「待重算」（表5-5 → 阶段 5、6）
+    /* 改了这一格 → 引用这张表的下游阶段标「待重算」（如 表2-2 → 阶段 2、4）
        依据是 TABLE_DEPENDENCIES；本阶段自身不吃自己的依赖，故只标下游。 */
     const downstream = getAffectedStages(String(row.table_code));
     if (downstream.length > 0) {
       db.stageDataRepo.markStale(id, downstream, true);
     }
     return { ...updated, stale_marked_stages: downstream };
-  });
-
-  /**
-   * 按 M6 内部费率重算表5-5（改完费率不必整步重跑）
-   *
-   * 金额由公式算（`@scene/domain` 的 recomputeCostRows），文字列不动；
-   * 数字有变才标下游「待重算」，返回报告供界面提示（缺单价 / 待确认 / 各子块合计）。
-   */
-  app.post("/api/v1/projects/:id/recompute-cost", async (request, reply) => {
-    const { id } = request.params as { id: string };
-    const report = recomputeScenarioCost(db, id);
-    if (!report) return notFound(reply, `项目 ${id} 不存在`);
-    return report;
-  });
-
-  /**
-   * 投资回报（只读派生值）：回收期 = 投入 ÷ 年收益
-   *
-   * 投入取表5-5 的"总投入"行（没有则各子块合计相加），年收益取表6-1 各条的「年收益(元)」。
-   * 每次读都按当前两张表重算，所以用户改年收益、或重算表5-5，回收期立刻跟着变。
-   * 契约 `COMPUTED_CARDS.roi` 定的就是这条路：派生值不让模型填，避免与两张表打架。
-   */
-  app.get("/api/v1/projects/:id/roi", async (request, reply) => {
-    const { id } = request.params as { id: string };
-    const report = computeScenarioRoi(db, id);
-    if (!report) return notFound(reply, `项目 ${id} 不存在`);
-    return report;
   });
 }
 

@@ -40,7 +40,7 @@
 **limitation**（M5）：`id, product_line_id, product_name, description, impact(高/中/低), fix_status(已修复/修复中/无计划/硬件限制), external_visible(可提/内部可提/不可提), owner, + 通用列`
 
 **cost_rate**（M6）：`id, product_line_id, category(实施/商务), item, rate(单价), unit, standard_hours, data_source(历史项目/内部报价/行业均值/待确认), note(说明), source_type, source, source_authority, evidence_level`　索引：`(product_line_id, category)`
-> 来源四列与 note 于 2026-10-04 补齐（原建表漏了，契约表M6 里 source 是必填、表5-5 要"单价可回溯 M6 或标来源"）；老库由 `runMigrations` 的幂等 ALTER 自愈。
+> 来源四列与 note 于 2026-10-04 补齐（原建表漏了，契约表M6 里 source 是必填；当时 表5-5 还要求"单价可回溯 M6 或标来源"，该表已于变更表 #105 删除）；老库由 `runMigrations` 的幂等 ALTER 自愈。
 > **标准骨架**：新建产品线（含场景专属资料库）即播种 14 行标准费率（9 项实施工序 + 商务 5 项），`rate`/`standard_hours` 为 0、`data_source` 标「待确认」——契约 completeness 已规定「『待确认』行不得用于报价」，骨架不会被当成真实单价消费。用户只填数字，不用自己建表。
 
 **optional_material**（O1-O6）：`id, product_line_id, category(O1认证/O2案例/O3价格/O4SDK/O5路线图/O6生态), payload(JSON 按类异构), + 通用列`　索引：`(product_line_id, category)`

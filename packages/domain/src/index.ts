@@ -91,26 +91,6 @@ export type {
   TaskEstimate,
 } from "./cost-estimate.js";
 
-// 阶段 5 — 投资回报（回收期 = 投入 ÷ 年收益；契约 COMPUTED_CARDS.roi）
-export { computeRoi, investmentFromCostRows } from "./roi.js";
-export type { RoiInput, RoiSummary, RoiRow } from "./roi.js";
-
-// 阶段 5 — 表5-5 确定性重算（金额由公式算，文字仍由模型写）
-export {
-  recomputeCostRows,
-  costBlockOf,
-  normalizeCostItem,
-  HOURS_PER_DAY,
-} from "./cost-recompute.js";
-export type {
-  CostBlock,
-  CostPlanItem,
-  CostRateItem,
-  CostRow,
-  CostRecomputeInput,
-  CostRecomputeResult,
-} from "./cost-recompute.js";
-
 // 阶段 6 — 价值验证
 export {
   calcRoi,
