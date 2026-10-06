@@ -243,6 +243,8 @@ export interface ApiStageSummary {
 
 export interface ApiStaleInfo {
   stages: number[];
+  /** 受影响的**流程步号**（用户可见的那套编号；文案按它组织） */
+  steps: number[];
   tables: string[];
   banner: string | null;
 }
@@ -406,6 +408,12 @@ export const api = {
     }),
   staleInfo: (id: string) =>
     req<ApiStaleInfo>(`/projects/${encodeURIComponent(id)}/stale`),
+  /** 资料失效「已知悉」：清掉待重算标记（只动标记，不改数据） */
+  ackStale: (id: string) =>
+    req<{ cleared: number; stages: number[] }>(
+      `/projects/${encodeURIComponent(id)}/stale/ack`,
+      { method: "POST" },
+    ),
   /** 阶段面板数据；`step` 传了就按**本步表集**算完整度（右栏"只针对当前步骤"） */
   stagePanel: (id: string, stage: number, step?: number) =>
     req<ApiStagePanel>(

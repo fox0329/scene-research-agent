@@ -22,7 +22,13 @@ import type {
   StageId,
   StageData,
 } from "@scene/contract";
-import { ANCHOR_TABLE_CODE, FLOW_LAST_STEP, type InfoStageId } from "@scene/contract";
+import {
+  ANCHOR_TABLE_CODE,
+  FLOW_LAST_STEP,
+  flowStepLabel,
+  flowStepOfTable,
+  type InfoStageId,
+} from "@scene/contract";
 import { alignmentWithBrief, anchorFixedRows, buildFlowStatus, type InfoRow } from "@scene/domain";
 import type { DbInstance } from "@scene/infra";
 import { scenarioLineContext } from "./scenario-lines.js";
@@ -651,7 +657,7 @@ function registerProjectRoutes(app: FastifyInstance, deps: UiRoutesDeps) {
     return { deleted: true };
   });
 
-  // 失效横幅：受影响阶段 + 涉及表
+  // 失效横幅：受影响流程步 + 涉及表
   app.get("/api/v1/projects/:id/stale", async (request, reply) => {
     const { id } = request.params as { id: string };
     if (!db.scenarioRepo.getById(id)) return notFound(reply, `场景 ${id} 不存在`);
@@ -661,13 +667,42 @@ function registerProjectRoutes(app: FastifyInstance, deps: UiRoutesDeps) {
     });
     const stages = [...new Set(staleRows.map((r) => r.stage))].sort((a, b) => a - b);
     const tables = [...new Set(staleRows.map((r) => String(r.table_code)))];
+    /* 文案按**表 → 流程步**反查，不拿阶段号示人：
+       落库阶段 0 基、界面第 n 步，两套编号不等（第 1、2 步同属阶段 1），
+       写「（3、4 阶段）」用户对不上「第 4 步 能力匹配 / 第 5 步 方案与实现」。 */
+    const steps = staleFlowSteps(tables);
     return {
       stages,
       tables,
-      banner: stages.length
-        ? `${stages.length} 个阶段的分析因资料变更待重算（${stages.join("、")} 阶段）`
+      steps: steps.map((s) => s.id),
+      banner: steps.length
+        ? `${steps.length} 步的分析因资料变更待重算：${steps.map((s) => s.label).join("、")}`
         : null,
     };
+  });
+
+  /**
+   * 资料失效「已知悉」：用户看过横幅、决定不重算 → 只清标记，不碰一行数据
+   *
+   * 为什么要有这个入口：标记只能靠重跑阶段或回退才能消（那两条路都会重写数据）。
+   * 而"我确认过这几行、结论不受影响"是常见的判断，用户有决定权（F3），所以给一个
+   * 明确的"已知悉"动作，而不是逼用户为了消掉提示去重跑一遍。
+   */
+  app.post("/api/v1/projects/:id/stale/ack", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    if (!db.scenarioRepo.getById(id)) return notFound(reply, `场景 ${id} 不存在`);
+    const stages = [
+      ...new Set(
+        db.stageDataRepo
+          .list({ where: "scenario_id = ? AND is_stale = 1", params: [id] })
+          .map((r) => r.stage),
+      ),
+    ].sort((a, b) => a - b) as StageId[];
+    let cleared = 0;
+    for (const stage of stages) {
+      cleared += db.stageDataRepo.markStale(id, [stage], false);
+    }
+    return { cleared, stages };
   });
 
   // 用户决定：继续 → current_stage 前进一步；其余动作仅确认回执
@@ -1140,6 +1175,8 @@ function registerLibraryRoutes(app: FastifyInstance, deps: UiRoutesDeps) {
     if (!db.productLineRepo.getById(id)) return notFound(reply, "产品线不存在");
     // 判定在领域层（library-dedupe），这里只按计划落库；产品行与规格行一次清完
     const report = dedupeLibrary(db, id);
+    // F3 内联失效：去重会合并 M1 产品行、动 M2 规格归属 → 引用该产品线的场景标待重算
+    const staleMarked = markLineStale(db, id, ["M1", "M2"]);
     return {
       groups: report.productGroups,
       products_removed: report.productsRemoved,
@@ -1148,6 +1185,7 @@ function registerLibraryRoutes(app: FastifyInstance, deps: UiRoutesDeps) {
       spec_exact_groups: report.specExactGroups,
       spec_near_groups: report.specNearGroups,
       merged: report.groups,
+      stale_marked_stages: staleMarked,
     };
   });
 
@@ -1214,34 +1252,75 @@ function resolveProductLineId(db: DbInstance, code: string, rowId: string): stri
   return undefined;
 }
 
-/** 资料行变更 → 按 TABLE_DEPENDENCIES 反查受影响场景阶段并标待重算 */
-function markDependentStale(db: DbInstance, code: string, rowId: string) {
-  const stages = getAffectedStages(code);
-  if (stages.length === 0) return;
-  const scenarioIds = new Set<string>();
-  for (const ref of db.scenarioMaterialRepo.list({
-    where: "ref_table = ? AND ref_id = ?",
-    params: [code, rowId],
-  })) {
-    scenarioIds.add(ref.scenario_id);
+/**
+ * 失效表号 → 受影响的**流程步**（去重、按步号升序）
+ *
+ * 落库阶段与用户看到的步号是两套编号，横幅只讲用户能对上的那一套。
+ * 表号查不到步（如库表 M*）时跳过——它们不在流程轴里，不进文案。
+ */
+function staleFlowSteps(tables: string[]): { id: number; label: string }[] {
+  const steps = new Map<number, string>();
+  for (const code of tables) {
+    const step = flowStepOfTable(code);
+    if (step) steps.set(step.id, flowStepLabel(step));
   }
-  /* 场景-产品线归属：**这一行资料进了哪些场景的上下文**就标哪些场景。
-     口径直接复用 `scenarioLineContext`（注入/重算/标脏同一份实现）：
-     专属库进自己那个场景；通用库（`scenario_id IS NULL`，如「拓维产品」）默认进所有
-     场景，除非用户在「本场景资料」里显式取消引用（`excluded = 1`）。
-     教训（故障 #26）：这里原先只按"场景的 product_line_id"找，通用库挂着 0 个场景
-     → 改通用库费率一个场景都不标，用户体感是"改了什么都没发生"。 */
-  const productLineId = resolveProductLineId(db, code, rowId);
-  if (productLineId) {
-    for (const scenario of db.scenarioRepo.list()) {
-      if (scenarioLineContext(db, scenario).lineIds.includes(productLineId)) {
-        scenarioIds.add(scenario.id);
-      }
+  return [...steps.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([id, label]) => ({ id, label }));
+}
+
+/**
+ * 产品线 → **哪些场景的上下文里有它**
+ *
+ * 口径直接复用 `scenarioLineContext`（注入/重算/标脏同一份实现）：专属库进自己那个场景；
+ * 通用库（`scenario_id IS NULL`，如「拓维产品」）默认进所有场景，除非用户在「本场景资料」
+ * 里显式取消引用（`excluded = 1`）。教训（故障 #26）：这里原先只按"场景的 product_line_id"
+ * 找，通用库挂着 0 个场景 → 改通用库一个场景都不标，用户体感是"改了什么都没发生"。
+ */
+function scenariosOfLine(db: DbInstance, productLineId: string): string[] {
+  const ids: string[] = [];
+  for (const scenario of db.scenarioRepo.list()) {
+    if (scenarioLineContext(db, scenario).lineIds.includes(productLineId)) {
+      ids.push(scenario.id);
     }
   }
+  return ids;
+}
+
+/** 阶段清单 → 给定场景逐个标待重算，返回实际标记的行数 */
+function markStages(db: DbInstance, scenarioIds: Iterable<string>, stages: StageId[]): void {
   for (const scenarioId of scenarioIds) {
     db.stageDataRepo.markStale(scenarioId, stages, true);
   }
+}
+
+/** 资料行变更 → 按 TABLE_DEPENDENCIES 反查受影响场景阶段并标待重算 */
+function markDependentStale(db: DbInstance, code: string, rowId: string) {
+  const stages = getAffectedStages(code) as StageId[];
+  if (stages.length === 0) return;
+  const scenarioIds = new Set<string>(
+    db.scenarioMaterialRepo
+      .list({ where: "ref_table = ? AND ref_id = ?", params: [code, rowId] })
+      .map((ref) => ref.scenario_id),
+  );
+  const productLineId = resolveProductLineId(db, code, rowId);
+  if (productLineId) for (const id of scenariosOfLine(db, productLineId)) scenarioIds.add(id);
+  markStages(db, scenarioIds, stages);
+}
+
+/**
+ * 批量改动整条产品线的资料（如「整理资料库 / 去重」）→ 同样标下游
+ *
+ * 为什么要有它：去重会**合并产品行、改规格归属、删重复行**，却走的是另一个端点，
+ * 原先不标下游——于是"整理资料库"改了数据，界面上一声不响，与单元格编辑不一致。
+ */
+function markLineStale(db: DbInstance, productLineId: string, codes: string[]): StageId[] {
+  const stages = [
+    ...new Set(codes.flatMap((code) => getAffectedStages(code))),
+  ].sort((a, b) => a - b) as StageId[];
+  if (stages.length === 0) return [];
+  markStages(db, scenariosOfLine(db, productLineId), stages);
+  return stages;
 }
 
 // ─── 系统路由 ──────────────────────────────────────────────

@@ -9,6 +9,9 @@ import {
   STAGE6_TABLES,
   STAGE7_TABLES,
   STAGE8_TABLES,
+  FLOW_STEPS,
+  flowStepOfTable,
+  flowStepLabel,
 } from "@scene/contract";
 import type {
   SourceType,
@@ -123,6 +126,37 @@ describe("@scene/contract 表编号常量", () => {
     expect(STAGE8_TABLES).toHaveLength(2);
     expect(STAGE8_TABLES[0]).toBe("表8-内部");
     expect(STAGE8_TABLES[1]).toBe("表8-对外");
+  });
+});
+
+describe("@scene/contract 表号 → 流程步（横幅文案用）", () => {
+  it("每个流程步都能按表集反查到，且步号唯一递增", () => {
+    const ids = FLOW_STEPS.map((s) => s.id);
+    expect(ids).toEqual([...ids].sort((a, b) => a - b));
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it("阶段 1 的两步靠表集区分：表1-1 归第 1 步，其余归第 2 步", () => {
+    expect(flowStepOfTable("表1-1")?.id).toBe(1);
+    expect(flowStepOfTable("表1-2")?.id).toBe(2);
+    expect(flowStepOfTable("表1-3")?.id).toBe(2);
+  });
+
+  it("阶段 3/4 的表分别落在第 4 步与第 5 步（用户看到的就是这两步）", () => {
+    expect(flowStepOfTable("表4-1")?.id).toBe(4);
+    expect(flowStepOfTable("表4-5")?.id).toBe(4);
+    expect(flowStepOfTable("表5-1")?.id).toBe(5);
+    expect(flowStepOfTable("表5-4")?.id).toBe(5);
+  });
+
+  it("库表（M*）与未知表号不落在任何一步（它们不是场景阶段产出）", () => {
+    expect(flowStepOfTable("M1")).toBeUndefined();
+    expect(flowStepOfTable("表9-9")).toBeUndefined();
+  });
+
+  it("称谓含步号与名称，用户能对上流程轴", () => {
+    const step = flowStepOfTable("表5-1")!;
+    expect(flowStepLabel(step)).toBe("第 5 步 方案与实现");
   });
 });
 

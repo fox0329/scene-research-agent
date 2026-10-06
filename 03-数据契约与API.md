@@ -80,7 +80,8 @@
 | GET | `/projects` | 列表（含 current_stage、stale 概要） |
 | PATCH | `/projects/{id}` | 重命名 / 归档（`{ name? , status? }`） |
 | DELETE | `/projects/{id}` | 删除（连带场景层数据） |
-| GET | `/projects/{id}/stale` | 失效横幅数据：受影响阶段 + 涉及表 |
+| GET | `/projects/{id}/stale` | 失效横幅数据：`{ stages, steps, tables, banner }`——`stages` 是落库阶段号（0 基），`steps` 是**用户可见的流程步号**（文案按它组织，如「2 步的分析因资料变更待重算：第 4 步 能力匹配、第 5 步 方案与实现」） |
+| POST | `/projects/{id}/stale/ack` | 失效「已知悉」：清掉本场景的待重算标记（`{ cleared, stages }`）；**只动标记、不碰一行数据**——给用户一个不必重跑就能销掉提示的出口 |
 | POST | `/projects/{id}/stages/{n}/advance` | 推进阶段 n 分析；**SSE**（事件见 §四） |
 | GET | `/projects/{id}/resume` | 断点续做对账（T4.1）：`{ action: fresh|resume|rerun|complete, stage, needsRecompute, danglingConversationIds, banner }` |
 | GET | `/projects/{id}/stages/{n}/events` | SSE 断线续传：凭 `Last-Event-ID` 增量重放该阶段最近一次分析流（进程存续期内可续；进程重启后走 resume 对账重跑） |

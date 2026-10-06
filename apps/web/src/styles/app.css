@@ -1843,6 +1843,11 @@ td.ed {
   border-radius: var(--r8);
 }
 
+/* 横幅里的动作按钮靠右：文案长短变化时按钮位置稳定 */
+.stale-banner .btn {
+  margin-left: auto;
+}
+
 /* 小号按钮（表格行内操作，M5-T5.4） */
 .btn.sm {
   padding: var(--s05) var(--s2);

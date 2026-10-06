@@ -114,6 +114,7 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
 
   /** 本步数据刷新令牌：分析落库后 +1，面板据此重取本步数据与阶段总结 */
   const [analysisRefresh, setAnalysisRefresh] = useState(0);
+  const [ackStaleBusy, setAckStaleBusy] = useState(false);
 
   /**
    * 本步分析的运行态（v1.20）
@@ -262,6 +263,28 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
    * **回到哪一步直接点阶段名称**（v1.24 用户定调）：回看任意一步都能就地重算，所以流程轴上
    * 不再有「回到这一步」「回到当前步」这类导航按钮——要看/要重跑哪一步，点它的名字就是。
    */
+  /**
+   * 「已知悉」：清掉本场景的待重算标记
+   *
+   * 只清标记、不碰数据（服务端 `POST /stale/ack`）；清完重取横幅与流程轴
+   * （流程轴上的"待重算"态由 is_stale 派生），再让当前步面板重取一次行数据
+   * （行级"待重算"徽标同源）。
+   */
+  const handleAckStale = useCallback(async () => {
+    if (!live || ackStaleBusy) return;
+    setAckStaleBusy(true);
+    try {
+      await api.ackStale(project.id);
+      stale.reload();
+      setAnalysisRefresh((n) => n + 1);
+      await reloadFlow();
+    } catch {
+      // 清失败就保持原状：横幅还在，用户能再点一次
+    } finally {
+      setAckStaleBusy(false);
+    }
+  }, [live, ackStaleBusy, project.id, stale, reloadFlow]);
+
   const stepStale = (stale.data?.stages ?? []).includes(stepStage);
   // 认步（第 1 步）不跑模型，只打开场景定义对话 —— 演示态与联真同形；
   // 分析步只有联真才有真正可跑的后端，演示态不装这个按钮（避免点了个没反应的入口）
@@ -449,7 +472,18 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
       {live && stale.status === "ok" && stale.data?.banner && (
         <div className="stale-banner" role="status">
           <span className="badge warning">资料更新</span>
-          {stale.data.banner}
+          <span>{stale.data.banner}</span>
+          {/* 用户有决定权：确认过、结论不受影响时给一个"已知悉"出口。
+              否则标记只能靠重跑阶段消掉——为了消提示重跑一遍不划算。 */}
+          <button
+            type="button"
+            className="btn"
+            onClick={() => void handleAckStale()}
+            disabled={ackStaleBusy}
+            title="我看过了，结论不受影响——清掉「待重算」标记（不改任何分析数据）"
+          >
+            {ackStaleBusy ? "处理中…" : "已知悉"}
+          </button>
         </div>
       )}
 

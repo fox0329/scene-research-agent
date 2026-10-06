@@ -220,11 +220,11 @@ describe("项目路由", () => {
     expect(again.statusCode).toBe(404);
   });
 
-  it("GET /projects/:id/stale 返回受影响阶段与横幅文案", async () => {
+  it("GET /projects/:id/stale：横幅讲用户能对上的流程步（不再是「3、4 阶段」）", async () => {
     const { scenarioId } = seedScenario(h.db);
     h.db.stageDataRepo.insert({
       scenario_id: scenarioId,
-      stage: 5 as StageId,
+      stage: 4 as StageId,
       table_code: "表5-1",
       row: {},
       is_stale: true,
@@ -234,8 +234,70 @@ describe("项目路由", () => {
       url: `/api/v1/projects/${scenarioId}/stale`,
     });
     const body = res.json();
-    expect(body.stages).toEqual([5]);
-    expect(body.banner).toContain("待重算");
+    expect(body.stages).toEqual([4]);
+    expect(body.steps).toEqual([5]);
+    expect(body.tables).toEqual(["表5-1"]);
+    expect(body.banner).toBe("1 步的分析因资料变更待重算：第 5 步 方案与实现");
+  });
+
+  it("GET /projects/:id/stale：多个步按步号升序，且同一阶段的两步分别列出", async () => {
+    const { scenarioId } = seedScenario(h.db);
+    for (const [stage, code] of [
+      [3, "表4-1"],
+      [4, "表5-1"],
+      [4, "表5-3"],
+    ] as const) {
+      h.db.stageDataRepo.insert({
+        scenario_id: scenarioId,
+        stage: stage as StageId,
+        table_code: code,
+        row: {},
+        is_stale: true,
+      });
+    }
+    const res = await h.app.inject({
+      method: "GET",
+      url: `/api/v1/projects/${scenarioId}/stale`,
+    });
+    const body = res.json();
+    expect(body.steps).toEqual([4, 5]);
+    expect(body.banner).toBe("2 步的分析因资料变更待重算：第 4 步 能力匹配、第 5 步 方案与实现");
+  });
+
+  it("POST /projects/:id/stale/ack：清掉待重算标记，分析数据一字未动", async () => {
+    const { scenarioId } = seedScenario(h.db);
+    const row = h.db.stageDataRepo.insert({
+      scenario_id: scenarioId,
+      stage: 4 as StageId,
+      table_code: "表5-1",
+      row: { layer: "感知层", components: "CT15" },
+      is_stale: true,
+    });
+    const res = await h.app.inject({
+      method: "POST",
+      url: `/api/v1/projects/${scenarioId}/stale/ack`,
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().cleared).toBe(1);
+    expect(res.json().stages).toEqual([4]);
+
+    const after = h.db.stageDataRepo.getById(row.id)!;
+    expect(after.is_stale).toBe(false);
+    expect(after.row).toEqual({ layer: "感知层", components: "CT15" });
+
+    const gone = await h.app.inject({
+      method: "GET",
+      url: `/api/v1/projects/${scenarioId}/stale`,
+    });
+    expect(gone.json().banner).toBeNull();
+  });
+
+  it("POST /projects/:id/stale/ack：场景不存在 404", async () => {
+    const res = await h.app.inject({
+      method: "POST",
+      url: "/api/v1/projects/不存在/stale/ack",
+    });
+    expect(res.statusCode).toBe(404);
   });
 
   it("POST decide：非法动作 400，继续推进 current_stage", async () => {
@@ -653,6 +715,40 @@ describe("资料库路由", () => {
     expect(report.products_removed).toBe(1);
     expect(report.specs_removed).toBe(1);
     expect(h.db.productRepo.list({ where: "product_line_id = ?", params: [line.id] })).toHaveLength(1);
+  });
+
+  it("POST dedupe-products：整条产品线被合并 → 引用它的场景标待重算（与单元格编辑一致）", async () => {
+    const { productLineId, scenarioId } = seedScenario(h.db, "去重联动场景");
+    for (const stage of [3, 4] as StageId[]) {
+      h.db.stageDataRepo.insert({
+        scenario_id: scenarioId,
+        stage,
+        table_code: stage === 3 ? "表4-1" : "表5-1",
+        row: {},
+        is_stale: false,
+      });
+    }
+    const mk = (created: string) =>
+      h.db.productRepo.insert({
+        product_line_id: productLineId,
+        model: "CT15",
+        name: "CT15 控制器",
+        status: "在售",
+        launch_date: "2025-01-01",
+        position_desc: "—",
+        created_at: created,
+      } as never);
+    mk("2026-09-23T10:00");
+    mk("2026-09-24T10:00");
+
+    const res = await h.app.inject({
+      method: "POST",
+      url: `/api/v1/library/product-lines/${productLineId}/dedupe-products`,
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().stale_marked_stages).toEqual([3, 4]);
+    expect(h.db.stageDataRepo.listByScenarioStage(scenarioId, 3 as StageId)[0]!.is_stale).toBe(true);
+    expect(h.db.stageDataRepo.listByScenarioStage(scenarioId, 4 as StageId)[0]!.is_stale).toBe(true);
   });
 
   it("POST rows/M2：按 product_id 归属（spec_param 无 product_line_id 列，回归 500）", async () => {

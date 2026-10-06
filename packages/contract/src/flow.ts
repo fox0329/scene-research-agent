@@ -157,6 +157,24 @@ export const FLOW_STEPS: readonly FlowStep[] = [
 /** 流程总步数 */
 export const FLOW_TOTAL = FLOW_STEPS.length;
 
+/**
+ * 表号 → 它所在的流程步
+ *
+ * 为什么需要它：`stage_data.stage` 是**落库口径**（0 基的阶段），界面上用户看到的是
+ * **第 n 步**，两套编号不等（第 1、2 步同属阶段 1，第 3–7 步对应阶段 2–6）。
+ * 「资料更新待重算」横幅若直接写「（3、4 阶段）」，用户对不上界面上的「第 4 步 能力匹配」，
+ * 所以文案一律按**表 → 步**反查（`flowStepOfTable`），不再拿阶段号示人。
+ */
+export function flowStepOfTable(code: string): FlowStep | undefined {
+  return FLOW_STEPS.find((step) => step.tables.includes(code));
+}
+
+/** 流程步的用户可见称谓，如「第 5 步 方案与实现」 */
+export function flowStepLabel(step: FlowStep): string {
+  return `第 ${step.id} 步 ${step.title}`;
+}
+
+
 /** 最后一步（完成它 = 场景完成） */
 export const FLOW_LAST_STEP = FLOW_STEPS.length;
 
