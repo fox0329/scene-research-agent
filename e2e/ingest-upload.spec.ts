@@ -116,13 +116,13 @@ test.describe("上传入库（联真）", () => {
 
     await page.getByRole("button", { name: "产品资料库" }).click();
     await page.locator(".stab", { hasText: "M1" }).click();
-    /* 降维：7 列含「溯源」徽标列，来源四列与曾用名不再占列（等表格异步加载完） */
-    await expect(page.locator("table th")).toHaveCount(7);
+    /* 降维：6 列，溯源/来源四列/曾用名都不占列——溯源全量改到右栏行详情（变更表 #98） */
+    await expect(page.locator("table th")).toHaveCount(6);
     const ths = await page.locator("table th").allTextContents();
-    expect(ths).toContain("溯源");
+    expect(ths).not.toContain("溯源");
     expect(ths).not.toContain("来源标注");
     expect(ths).not.toContain("曾用名");
-    await expect(page.locator(".trace-badge").first()).toBeVisible();
+    await expect(page.locator("table .trace-badge")).toHaveCount(0);
     /* 列分割线 */
     const border = await page
       .locator("table th")

@@ -65,6 +65,17 @@ export interface StageSnapshot {
   anchorSummary?: AnchorSummary;
   /** 重新生成阶段总结 */
   onRefreshSummary: () => void;
+  /**
+   * 表5-5 成本重算入口（只有这一步确实有成本表时才有）
+   *
+   * 为什么放在右栏而不是中栏：用户定调 v1.20「中栏只有信息，没有动作」。
+   */
+  costRecompute?: {
+    running: boolean;
+    /** 上一次重算的结果（缺单价 / 仍标待确认 / 改了哪些），null = 还没跑过 */
+    note: string | null;
+    onRun: () => void;
+  };
   /** 编辑补充列单元格 */
   onSupplementChange: (rowId: string, cell: string, value: string) => void;
 }

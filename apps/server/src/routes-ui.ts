@@ -25,6 +25,8 @@ import type {
 import { ANCHOR_TABLE_CODE, FLOW_LAST_STEP, type InfoStageId } from "@scene/contract";
 import { alignmentWithBrief, anchorFixedRows, buildFlowStatus, type InfoRow } from "@scene/domain";
 import type { DbInstance } from "@scene/infra";
+import { scenarioLineContext } from "./scenario-lines.js";
+import { recomputeScenarioCost } from "./recompute-cost.js";
 import { dedupeLibrary, seedRateSkeleton } from "./library-service.js";
 import {
   parseDocument,
@@ -775,7 +777,26 @@ function registerProjectRoutes(app: FastifyInstance, deps: UiRoutesDeps) {
       row: { ...row.row, [cell]: body.value },
       source_type: "用户确认",
     });
-    return updated;
+    /* 改了这一格 → 引用这张表的下游阶段标「待重算」（表5-5 → 阶段 5、6）
+       依据是 TABLE_DEPENDENCIES；本阶段自身不吃自己的依赖，故只标下游。 */
+    const downstream = getAffectedStages(String(row.table_code));
+    if (downstream.length > 0) {
+      db.stageDataRepo.markStale(id, downstream, true);
+    }
+    return { ...updated, stale_marked_stages: downstream };
+  });
+
+  /**
+   * 按 M6 内部费率重算表5-5（改完费率不必整步重跑）
+   *
+   * 金额由公式算（`@scene/domain` 的 recomputeCostRows），文字列不动；
+   * 数字有变才标下游「待重算」，返回报告供界面提示（缺单价 / 待确认 / 各子块合计）。
+   */
+  app.post("/api/v1/projects/:id/recompute-cost", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const report = recomputeScenarioCost(db, id);
+    if (!report) return notFound(reply, `项目 ${id} 不存在`);
+    return report;
   });
 }
 
@@ -1227,33 +1248,17 @@ function markDependentStale(db: DbInstance, code: string, rowId: string) {
   })) {
     scenarioIds.add(ref.scenario_id);
   }
-  // 场景-产品线归属：本产品线下的项目引用资料库整体
+  /* 场景-产品线归属：**这一行资料进了哪些场景的上下文**就标哪些场景。
+     口径直接复用 `scenarioLineContext`（注入/重算/标脏同一份实现）：
+     专属库进自己那个场景；通用库（`scenario_id IS NULL`，如「拓维产品」）默认进所有
+     场景，除非用户在「本场景资料」里显式取消引用（`excluded = 1`）。
+     教训（故障 #26）：这里原先只按"场景的 product_line_id"找，通用库挂着 0 个场景
+     → 改通用库费率一个场景都不标，用户体感是"改了什么都没发生"。 */
   const productLineId = resolveProductLineId(db, code, rowId);
   if (productLineId) {
-    const line = db.productLineRepo.getById(productLineId) as
-      | { scenario_id?: string | null }
-      | undefined;
-    if (line && !line.scenario_id) {
-      /* **通用库**（`scenario_id IS NULL`，如「拓维产品」）：上传一次全场景共用，
-         默认被所有场景引用——用户可在「本场景资料」里显式排除
-         （`scenario_linked_line.excluded = 1`）。与 `advance-stage` 挑选 lineIds 的
-         规矩完全一致（那里也是 `ownLine + 未被排除的通用库`），否则"改通用库费率"
-         会一个场景都不标（实测：通用库挂着 0 个场景，旧逻辑直接等于没反应）。 */
-      const excludedScenarios = new Set(
-        db.scenarioLinkedLineRepo
-          .list({ where: "product_line_id = ?", params: [productLineId] })
-          .filter((link) => Boolean(link.excluded))
-          .map((link) => link.scenario_id),
-      );
-      for (const s of db.scenarioRepo.list()) {
-        if (!excludedScenarios.has(s.id)) scenarioIds.add(s.id);
-      }
-    } else {
-      for (const s of db.scenarioRepo.list({
-        where: "product_line_id = ?",
-        params: [productLineId],
-      })) {
-        scenarioIds.add(s.id);
+    for (const scenario of db.scenarioRepo.list()) {
+      if (scenarioLineContext(db, scenario).lineIds.includes(productLineId)) {
+        scenarioIds.add(scenario.id);
       }
     }
   }

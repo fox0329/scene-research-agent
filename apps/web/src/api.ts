@@ -138,6 +138,21 @@ export interface ApiCompleteness {
  * v1.4：`gates` / `advice` 已废弃（产品不产出判断），服务端仅返回空值以兼容过渡期；
  * 新前端请使用 `completeness` 与 `summary_ready`。
  */
+/** 表5-5 按 M6 费率重算的报告（金额算、文字不动） */
+export interface ApiCostRecomputeReport {
+  /** 表5-5 现有行数（0 = 这一步还没生成成本表） */
+  tableRows: number;
+  changedRows: number;
+  addedRows: number;
+  missingRates: string[];
+  pendingRates: string[];
+  missingTotals: string[];
+  /** 人工块里模型自造的行（不属表5-3、M6 也认不出）→ 未补行，避免重复计费 */
+  unmatchedLabor: string[];
+  totals: { hardware: number; labor: number; operation: number; total: number };
+  markedStages: number[];
+}
+
 export interface ApiStagePanel {
   rows: ApiStageRow[];
   completeness: ApiCompleteness;
@@ -491,6 +506,16 @@ export const api = {
       `/projects/${encodeURIComponent(id)}/stage-data/${encodeURIComponent(rowId)}`,
       { method: "PATCH", body: { cell, value } },
     ),
+  /**
+   * 按 M6 内部费率重算表5-5（金额由公式算，文字不动）
+   *
+   * 为什么要有这个入口：改完内部费率若整步重跑阶段 4，要几分钟且模型会重写结论；
+   * 这里只把数与汇总按公式校正一遍，缺单价如实报出来（不当 0 元）。
+   */
+  recomputeCost: (id: string) =>
+    req<ApiCostRecomputeReport>(`/projects/${encodeURIComponent(id)}/recompute-cost`, {
+      method: "POST",
+    }),
   decide: (id: string, stage: number, action: "继续" | "补充" | "停止" | "重算") =>
     req<ApiProject>(
       `/projects/${encodeURIComponent(id)}/stages/${stage}/decide`,

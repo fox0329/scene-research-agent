@@ -212,6 +212,25 @@ export const StageRightPanel: React.FC<StageRightPanelProps> = ({ snapshot, live
         </div>
       ) : null}
 
+      {/* 成本重算：表5-5 的金额按公式算（改完 M6 费率不必整步重跑） */}
+      {snapshot.costRecompute ? (
+        <div className="det-section">
+          <div className="det-label">成本重算</div>
+          <button
+            className="btn"
+            type="button"
+            disabled={snapshot.costRecompute.running}
+            title="按 M6 内部费率重算表5-5 的金额（小计＝数量×单价、费用＝人天×单价、汇总＝各子块之和）；型号规格、说明、核实结论等文字不动"
+            onClick={snapshot.costRecompute.onRun}
+          >
+            {snapshot.costRecompute.running ? "重算中…" : "按 M6 费率重算成本"}
+          </button>
+          {snapshot.costRecompute.note ? (
+            <p className="schema-table-note">{snapshot.costRecompute.note}</p>
+          ) : null}
+        </div>
+      ) : null}
+
       <div className="det-tabs" role="tablist">
         <button
           type="button"
