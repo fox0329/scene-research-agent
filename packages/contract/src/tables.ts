@@ -56,8 +56,6 @@ export const ENUMS = {
   position: ["扩张", "稳定", "收缩"],
   evidence_level: ["A", "B", "C", "D"],
   authority: ["T1", "T2", "T3", "T4"],
-  verified: ["已确认", "未确认"],
-  in_contract: ["是", "否", "待定"],
   asset_target: ["产品路线图", "能力底账", "新发现的限制", "销售打法"],
   pilot_kind: ["试点范围", "试点时长", "成功判据", "风险", "验收口径", "合同条款"],
   rate_category: ["实施", "商务"],
@@ -1100,11 +1098,9 @@ const TABLES_STAGE_5: readonly TableDef[] = [
     columns: [
       mid("kind", "要素类型", { required: true, enum: "pilot_kind" }),
       mid("content", "内容", { required: true, type: "longText", truncate: TRUNCATE_DEFAULT }),
-      mid("verified_by_buyer", "买方是否确认", { enum: "verified", requiredWhen: "仅『成功判据』类必填" }),
-      mid("in_contract", "写进合同", { enum: "in_contract", requiredWhen: "仅『验收口径/合同条款』类必填" }),
       sup("source", "来源"),
     ],
-    completeness: ["kind 覆盖『成功判据』与『验收口径』两类", "条件必填项在该类下非空"],
+    completeness: ["kind 覆盖『成功判据』与『验收口径』两类"],
     consumedBy: [6],
   },
 ];
