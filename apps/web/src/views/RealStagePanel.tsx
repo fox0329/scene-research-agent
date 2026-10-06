@@ -10,7 +10,7 @@ import {
   tablesOfStage,
   type InfoStageId,
 } from "@scene/contract";
-import { api, type ApiStagePanel, type ApiStageRow } from "../api";
+import { api, type ApiRoiReport, type ApiStagePanel, type ApiStageRow } from "../api";
 import { useAsync } from "../hooks/useAsync";
 import { SchemaTable, tableBlocks, tableCategories } from "../components/SchemaTable";
 import {
@@ -163,6 +163,31 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
   }, [refreshToken, reload, loadSummary]);
 
   /**
+   * 投资回报（阶段 5 右栏卡片）：投入取表5-5、年收益取表6-1，读时按公式算
+   *
+   * 不做本地公式：回收期是客户拿去做决策的数字，唯一算法在 `@scene/domain/roi.ts`
+   * （能单测、能审计），界面只负责显示与说明缺什么。
+   */
+  const [roi, setRoi] = useState<ApiRoiReport | null>(null);
+  const [roiLoading, setRoiLoading] = useState(false);
+  const [roiError, setRoiError] = useState<string | null>(null);
+  const loadRoi = useCallback(async () => {
+    setRoiLoading(true);
+    try {
+      setRoi(await api.roi(projectId));
+      setRoiError(null);
+    } catch (err: unknown) {
+      setRoiError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setRoiLoading(false);
+    }
+  }, [projectId]);
+
+  useEffect(() => {
+    if (stage === 5) void loadRoi();
+  }, [stage, loadRoi]);
+
+  /**
    * 成本重算（右栏动作，用户定调 2026-10-05「公式算完写回」）
    *
    * 表5-5 的金额本来由模型写，改完 M6 费率不会跟着变；这个入口只按公式把
@@ -218,12 +243,14 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
       try {
         const updated = await api.patchStageCell(projectId, rowId, cell, value);
         setPatched((prev) => ({ ...prev, [rowId]: updated }));
+        /* 改了年收益（表6-1）→ 回收期立刻重算，不要求用户刷新页面 */
+        if (stage === 5) void loadRoi();
         onChanged?.();
       } catch (err: unknown) {
         showToast(`保存失败：${err instanceof Error ? err.message : String(err)}`);
       }
     },
-    [projectId, rows, onChanged, showToast],
+    [projectId, rows, onChanged, showToast, stage, loadRoi],
   );
 
   /* 右栏数据面：补充列（当前表的右栏补充列） */
@@ -266,6 +293,7 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
       supplements,
       onRefreshSummary: () => void loadSummary(true),
       onSupplementChange: (rowId, cell, value) => void handleCellChange(rowId, cell, value),
+      ...(stage === 5 ? { roi: { loading: roiLoading, data: roi, error: roiError } } : {}),
       ...(hasCostTable
         ? {
             costRecompute: {
@@ -281,6 +309,10 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
     rows,
     summary,
     summaryLoading,
+    stage,
+    roi,
+    roiLoading,
+    roiError,
     hasCostTable,
     costBusy,
     costNote,

@@ -138,6 +138,26 @@ export interface ApiCompleteness {
  * v1.4：`gates` / `advice` 已废弃（产品不产出判断），服务端仅返回空值以兼容过渡期；
  * 新前端请使用 `completeness` 与 `summary_ready`。
  */
+/** 投资回报（只读派生值：回收期 = 投入 ÷ 年收益） */
+export interface ApiRoiReport {
+  /** 总投入（元）：表5-5 的投入合计 */
+  investment: number;
+  /** 年收益（元/年）：表6-1 各条之和 */
+  annualValue: number;
+  /** 投资回报率（倍） */
+  roiMultiple: number;
+  /** 回收期（年） */
+  paybackYears: number;
+  valuedRows: number;
+  totalRows: number;
+  /** 没填年收益的收益行（报出来，不当 0 算） */
+  missingAnnualValue: string[];
+  /** 算不出的原因；null = 算得出 */
+  blocked: string | null;
+  costRows: number;
+  valueRows: number;
+}
+
 /** 表5-5 按 M6 费率重算的报告（金额算、文字不动） */
 export interface ApiCostRecomputeReport {
   /** 表5-5 现有行数（0 = 这一步还没生成成本表） */
@@ -512,6 +532,8 @@ export const api = {
    * 为什么要有这个入口：改完内部费率若整步重跑阶段 4，要几分钟且模型会重写结论；
    * 这里只把数与汇总按公式校正一遍，缺单价如实报出来（不当 0 元）。
    */
+  /** 投资回报：每次读都按当前 表5-5 + 表6-1 重算（改年收益或重算成本后立刻跟着变） */
+  roi: (id: string) => req<ApiRoiReport>(`/projects/${encodeURIComponent(id)}/roi`),
   recomputeCost: (id: string) =>
     req<ApiCostRecomputeReport>(`/projects/${encodeURIComponent(id)}/recompute-cost`, {
       method: "POST",

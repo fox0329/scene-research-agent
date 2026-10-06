@@ -1059,6 +1059,83 @@ describe("资料库路由", () => {
     expect(missing.statusCode).toBe(404);
   });
 
+  it("GET roi → 回收期 = 投入 ÷ 年收益；缺年收益的行如实报出", async () => {
+    const scenario = h.db.scenarioRepo.insert({
+      name: "投资回报场景",
+      product_line_id: plId,
+      status: "进行中",
+      current_stage: 5,
+    });
+    h.db.stageDataRepo.insert({
+      scenario_id: scenario.id,
+      stage: 4 as StageId,
+      table_code: "表5-5",
+      row: { item: "硬件成本合计", amount: 118500 },
+      is_stale: false,
+    });
+    h.db.stageDataRepo.insert({
+      scenario_id: scenario.id,
+      stage: 4 as StageId,
+      table_code: "表5-5",
+      row: { item: "项目总投入（含首年运营）", amount: 178650 },
+      is_stale: false,
+    });
+    h.db.stageDataRepo.insert({
+      scenario_id: scenario.id,
+      stage: 5 as StageId,
+      table_code: "表6-1",
+      row: { benefit: "巡检人力节省", metric: "巡检工时", annual_value: 120000 },
+      is_stale: false,
+    });
+    h.db.stageDataRepo.insert({
+      scenario_id: scenario.id,
+      stage: 5 as StageId,
+      table_code: "表6-1",
+      row: { benefit: "品牌提升", metric: "认知度" },
+      is_stale: false,
+    });
+
+    const res = await h.app.inject({ method: "GET", url: `/api/v1/projects/${scenario.id}/roi` });
+    expect(res.statusCode).toBe(200);
+    const roi = res.json();
+    /* 投入只认「项目总投入」行（不把 118500 再加一遍） */
+    expect(roi.investment).toBe(178650);
+    expect(roi.annualValue).toBe(120000);
+    expect(roi.paybackYears).toBeCloseTo(1.489, 3);
+    expect(roi.roiMultiple).toBeCloseTo(0.6717, 3);
+    expect(roi.blocked).toBeNull();
+    expect(roi.valuedRows).toBe(1);
+    expect(roi.totalRows).toBe(2);
+    expect(roi.missingAnnualValue).toEqual(["品牌提升"]);
+    expect(roi.costRows).toBe(2);
+    expect(roi.valueRows).toBe(2);
+  });
+
+  it("GET roi：表6-1 一条年收益都没填 → 算不出（说清缺什么），不拿 0 当结论", async () => {
+    const scenario = h.db.scenarioRepo.insert({
+      name: "无年收益场景",
+      product_line_id: plId,
+      status: "进行中",
+      current_stage: 5,
+    });
+    h.db.stageDataRepo.insert({
+      scenario_id: scenario.id,
+      stage: 5 as StageId,
+      table_code: "表6-1",
+      row: { benefit: "品牌提升" },
+      is_stale: false,
+    });
+    const res = await h.app.inject({ method: "GET", url: `/api/v1/projects/${scenario.id}/roi` });
+    const roi = res.json();
+    /* 投入与年收益两样都缺 → 一次说清两样（不许只报一样让用户来回试） */
+    expect(roi.blocked).toContain("投入");
+    expect(roi.blocked).toContain("年收益");
+    expect(roi.paybackYears).toBe(0);
+    expect(roi.missingAnnualValue).toEqual(["品牌提升"]);
+    const missing = await h.app.inject({ method: "GET", url: "/api/v1/projects/不存在/roi" });
+    expect(missing.statusCode).toBe(404);
+  });
+
   it("POST rows/O1 → 值整体入 payload；O 表按 category 隔离", async () => {
     const res = await h.app.inject({
       method: "POST",

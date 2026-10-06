@@ -1131,9 +1131,16 @@ const TABLES_STAGE_5: readonly TableDef[] = [
     columns: [
       mid("benefit", "收益", { required: true, type: "longText", truncate: TRUNCATE_DEFAULT }),
       mid("metric", "对应指标", { required: true }),
+      // 年收益是**回收期的唯一输入**（投资回报卡片的公式：回收期 = 投入 ÷ 年收益）。
+      // 只能放中栏：它是数值结论，藏右栏等于让用户翻抽屉找钱（G-R9 数值列不许用文字代替数字）。
+      mid("annual_value", "年收益(元)", {
+        type: "number",
+        note: "元/年，纯数字；算不出钱的收益行留空（回收期只认这一列）",
+      }),
       mid("baseline", "基线", { required: true, type: "longText", truncate: TRUNCATE_DEFAULT }),
       mid("expected", "预期改善", { required: true, type: "longText", truncate: TRUNCATE_DEFAULT }),
-      mid("how_to_measure", "怎么测", { required: true, type: "longText", truncate: TRUNCATE_DEFAULT }),
+      // 怎么测 = 方法/取数口径，属"判断依据"侧 → 右栏（G-R9：来源、依据归右栏），给年收益腾出中栏位
+      sup("how_to_measure", "怎么测", { required: true, type: "longText", truncate: TRUNCATE_DEFAULT }),
       mid("user_feeling", "用户感受", { required: true, type: "longText", truncate: TRUNCATE_DEFAULT, note: "必须用客户语言" }),
       sup("evidence_level", "证据级", { required: true, enum: "evidence_level" }),
       sup("metric_type", "指标类型", { required: true }),
@@ -1141,7 +1148,12 @@ const TABLES_STAGE_5: readonly TableDef[] = [
       sup("auto_collect", "自动采集方案"),
       sup("source", "来源", { required: true }),
     ],
-    completeness: ["≥2 条", "baseline/how_to_measure/user_feeling 非空", "无基线行强制标 C 级假设"],
+    completeness: [
+      "≥2 条",
+      "baseline/how_to_measure/user_feeling 非空",
+      "年收益(元) 填纯数字（元/年），算不出钱的收益行留空",
+      "无基线行强制标 C 级假设",
+    ],
     consumedBy: [6],
   },
   {

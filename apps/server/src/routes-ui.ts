@@ -27,6 +27,7 @@ import { alignmentWithBrief, anchorFixedRows, buildFlowStatus, type InfoRow } fr
 import type { DbInstance } from "@scene/infra";
 import { scenarioLineContext } from "./scenario-lines.js";
 import { recomputeScenarioCost } from "./recompute-cost.js";
+import { computeScenarioRoi } from "./roi.js";
 import { dedupeLibrary, seedRateSkeleton } from "./library-service.js";
 import {
   parseDocument,
@@ -795,6 +796,20 @@ function registerProjectRoutes(app: FastifyInstance, deps: UiRoutesDeps) {
   app.post("/api/v1/projects/:id/recompute-cost", async (request, reply) => {
     const { id } = request.params as { id: string };
     const report = recomputeScenarioCost(db, id);
+    if (!report) return notFound(reply, `项目 ${id} 不存在`);
+    return report;
+  });
+
+  /**
+   * 投资回报（只读派生值）：回收期 = 投入 ÷ 年收益
+   *
+   * 投入取表5-5 的"总投入"行（没有则各子块合计相加），年收益取表6-1 各条的「年收益(元)」。
+   * 每次读都按当前两张表重算，所以用户改年收益、或重算表5-5，回收期立刻跟着变。
+   * 契约 `COMPUTED_CARDS.roi` 定的就是这条路：派生值不让模型填，避免与两张表打架。
+   */
+  app.get("/api/v1/projects/:id/roi", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const report = computeScenarioRoi(db, id);
     if (!report) return notFound(reply, `项目 ${id} 不存在`);
     return report;
   });

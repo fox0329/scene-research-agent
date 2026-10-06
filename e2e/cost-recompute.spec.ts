@@ -112,6 +112,93 @@ function seedCostData(dbPath: string, project: Project): void {
   db.close();
 }
 
+/**
+ * 种投资回报数据：表5-5 一行总投入（178,650）、表6-1 两条能算钱的收益 + 一条算不出钱的。
+ *
+ * 期望：回收期 = 178650 ÷ 200000 = 0.89 年 → 显示 0.9 年；投资回报率 1.12 倍/年；
+ * 并如实提示还有 1 条没填年收益（不当 0 算）。
+ */
+function seedRoiData(dbPath: string, project: Project): void {
+  const Database = require_("better-sqlite3") as new (path: string) => {
+    prepare: (sql: string) => { run: (...args: unknown[]) => unknown };
+    close: () => void;
+  };
+  const db = new Database(dbPath);
+  const now = new Date().toISOString();
+  const put = (id: string, stage: number, tableCode: string, row: Record<string, unknown>): void => {
+    db.prepare(
+      "INSERT INTO stage_data (id, scenario_id, stage, table_code, row, is_stale, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 0, ?, ?)",
+    ).run(id, project.id, stage, tableCode, JSON.stringify(row), now, now);
+  };
+
+  put(`e2e-roi-cost-${Date.now()}`, 4, "表5-5", { item: "项目总投入（含首年运营）", amount: 178650 });
+  put(`e2e-roi-v1-${Date.now()}`, 5, "表6-1", {
+    benefit: "巡检人力节省",
+    metric: "巡检工时",
+    annual_value: 120000,
+    baseline: "现在每月 120 工时",
+    expected: "降到 40 工时",
+    user_feeling: "不用天天爬梯子",
+  });
+  put(`e2e-roi-v2-${Date.now()}`, 5, "表6-1", {
+    benefit: "故障停机减少",
+    metric: "年停机时长",
+    annual_value: 80000,
+    baseline: "年停机 20 小时",
+    expected: "降到 4 小时",
+    user_feeling: "少挨投诉",
+  });
+  put(`e2e-roi-v3-${Date.now()}`, 5, "表6-1", {
+    benefit: "品牌提升",
+    metric: "客户认知度",
+    baseline: "未提供",
+    expected: "行业标杆案例",
+    user_feeling: "拿得出手",
+  });
+  db.close();
+}
+
+test("投资回报卡片：回收期 = 投入 ÷ 年收益，改年收益立刻重算（变更表 #104）", async ({ page }) => {
+  const res = await page.request.post(`${LIVE}/api/v1/projects`, {
+    data: { name: `E2E投资回报-${Date.now()}` },
+  });
+  const project = (await res.json()) as Project;
+  for (const step of [1, 2, 3, 4, 5]) {
+    const done = await page.request.post(`${LIVE}/api/v1/projects/${project.id}/flow/steps/${step}/complete`);
+    expect(done.ok()).toBe(true);
+  }
+  seedRoiData(newestDb(), project);
+
+  await page.goto(LIVE);
+  await expect(page.locator(".shell")).toBeVisible();
+  await page.getByText(project.name, { exact: false }).first().click();
+  await page.locator('button[aria-label^="第 6 步"]').first().click();
+
+  const card = page.locator(".det-section", { hasText: "投资回报" }).first();
+  await expect(card).toContainText("总投入 178,650 元");
+  await expect(card).toContainText("年收益 200,000 元/年");
+  await expect(card).toContainText("回收期 0.9 年");
+  await expect(card).toContainText("1.12 倍/年");
+  await expect(card).toContainText("还有 1 条没填年收益");
+
+  /* 改年收益（表6-1 中栏第 3 列）→ 回收期与回报率立刻跟着变，不用刷新 */
+  const cell = page
+    .locator(".pnl .tw")
+    .first()
+    .locator("tbody tr", { hasText: "巡检人力节省" })
+    .locator("td")
+    .nth(2);
+  await cell.click();
+  await cell.evaluate((el) => {
+    el.textContent = "320000";
+  });
+  await cell.blur();
+  /* 320000 + 80000 = 400000 → 178650 ÷ 400000 = 0.45 年；400000 ÷ 178650 = 2.24 倍/年 */
+  await expect(card).toContainText("年收益 400,000 元/年");
+  await expect(card).toContainText("回收期 0.4 年");
+  await expect(card).toContainText("2.24 倍/年");
+});
+
 test("表5-5 按 M6 费率重算：金额按公式改写、出处标系统计算、缺单价如实报（变更表 #103）", async ({
   page,
 }) => {
