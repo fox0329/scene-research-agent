@@ -1435,6 +1435,9 @@ export function registryIssues(): readonly string[] {
 // 而是：**内部报告 = 阶段总结装配**，**对外材料 = 指定表的中栏列渲染**。
 // 对外材料只渲染中栏列 → 天然不含来源 / 证据级 / 权威性（元信息在右栏补充）。
 
+/** 报告口径（内部调研报告 / 对外汇报材料） */
+export type ReportKind = "internal" | "external";
+
 export interface DeliverableSection {
   key: string;
   title: string;
@@ -1444,25 +1447,39 @@ export interface DeliverableSection {
   note?: string;
 }
 
-/**
- * 报告章节（内部调研报告 / 对外汇报材料**共用同一套章节**）
- *
- * 用户定调（2026-10-06）：「交付物的内容质量太差了吧，首先应该是报告，不是记录，
- * 整体章节应该是差不多了，都是场景定义、认识、存在的问题、我们的方案、能够提供的
- * 价值、总结。只是内部侧重客观、风险，外部侧重痛点、方案、价值。」
- *
- * 于是同一套六章、两份侧重：
- *  - 内部：`internal` 块 = 全量表（含利润池 / 上游格局 / 竞品 / 替代方案 / 坑），
- *    每块带来源与核实结论，末尾另有风险与边界
- *  - 对外：`external` 块 = 只留客户视角的列（去掉内部论据、风险、竞品身份、财务口径）
- *
- * 注意：**正文不再是「阶段总结」的拼接**（那是记录，不是报告）；阶段总结仍可在界面
- * 右栏逐步查看。
- */
+/** 章节里必须自建的小节，以及这一小节要产出的「方案构件」 */
+export type ReportArtifact =
+  /** 自建表格（层次/职责/选型/步骤这类，素材表里没有现成结构） */
+  | "table"
+  /** 带编号的连接关系（① ② ③…），与接口表一一对应 */
+  | "numbered-connections"
+  /** 我方设计原则（原则一/原则二…） */
+  | "principles"
+  /** 价值条目（每条必须带度量口径） */
+  | "value-with-metric"
+  /** 边界声明：明确「不做什么」 */
+  | "boundary"
+  /** 术语表（术语 + 说明） */
+  | "glossary";
+
+export interface ReportSection {
+  /** 小节名（`###` 级） */
+  title: string;
+  /**
+   * 同义关键词：模型换个说法写这一节也算写了
+   *
+   * 实测模型会把「场景在业务中的位置」写成「场景定位」或直接并进章节导语——
+   * 小节名只是提示，不该卡住一份内容已经写全的报告。
+   */
+  keywords?: readonly string[];
+  /** 这一小节必须自建的构件（校验据此把关，不来自任何表） */
+  artifacts?: readonly ReportArtifact[];
+}
+
 export interface ReportBlock {
   /** 表号 */
   code: string;
-  /** 本章这一块的小标题（读者看到的小节名） */
+  /** 本章这一块的小标题（模型看到的素材名） */
   heading: string;
   /** 只取这些列（缺省 = 该表全部中栏列）——同一张表在不同章节取不同侧面 */
   cols?: readonly string[];
@@ -1470,13 +1487,37 @@ export interface ReportBlock {
   as?: "bullets" | "table";
 }
 
+/**
+ * 报告章节
+ *
+ * 用户定调（2026-10-06，变更表 #112）：「交付物的内容质量太差了吧，首先应该是报告，
+ * 不是记录……都是场景定义、认识、存在的问题，我们的方案，能够提供的价值、总结。
+ * 只是内部侧重客观、风险，外部侧重痛点、方案、价值。」
+ *
+ * 用户随即给出参照件（`城市门站调压站-智能化提升方案.docx`）并纠偏（变更表 #113）：
+ * 「不要把报告做成前面内容的总结，而是形成自己的价值」——参照件的价值不在章节名，
+ * 而在**报告自己长出了方案构件**：设计原则、总体架构分层、主/辅职责对照、编号连接
+ * 关系、端侧选配「或」关系、实施要点、每条带度量口径的核心价值、能力边界、
+ * 下一步（步骤/内容/交付物）、术语表。这些**没有一张来自调研表**。
+ *
+ * 于是本章节模型定义为：`internal`/`external` 块只提供**素材**（模型据此撰写），
+ * `sections` 声明这一章必须写出的 `###` 小节与必须自建的构件——素材是证据，
+ * 构件才是报告自己的价值。
+ *
+ * 标题里的序号由 `reportChapterHeading()` 按口径动态生成（内外章数不同：内部多一章
+ * 「客观与风险」），所以这里只给名字，不写序号。
+ */
 export interface ReportChapter {
   key: string;
-  /** 章节标题（含序号，两份共用） */
-  title: string;
-  /** 内部版本章包含的内容块 */
+  /** 章节名（不含序号） */
+  label: string;
+  /** 只在这份口径里出现的章节（缺省 = 两份都有） */
+  only?: ReportKind;
+  /** 必须写出的小节（`###` 级）与自建构件 */
+  sections: readonly ReportSection[];
+  /** 内部版素材 */
   internal: readonly ReportBlock[];
-  /** 对外版本章包含的内容块 */
+  /** 对外版素材 */
   external: readonly ReportBlock[];
   /** 章节口径说明（可分别给两份） */
   note?: { internal?: string; external?: string };
@@ -1484,39 +1525,40 @@ export interface ReportChapter {
 
 export const REPORT_CHAPTERS: readonly ReportChapter[] = [
   {
-    key: "scene",
-    title: "一、场景定义",
-    internal: [{ code: "表1-1", heading: "在讲哪个场景" }],
-    external: [{ code: "表1-1", heading: "在讲哪个场景" }],
-  },
-  {
-    key: "understand",
-    title: "二、场景认识",
+    key: "status",
+    label: "现状",
+    sections: [
+      { title: "场景在业务中的位置", keywords: ["位置", "定位", "在业务"] },
+      { title: "既有体系构成", keywords: ["既有", "体系", "构成"], artifacts: ["table"] },
+      { title: "现状特征与提升空间", keywords: ["特征", "提升空间", "现状"] },
+    ],
     internal: [
+      { code: "表1-1", heading: "场景锚（在讲哪个场景）" },
       { code: "表1-2", heading: "业务环节与现在的做法", cols: ["link", "owner_now", "current_tool", "current_flow"] },
-      { code: "表2-2", heading: "场景里有哪些要素", cols: ["element_name", "element_type", "function", "vendor", "price_range"] },
       { code: "表2-3", heading: "系统怎么连（分层架构）", cols: ["layer", "components", "interface"] },
-      { code: "表2-5", heading: "物理与合规约束", cols: ["constraint_item", "required_value", "standard_no"] },
       { code: "表2-7", heading: "现在怎么交付与运维", cols: ["item", "status"] },
-      { code: "表3-2", heading: "市场上的方案形态", cols: ["form", "key_points", "leader", "fit_for"] },
-      { code: "表3-3", heading: "客户怎么买", cols: ["customer_type", "decision_maker", "payer", "budget_item"] },
       { code: "表3-9", heading: "行业趋势", cols: ["trend", "driver", "impact", "window"] },
-      { code: "表3-1", heading: "钱怎么分（利润池，内部）", cols: ["link", "gross_margin", "representative"] },
-      { code: "表3-5", heading: "上游供给格局（内部）", cols: ["link", "who_supplies", "concentration", "supply_risk"] },
     ],
     external: [
+      { code: "表1-1", heading: "场景锚（在讲哪个场景）" },
       { code: "表1-2", heading: "业务环节与现在的做法", cols: ["link", "owner_now", "current_tool"] },
       { code: "表2-3", heading: "系统怎么连（分层架构）", cols: ["layer", "components", "interface"] },
-      { code: "表2-5", heading: "物理与合规约束", cols: ["constraint_item", "required_value", "standard_no"] },
       { code: "表2-7", heading: "现在怎么交付与运维", cols: ["item", "status"] },
-      { code: "表3-2", heading: "市场上的方案形态", cols: ["form", "key_points", "fit_for"] },
-      { code: "表3-3", heading: "客户怎么买", cols: ["customer_type", "decision_maker", "budget_item"] },
       { code: "表3-9", heading: "行业趋势", cols: ["trend", "impact"] },
     ],
+    note: {
+      internal: "先讲清场景在业务链条里的位置与既有体系，再讲现状特征——为后面的方案与价值立前提。",
+      external: "先讲清场景在业务链条里的位置与既有体系，不评价贵方现状好坏。",
+    },
   },
   {
     key: "problems",
-    title: "三、存在的问题",
+    label: "场景与问题",
+    sections: [
+      { title: "场景边界", keywords: ["边界"] },
+      { title: "典型问题", keywords: ["问题", "痛点"] },
+      { title: "门槛与合规", keywords: ["门槛", "合规"] },
+    ],
     internal: [
       { code: "表1-2", heading: "各环节现在的问题", cols: ["link", "pain"] },
       { code: "表3-8", heading: "没被满足的需求（内部排序与验证）", cols: ["rank", "gap", "who_hurts", "pain_level", "current_alternative", "cross_validation"] },
@@ -1532,11 +1574,20 @@ export const REPORT_CHAPTERS: readonly ReportChapter[] = [
     ],
     note: {
       external: "本节的痛点来自现场做法与多方验证，不含我方内部的规避手法与商务判断。",
+      internal: "问题要归纳成几类（不是逐条搬运），并把哪些来自现场、哪些来自行业通行认识分开写。",
     },
   },
   {
     key: "solution",
-    title: "四、我们的方案",
+    label: "方案",
+    sections: [
+      { title: "设计原则", keywords: ["原则"], artifacts: ["principles"] },
+      { title: "总体架构", keywords: ["架构", "层次"], artifacts: ["table"] },
+      { title: "主辅职责对照", keywords: ["职责", "主辅"], artifacts: ["table"] },
+      { title: "连接关系与接口", keywords: ["连接", "接口"], artifacts: ["numbered-connections"] },
+      { title: "选型与配置", keywords: ["选型", "配置", "组成", "清单"], artifacts: ["table"] },
+      { title: "实施要点", keywords: ["实施", "要点", "部署"] },
+    ],
     internal: [
       { code: "表4-2", heading: "我方在哪些环节参与、以什么角色", cols: ["link", "can_touch", "our_role", "role_reason"] },
       { code: "表4-3", heading: "需求-能力对照（含边界与风险）", cols: ["gap_ref", "match", "our_product", "ability_basis", "boundary_note", "risk"] },
@@ -1548,16 +1599,21 @@ export const REPORT_CHAPTERS: readonly ReportChapter[] = [
       { code: "表4-2", heading: "我方在哪些环节参与、以什么角色", cols: ["link", "can_touch", "our_role"] },
       { code: "表4-3", heading: "需求-能力对照", cols: ["gap_ref", "match", "our_product", "boundary_note"] },
       { code: "表5-1", heading: "方案架构与接口", cols: ["layer", "components", "interface", "integration", "boundary", "interface_name", "type", "protocol"] },
-      { code: "表5-3", heading: "实施安排", cols: ["item", "content", "window", "man_days"] },
+      { code: "表5-3", heading: "实施安排", cols: ["item", "content", "window"] },
       { code: "表5-4", heading: "交付与运维", cols: ["item", "content", "sla"] },
     ],
     note: {
+      internal: "这一章是报告的主体：原则、架构、职责划分、连接关系、选型、实施要点都要自建，素材只作依据。",
       external: "方案只写清「我方做什么、到哪一步、接口在哪」，不含内部论据与商务判断。",
     },
   },
   {
     key: "value",
-    title: "五、能够提供的价值",
+    label: "价值",
+    sections: [
+      { title: "核心价值", keywords: ["价值", "收益"], artifacts: ["value-with-metric"] },
+      { title: "能力边界", keywords: ["边界", "不做"], artifacts: ["boundary"] },
+    ],
     internal: [
       { code: "表6-1", heading: "收益 → 指标 → 基线与预期", as: "table", cols: ["benefit", "metric", "baseline", "expected", "how_to_measure"] },
       { code: "表4-5", heading: "竞争力自评", as: "table", cols: ["dimension", "weight", "score", "basis"] },
@@ -1574,19 +1630,69 @@ export const REPORT_CHAPTERS: readonly ReportChapter[] = [
     },
   },
   {
-    key: "summary",
-    title: "六、总结",
-    /* 本章由代码按数据汇总（事实、边界、风险、待补），不直接搬某张表 */
+    key: "risk",
+    label: "客观与风险",
+    /* 只有内部版有这一章：由代码按数据状态汇总（哪些结论立得住 / 哪些待验证 / 数据状态） */
+    only: "internal",
+    sections: [
+      { title: "哪些结论立得住", keywords: ["立得住", "站得住", "结论"] },
+      { title: "哪些待验证", keywords: ["待验证", "验证", "不确定"] },
+      { title: "数据状态", keywords: ["数据", "来源"], artifacts: ["table"] },
+    ],
     internal: [],
     external: [],
     note: {
-      internal: "只汇总事实与不确定，不给决策建议。",
-      external: "只陈述信息与安排，不含结论性建议。",
+      internal: "只汇总数据状态与不确定，不给决策建议——判断由使用者自己做。",
+    },
+  },
+  {
+    key: "next",
+    label: "下一步",
+    sections: [{ title: "步骤与交付物", keywords: ["步骤", "交付物", "计划", "安排"], artifacts: ["table"] }],
+    internal: [
+      { code: "表5-3", heading: "实施安排", cols: ["item", "content", "window", "man_days", "rollback"] },
+      { code: "表5-4", heading: "交付与运维", cols: ["item", "content", "sla"] },
+      { code: "表6-4", heading: "试点与验收", cols: ["kind", "content"] },
+    ],
+    external: [
+      { code: "表5-3", heading: "实施安排", cols: ["item", "content", "window"] },
+      { code: "表5-4", heading: "交付与运维", cols: ["item", "content", "sla"] },
+      { code: "表6-4", heading: "试点与验收", cols: ["kind", "content"] },
+    ],
+    note: {
+      internal: "要做什么、谁来做、需要什么条件、交付什么——不含「该不该做」的判断。",
+      external: "要做什么、需要贵方配合什么、交付什么——不含结论性建议。",
     },
   },
 ];
 
-/** 内部调研报告：附录部分 */
+/** 中文序号（章标题用） */
+const CN_NUMERALS = ["一", "二", "三", "四", "五", "六", "七", "八", "九", "十"] as const;
+
+/** 某一口径下的章节（内部多一章「客观与风险」） */
+export function reportChaptersOf(kind: ReportKind): readonly ReportChapter[] {
+  return REPORT_CHAPTERS.filter((c) => c.only === undefined || c.only === kind);
+}
+
+/** 章节标题（含序号）——序号按该口径下的位置生成，不写死在定义里 */
+export function reportChapterHeading(kind: ReportKind, key: string): string {
+  const list = reportChaptersOf(kind);
+  const i = list.findIndex((c) => c.key === key);
+  return i < 0 ? "" : `${CN_NUMERALS[i] ?? String(i + 1)}、${list[i]!.label}`;
+}
+
+/** 全部章节标题（按口径顺序） */
+export function reportChapterHeadings(kind: ReportKind): readonly string[] {
+  return reportChaptersOf(kind).map((c) => reportChapterHeading(kind, c.key));
+}
+
+/** 术语表（两份都要，模型撰写；内部版排在附录 A/B 之后） */
+export const REPORT_GLOSSARY: { internal: string; external: string } = {
+  internal: "附录 C、术语表",
+  external: "附录、术语表",
+};
+
+/** 内部调研报告：附录部分（术语表由模型撰写，不在此列） */
 export const INTERNAL_APPENDIX_SECTIONS: readonly DeliverableSection[] = [
   {
     key: "sources",

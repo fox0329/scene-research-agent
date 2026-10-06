@@ -30,7 +30,9 @@
 
 import {
   INTERNAL_APPENDIX_SECTIONS,
-  REPORT_CHAPTERS,
+  REPORT_GLOSSARY,
+  reportChapterHeading,
+  reportChaptersOf,
   middleColumns,
   tableDef,
   type DeliverableInput,
@@ -253,83 +255,50 @@ function renderBlock(
 }
 
 /** 六、总结：内部 = 事实 / 边界 / 风险 / 待补；对外 = 价值 / 验证 / 需确认 */
-function renderSummary(kind: "internal" | "external", stageData: readonly StageData[]): string {
-  const out: string[] = ["### 6.1 事实汇总", ""];
+/**
+ * 「客观与风险」章的兜底正文（只内部版有）
+ *
+ * 模型没写或没写全时用这段：把数据状态摆清楚——哪些结论立得住（有来源且核实通过）、
+ * 哪些待验证（单一来源 / 无法核实 / 无出处）、门槛否决方是谁。不给判定与建议。
+ */
+function renderDataStatus(stageData: readonly StageData[]): string {
   const n = (code: string) => countRows(stageData, code);
-  const facts: string[] = [
-    `- 业务环节 ${n("表1-2")} 个；场景要素 ${n("表2-2")} 个；分层架构 ${n("表2-3")} 层。`,
-    `- 门槛与合规 ${n("表1-3")} 条；同行踩过的坑 ${n("表3-7")} 条；没被满足的需求 ${n("表3-8")} 条。`,
-    `- 我方参与判定 ${n("表4-2")} 个环节；需求-能力对照 ${n("表4-3")} 条；方案接口 ${n("表5-1")} 项；实施项 ${n("表5-3")} 项；交付运维项 ${n("表5-4")} 项。`,
-    `- 价值条目 ${n("表6-1")} 条（其中 ${
-      stageData.filter((r) => r.table_code === "表6-1" && !blank(r.row["baseline"])).length
-    } 条有基线）；试点与验收 ${n("表6-4")} 条。`,
+  const rows = (pred: (r: StageData) => boolean) => stageData.filter(pred).length;
+  const verdict = (r: StageData): string => String(r.row["verification_verdict"] ?? "");
+  const single = rows((r) => verdict(r).includes("单一来源"));
+  const unverified = rows(
+    (r) => verdict(r).includes("无法核实") || verdict(r).includes("有反证"),
+  );
+  const noSource = rows((r) => blank(r.source));
+  const withSource = stageData.length - noSource;
+
+  const out: string[] = [
+    "### 数据状态",
+    "",
+    `- 本场景共有信息 ${stageData.length} 条：有来源 ${withSource} 条、无来源 ${noSource} 条。`,
+    `- 核实结论为「单一来源」的 ${single} 条（同一说法只有一处来源）；「无法核实 / 有反证」的 ${unverified} 条。`,
+    `- 事实底数：业务环节 ${n("表1-2")} 个、场景要素 ${n("表2-2")} 个、门槛 ${n("表1-3")} 条、未满足需求 ${n("表3-8")} 条、需求-能力对照 ${n("表4-3")} 条、接口 ${n("表5-1")} 项、价值条目 ${n("表6-1")} 条。`,
+    "",
+    "### 哪些结论立得住",
+    "",
+    "- 有来源、且核实结论不是「无法核实 / 有反证」的条目，可以直接引用；逐条出处见附录 A。",
+    "- 前提：来源本身可定位（文件名 + 页码 / URL + 日期）。来源不成立的条目按作废处理（G-R0）。",
+    "",
+    "### 哪些待验证",
+    "",
+    unverified > 0
+      ? `- ${unverified} 条核实结论为「无法核实 / 有反证」，不能当结论用。`
+      : "- 暂无「无法核实 / 有反证」的条目（仍需按附录 A 抽查）。",
+    single > 0
+      ? `- ${single} 条只有单一来源：同行业通行认识，不等于本客户事实，需在现场验证。`
+      : "- 暂无单一来源条目。",
+    noSource > 0
+      ? `- ${noSource} 条没有出处，引用前必须补出处，否则作废。`
+      : "- 全部条目都有出处。",
   ];
-  out.push(...facts, "");
-
-  if (kind === "internal") {
-    const boundaries = valuesOf(stageData, "表5-1", "boundary").concat(
-      valuesOf(stageData, "表4-3", "boundary_note"),
-    );
-    out.push("### 6.2 边界与不做", "");
-    out.push(
-      ...(boundaries.length > 0
-        ? boundaries.slice(0, 12).map((b) => `- ${b}`)
-        : ["- （尚无边界声明——跑完第 5 步会写进表5-1）"]),
-      "",
-    );
-
-    const risks = valuesOf(stageData, "表4-3", "risk");
-    const veto = valuesOf(stageData, "表1-3", "veto_holder");
-    out.push("### 6.3 风险与不确定", "");
-    out.push(...risks.slice(0, 12).map((r) => `- ${r}`));
-    if (veto.length > 0) out.push(`- 门槛否决方：${veto.join("、")}——门槛未过之前，方案与报价都不作数。`);
-    const unverified = stageData.filter(
-      (r) =>
-        String(r.row["verification_verdict"] ?? "").includes("无法核实") ||
-        String(r.row["verification_verdict"] ?? "").includes("有反证"),
-    ).length;
-    const noSource = stageData.filter((r) => blank(r.source)).length;
-    if (unverified > 0) out.push(`- 核实结论为「无法核实 / 有反证」的信息 ${unverified} 条（详见附录 A 与各表核实说明）。`);
-    if (noSource > 0) out.push(`- 无来源的信息 ${noSource} 条——引用前需补出处（G-R0：来源不存在则作废）。`);
-    out.push("");
-
-    const missing = REPORT_CHAPTERS.flatMap((c) => c.internal)
-      .map((b) => b.code)
-      .filter((code, i, arr) => arr.indexOf(code) === i)
-      .filter((code) => n(code) === 0);
-    if (missing.length > 0) {
-      out.push("### 6.4 待补齐", "");
-      for (const code of missing) {
-        out.push(`- ${code} ${tableDef(code)?.name ?? ""}：尚无数据`);
-      }
-      out.push("");
-    }
-  } else {
-    const benefits = stageData.filter((r) => r.table_code === "表6-1");
-    out.push("### 6.2 价值与验证", "");
-    if (benefits.length > 0) {
-      for (const r of benefits.slice(0, 8)) {
-        out.push(`- ${cell(r.row["benefit"])}（指标：${cell(r.row["metric"])}）`);
-      }
-    } else {
-      out.push("- （尚无价值条目）");
-    }
-    const pilot = stageData.filter((r) => r.table_code === "表6-4");
-    if (pilot.length > 0) {
-      out.push("", "### 6.3 试点与验收安排", "");
-      for (const r of pilot) out.push(`- **${cell(r.row["kind"])}**：${cell(r.row["content"])}`);
-    }
-    const needBaseline = stageData.filter(
-      (r) => r.table_code === "表6-1" && blank(r.row["baseline"]),
-    ).length;
-    out.push("", "### 6.4 需要贵方确认的信息", "");
-    out.push(
-      `- 价值条目中 ${needBaseline} 条缺本客户基线；摸清基线后即可算出可验收的改善幅度。`,
-      "- 门槛与合规的现有认证状态、以及现场设备清单，是下一步复核的输入。",
-    );
-    out.push("");
-  }
-  return out.join("\n").trimEnd();
+  const veto = valuesOf(stageData, "表1-3", "veto_holder");
+  if (veto.length > 0) out.push(`- 门槛否决方：${veto.join("、")}——门槛未过之前，方案与报价都不作数。`);
+  return out.join("\n").trim();
 }
 
 export interface ChapterDigest {
@@ -362,13 +331,13 @@ export function reportChapterDigest(
   opts: DigestOptions = {},
 ): ChapterDigest[] {
   const isInternal = kind === "internal";
-  return REPORT_CHAPTERS.map((chapter) => {
+  return reportChaptersOf(kind).map((chapter) => {
     const blocks = isInternal ? chapter.internal : chapter.external;
     const parts: string[] = [];
     const lead = chapterLead(chapter, kind, stageData);
     if (lead) parts.push(lead, "");
-    if (chapter.key === "summary") {
-      parts.push(renderSummary(kind, stageData));
+    if (chapter.key === "risk") {
+      parts.push(renderDataStatus(stageData));
     } else {
       let rendered = 0;
       for (const b of blocks) {
@@ -383,8 +352,19 @@ export function reportChapterDigest(
         parts.push(`（本节信息待补充：${blocks.map((b) => b.code).join("、") || "—"}）`);
       }
     }
-    return { key: chapter.key, title: chapter.title, markdown: parts.join("\n").trim() };
-  });
+    return {
+      key: chapter.key,
+      title: reportChapterHeading(kind, chapter.key),
+      markdown: parts.join("\n").trim(),
+    };
+  }).concat([
+    {
+      key: "glossary",
+      title: isInternal ? REPORT_GLOSSARY.internal : REPORT_GLOSSARY.external,
+      /* 素材留空：术语表由模型撰写，写不出来就不出这一节（不许拿提示文字当正文） */
+      markdown: "",
+    },
+  ]);
 }
 
 /** 组装一份报告（模型正文优先，逐章兜底） */
@@ -395,11 +375,12 @@ export function buildReportMarkdown(
 ): string {
   const digests = new Map(reportChapterDigest(kind, data.stageData).map((d) => [d.key, d]));
   const model = new Map((data.chapters ?? []).map((c) => [c.key, c.markdown.trim()]));
-  return buildReport(data, today, kind, (chapter) => {
-    const own = model.get(chapter.key);
-    if (own) return own;
-    return digests.get(chapter.key)?.markdown ?? "";
-  });
+  return buildReport(
+    data,
+    today,
+    kind,
+    (key) => model.get(key) ?? digests.get(key)?.markdown ?? "",
+  );
 }
 
 /**
@@ -411,7 +392,7 @@ function buildReport(
   data: DeliverableInput,
   today: string,
   kind: "internal" | "external",
-  bodyOf: (chapter: ReportChapter) => string,
+  bodyOf: (key: string) => string,
 ): string {
   const { scenario, stageData } = data;
   const sub = anchorLine(stageData);
@@ -436,11 +417,11 @@ function buildReport(
 
   const sections: string[] = [head.join("\n")];
 
-  for (const chapter of REPORT_CHAPTERS) {
+  for (const chapter of reportChaptersOf(kind)) {
     const note = isInternal ? chapter.note?.internal : chapter.note?.external;
-    const body: string[] = [`## ${chapter.title}`, ""];
+    const body: string[] = [`## ${reportChapterHeading(kind, chapter.key)}`, ""];
     if (note) body.push(`> ${note}`, "");
-    const text = bodyOf(chapter).trim();
+    const text = bodyOf(chapter.key).trim();
     body.push(text || "（本节内容待补）");
     sections.push(body.join("\n").trimEnd());
   }
@@ -450,10 +431,12 @@ function buildReport(
       if (sec.key === "sources") sections.push(renderSourceIndex(sec.title, stageData, sec.note));
       if (sec.key === "coverage") sections.push(renderCoverage(sec.title, stageData, sec.note));
     }
-  } else {
-    sections.push(
-      ["> 本材料只呈现信息与安排，不含结论性建议；如需进一步确认，请与对接人核对。"].join("\n"),
-    );
+  }
+  // 术语表由模型撰写（认不出的术语不硬编）；模型没写就不出现这一节，不造假
+  const glossary = bodyOf("glossary").trim();
+  if (glossary) {
+    const title = isInternal ? REPORT_GLOSSARY.internal : REPORT_GLOSSARY.external;
+    sections.push([`## ${title}`, "", glossary].join("\n"));
   }
 
   return sections.join("\n\n---\n\n");

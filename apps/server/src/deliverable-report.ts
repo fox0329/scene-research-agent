@@ -15,7 +15,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { DshClient, FollowEvent, Scenario, SessionHandle, StageData } from "@scene/contract";
-import { REPORT_CHAPTERS, tableDef } from "@scene/contract";
+import { reportChaptersOf, tableDef } from "@scene/contract";
 import type { DbInstance } from "@scene/infra";
 import { buildReportMarkdown, reportChapterDigest, type ChapterDigest } from "@scene/infra";
 import {
@@ -185,9 +185,9 @@ async function writeOneReport(args: {
     lastViolations = gate.violations;
     push({
       type: "progress",
-      message: `${label}：${gate.chars} 字、${gate.chapters.length}/6 章${
-        gate.ok ? "；校验通过" : "；有硬伤待改"
-      }`,
+      message: `${label}：${gate.chars} 字、${gate.chapters.length}/${
+        digest.length
+      } 节${gate.ok ? "；校验通过" : "；有硬伤待改"}`,
     });
     if (gate.ok) {
       if (retried) push({ type: "progress", message: `${label}：重写后已达标` });
@@ -296,9 +296,9 @@ function assemble(
 
 /** 尚无数据的表（按报告实际用到的表算） */
 function missingTablesOf(kind: ReportKind, stageData: readonly StageData[]): string[] {
-  const codes = REPORT_CHAPTERS.flatMap((c) => (kind === "internal" ? c.internal : c.external)).map(
-    (b) => b.code,
-  );
+  const codes = reportChaptersOf(kind)
+    .flatMap((c) => (kind === "internal" ? c.internal : c.external))
+    .map((b) => b.code);
   const unique = [...new Set(codes)];
   const have = new Set(stageData.map((r) => String(r.table_code)));
   return unique.filter((code) => !have.has(code)).map((code) => `${code} ${tableDef(code)?.name ?? ""}`);

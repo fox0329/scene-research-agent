@@ -1,21 +1,38 @@
 /**
- * @scene/domain — 交付物报告的确定性校验（变更表 #112）
+ * @scene/domain — 交付物报告的确定性校验（变更表 #112 / #113）
  *
- * 报告正文改由模型撰写后，「不给决策建议」「对外材料不含内部信息」「六章齐全」
- * 这三条**不能再靠提示词自觉**——它们是产品铁律，必须落确定性层（AGENTS.md §三.5）。
+ * 报告正文改由模型撰写后，「不给决策建议」「对外材料不含内部信息」「章节齐全」这些
+ * **不能再靠提示词自觉**——它们是产品铁律，必须落确定性层（AGENTS.md §三.5）。
  *
  * 判定分两档：
- *  - **硬伤**（缺章 / 对外泄漏内部信息 / 出现决策建议）：必须重写，调用方会带着
- *    违规清单重试一次；仍不过就用确定性兜底版。
+ *  - **硬伤**（缺章 / 缺少方案构件 / 对外泄漏内部信息 / 出现决策建议）：必须重写，调用方
+ *    会带着违规清单重试一次；仍不过就用确定性兜底版。
  *  - **存疑**（内部版缺风险与边界、篇幅明显不足）：只提示，不拦。
+ *
+ * 变更表 #113（用户给参照件后纠偏）：「不要把报告做成前面内容的总结，而是形成自己的
+ * 价值」——所以校验不只数章节，还查**方案构件**（设计原则、自建表格、编号连接关系、
+ * 带度量口径的价值条目、边界、术语表）是否真的长出来了。
  */
 
-import { REPORT_CHAPTERS } from "@scene/contract";
+import {
+  reportChaptersOf,
+  type ReportArtifact,
+  type ReportKind,
+  type ReportSection,
+} from "@scene/contract";
 
-export type ReportKind = "internal" | "external";
+export type { ReportKind };
 
 export interface ReportViolation {
-  kind: "缺章" | "对外泄漏内部信息" | "出现决策建议" | "缺风险或边界" | "篇幅不足";
+  kind:
+    | "缺章"
+    | "缺小节"
+    | "缺少方案构件"
+    | "对外泄漏内部信息"
+    | "出现决策建议"
+    | "缺风险或边界"
+    | "缺术语表"
+    | "篇幅不足";
   /** 硬伤 = 必须重写 */
   hard: boolean;
   detail: string;
@@ -67,12 +84,13 @@ function chapterName(title: string): string {
  * 更具体的写法排在前面。
  */
 const CHAPTER_ALIASES: readonly (readonly [string, readonly string[]])[] = [
-  ["scene", ["场景定义", "场景概述", "场景与边界", "场景画像", "场景定位"]],
-  ["understand", ["场景认识", "认识场景", "场景理解"]],
-  ["problems", ["存在的问题", "问题", "痛点"]],
-  ["solution", ["我们的方案", "方案"]],
-  ["value", ["能够提供的价值", "价值", "收益"]],
-  ["summary", ["总结", "结论"]],
+  ["status", ["现状", "场景定义", "场景概述", "场景与边界", "场景画像", "场景定位"]],
+  ["problems", ["场景与问题", "存在的问题", "问题", "痛点"]],
+  ["solution", ["方案", "我们的方案", "解决方案"]],
+  ["value", ["价值", "能够提供的价值", "收益"]],
+  ["risk", ["客观与风险", "风险与不确定", "客观与不确定"]],
+  ["next", ["下一步", "实施路径", "后续步骤"]],
+  ["glossary", ["术语表", "术语"]],
 ];
 
 /** 正文标题 → 章 key（认不出返回 null） */
@@ -94,16 +112,101 @@ export function reportChapterHeadings(markdown: string): string[] {
   return out;
 }
 
+/** 小节标题（`###` 级） */
+function subHeadings(markdown: string): string[] {
+  return markdown
+    .split("\n")
+    .map((l) => /^###\s+(.+?)\s*$/.exec(l)?.[1])
+    .filter((x): x is string => typeof x === "string")
+    .map((t) => chapterName(t.replace(/^[0-9.]+\s*/, "")));
+}
+
+/** markdown 表格块数（按分隔行 |---|---| 计，术语表也算一块） */
+function markdownTableCount(markdown: string): number {
+  return markdown
+    .split("\n")
+    .filter((l) => /^\|(?:\s*:?-{2,}:?\s*\|)+$/.test(l.trim())).length;
+}
+
+const ARTIFACT_LABEL: Record<ReportArtifact, string> = {
+  table: "自建表格",
+  "numbered-connections": "带编号的连接关系",
+  principles: "设计原则",
+  "value-with-metric": "带度量口径的价值条目",
+  boundary: "边界声明",
+  glossary: "术语表",
+};
+
+/** 每种构件的存在性判据（宁可宽松，只拦"完全没长出来"） */
+const ARTIFACT_CHECKS: Record<ReportArtifact, (md: string, tables: number) => boolean> = {
+  // 要的是"报告自己画了表"：架构 / 职责对照 / 选型 / 步骤这类，至少三张
+  table: (_md, tables) => tables >= 3,
+  "numbered-connections": (md) =>
+    /[①②③④⑤⑥⑦⑧⑨⑩]/.test(md) || /(?:^|\n)\s*\|\s*\d+\s*\|/.test(md),
+  // 「原则一/原则二」这种枚举才算真的写了原则（只挂一个小节标题不算）
+  principles: (md) => /原则\s*[一二三四五1-5]/.test(md),
+  "value-with-metric": (md) => /(?:指标|口径|度量|怎么测|可度量)/.test(md),
+  boundary: (md) => /(?:不替代|不参与|不承担|不做|不在本方案范围)/.test(md),
+  glossary: (md) => /术语/.test(md),
+};
+
+/** 哪些方案构件完全没长出来（硬伤：报告不能只是素材的复述） */
+function missingArtifacts(markdown: string, sections: readonly ReportSection[]): string[] {
+  const tables = markdownTableCount(markdown);
+  const out: string[] = [];
+  for (const sec of sections) {
+    for (const a of sec.artifacts ?? []) {
+      if (!ARTIFACT_CHECKS[a](markdown, tables)) {
+        out.push(`${ARTIFACT_LABEL[a]}（在「${sec.title}」里）`);
+      }
+    }
+  }
+  return out;
+}
+
+/** 小节是否写了（认小节名，也认同义关键词） */
+function sectionWritten(sec: ReportSection, subs: readonly string[]): boolean {
+  const name = chapterName(sec.title);
+  if (subs.some((h) => h.includes(name) || name.includes(h))) return true;
+  return (sec.keywords ?? []).some((k) => subs.some((h) => h.includes(k)));
+}
+
+/** 哪些小节没单独成节（只提示：换个说法或并进本章导语都不算缺陷） */
+function missingSections(sections: readonly ReportSection[], subs: readonly string[]): string[] {
+  return sections.filter((sec) => !sectionWritten(sec, subs)).map((sec) => `「${sec.title}」`);
+}
+
 /** 一份报告的确定性校验 */
 export function checkReport(kind: ReportKind, markdown: string): ReportGateReport {
   const text = markdown.replace(/\s/g, "");
   const chapters = reportChapterHeadings(markdown);
+  const subs = subHeadings(markdown);
   const violations: ReportViolation[] = [];
+  const defs = reportChaptersOf(kind);
 
   const written = new Set(chapters.map(matchChapterKey).filter((k) => k !== null));
-  const missing = REPORT_CHAPTERS.filter((c) => !written.has(c.key)).map((c) => chapterName(c.title));
+  const missing = defs.filter((c) => !written.has(c.key)).map((c) => c.label);
   if (missing.length > 0) {
     violations.push({ kind: "缺章", hard: true, detail: `缺少章节：${missing.join("、")}` });
+  } else {
+    // 章节齐了才查小节与构件：缺章时先补章，别一次甩一堆问题给模型
+    const sections = defs.flatMap((c) => c.sections);
+    const miss = missingArtifacts(markdown, sections);
+    if (miss.length > 0) {
+      violations.push({
+        kind: "缺少方案构件",
+        hard: true,
+        detail: `报告要有自己的方案构件（不是把素材复述一遍），当前缺：${miss.join("、")}`,
+      });
+    }
+    const missSec = missingSections(sections, subs);
+    if (missSec.length > 0) {
+      violations.push({
+        kind: "缺小节",
+        hard: false,
+        detail: `这几节没单独成节（内容若已并进本章导语即可忽略）：${missSec.join("、")}`,
+      });
+    }
   }
 
   if (kind === "external") {
@@ -138,6 +241,14 @@ export function checkReport(kind: ReportKind, markdown: string): ReportGateRepor
     }
   }
 
+  if (!written.has("glossary")) {
+    violations.push({
+      kind: "缺术语表",
+      hard: false,
+      detail: "附录缺术语表：把报告里客户/新人可能不熟的术语逐个解释（只解释通行含义，不自己发明定义）",
+    });
+  }
+
   if (text.length < REPORT_MIN_CHARS[kind]) {
     violations.push({
       kind: "篇幅不足",
@@ -146,13 +257,7 @@ export function checkReport(kind: ReportKind, markdown: string): ReportGateRepor
     });
   }
 
-  return {
-    kind,
-    chars: text.length,
-    chapters,
-    violations,
-    ok: !violations.some((v) => v.hard),
-  };
+  return { kind, chars: text.length, chapters, violations, ok: violations.every((v) => !v.hard) };
 }
 
 /** 给重试用的违规清单（拼进提示词） */

@@ -9,20 +9,37 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, readFileSync, existsSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { REPORT_CHAPTERS } from "@scene/contract";
+import { reportChapterHeading, reportChaptersOf } from "@scene/contract";
 import type { DshClient, FollowEvent } from "@scene/contract";
 import { createDb } from "@scene/infra";
 import type { DbInstance } from "@scene/infra";
 import { createDeliverableReportCommand, splitReportChapters } from "./deliverable-report.js";
 import { getReport, getReportPair } from "./report-service.js";
 
-/** 六章齐全的"好"报告 */
+/** 章节 + 方案构件都齐的"好"报告（模拟模型照要求作答） */
 function goodReport(kind: "internal" | "external"): string {
-  return REPORT_CHAPTERS.map(
-    (c) =>
-      `## ${c.title}\n\n${c.title}的归纳正文。这里把同一类信息合并成结论，而不是逐行搬运表格。` +
-      (kind === "internal" && c.key === "summary" ? "风险在于设备协议私有；边界写明不做什么。" : ""),
-  ).join("\n\n");
+  const chapters = reportChaptersOf(kind).map((c) => {
+    const body = c.sections
+      .map((sec) => {
+        const arts = sec.artifacts ?? [];
+        const lines = [`### ${sec.title}`, "", `${sec.title}的归纳正文。`];
+        if (arts.includes("table")) {
+          lines.push("", "| 层次 | 组成 | 作用 |", "|---|---|---|", "| 主链 | PLC | 控制闭环 |");
+        }
+        if (arts.includes("numbered-connections")) lines.push("", "① 仪表 → 网关；② 网关 → 平台。");
+        if (arts.includes("principles")) lines.push("", "原则一 不替代原系统；原则二 不参与联锁。");
+        if (arts.includes("value-with-metric")) lines.push("", "价值一 ……度量口径：单次巡检人天。");
+        if (arts.includes("boundary")) lines.push("", "边界：不替代原系统，不做安全联锁。");
+        return lines.join("\n");
+      })
+      .join("\n\n");
+    return `## ${reportChapterHeading(kind, c.key)}\n\n${body}`;
+  });
+  const glossary = kind === "internal" ? "## 附录 C、术语表" : "## 附录、术语表";
+  return (
+    chapters.join("\n\n") +
+    `\n\n${glossary}\n\n| 术语 | 说明 |\n|---|---|\n| 门槛 | 进场前置条件 |`
+  );
 }
 
 /** 让 mock 逐次返回不同文本（用于验证"重写一次"） */
@@ -109,8 +126,9 @@ describe("交付物报告生成（模型撰写 + 确定性校验）", () => {
     expect(existsSync(join(h.dir, `${h.scenarioId}.internal.md`))).toBe(true);
     expect(existsSync(join(h.dir, `${h.scenarioId}.external.md`))).toBe(true);
     const internal = readFileSync(join(h.dir, `${h.scenarioId}.internal.md`), "utf8");
-    expect(internal).toContain("## 一、场景定义");
-    expect(internal).toContain("## 六、总结");
+    expect(internal).toContain("## 一、现状");
+    expect(internal).toContain("## 五、客观与风险");
+    expect(internal).toContain("## 六、下一步");
     // 内部版带附录（来源索引 / 覆盖概览）
     expect(internal).toContain("附录 A、来源索引");
     expect(internal).toContain("附录 B、信息覆盖概览");
@@ -120,12 +138,14 @@ describe("交付物报告生成（模型撰写 + 确定性校验）", () => {
     const { client } = dshOf([goodReport("internal"), goodReport("external")]);
     await run(h.db, client, h.scenarioId);
     const external = readFileSync(join(h.dir, `${h.scenarioId}.external.md`), "utf8");
-    expect(external).not.toContain("附录");
+    // 内部附录（来源索引 / 覆盖概览）不出现；术语表由模型写，写了才出现
+    expect(external).not.toContain("来源索引");
+    expect(external).not.toContain("信息覆盖概览");
     expect(external).not.toMatch(/表\d+-\d+/);
   });
 
   it("模型漏章 + 写决策建议 → 重写一次；仍不达标则该章用要点版兜底", async () => {
-    const bad = "## 一、场景定义\n\n我方建议优先投入到试点。";
+    const bad = "## 一、现状\n\n我方建议优先投入到试点。";
     const { client, calls } = dshOf([bad, bad]);
     const events = await run(h.db, client, h.scenarioId);
 
@@ -137,12 +157,17 @@ describe("交付物报告生成（模型撰写 + 确定性校验）", () => {
     const done = events.find((e) => e.type === "done")!;
     expect((done["violations"] as { hard: boolean }[]).some((v) => v.hard)).toBe(true);
     const internal = readFileSync(join(h.dir, `${h.scenarioId}.internal.md`), "utf8");
-    // 缺的章由确定性要点版补上：六章齐全
-    for (const c of REPORT_CHAPTERS) expect(internal).toContain(c.title);
+    // 缺的章由确定性要点版补上：章节齐全
+    for (const c of reportChaptersOf("internal")) {
+      expect(internal).toContain(reportChapterHeading("internal", c.key));
+    }
   });
 
   it("对外材料泄漏内部信息 → 硬伤，触发重写；重写合格即通过", async () => {
-    const leaking = goodReport("external").replace("## 二、场景认识", "## 二、场景认识\n\n见 表3-8，来源：客户台账。");
+    const leaking = goodReport("external").replace(
+      "## 二、场景与问题",
+      "## 二、场景与问题\n\n见 表3-8，来源：客户台账。",
+    );
     const { client, calls } = dshOf([goodReport("internal"), leaking, goodReport("external")]);
     const events = await run(h.db, client, h.scenarioId);
     // 内部 1 次；对外 2 次（泄漏被拦下重写一次，重写版是干净的六章）
@@ -175,7 +200,7 @@ describe("报告服务：正式版优先，没有则要点版", () => {
     const scenario = db.scenarioRepo.getById(h.scenarioId)!;
     const before = getReport(db, scenario, "internal");
     expect(before.generated).toBe(false);
-    expect(before.markdown).toContain("## 一、场景定义");
+    expect(before.markdown).toContain("## 一、现状");
 
     const { client } = dshOf([goodReport("internal"), goodReport("external")]);
     await run(db, client, h.scenarioId);
@@ -188,31 +213,31 @@ describe("报告服务：正式版优先，没有则要点版", () => {
 
 describe("splitReportChapters：模型输出的分章解析", () => {
   it("按 ## 章名切分并忽略序号差异", () => {
-    const map = splitReportChapters("## 一、场景定义\n甲\n## 三、存在的问题\n乙");
-    expect(map.get("scene")).toBe("甲");
-    expect(map.get("problems")).toBe("乙");
+    const map = splitReportChapters("## 一、现状\n甲\n## 三、方案\n乙");
+    expect(map.get("status")).toBe("甲");
+    expect(map.get("solution")).toBe("乙");
   });
 
   it("章名前有杂音、章内出现 ### 小标题都不影响切分", () => {
-    const map = splitReportChapters("## 二、场景认识\n### 小节\n内容");
-    expect(map.get("understand")).toContain("### 小节");
+    const map = splitReportChapters("## 二、场景与问题\n### 小节\n内容");
+    expect(map.get("problems")).toContain("### 小节");
   });
 });
 
 describe("splitReportChapters：同义章名与补写兜底", () => {
-  it("模型写「场景概述」也认得出是第一段场景定义", () => {
-    const map = splitReportChapters("## 一、场景概述\n内容甲\n## 三、问题\n内容乙");
-    expect(map.get("scene")).toBe("内容甲");
-    expect(map.get("problems")).toBe("内容乙");
+  it("模型写「场景概述」「解决方案」这类同义标题也认得出是哪一章", () => {
+    const map = splitReportChapters("## 一、场景概述\n内容甲\n## 三、解决方案\n内容乙");
+    expect(map.get("status")).toBe("内容甲");
+    expect(map.get("solution")).toBe("内容乙");
   });
 
   it("补写某一章时模型没写 `## 章名`：整段归给这一章（内容不丢）", () => {
-    const map = splitReportChapters("场景定义正文，没有标题。", ["scene"]);
-    expect(map.get("scene")).toBe("场景定义正文，没有标题。");
+    const map = splitReportChapters("现状正文，没有标题。", ["status"]);
+    expect(map.get("status")).toBe("现状正文，没有标题。");
   });
 
   it("补写多章时不套用整段兜底（避免把两章内容混成一章）", () => {
-    const map = splitReportChapters("没有标题的正文", ["scene", "summary"]);
+    const map = splitReportChapters("没有标题的正文", ["status", "next"]);
     expect(map.size).toBe(0);
   });
 });

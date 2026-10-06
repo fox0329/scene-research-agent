@@ -1,23 +1,34 @@
 /**
- * @scene/server — 交付物报告提示词（变更表 #112）
+ * @scene/server — 交付物报告提示词（变更表 #112 / #113）
  *
- * 用户定调：「首先应该是报告，不是记录 … 要的是总结，不是罗列」「整体章节应该是
- * 差不多了，都是场景定义、认识、存在的问题，我们的方案，能够提供的价值，总结。
- * 只是内部侧重客观、风险，外部侧重痛点、方案、价值。」
+ * 用户先说：「首先应该是报告，不是记录 … 要的是总结，不是罗列」（#112）；
+ * 看过一版之后又给参照件纠偏：「**不要把报告做成前面内容的总结，而是形成自己的价值**」（#113）。
  *
- * 于是这里只做三件事：
- *  1. 把**已经做完的调研结论**（各表数据，按章分好块）交给模型，让它**归纳**成报告；
- *  2. 用硬规则把它按在报告该有的样子上（不给决策建议、写不出的就说缺、不许把
- *     行业通例当成本客户事实）；
- *  3. 规定输出格式（`## 章名` 六章纯 Markdown），服务端按章装配、逐章兜底。
+ * 参照件（`城市门站调压站-智能化提升方案.docx`）的价值不在章节名，而在**报告自己长出了
+ * 方案构件**：设计原则、总体架构分层、主/辅职责对照、编号连接关系、端侧选配"或"关系、
+ * 实施要点、每条带度量口径的核心价值、能力边界、下一步（步骤/内容/交付物）、术语表——
+ * 这些**没有一张来自调研表**，是作者自己的主张。
  *
- * 数据不在这里格式化：原料由 `@scene/infra` 的 `reportChapterDigest()` 产出——
- * 与"模型没写成时用的兜底版"同源，避免两处口径漂移。
+ * 所以这里规定三件事：
+ *  1. 章节与小节：按契约 `reportChaptersOf(kind)` 逐条列出（章节序号按口径生成）；
+ *  2. 构件：每章必须自建哪些东西（表格 / 编号连接 / 原则 / 价值口径 / 边界 / 术语表）；
+ *  3. 硬规则：素材是**证据**不是结论——不许复述、不许把行业通例当客户事实、不许给决策建议、
+ *     写不出来就说缺。
+ *
+ * 素材不在这里格式化：由 `@scene/infra` 的 `reportChapterDigest()` 产出——与"模型没写成时
+ * 用的兜底版"同源，避免两处口径漂移。
  */
 
+import {
+  reportChaptersOf,
+  reportChapterHeading,
+  type ReportArtifact,
+  type ReportKind,
+  type ReportSection,
+} from "@scene/contract";
 import type { ChapterDigest } from "@scene/infra";
 
-export type ReportKind = "internal" | "external";
+export type { ReportKind };
 
 export interface ReportPromptInput {
   scenarioName: string;
@@ -32,8 +43,11 @@ export interface ReportPromptInput {
 /** 两份报告共用的硬规则 */
 const HARD_RULES = `## 硬规则（违反即视为缺陷）
 
-1. **这是报告，不是清单**：你要做的是**归纳**——把同一类问题合并成一条结论，说清"是什么、为什么、影响到谁"。
-   **禁止**逐行搬运表格、禁止把每一行都写成一条 bullet、禁止出现"表X-X"这类内部表号。
+1. **这是方案，不是前面内容的总结**：读者没看过我们内部的调研表，他读到的应该是**一份能独立成立的方案**。
+   素材只是证据——你要基于它给出**我们自己的主张**：设计原则、总体架构、职责怎么分、接口在哪、
+   每项价值对应哪个指标、我们明确不做什么、下一步做什么。
+   **禁止**逐行搬运表格、**禁止**把每一行写成一条 bullet、**禁止**出现"表X-X"这类内部表号，
+   **禁止**写成"先讲了位 … 又说了 …"这种摘要腔。
 2. **每条结论必须立得住**：数据里标了「行业通例（模型知识）」「单一来源」的，结论里必须**降调**
    （写"行业通行做法如此，本客户是否同样如此待验证"），**不许当成本客户事实**。
 3. **不给决策建议**：不写"建议先做试点""推荐采用""值得投入""应当优先"——产品只给事实、判定与缺口，
@@ -60,13 +74,41 @@ const EXTERNAL_ROLE = `你是给客户做汇报的方案撰写人。你要写的
 - 价值要给"指标 + 怎么测"，数值标明是行业量级还是待实测；
 - **不许出现**内部表号、来源标注、证据等级、缺口清单这类内部痕迹。`;
 
-/** 输出格式（两份共用） */
-const OUTPUT_FORMAT = `## 输出格式（严格遵守）
+/** 构件的中文说法（写进提示词，让模型知道这一章要产出什么） */
+const ARTIFACT_HINT: Record<ReportArtifact, string> = {
+  table: "自建一张 Markdown 表格（表头 + 数据行）",
+  "numbered-connections": "用 ①②③… 给每条连接/接口编号，编号与说明一一对应",
+  principles: "写成「原则一 / 原则二 / 原则三」，每条一句话说清主张",
+  "value-with-metric": "每条价值都要带「度量口径」——量什么、怎么量、现在有没有基线",
+  boundary: "明确写出「不做什么」（不替代什么、不参与什么、不承担什么）",
+  glossary: "术语 + 说明两列",
+};
 
-纯 Markdown，**不要**任何前言、寒暄、结语或代码块围栏。六个章节，每章以 \`## 章名\` 开头，
-章名必须原样使用：\`## 一、场景定义\`、\`## 二、场景认识\`、\`## 三、存在的问题\`、\`## 四、我们的方案\`、
-\`## 五、能够提供的价值\`、\`## 六、总结\`。
-章内可用 \`### 小标题\` 与短段落、短列表；**不要**用 \`#\`、\`####\` 及更深的层级，不要在正文里写文件名或页码。`;
+/** 一节要写什么：小节名 + 该自建的构件 */
+function renderSection(sec: ReportSection): string {
+  const arts = sec.artifacts ?? [];
+  if (arts.length === 0) return `  - \`### ${sec.title}\`（文字叙述）`;
+  return `  - \`### ${sec.title}\`：必须${arts.map((a) => ARTIFACT_HINT[a]).join("；并且")}`;
+}
+
+/** 输出格式：章节与小节由契约给出，序号按口径生成 */
+function outputFormat(kind: ReportKind): string {
+  const lines = reportChaptersOf(kind).flatMap((c) => [
+    `- \`## ${reportChapterHeading(kind, c.key)}\``,
+    ...c.sections.map(renderSection),
+  ]);
+  const glossary = kind === "internal" ? "## 附录 C、术语表" : "## 附录、术语表";
+  return [
+    "## 输出格式（严格遵守）",
+    "",
+    "纯 Markdown，**不要**任何前言、寒暄、结语或代码块围栏。按下面的章节与小节写，标题**原样使用**：",
+    ...lines,
+    `- \`${glossary}\`：把报告里出现、而客户或新人可能不熟的术语逐个解释（介质 / 协议 / 标准 / 系统名 / 业务口径都算），`,
+    "  只解释通行含义，不要自己发明定义；两张表列：术语、说明。",
+    "",
+    "层级只到 `###`（不要 `#`、`####` 及更深）；正文里不写文件名、页码、内部表号。",
+  ].join("\n");
+}
 
 /** 依 kind 组系统提示词 */
 function buildSystem(kind: ReportKind): string {
@@ -84,7 +126,7 @@ function buildSystem(kind: ReportKind): string {
     "",
     HARD_RULES,
     "",
-    OUTPUT_FORMAT,
+    outputFormat(kind),
     "",
     length,
   ].join("\n");
@@ -96,6 +138,11 @@ function renderAnchor(anchor: readonly Record<string, unknown>[]): string {
   return anchor
     .map((r) => `- ${String(r["item"] ?? "")}：${String(r["content"] ?? "").replace(/\s+/g, " ")}`)
     .join("\n");
+}
+
+/** 某一章在小节上的要求（术语表这类附录章没有小节） */
+function reportSectionsOf(kind: ReportKind, key: string): readonly ReportSection[] {
+  return reportChaptersOf(kind).find((c) => c.key === key)?.sections ?? [];
 }
 
 /** 每章原料：章名 + 该章的数据块（模型据此归纳） */
@@ -135,8 +182,11 @@ export function buildReportPrompt(
   parts.push(
     "",
     "## 你的任务",
-    `把上面的原料写成一份**${kind === "internal" ? "内部调研报告" : "对外汇报材料"}**：按六个章节归纳成报告，`,
-    "每章先给结论性的总述，再给必要的支撑；同类信息合并，不要把每一行都列出来。",
+    `把上面的素材写成一份**${kind === "internal" ? "内部调研报告" : "对外汇报材料（方案）"}**。`,
+    "记住：**不要写成前面内容的总结**——素材是证据，报告要长出自己的**方案构件**：",
+    "设计原则、总体架构、职责划分、编号连接关系、选型、价值与度量口径、能力边界、下一步。",
+    "这些都由你立起来；读者不必看过我们的调研表也能读懂这份报告。",
+    "每章先给一段结论性的总述，再给必要的支撑；同类信息合并，不要逐行罗列。",
   );
   if (retry) {
     parts.push(
@@ -144,7 +194,8 @@ export function buildReportPrompt(
       "## 上一次的问题（必须重写，逐条规避）",
       retry,
       "",
-      "重写时注意：这六章仍要齐全；对外材料不得出现内部表号 / 来源 / 证据级；不得出现决策建议措辞。",
+      "重写时注意：章节与小节仍要齐全；该自建的构件（原则 / 表格 / 编号连接 / 价值口径 / 边界 / 术语表）",
+      "必须真的写出来；对外材料不得出现内部表号、来源、证据级；不得出现决策建议措辞。",
     );
   }
   return { system: buildSystem(kind), user: parts.join("\n") };
@@ -166,10 +217,22 @@ export function buildChapterPrompt(
     scenarioName,
     "",
     "## 只写下面这几节（其余章节已经写好，不要重复、不要写别的章节）",
-    renderChapters(chapters),
+    chapters
+      .map((c) =>
+        [
+          `### ${c.title}`,
+          reportSectionsOf(kind, c.key).map(renderSection).join("\n"),
+          c.key === "glossary" ? `  - 术语表：术语 + 说明两列，只解释通行含义` : "",
+          "",
+          c.markdown,
+        ]
+          .filter((x) => x !== "")
+          .join("\n"),
+      )
+      .join("\n\n"),
     "",
     "## 输出格式（必须严格遵守）",
-    ...chapters.map((c) => `- 第 ${c.title} 一节，以「## ${c.title}」开头`),
+    ...chapters.map((c) => `- 以「## ${c.title}」开头，本节内容完整写出`),
     "",
     "每节先用一段话给出这一节的结论，再给必要的支撑；同类信息合并，不要逐行罗列。",
     "不要写开场白、不要写目录、不要用代码块包裹。",

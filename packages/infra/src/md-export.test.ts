@@ -134,15 +134,15 @@ describe("exportDeliverables — 内部调研报告", () => {
     expect(internal_report).toContain("制水到输配 ｜ 市政水务集团");
   });
 
-  it("正文是六章报告（不再是「阶段 N 总结」的拼接）", async () => {
+  it("正文按新骨架成章（不再是「阶段 N 总结」的拼接）", async () => {
     const { internal_report } = await exportDeliverables(makeInput());
     for (const title of [
-      "## 一、场景定义",
-      "## 二、场景认识",
-      "## 三、存在的问题",
-      "## 四、我们的方案",
-      "## 五、能够提供的价值",
-      "## 六、总结",
+      "## 一、现状",
+      "## 二、场景与问题",
+      "## 三、方案",
+      "## 四、价值",
+      "## 五、客观与风险",
+      "## 六、下一步",
     ]) {
       expect(internal_report, title).toContain(title);
     }
@@ -163,8 +163,8 @@ describe("exportDeliverables — 内部调研报告", () => {
     });
     expect(internal_report).toContain("模型归纳：问题集中在三处。");
     expect(internal_report).toContain("模型归纳：价值集中在两处。");
-    // 没给模型的章仍用要点版兜底（六章齐全）
-    expect(internal_report).toContain("## 一、场景定义");
+    // 没给模型的章仍用要点版兜底（章节齐全）
+    expect(internal_report).toContain("## 一、现状");
     expect(internal_report).toContain("附录 A、来源索引");
   });
 
@@ -184,7 +184,7 @@ describe("exportDeliverables — 内部调研报告", () => {
 
   it("无阶段总结也照样出报告（正文不再依赖阶段总结）", async () => {
     const { internal_report } = await exportDeliverables({ ...makeInput(), stageSummaries: [] });
-    expect(internal_report).toContain("## 六、总结");
+    expect(internal_report).toContain("## 五、客观与风险");
     expect(internal_report).toContain("附录 B、信息覆盖概览");
   });
 });
@@ -193,10 +193,11 @@ describe("exportDeliverables — 对外汇报材料", () => {
   it("含客户视角章节且不含结论性建议", async () => {
     const { external_report } = await exportDeliverables(makeInput());
     expect(external_report).toContain("# 智慧水务 解决方案");
-    // 与内部版同一套六章，只是侧重点与取列不同（变更表 #112）
-    for (const t of ["一、场景定义", "二、场景认识", "三、存在的问题", "四、我们的方案", "五、能够提供的价值", "六、总结"]) {
+    // 与内部版同一套骨架，对外少一章「客观与风险」（变更表 #113）
+    for (const t of ["一、现状", "二、场景与问题", "三、方案", "四、价值", "五、下一步"]) {
       expect(external_report, t).toContain(t);
     }
+    expect(external_report).not.toContain("客观与风险");
     expect(external_report).toContain("不含结论性建议");
   });
 
@@ -220,7 +221,7 @@ describe("exportDeliverables — 对外汇报材料", () => {
 
   it("对外版正文里不写内部表号（只写结论）", async () => {
     const { external_report } = await exportDeliverables(makeInput());
-    expect(external_report).toMatch(/场景定义/);
+    expect(external_report).toMatch(/现状/);
     expect(external_report).not.toMatch(/表\d+-\d+ （|表\d+-\d+$/m);
   });
 
