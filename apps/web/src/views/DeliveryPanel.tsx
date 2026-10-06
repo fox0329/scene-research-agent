@@ -16,8 +16,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { FLOW_TOTAL, flowStep } from "@scene/contract";
 import { api, type ApiFlowStatus } from "../api";
-import { PanelHead } from "../components/PanelHead";
 import { renderMarkdown } from "../components/StageRightPanel";
+import { DELIVERY_OUTPUTS, DELIVERY_OUTPUT_HINT } from "../components/step-outputs";
 import type { StageSnapshot } from "../components/stage-snapshot";
 import { useToast } from "../components/Toast";
 
@@ -29,21 +29,18 @@ export interface DeliveryPanelProps {
   onStageSnapshot?: (snap: StageSnapshot | null) => void;
   /** 导出完成（刷新项目列表：场景可能已标记完成） */
   onExported?: () => void;
+  /** 流程轴第二行点了某个报告：`id` 变化时套用 */
+  pick?: { id: number; code: string | null };
+  /** 回报此刻显示的报告 → 流程轴第二行据此高亮 */
+  onReportChange?: (key: string) => void;
 }
 
-/** 两份口径 = 两个 chip（与其它步的「表名行」同形） */
-const REPORTS = [
-  {
-    key: "internal" as const,
-    label: "内部调研版",
-    hint: "完整信息 + 来源与证据级 + 信息缺口 + 「不做什么」边界声明",
-  },
-  {
-    key: "external" as const,
-    label: "对外汇报版",
-    hint: "只保留可对外的事实与结论，含未确认标记的内容会被剔除",
-  },
-];
+/** 两份口径的名字与说明与流程轴第二行共用一个来源（见 step-outputs） */
+const REPORTS = DELIVERY_OUTPUTS.map((o) => ({
+  key: o.key as "internal" | "external",
+  label: o.label,
+  hint: DELIVERY_OUTPUT_HINT[o.key] ?? o.label,
+}));
 
 type ReportKey = (typeof REPORTS)[number]["key"];
 
@@ -92,6 +89,8 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
   projectId,
   onStageSnapshot,
   onExported,
+  pick,
+  onReportChange,
 }) => {
   const { showToast } = useToast();
   const step = flowStep(FLOW_TOTAL);
@@ -119,6 +118,17 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
   useEffect(() => {
     void loadReports();
   }, [loadReports]);
+
+  /** 流程轴第二行点了某份报告：只在 id 变化时套用 */
+  const pickId = pick?.id;
+  useEffect(() => {
+    if (pick?.code === "internal" || pick?.code === "external") setTab(pick.code);
+  }, [pickId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /* 回报此刻显示的报告：流程轴第二行据此高亮 */
+  useEffect(() => {
+    onReportChange?.(tab);
+  }, [tab, onReportChange]);
 
   const handleExport = useCallback(async () => {
     if (!live || !projectId) {
@@ -166,10 +176,9 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
 
   return (
     <div className="pnl">
-      <PanelHead
-        stepId={FLOW_TOTAL}
-        label={step.title}
-        actions={
+      {/* 动作行保留；两份报告的选择在流程轴第二行（用户定调 2026-10-06：输出物挂到阶段名下面） */}
+      <div className="pnl-h">
+        <div className="pnl-actions">
           <button
             className="btn primary"
             type="button"
@@ -178,20 +187,8 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
           >
             {busy ? "生成导出中…" : "生成并导出交付物"}
           </button>
-        }
-      >
-        {REPORTS.map((r) => (
-          <button
-            key={r.key}
-            type="button"
-            className={`chip${tab === r.key ? " active" : ""}`}
-            title={r.hint}
-            onClick={() => setTab(r.key)}
-          >
-            {r.label}
-          </button>
-        ))}
-      </PanelHead>
+        </div>
+      </div>
 
       <div className="pnl-b">
         {!live ? (

@@ -422,8 +422,8 @@ test("流程推进：完成本步 → 当前步前移；已完成步可回看重
   await expect(rail.locator(".flow-node--done")).toContainText("场景定义");
   await expect(rail.locator(".flow-node--current")).toContainText("认识场景");
   await expect(rail.locator(".flow-node--locked")).toHaveCount(5);
-  // 第 2 步「认识场景」：中栏只有本步表集（步标题/完整度都在别处）
-  await expect(page.locator(".ws .table-chips").first()).toBeVisible();
+  // 第 2 步「认识场景」：中栏只有本步表集（表名在流程轴第二行，步标题/完整度都在别处）
+  await expect(page.locator(".flow-outputs").first()).toBeVisible();
   await expect(page.locator(".ws .completeness-bar")).toHaveCount(0);
 
   // 点已完成节点回看：七步同形——轴上只有「重算本步」与「下一步」，中栏没有重跑提示条，
@@ -731,7 +731,7 @@ async function gotoStep2(page: Page) {
   const next = rail.getByRole("button", { name: "下一步" });
   await expect(next).toBeEnabled();
   await next.click();
-  await expect(page.locator(".ws .table-chips").first()).toBeVisible();
+  await expect(page.locator(".flow-outputs").first()).toBeVisible();
 }
 
 test("八步同形：第 1 步的动作也在流程轴上，中栏不留按钮、不留「回到这一步重跑」提示条", async ({
@@ -759,7 +759,7 @@ test("八步同形：第 1 步的动作也在流程轴上，中栏不留按钮�
   await expect(actions.getByRole("button", { name: "开始本步分析" })).toHaveCount(0);
 });
 
-test("分析步中栏：只有一行表名 + 表格，且不出现上一步的表1-1、不出现动作按钮", async ({ page }) => {
+test("分析步中栏：只有表格，表名挂在流程轴第二行；不出现上一步的表1-1、不出现动作按钮", async ({ page }) => {
   await draftDefinition(page); // 先让智能体写出画像，才走得到第 2 步
   await gotoStep2(page);
 
@@ -768,9 +768,11 @@ test("分析步中栏：只有一行表名 + 表格，且不出现上一步的�
   await expect(page.locator(".ws .fold-summary")).toHaveCount(0);
   await expect(page.locator(".ws .fold-toggle")).toHaveCount(0);
 
-  // ② 「本步信息表」这种小标题不要；表名一行放下，且不带表号
+  // ② 「本步信息表」这种小标题不要；中栏自己不再有表名行（用户定调 2026-10-06：
+  //    表名挪到流程轴第二行，滚表格时它才始终可见）；表名不带表号
   await expect(page.getByText("本步信息表")).toHaveCount(0);
-  const chips = page.locator(".ws .table-chips").first().locator(".chip");
+  await expect(page.locator(".ws .table-chips--single")).toHaveCount(0);
+  const chips = page.locator(".flow-outputs").first().locator(".chip");
   await expect(chips.first()).toBeVisible();
   const names = await chips.allInnerTexts();
   expect(names.length).toBeGreaterThan(0);
@@ -819,8 +821,9 @@ test("表格列宽自动适配：生成即是最紧凑布局，未手动拖就�
   const generated = (await read())!;
   expect(generated.widths.length).toBeGreaterThan(1);
   expect(generated.widths.some((w) => w !== 120)).toBe(true); // 不是整表掉回兜底宽
-  const firstChip = page.locator(".ws .table-chips").first().locator(".chip").first();
-  await firstChip.click();
+  // 换到另一张表再看一眼（表名在流程轴第二行）：换表后仍是适配结果
+  const otherChip = page.locator(".flow-outputs").first().locator(".chip").nth(1);
+  await otherChip.click();
   await page.waitForTimeout(300);
 
   const fitted = (await read())!;

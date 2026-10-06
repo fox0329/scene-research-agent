@@ -3,7 +3,6 @@ import {
   FLOW_STEPS,
   FLOW_TOTAL,
   STAGE_DEFS,
-  blockLabel,
   tablesOfStage,
   tableDef,
   rowBelongsToBlock,
@@ -12,7 +11,6 @@ import {
 } from "@scene/contract";
 import { buildStageSummary, checkStageCompleteness, type InfoRow } from "@scene/domain";
 import { SchemaTable, tableBlocks, tableCategories } from "../components/SchemaTable";
-import { PanelHead } from "../components/PanelHead";
 import { anchorSummary } from "../components/definition-progress";
 import {
   asSourceType,
@@ -44,6 +42,10 @@ export interface DemoStagePanelProps {
   /** 演示态场景锚（确认清单的 L1 来源） */
   anchor?: readonly ApiAnchorRow[];
   onStageSnapshot?: (snap: StageSnapshot | null) => void;
+  /** 流程轴第二行点了某个输出物：`id` 变化时套用（与联真同口径） */
+  pick?: { id: number; code: string | null; block: string | null };
+  /** 回报此刻显示的表/块 → 流程轴第二行据此高亮 */
+  onTableChange?: (code: string | null, block: string | null) => void;
 }
 
 export const DemoStagePanel: React.FC<DemoStagePanelProps> = ({
@@ -52,6 +54,8 @@ export const DemoStagePanel: React.FC<DemoStagePanelProps> = ({
   stepId,
   anchor,
   onStageSnapshot,
+  pick,
+  onTableChange,
 }) => {
   const id = (stage >= 7 ? 6 : stage) as InfoStageId;
   const def = STAGE_DEFS.find((s) => s.id === id);
@@ -71,24 +75,19 @@ export const DemoStagePanel: React.FC<DemoStagePanelProps> = ({
   }, [stageTables]);
 
   const blocks = useMemo(() => (activeTable ? tableBlocks(activeTable) : []), [activeTable]);
-  /** 表格芯片：多子块表每块各占一个"表"，全部排在同一行（与联真同口径，v1.26） */
-  const tableEntries = useMemo(
-    () =>
-      stageTables.flatMap((t) => {
-        const bs = tableBlocks(t.code);
-        if (bs.length <= 1) {
-          return [{ key: t.code, label: t.name, code: t.code, block: null as string | null }];
-        }
-        const def = tableDef(t.code);
-        return bs.map((b) => ({
-          key: `${t.code}:${b}`,
-          label: def ? blockLabel(def, b) : `${b}块`,
-          code: t.code,
-          block: b as string | null,
-        }));
-      }),
-    [stageTables],
-  );
+  /** 流程轴第二行点了某个输出物：只在 id 变化时套用（与联真同口径） */
+  const pickId = pick?.id;
+  useEffect(() => {
+    if (!pick || pick.code === null) return;
+    setActiveTable(pick.code);
+    setBlock(pick.block);
+  }, [pickId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /* 回报此刻显示的表/块：流程轴第二行据此高亮 */
+  useEffect(() => {
+    onTableChange?.(activeTable, block);
+  }, [activeTable, block, onTableChange]);
+
   const categories = useMemo(
     () => (activeTable ? tableCategories(activeTable) : []),
     [activeTable],
@@ -206,27 +205,8 @@ export const DemoStagePanel: React.FC<DemoStagePanelProps> = ({
 
       {stageTables.length > 0 ? (
         <div className="pnl">
-          <PanelHead stepId={stepId} label={def?.name ?? "本步"}>
-            {tableEntries.map((e) => {
-                const active =
-                  activeTable === e.code &&
-                  (e.block ?? null) === (block ?? blocks[0] ?? null);
-                return (
-                  <button
-                    key={e.key}
-                    type="button"
-                    className={`chip${active ? " active" : ""}`}
-                    onClick={() => {
-                      setActiveTable(e.code);
-                      setBlock(e.block);
-                    }}
-                  >
-                    {e.label}
-                  </button>
-                );
-              })}
-          </PanelHead>
           <div className="pnl-b">
+            {/* 表名/子块已挪到流程轴第二行（与联真同口径）；这里只留 payload 类别筛选 */}
             {categories.length > 0 ? (
               <div className="table-chips sub">
                 {categories.map((c) => (

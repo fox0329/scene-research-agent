@@ -6,6 +6,7 @@ import { AnchorStepPanel } from "./AnchorStepPanel";
 import { DeliveryPanel } from "./DeliveryPanel";
 import { DemoFirstStep } from "./DemoFlowPanels";
 import { FlowRail } from "../components/FlowRail";
+import { stepOutputsOf, type StepOutput } from "../components/step-outputs";
 import { api, type ApiAnchorRow, type ApiFlowStatus } from "../api";
 import { useAsync } from "../hooks/useAsync";
 import { useStageAnalysis } from "../hooks/useStageAnalysis";
@@ -68,6 +69,17 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
   /** null = 跟随当前步；数字 = 用户正在回看的某一步 */
   const [activeStep, setActiveStep] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
+  /**
+   * 流程轴第二行点的输出物 → 交给中栏面板套用
+   *
+   * 用"带上自增 id 的一次性请求"而不是双向绑定：面板自己也有默认选择（优先有数据的表），
+   * 双向绑定会跟它打架（面板回落 → 回写 → 又套用外部选择）。id 变化才套用，面板自己
+   * 的切换通过 onTableChange 回报，只用于流程轴高亮。
+   */
+  const [pick, setPick] = useState<{ id: number; step: number; code: string | null; block: string | null } | null>(null);
+  const pickSeq = React.useRef(0);
+  /** 中栏此刻显示的输出物（面板回报）→ 流程轴第二行高亮 */
+  const [shownOutput, setShownOutput] = useState<{ step: number; key: string } | null>(null);
   /** 本场景资料面板（默认收起，避免把上传入口摊在页头） */
   const [materialsOpen, setMaterialsOpen] = useState(false);
 
@@ -84,6 +96,43 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
   const stepDef = flow?.steps.find((s) => s.id === step);
   const current = flow?.steps.find((s) => s.id === flow.currentStep);
   const stepStage = (flowStep(step).stage ?? DELIVERY_STAGE) as InfoStageId;
+
+  /* 流程轴第二行：当前正在看的那一步的输出物（交付物步 = 两份报告） */
+  const railOutputs = useMemo<StepOutput[]>(
+    () => stepOutputsOf(step, flowStep(step).tables, FLOW_TOTAL),
+    [step],
+  );
+  /* 高亮哪一项：面板回报过就用它；第 1 步只有一张锚表、面板不上报，恒定高亮它 */
+  const activeOutputKey =
+    shownOutput?.step === step
+      ? shownOutput.key
+      : step === 1
+        ? "表1-1"
+        : null;
+
+  /** 流程轴第二行点了输出物 → 让中栏显示它 */
+  const handleSelectOutput = useCallback(
+    (o: StepOutput) => {
+      setPick({ id: ++pickSeq.current, step, code: o.code ?? o.key, block: o.block });
+      setShownOutput({ step, key: o.key });
+    },
+    [step],
+  );
+  /** 中栏面板回报此刻显示的表/块 → 流程轴第二行跟着高亮 */
+  const handlePanelTableChange = useCallback(
+    (code: string | null, block: string | null) => {
+      if (!code) return;
+      const key = block ? `${code}:${block}` : code;
+      setShownOutput((prev) => (prev?.step === step && prev.key === key ? prev : { step, key }));
+    },
+    [step],
+  );
+  /** 交付物面板回报此刻显示的报告 */
+  const handlePanelReportChange = useCallback((key: string) => {
+    setShownOutput((prev) => (prev?.step === FLOW_TOTAL && prev.key === key ? prev : { step: FLOW_TOTAL, key }));
+  }, []);
+  /** 交给某个中栏面板的一次性选择：只传属于它这一步的 */
+  const pickForStep = pick && pick.step === step ? pick : undefined;
 
   /** 资料失效横幅（联真）：上游表改动后提示受影响阶段 */
   const stale = useAsync(
@@ -375,6 +424,8 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
             projectId={project.id}
             onStageSnapshot={onStageSnapshot}
             onExported={onProjectsChanged}
+            pick={pickForStep}
+            onReportChange={handlePanelReportChange}
           />
         );
       }
@@ -390,6 +441,8 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
           refreshToken={isCurrent ? analysisRefresh : 0}
           onChanged={handleDataChanged}
           onStageSnapshot={onStageSnapshot}
+          pick={pickForStep}
+          onTableChange={handlePanelTableChange}
         />
       );
     }
@@ -410,7 +463,15 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
       );
     }
     if (step === FLOW_TOTAL) {
-      return <DeliveryPanel flow={flow} live={false} onStageSnapshot={onStageSnapshot} />;
+      return (
+        <DeliveryPanel
+          flow={flow}
+          live={false}
+          onStageSnapshot={onStageSnapshot}
+          pick={pickForStep}
+          onReportChange={handlePanelReportChange}
+        />
+      );
     }
     const def = flowStep(step);
     return (
@@ -420,6 +481,8 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
         stepId={step}
         anchor={demoAnchor}
         onStageSnapshot={onStageSnapshot}
+        pick={pickForStep}
+        onTableChange={handlePanelTableChange}
       />
     );
   };
@@ -539,6 +602,9 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
           onSelectStep={setActiveStep}
           onComplete={() => void handleComplete()}
           run={runAction}
+          outputs={railOutputs}
+          activeOutputKey={activeOutputKey}
+          onSelectOutput={handleSelectOutput}
         />
       ) : (
         <div className="flow-rail">

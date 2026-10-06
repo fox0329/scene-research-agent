@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   FLOW_TOTAL,
   STAGE_DEFS,
-  blockLabel,
   flowStep,
   rowBelongsToBlock,
   detailColumns,
@@ -13,7 +12,6 @@ import {
 import { api, type ApiStagePanel, type ApiStageRow } from "../api";
 import { useAsync } from "../hooks/useAsync";
 import { SchemaTable, tableBlocks, tableCategories } from "../components/SchemaTable";
-import { PanelHead } from "../components/PanelHead";
 import {
   asSourceType,
   type StageSnapshot,
@@ -50,6 +48,11 @@ interface RealStagePanelProps {
 
   /** 分析落库后自增：本组件收到变化就重取本步数据与阶段总结 */
   refreshToken?: number;
+
+  /** 流程轴第二行点了某个输出物：`id` 变化时套用（外部选择），null 表示没点过 */
+  pick?: { id: number; code: string | null; block: string | null };
+  /** 回报本组件此刻显示的表/块 → 流程轴第二行据此高亮 */
+  onTableChange?: (code: string | null, block: string | null) => void;
 }
 
 export const RealStagePanel: React.FC<RealStagePanelProps> = ({
@@ -62,6 +65,8 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
   stepId,
 
   refreshToken,
+  pick,
+  onTableChange,
 }) => {
   // 右栏（完整度 / 补充说明 / 阶段总结）一律带上本步：**只针对当前步骤**
   const { status, data, error, reload } = useAsync<ApiStagePanel>(
@@ -87,6 +92,19 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
     setActiveTable((withData ?? stageTables[0])?.code ?? null);
   }, [stageTables, rows, activeTable]);
 
+  /**
+   * 流程轴第二行点了某个输出物：套用到本组件
+   *
+   * 只在 `pick.id` 变化时套用——用户在中栏自己切块（或本组件自动回落到有数据的表）时，
+   * 不能被上一次的外部选择拉回去。块的回落交给下面那个既有 effect（pick.block 为空时取首块）。
+   */
+  const pickId = pick?.id;
+  useEffect(() => {
+    if (!pick || pick.code === null) return;
+    setActiveTable(pick.code);
+    setBlock(pick.block);
+  }, [pickId]); // eslint-disable-line react-hooks/exhaustive-deps
+
   /* 子块 / payload 类别选择 */
   const [block, setBlock] = useState<string | null>(null);
   const [category, setCategory] = useState<string | null>(null);
@@ -102,30 +120,10 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
     if (category === null || !categories.includes(category)) setCategory(categories[0] ?? null);
   }, [blocks, categories, block, category]);
 
-  /**
-   * 表格芯片清单：**多子块表的每块各占一个"表"，全部排在同一个芯片行里**
-   *
-   * 用户定调（v1.26）：不要"表名一行 + 块名一行"的两级选择，拆成多个表格、一行显示。
-   * 块的列结构本来就不同（架构块 5 列 / 接口块 4 列；成本的四块各自成表），
-   * 所以这一层级的"拆分"是真实的，只是不再让用户先选表再选块。
-   */
-  const tableEntries = useMemo(
-    () =>
-      stageTables.flatMap((t) => {
-        const bs = tableBlocks(t.code);
-        if (bs.length <= 1) {
-          return [{ key: t.code, label: t.name, code: t.code, block: null as string | null }];
-        }
-        const def = tableDef(t.code);
-        return bs.map((b) => ({
-          key: `${t.code}:${b}`,
-          label: def ? blockLabel(def, b) : `${b}块`,
-          code: t.code,
-          block: b as string | null,
-        }));
-      }),
-    [stageTables],
-  );
+  /* 回报此刻显示的表/块：流程轴第二行据此高亮（用户在中栏自己切块也会跟着变） */
+  useEffect(() => {
+    onTableChange?.(activeTable, block);
+  }, [activeTable, block, onTableChange]);
 
   /** 本表本块的行：多子块表按块过滤（否则接口块视图会带出一排架构块的空行） */
   const activeRows = useMemo(() => {
@@ -285,28 +283,9 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
       {/* 本步的表：表名一行（不带表号/条数）+ SchemaTable */}
       {stageTables.length > 0 ? (
         <div className="pnl">
-          {/* 两行粘性表头：阶段名称 + 表名（用户定调 2026-10-06，取代 v1.20「标题不进中栏」） */}
-          <PanelHead stepId={stepId} label={stageLabel}>
-            {tableEntries.map((e) => {
-                const active =
-                  activeTable === e.code &&
-                  (e.block ?? null) === (block ?? blocks[0] ?? null);
-                return (
-                  <button
-                    key={e.key}
-                    type="button"
-                    className={`chip${active ? " active" : ""}`}
-                    onClick={() => {
-                      setActiveTable(e.code);
-                      setBlock(e.block);
-                    }}
-                  >
-                    {e.label}
-                  </button>
-                );
-              })}
-          </PanelHead>
           <div className="pnl-b">
+            {/* 表名/子块已挪到流程轴第二行（用户定调 2026-10-06：不要让表名随表格滚走）；
+                这里只留本表自己的 payload 类别筛选 */}
             {categories.length > 0 ? (
               <div className="table-chips sub">
                 {categories.map((c) => (

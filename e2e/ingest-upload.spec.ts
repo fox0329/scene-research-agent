@@ -317,9 +317,9 @@ test("流程逐页推进（联真）：完成本步走的是 /flow 接口，完�
   await expect(rail.locator(".flow-node--done")).toHaveCount(1);
   await expect(rail.locator(".flow-node--done")).toContainText("场景定义");
 
-  // 第 2 步「认识场景」：只显示本步表集，左栏场景列表同步显示第 2/8 步
+  // 第 2 步「认识场景」：只显示本步表集（表名在流程轴第二行），左栏场景列表同步显示第 2/7 步
   await expect(rail.locator(".flow-node--current")).toContainText("认识场景");
-  await expect(page.locator(".ws .table-chips").first()).toBeVisible({ timeout: 20_000 });
+  await expect(page.locator(".flow-outputs").first()).toBeVisible({ timeout: 20_000 });
   await expect(page.locator(".proj-hd.active .proj-step")).toContainText("第 2/7 步", {
     timeout: 20_000,
   });
