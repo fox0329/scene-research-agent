@@ -125,7 +125,7 @@ describe("exportFileName", () => {
 describe("exportDeliverables — 内部调研报告", () => {
   it("头部含场景、日期与「核实结论 + 不给决策建议」声明", async () => {
     const { internal_report } = await exportDeliverables(makeInput());
-    expect(internal_report).toContain("# 智慧水务 场景调研 — 内部调研报告");
+    expect(internal_report).toContain("# 智慧水务 场景调研报告");
     expect(internal_report).toContain("**生成日期**：2026-09-25");
     expect(internal_report).toContain("每条信息都带核实结论");
     expect(internal_report).toContain("不给决策建议");
@@ -134,12 +134,38 @@ describe("exportDeliverables — 内部调研报告", () => {
     expect(internal_report).toContain("制水到输配 ｜ 市政水务集团");
   });
 
-  it("正文由阶段总结装配（逐阶段标题 + 总结内容）", async () => {
+  it("正文是六章报告（不再是「阶段 N 总结」的拼接）", async () => {
     const { internal_report } = await exportDeliverables(makeInput());
-    expect(internal_report).toContain("# 第 0 部分 · 材料解析与入库");
-    expect(internal_report).toContain("# 第 1 部分 · 认识场景（含门槛与合规）");
-    expect(internal_report).toContain("共获得 7 张表 / 12 行信息。");
-    expect(internal_report).toContain("表1-2 尚无数据");
+    for (const title of [
+      "## 一、场景定义",
+      "## 二、场景认识",
+      "## 三、存在的问题",
+      "## 四、我们的方案",
+      "## 五、能够提供的价值",
+      "## 六、总结",
+    ]) {
+      expect(internal_report, title).toContain(title);
+    }
+    // 用户定调 v1.32：「首先应该是报告，不是记录」——阶段总结标题不该再出现
+    expect(internal_report).not.toContain("第 0 部分");
+    expect(internal_report).not.toContain("信息摘要");
+    expect(internal_report).not.toContain("上下游衔接");
+  });
+
+  it("模型写了正文就用模型的（逐章替换，附录仍是确定性装配）", async () => {
+    const input = makeInput();
+    const { internal_report } = await exportDeliverables({
+      ...input,
+      chapters: [
+        { key: "problems", markdown: "模型归纳：问题集中在三处。" },
+        { key: "value", markdown: "模型归纳：价值集中在两处。" },
+      ],
+    });
+    expect(internal_report).toContain("模型归纳：问题集中在三处。");
+    expect(internal_report).toContain("模型归纳：价值集中在两处。");
+    // 没给模型的章仍用要点版兜底（六章齐全）
+    expect(internal_report).toContain("## 一、场景定义");
+    expect(internal_report).toContain("附录 A、来源索引");
   });
 
   it("附录 A 来源索引按表汇总来源", async () => {
@@ -156,17 +182,19 @@ describe("exportDeliverables — 内部调研报告", () => {
     expect(internal_report).toMatch(/\| 表1-1 \| 场景概述 \| 3 \| 3 \|/);
   });
 
-  it("无阶段总结时给出降级提示而不是空文档", async () => {
+  it("无阶段总结也照样出报告（正文不再依赖阶段总结）", async () => {
     const { internal_report } = await exportDeliverables({ ...makeInput(), stageSummaries: [] });
-    expect(internal_report).toContain("尚无阶段总结");
+    expect(internal_report).toContain("## 六、总结");
+    expect(internal_report).toContain("附录 B、信息覆盖概览");
   });
 });
 
 describe("exportDeliverables — 对外汇报材料", () => {
   it("含客户视角章节且不含结论性建议", async () => {
     const { external_report } = await exportDeliverables(makeInput());
-    expect(external_report).toContain("# 智慧水务 场景方案 — 汇报材料");
-    for (const t of ["一、场景概况", "二、场景范围与业务环节", "三、门槛与合规要求", "四、方案架构", "六、价值与验证口径"]) {
+    expect(external_report).toContain("# 智慧水务 解决方案");
+    // 与内部版同一套六章，只是侧重点与取列不同（变更表 #112）
+    for (const t of ["一、场景定义", "二、场景认识", "三、存在的问题", "四、我们的方案", "五、能够提供的价值", "六、总结"]) {
       expect(external_report, t).toContain(t);
     }
     expect(external_report).toContain("不含结论性建议");
@@ -190,14 +218,10 @@ describe("exportDeliverables — 对外汇报材料", () => {
     expect(external_report).not.toContain("利润池");
   });
 
-  it("渲染表1-1（项 / 内容 两列）与表5-1（架构）", async () => {
+  it("对外版正文里不写内部表号（只写结论）", async () => {
     const { external_report } = await exportDeliverables(makeInput());
-    expect(external_report).toContain("**表1-1 场景概述**");
-    expect(external_report).toContain("| 项 | 内容 |");
-    expect(external_report).toContain("市政水务集团");
-    expect(external_report).toContain("**表5-1 架构与接口（架构块）**");
-    // 接口块没有数据 → 不应渲染一张全空的块表
-    expect(external_report).not.toContain("（接口块）");
+    expect(external_report).toMatch(/场景定义/);
+    expect(external_report).not.toMatch(/表\d+-\d+ （|表\d+-\d+$/m);
   });
 
   it("本节无数据时给出待补充提示", async () => {
@@ -206,7 +230,8 @@ describe("exportDeliverables — 对外汇报材料", () => {
       ...input,
       stageData: input.stageData.filter((r) => r.table_code !== "表6-1"),
     });
-    expect(external_report).toContain("（本节信息待补充）");
+    // 缺表的章给出「本节信息待补充：表号」，而不是静默留空
+    expect(external_report).toContain("本节信息待补充");
   });
 });
 
@@ -247,9 +272,9 @@ describe("exportDeliverables — 空数据", () => {
       stageData: [],
       generatedAt: "2026-09-25",
     });
-    expect(internal_report).toContain("# 空场景 场景调研 — 内部调研报告");
+    expect(internal_report).toContain("# 空场景 场景调研报告");
     expect(internal_report).toContain("（暂无带来源的信息）");
-    expect(external_report).toContain("# 空场景 场景方案 — 汇报材料");
-    expect(external_report).toContain("（本节信息待补充）");
+    expect(external_report).toContain("# 空场景 解决方案");
+    expect(external_report).toContain("本节信息待补充");
   });
 });

@@ -8,7 +8,7 @@
  */
 
 import type { FastifyInstance } from "fastify";
-import { mkdirSync, writeFileSync, existsSync } from "node:fs";
+import { writeFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir, homedir } from "node:os";
 import { randomUUID } from "node:crypto";
@@ -35,8 +35,6 @@ import { scenarioLineContext } from "./scenario-lines.js";
 import { dedupeLibrary } from "./library-service.js";
 import {
   parseDocument,
-  exportDeliverables,
-  exportFileName,
   registrySummary,
   loadRegistry,
   upsertProvider,
@@ -47,11 +45,12 @@ import {
 } from "@scene/infra";
 import type { ProviderModelEntry } from "@scene/infra";
 import type { SseHub } from "./sse-hub.js";
+import { createDeliverableReportCommand } from "./deliverable-report.js";
+import { getReportPair, writeReportFiles } from "./report-service.js";
 import { createConverseCommand, type ChatImportOutcome } from "./converse.js";
 import { requestScenarioClarify } from "./scenario-clarify.js";
 import { makeSourceLookup, runPostcheck } from "./postcheck-pass.js";
 import {
-  collectStageSummaries,
   generateStageSummary,
   getOrGenerateStageSummary,
   stageCompletenessOf,
@@ -250,6 +249,9 @@ export function registerUiRoutes(app: FastifyInstance, deps: UiRoutesDeps): void
   /** jobId → 最新 runId（进程存续期内 SSE 续传用） */
   const ingestRuns = new Map<string, string>();
   let seq = 0;
+  /** 场景 id → 报告生成的最新 runId（报告生成的 SSE 续传用） */
+  const reportRuns = new Map<string, string>();
+  let reportSeq = 0;
 
   registerProjectRoutes(app, deps);
   registerConversationRoutes(app, deps, converseCmd);
@@ -309,52 +311,60 @@ export function registerUiRoutes(app: FastifyInstance, deps: UiRoutesDeps): void
     await streamEvents(hub, runId, request, reply, lastEventId);
   });
 
-  // ── 交付物双口径装配与导出 ──────────────────────────────
+  // ── 交付物：模型撰写报告 + 双口径导出（变更表 #112） ────────
   /**
-   * 取两份报告的正文（装配但不落盘）
+   * 取两份报告正文（不落盘）
    *
-   * 为什么要有它：交付物这一步原先把"检查清单"当中栏内容——用户看不到交付物本身。
-   * 装配是**确定性的**（章节 ← 表映射，不跑模型），所以中栏可以直接展示正文，
-   * 不必先点导出再看文件；导出（写盘）仍是单独动作。
+   * 正式版（模型撰写的六章总结）已生成就返回正式版，否则返回确定性要点版并标
+   * `generated: false`——界面据此提示"当前是要点版，点生成报告出正式版"。
    */
   app.get("/api/v1/projects/:id/deliverables", async (request, reply) => {
     const { id } = request.params as { id: string };
     const scenario = db.scenarioRepo.getById(id);
     if (!scenario) return notFound(reply, `场景 ${id} 不存在`);
-    const result = await exportDeliverables({
-      scenario,
-      stageSummaries: collectStageSummaries(db, scenario),
-      stageData: db.stageDataRepo.list({ where: "scenario_id = ?", params: [id] }),
-    });
+    const pair = getReportPair(db, scenario);
     return {
-      internal_report: result.internal_report,
-      external_report: result.external_report,
-      generated_at: new Date().toISOString(),
+      internal_report: pair.internal.markdown,
+      external_report: pair.external.markdown,
+      generated: pair.internal.generated && pair.external.generated,
+      generated_at: pair.internal.generated_at ?? pair.external.generated_at,
+      internal_chars: pair.internal.markdown.replace(/\s/g, "").length,
+      external_chars: pair.external.markdown.replace(/\s/g, "").length,
     };
   });
 
+  /**
+   * 生成两份报告（模型撰写 + 确定性校验，SSE 推进度）
+   *
+   * 为什么单独一条路由而不是走阶段推进：交付物这一步不产表（33 张表全在前面），
+   * 它是"把已有结论读成一份报告"，输入是全部表、输出是两份 Markdown。
+   */
+  app.post("/api/v1/projects/:id/deliverables/generate", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    if (!db.scenarioRepo.getById(id)) return notFound(reply, `场景 ${id} 不存在`);
+    const cmd = createDeliverableReportCommand({ db, dshClient });
+    const runId = `${id}:deliverables#${++reportSeq}`;
+    reportRuns.set(id, runId);
+    const gen = await cmd.execute({ scenarioId: id });
+    hub.start(runId, gen);
+    await streamEvents(hub, runId, request, reply);
+  });
+
+  /** 续连生成进度（按 Last-Event-ID 重放） */
+  app.get("/api/v1/projects/:id/deliverables/events", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const runId = reportRuns.get(id);
+    if (!runId || !hub.has(runId)) return notFound(reply, "没有正在进行的报告生成任务");
+    const lastEventId = (request.headers["last-event-id"] as string | undefined) ?? null;
+    await streamEvents(hub, runId, request, reply, lastEventId);
+  });
+
+  /** 导出两份报告到 exports/（写盘内容 = 界面所见） */
   app.post("/api/v1/projects/:id/deliverables/export", async (request, reply) => {
     const { id } = request.params as { id: string };
     const scenario = db.scenarioRepo.getById(id);
     if (!scenario) return notFound(reply, `场景 ${id} 不存在`);
-
-    const stageRows = db.stageDataRepo.list({
-      where: "scenario_id = ?",
-      params: [id],
-    });
-    const result = await exportDeliverables({
-      scenario,
-      stageSummaries: collectStageSummaries(db, scenario),
-      stageData: stageRows,
-    });
-
-    const outDir = process.env.EXPORT_DIR ?? join(process.cwd(), "exports");
-    mkdirSync(outDir, { recursive: true });
-    const internalPath = join(outDir, exportFileName(scenario.name, "internal"));
-    const externalPath = join(outDir, exportFileName(scenario.name, "external"));
-    writeFileSync(internalPath, result.internal_report, "utf-8");
-    writeFileSync(externalPath, result.external_report, "utf-8");
-    return { internal_path: internalPath, external_path: externalPath };
+    return writeReportFiles(db, scenario);
   });
 }
 

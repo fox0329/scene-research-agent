@@ -142,12 +142,17 @@ test("交付物这一步：第二行是两份报告，点哪份中栏显示哪�
 
   // 中栏没有检查清单，直接是报告正文
   await expect(page.locator(".ws .delivery-steps")).toHaveCount(0);
-  await expect(page.locator(".ws .md-body")).toContainText("内部调研报告");
+  // 还没跑模型 → 正文上方说清「当前是要点版」，并给出生成入口（v1.32）
+  await expect(page.locator(".ws .brief-hint")).toContainText("要点版");
+  await expect(page.locator(".ws .pnl-actions")).toContainText("生成报告");
+  // v1.32：交付物正文是「报告」（模型撰写的六章总结 / 未生成时是要点版）
+  await expect(page.locator(".ws .md-body")).toContainText("场景调研报告");
   await expect(page.locator(".ws .md-body")).toContainText("来源索引");
 
   // 点第二行的「对外汇报版」→ 同一位置换成另一份口径（对外版不装附录）
   await outputs.filter({ hasText: "对外汇报版" }).click();
-  await expect(page.locator(".ws .md-body")).toContainText("汇报材料");
+  // v1.32：对外材料标题是「<场景名> 解决方案」（报告口径，不是"记录"）
+  await expect(page.locator(".ws .md-body")).toContainText("解决方案");
   await expect(page.locator(".ws .md-body")).not.toContainText("来源索引");
   await expect(outputs.filter({ hasText: "对外汇报版" })).toHaveClass(/active/);
 

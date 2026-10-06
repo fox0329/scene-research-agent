@@ -1163,14 +1163,59 @@ describe("交付物导出", () => {
     const body = res.json() as {
       internal_report: string;
       external_report: string;
-      generated_at: string;
+      generated: boolean;
+      generated_at: string | null;
     };
-    expect(body.internal_report).toContain("内部调研报告");
+    // v1.32：内部版标题是「场景调研报告」（报告，不是"记录/材料"）
+    expect(body.internal_report).toContain("场景调研报告");
     expect(body.internal_report).toContain("取正文场景");
     expect(body.external_report).toContain("取正文场景");
-    expect(body.generated_at).toMatch(/^\d{4}-/);
+    // 要点版没有"生成时间"（正式版才有）——见下一条用例
+    expect(body.generated).toBe(false);
+    expect(body.generated_at).toBeNull();
     // 只装配不写盘：目录文件数不变
     expect(readdirSync(outDir).length).toBe(before);
+  });
+
+  it("GET /deliverables 未生成正式版时标 generated=false（界面据此提示「当前是要点版」）", async () => {
+    const h = makeHarness();
+    const { scenarioId } = seedScenario(h.db, "要点版场景");
+    const res = await h.app.inject({
+      method: "GET",
+      url: `/api/v1/projects/${scenarioId}/deliverables`,
+    });
+    const body = res.json() as { generated: boolean; generated_at: string | null; internal_chars: number };
+    expect(body.generated).toBe(false);
+    expect(body.generated_at).toBeNull();
+    expect(body.internal_chars).toBeGreaterThan(0);
+  });
+
+  it("生成过正式版后：GET 返回正式版内容，导出写盘的内容与 GET 一致（所见即所得）", async () => {
+    const h = makeHarness();
+    const { scenarioId } = seedScenario(h.db, "正式版场景");
+    const dir = mkdtempSync(join(tmpdir(), "scene-deliverable-"));
+    process.env.DELIVERABLE_DIR = dir;
+
+    // 直接落一份"模型写的"正文，模拟生成完成
+    const sample = "## 一、场景定义\n\n正式版正文。\n\n## 六、总结\n\n风险与边界。";
+    writeFileSync(join(dir, `${scenarioId}.internal.md`), sample, "utf8");
+    writeFileSync(join(dir, `${scenarioId}.external.md`), sample, "utf8");
+
+    const res = await h.app.inject({
+      method: "GET",
+      url: `/api/v1/projects/${scenarioId}/deliverables`,
+    });
+    const body = res.json() as { generated: boolean; internal_report: string };
+    expect(body.generated).toBe(true);
+    expect(body.internal_report).toBe(sample);
+
+    const exp = await h.app.inject({
+      method: "POST",
+      url: `/api/v1/projects/${scenarioId}/deliverables/export`,
+    });
+    const { internal_path: internal } = exp.json();
+    expect(readFileSync(internal, "utf8")).toBe(sample);
+    delete process.env.DELIVERABLE_DIR;
   });
 
   it("GET /deliverables：场景不存在 404", async () => {

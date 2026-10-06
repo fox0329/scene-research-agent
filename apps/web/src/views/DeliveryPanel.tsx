@@ -1,21 +1,25 @@
 /**
  * @scene/web — 最后一步「交付物」面板
  *
- * 组装步：不需要模型分析，系统按「章节 ← 表映射」把前面各步的产出装配成两份文件：
- *  - 内部调研版（含来源、证据级、缺口）
- *  - 对外汇报版（只保留可对外的事实）
+ * 交付物步：**报告正文由模型撰写**（变更表 #112，用户定调「要的是总结，不是罗列」）——
+ * 模型读完全部表格后按六章（场景定义 / 场景认识 / 存在的问题 / 我们的方案 / 能够提供的价值 /
+ * 总结）写出归纳正文，服务端再用确定性校验把关（六章齐、不给建议、对外不带内部信息），
+ * 没写成或没过校验的章节自动用要点版兜底。
+ *
+ *  - 内部调研报告：侧重客观与风险（含来源索引与覆盖概览附录）
+ *  - 对外汇报材料：侧重痛点、方案、价值（不含内部痕迹）
  *
  * 用户定调（2026-10-06）：「交付物阶段，不要显示一个检查清单，而是和其他阶段一样，
  * 显示具体的内容，具体来说就是两份报告，在中栏显示出来。」
  *
- * 于是中栏与其它步同形：**两行粘性表头（阶段名称 + 两份报告 chip）+ 正文**。
- * 装配是确定性的（章节 ← 表映射，不跑模型），所以正文直接展示、不必先点导出；
- * 「装配原料清单」（各步状态与产出规模）与导出路径按 G-R9（中栏说结果、来源归右栏）归右栏。
+ * 中栏显示报告正文（两份口径的切换在流程轴第二行）；还没生成正式版时显示确定性要点版，
+ * 并在正文上方提示"当前是要点版"。「装配原料清单」与导出路径按 G-R9 归右栏。
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { FLOW_TOTAL, flowStep } from "@scene/contract";
-import { api, type ApiFlowStatus } from "../api";
+import { api, generateDeliverablesStream, reconnectDeliverablesStream, type ApiFlowStatus } from "../api";
+import { useStageAnalysis } from "../hooks/useStageAnalysis";
 import { renderMarkdown } from "../components/StageRightPanel";
 import { DELIVERY_OUTPUTS, DELIVERY_OUTPUT_HINT } from "../components/step-outputs";
 import type { StageSnapshot } from "../components/stage-snapshot";
@@ -99,6 +103,8 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  /** true = 模型撰写的正式版；false = 确定性要点版（提示引导生成） */
+  const [generated, setGenerated] = useState(false);
   const [paths, setPaths] = useState<{ internal_path: string; external_path: string } | null>(null);
 
   const loadReports = useCallback(async () => {
@@ -108,6 +114,7 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
     try {
       const r = await api.getDeliverables(projectId);
       setReports({ internal: r.internal_report, external: r.external_report });
+      setGenerated(r.generated);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -118,6 +125,33 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
   useEffect(() => {
     void loadReports();
   }, [loadReports]);
+
+  /**
+   * 报告生成 = 一次长跑（两份合计几分钟），复用「本步分析」的运行态：
+   * 进度行、时长、断线续连、收尾对账全都一样，只把开流方式换成报告生成。
+   */
+  const gen = useStageAnalysis({
+    projectId: projectId ?? "",
+    stage: 6,
+    stepId: FLOW_TOTAL,
+    openStream: (lastEventId, signal) => {
+      const sink = { lastId: lastEventId };
+      return lastEventId === null
+        ? generateDeliverablesStream(projectId ?? "", sink, signal)
+        : reconnectDeliverablesStream(projectId ?? "", lastEventId, sink, signal);
+    },
+    onSettled: () => void loadReports(),
+    onError: (message) => showToast(`生成报告失败：${message}`),
+  });
+
+  const handleGenerate = useCallback(() => {
+    if (!live || !projectId) {
+      showToast("演示模式：报告生成仅在实时数据模式可用");
+      return;
+    }
+    showToast("开始生成报告：模型会读完前面所有表格，按六章写出归纳正文（约几分钟）");
+    gen.start();
+  }, [live, projectId, showToast, gen]);
 
   /** 流程轴第二行点了某份报告：只在 id 变化时套用 */
   const pickId = pick?.id;
@@ -182,10 +216,17 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
           <button
             className="btn primary"
             type="button"
-            disabled={busy}
-            onClick={() => void handleExport()}
+            disabled={gen.running}
+            onClick={handleGenerate}
           >
-            {busy ? "生成导出中…" : "生成并导出交付物"}
+            {gen.running
+              ? `撰写中… ${gen.elapsedLabel}`
+              : generated
+                ? "重新生成报告"
+                : "生成报告"}
+          </button>
+          <button className="btn" type="button" disabled={busy} onClick={() => void handleExport()}>
+            {busy ? "导出中…" : "导出到文件"}
           </button>
         </div>
       </div>
@@ -206,7 +247,25 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
             </button>
           </div>
         ) : (
-          <div className="md-body">{renderMarkdown(body)}</div>
+          <>
+            {gen.running ? (
+              <div className="report-progress" role="status" aria-label="报告生成进度">
+                {gen.streamLines.slice(-3).map((line, i) => (
+                  <div key={`${i}-${line}`} className="report-progress-line">
+                    {line}
+                  </div>
+                ))}
+              </div>
+            ) : null}
+            {!generated && !gen.running ? (
+              <p className="brief-hint">
+                当前是「要点版」（系统按章节 ← 表映射直接搬的数据要点，只是一份提纲）。
+                点右上「生成报告」，模型会读完全部表格后按六章写出归纳正文——
+                内部版侧重客观与风险，对外版侧重痛点、方案与价值。
+              </p>
+            ) : null}
+            <div className="md-body">{renderMarkdown(body)}</div>
+          </>
         )}
       </div>
     </div>

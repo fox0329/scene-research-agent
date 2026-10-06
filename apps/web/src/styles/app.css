@@ -2470,3 +2470,18 @@ td.ed {
   color: var(--ct3);
   border-color: var(--cb);
 }
+
+
+/* 交付物报告生成进度（长跑几分钟，进度要看得见；报告正文仍在下面） */
+.report-progress {
+  margin: 0 0 var(--s2);
+  padding: var(--s2) var(--s3);
+  border: 1px solid var(--cb);
+  border-radius: var(--r8);
+  background: var(--cf);
+}
+.report-progress-line {
+  font-size: var(--t2x);
+  color: var(--tl);
+  line-height: 1.6;
+}

@@ -62,7 +62,13 @@ export {
 export type { ConnectionCheckResult, ModelsFetchResult } from "./provider-check.js";
 
 /** 交付物导出（Markdown） */
-export { exportDeliverables, exportFileName } from "./md-export.js";
+export {
+  exportDeliverables,
+  exportFileName,
+  buildReportMarkdown,
+  reportChapterDigest,
+} from "./md-export.js";
+export type { ChapterDigest, DigestOptions } from "./md-export.js";
 
 /** 文件存储适配器 — TODO M1 实现 */
 export {};export * from "./source-index.js";

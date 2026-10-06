@@ -251,3 +251,11 @@ export type {
   PostcheckSeverity,
   SourceLookup,
 } from "./postcheck.js";
+export {
+  checkReport,
+  matchChapterKey,
+  reportChapterHeadings,
+  reportViolationsBrief,
+  REPORT_MIN_CHARS,
+} from "./report-gate.js";
+export type { ReportGateReport, ReportKind, ReportViolation } from "./report-gate.js";

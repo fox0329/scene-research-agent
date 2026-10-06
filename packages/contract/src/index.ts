@@ -408,10 +408,22 @@ export interface ModelConfig {
  */
 export interface DeliverableInput {
   scenario: Scenario;
-  /** 各阶段总结文档（内部报告正文；阶段 0-6） */
+  /**
+   * 各阶段总结文档（阶段 0-6）
+   *
+   * v1.32 起**不再进报告正文**（用户定调：「首先应该是报告，不是记录」）；保留字段是因为
+   * 右栏与旧调用仍在用，报告侧只当它不存在。
+   */
   stageSummaries: readonly { stage: number; title: string; markdown: string }[];
-  /** 全部阶段数据行（内部报告附录 + 对外材料章节 ← 表映射） */
+  /** 全部阶段数据行（报告正文的原料 + 内部报告附录） */
   stageData: StageData[];
+  /**
+   * 模型撰写的章节正文（变更表 #112）
+   *
+   * 有它就用品模型写的（六章总结式）；缺哪章用确定性要点版兜底该章。
+   * `key` 对应 `REPORT_CHAPTERS[].key`。
+   */
+  chapters?: readonly { key: string; markdown: string }[];
   /** 生成日期（可注入，便于测试） */
   generatedAt?: string;
 }

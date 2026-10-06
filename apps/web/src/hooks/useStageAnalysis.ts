@@ -12,7 +12,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { advanceStageStream, reconnectStageStream } from "../api";
+import { advanceStageStream, reconnectStageStream, type FollowEvent } from "../api";
 import { consumeAnalysisStream } from "./analysis-stream";
 
 export interface StageAnalysisState {
@@ -57,8 +57,15 @@ export function useStageAnalysis(opts: {
    * 否则界面上只是一个不再变化的按钮。
    */
   onWarn?: (message: string) => void;
+  /**
+   * 打开进度流的方式（缺省 = 本步分析）
+   *
+   * 交付物这一步（第 7 步）不跑阶段分析，而是**生成报告**：它同样长跑、同样要进度、
+   * 同样要按 Last-Event-ID 续连，所以复用这套运行态，只换开流方式。
+   */
+  openStream?: (lastEventId: string | null, signal: AbortSignal) => AsyncIterable<FollowEvent>;
 }): StageAnalysisState {
-  const { projectId, stage, stepId, onDone, onSettled, onError, onWarn } = opts;
+  const { projectId, stage, stepId, onDone, onSettled, onError, onWarn, openStream } = opts;
   const [running, setRunning] = useState(false);
   const [elapsedSec, setElapsedSec] = useState(0);
   const [streamLines, setStreamLines] = useState<string[]>([]);
@@ -89,9 +96,11 @@ export function useStageAnalysis(opts: {
             const sink = { lastId: lastEventId };
             const controller = new AbortController();
             const events =
-              lastEventId === null
-                ? advanceStageStream(projectId, stage, stepId, sink, controller.signal)
-                : reconnectStageStream(projectId, stage, lastEventId, sink, controller.signal);
+              openStream !== undefined
+                ? openStream(lastEventId, controller.signal)
+                : lastEventId === null
+                  ? advanceStageStream(projectId, stage, stepId, sink, controller.signal)
+                  : reconnectStageStream(projectId, stage, lastEventId, sink, controller.signal);
             return { events, abort: () => controller.abort() };
           },
           onEvent: (ev) => {
@@ -153,7 +162,7 @@ export function useStageAnalysis(opts: {
         setRunning(false);
       }
     })();
-  }, [projectId, stage, stepId, push, onDone, onSettled, onError, onWarn]);
+  }, [projectId, stage, stepId, push, onDone, onSettled, onError, onWarn, openStream]);
 
   const elapsedLabel = `${Math.floor(elapsedSec / 60)}:${String(elapsedSec % 60).padStart(2, "0")}`;
   return { running, elapsedLabel, streamLines, start };

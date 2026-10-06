@@ -1444,8 +1444,150 @@ export interface DeliverableSection {
   note?: string;
 }
 
-/** 内部调研报告：附录部分（正文是阶段总结文档） */
-export const INTERNAL_REPORT_SECTIONS: readonly DeliverableSection[] = [
+/**
+ * 报告章节（内部调研报告 / 对外汇报材料**共用同一套章节**）
+ *
+ * 用户定调（2026-10-06）：「交付物的内容质量太差了吧，首先应该是报告，不是记录，
+ * 整体章节应该是差不多了，都是场景定义、认识、存在的问题、我们的方案、能够提供的
+ * 价值、总结。只是内部侧重客观、风险，外部侧重痛点、方案、价值。」
+ *
+ * 于是同一套六章、两份侧重：
+ *  - 内部：`internal` 块 = 全量表（含利润池 / 上游格局 / 竞品 / 替代方案 / 坑），
+ *    每块带来源与核实结论，末尾另有风险与边界
+ *  - 对外：`external` 块 = 只留客户视角的列（去掉内部论据、风险、竞品身份、财务口径）
+ *
+ * 注意：**正文不再是「阶段总结」的拼接**（那是记录，不是报告）；阶段总结仍可在界面
+ * 右栏逐步查看。
+ */
+export interface ReportBlock {
+  /** 表号 */
+  code: string;
+  /** 本章这一块的小标题（读者看到的小节名） */
+  heading: string;
+  /** 只取这些列（缺省 = 该表全部中栏列）——同一张表在不同章节取不同侧面 */
+  cols?: readonly string[];
+  /** 渲染方式：要点（默认，一行一条结论）或表格（数值/对比类） */
+  as?: "bullets" | "table";
+}
+
+export interface ReportChapter {
+  key: string;
+  /** 章节标题（含序号，两份共用） */
+  title: string;
+  /** 内部版本章包含的内容块 */
+  internal: readonly ReportBlock[];
+  /** 对外版本章包含的内容块 */
+  external: readonly ReportBlock[];
+  /** 章节口径说明（可分别给两份） */
+  note?: { internal?: string; external?: string };
+}
+
+export const REPORT_CHAPTERS: readonly ReportChapter[] = [
+  {
+    key: "scene",
+    title: "一、场景定义",
+    internal: [{ code: "表1-1", heading: "在讲哪个场景" }],
+    external: [{ code: "表1-1", heading: "在讲哪个场景" }],
+  },
+  {
+    key: "understand",
+    title: "二、场景认识",
+    internal: [
+      { code: "表1-2", heading: "业务环节与现在的做法", cols: ["link", "owner_now", "current_tool", "current_flow"] },
+      { code: "表2-2", heading: "场景里有哪些要素", cols: ["element_name", "element_type", "function", "vendor", "price_range"] },
+      { code: "表2-3", heading: "系统怎么连（分层架构）", cols: ["layer", "components", "interface"] },
+      { code: "表2-5", heading: "物理与合规约束", cols: ["constraint_item", "required_value", "standard_no"] },
+      { code: "表2-7", heading: "现在怎么交付与运维", cols: ["item", "status"] },
+      { code: "表3-2", heading: "市场上的方案形态", cols: ["form", "key_points", "leader", "fit_for"] },
+      { code: "表3-3", heading: "客户怎么买", cols: ["customer_type", "decision_maker", "payer", "budget_item"] },
+      { code: "表3-9", heading: "行业趋势", cols: ["trend", "driver", "impact", "window"] },
+      { code: "表3-1", heading: "钱怎么分（利润池，内部）", cols: ["link", "gross_margin", "representative"] },
+      { code: "表3-5", heading: "上游供给格局（内部）", cols: ["link", "who_supplies", "concentration", "supply_risk"] },
+    ],
+    external: [
+      { code: "表1-2", heading: "业务环节与现在的做法", cols: ["link", "owner_now", "current_tool"] },
+      { code: "表2-3", heading: "系统怎么连（分层架构）", cols: ["layer", "components", "interface"] },
+      { code: "表2-5", heading: "物理与合规约束", cols: ["constraint_item", "required_value", "standard_no"] },
+      { code: "表2-7", heading: "现在怎么交付与运维", cols: ["item", "status"] },
+      { code: "表3-2", heading: "市场上的方案形态", cols: ["form", "key_points", "fit_for"] },
+      { code: "表3-3", heading: "客户怎么买", cols: ["customer_type", "decision_maker", "budget_item"] },
+      { code: "表3-9", heading: "行业趋势", cols: ["trend", "impact"] },
+    ],
+  },
+  {
+    key: "problems",
+    title: "三、存在的问题",
+    internal: [
+      { code: "表1-2", heading: "各环节现在的问题", cols: ["link", "pain"] },
+      { code: "表3-8", heading: "没被满足的需求（内部排序与验证）", cols: ["rank", "gap", "who_hurts", "pain_level", "current_alternative", "cross_validation"] },
+      { code: "表1-3", heading: "门槛与合规", cols: ["barrier_type", "barrier_name", "veto_holder", "criteria", "industry_practice"] },
+      { code: "表3-4", heading: "竞争对手位势（内部）", cols: ["dimension", "competitor_a", "competitor_b", "competitor_c"] },
+      { code: "表3-6", heading: "替代方案，客户为什么会选它（内部）", cols: ["alternative", "customer_gets", "unit_cost", "chosen_when"] },
+      { code: "表3-7", heading: "同行踩过的坑（内部复盘）", cols: ["pitfall", "consequence", "avoid_in_design"] },
+    ],
+    external: [
+      { code: "表1-2", heading: "各环节现在的问题", cols: ["link", "pain"] },
+      { code: "表3-8", heading: "今天还没被满足的需求", cols: ["gap", "who_hurts", "pain_level", "current_alternative"] },
+      { code: "表1-3", heading: "门槛与合规要求", cols: ["barrier_type", "barrier_name", "criteria"] },
+    ],
+    note: {
+      external: "本节的痛点来自现场做法与多方验证，不含我方内部的规避手法与商务判断。",
+    },
+  },
+  {
+    key: "solution",
+    title: "四、我们的方案",
+    internal: [
+      { code: "表4-2", heading: "我方在哪些环节参与、以什么角色", cols: ["link", "can_touch", "our_role", "role_reason"] },
+      { code: "表4-3", heading: "需求-能力对照（含边界与风险）", cols: ["gap_ref", "match", "our_product", "ability_basis", "boundary_note", "risk"] },
+      { code: "表5-1", heading: "方案架构与接口", cols: ["layer", "components", "interface", "integration", "boundary", "interface_name", "type", "protocol"] },
+      { code: "表5-3", heading: "实施安排", cols: ["item", "content", "window", "man_days", "rollback"] },
+      { code: "表5-4", heading: "交付与运维", cols: ["item", "content", "sla"] },
+    ],
+    external: [
+      { code: "表4-2", heading: "我方在哪些环节参与、以什么角色", cols: ["link", "can_touch", "our_role"] },
+      { code: "表4-3", heading: "需求-能力对照", cols: ["gap_ref", "match", "our_product", "boundary_note"] },
+      { code: "表5-1", heading: "方案架构与接口", cols: ["layer", "components", "interface", "integration", "boundary", "interface_name", "type", "protocol"] },
+      { code: "表5-3", heading: "实施安排", cols: ["item", "content", "window", "man_days"] },
+      { code: "表5-4", heading: "交付与运维", cols: ["item", "content", "sla"] },
+    ],
+    note: {
+      external: "方案只写清「我方做什么、到哪一步、接口在哪」，不含内部论据与商务判断。",
+    },
+  },
+  {
+    key: "value",
+    title: "五、能够提供的价值",
+    internal: [
+      { code: "表6-1", heading: "收益 → 指标 → 基线与预期", as: "table", cols: ["benefit", "metric", "baseline", "expected", "how_to_measure"] },
+      { code: "表4-5", heading: "竞争力自评", as: "table", cols: ["dimension", "weight", "score", "basis"] },
+      { code: "表6-4", heading: "试点与验收", cols: ["kind", "content"] },
+    ],
+    external: [
+      { code: "表6-1", heading: "收益 → 指标 → 基线与预期", as: "table", cols: ["benefit", "metric", "baseline", "expected", "how_to_measure"] },
+      { code: "表4-5", heading: "能力与竞争力自评", as: "table", cols: ["dimension", "weight", "score"] },
+      { code: "表6-4", heading: "试点与验收", cols: ["kind", "content"] },
+    ],
+    note: {
+      internal: "基线为材料所示或行业通例，逐条标了出处；没有基线的条目不得当成结论用。",
+      external: "数值为按材料口径的测算；验证方式见「怎么测」列，最终以试点实测为准。",
+    },
+  },
+  {
+    key: "summary",
+    title: "六、总结",
+    /* 本章由代码按数据汇总（事实、边界、风险、待补），不直接搬某张表 */
+    internal: [],
+    external: [],
+    note: {
+      internal: "只汇总事实与不确定，不给决策建议。",
+      external: "只陈述信息与安排，不含结论性建议。",
+    },
+  },
+];
+
+/** 内部调研报告：附录部分 */
+export const INTERNAL_APPENDIX_SECTIONS: readonly DeliverableSection[] = [
   {
     key: "sources",
     title: "附录 A、来源索引",
@@ -1460,27 +1602,3 @@ export const INTERNAL_REPORT_SECTIONS: readonly DeliverableSection[] = [
   },
 ];
 
-/** 对外汇报材料：只放客户视角的章节，且只渲染中栏列 */
-export const EXTERNAL_REPORT_SECTIONS: readonly DeliverableSection[] = [
-  { key: "scene", title: "一、场景概况", tables: ["表1-1"] },
-  { key: "scope", title: "二、场景范围与业务环节", tables: ["表1-2"] },
-  {
-    key: "barriers",
-    title: "三、门槛与合规要求",
-    tables: ["表1-3"],
-    note: "仅列要求与现状，不含我方处置建议。",
-  },
-  { key: "solution", title: "四、方案架构", tables: ["表5-1"] },
-  { key: "impl", title: "五、实施与交付安排", tables: ["表5-3", "表5-4"] },
-  {
-    key: "value",
-    title: "六、价值与验证口径",
-    tables: ["表6-1"],
-    note: "数值为按材料口径的测算，验证方式见「怎么测」列。",
-  },
-];
-
-/** 交付物章节（按 kind 取） */
-export function deliverableSections(kind: "internal" | "external"): readonly DeliverableSection[] {
-  return kind === "internal" ? INTERNAL_REPORT_SECTIONS : EXTERNAL_REPORT_SECTIONS;
-}

@@ -509,9 +509,15 @@ export const api = {
   /** 交付物双口径导出（契约 §三：返回服务端 md 文件路径） */
   /** 交付物正文（装配但不落盘）：中栏直接显示两份报告 */
   getDeliverables: (id: string) =>
-    req<{ internal_report: string; external_report: string; generated_at: string }>(
-      `/projects/${encodeURIComponent(id)}/deliverables`,
-    ),
+    req<{
+      internal_report: string;
+      external_report: string;
+      /** true = 模型撰写的正式版；false = 确定性要点版（界面要提示并引导生成） */
+      generated: boolean;
+      generated_at: string | null;
+      internal_chars: number;
+      external_chars: number;
+    }>(`/projects/${encodeURIComponent(id)}/deliverables`),
   exportDeliverables: (id: string) =>
     req<{ internal_path: string; external_path: string }>(
       `/projects/${encodeURIComponent(id)}/deliverables/export`,
@@ -747,6 +753,35 @@ export const reconnectStageStream = (
 ) =>
   sseRequest(
     `/projects/${encodeURIComponent(projectId)}/stages/${stage}/events?lastEventId=${encodeURIComponent(lastEventId)}`,
+    undefined,
+    lastEventIdSink,
+    "GET",
+    signal,
+  );
+
+/** 生成交付物报告（模型撰写六章总结，SSE 推进度） */
+export const generateDeliverablesStream = (
+  projectId: string,
+  lastEventIdSink: { lastId: string | null } = { lastId: null },
+  signal?: AbortSignal,
+) =>
+  sseRequest(
+    `/projects/${encodeURIComponent(projectId)}/deliverables/generate`,
+    undefined,
+    lastEventIdSink,
+    "POST",
+    signal,
+  );
+
+/** 报告生成进度续连（GET events + Last-Event-ID） */
+export const reconnectDeliverablesStream = (
+  projectId: string,
+  lastEventId: string,
+  lastEventIdSink: { lastId: string | null } = { lastId: null },
+  signal?: AbortSignal,
+) =>
+  sseRequest(
+    `/projects/${encodeURIComponent(projectId)}/deliverables/events?lastEventId=${encodeURIComponent(lastEventId)}`,
     undefined,
     lastEventIdSink,
     "GET",
