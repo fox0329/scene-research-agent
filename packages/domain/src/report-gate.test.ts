@@ -137,6 +137,26 @@ describe("报告确定性校验（变更表 #112 / #113）", () => {
     expect(v).toBeUndefined();
   });
 
+  it("价值章逐条写「待补/未提供」→ 硬伤（那是缺口清单，不是价值）", () => {
+    const bad = goodReport("external").replace(
+      "价值一 ……度量口径：单次巡检人天。",
+      "价值一：省人。度量口径是巡检人天。本客户基线未提供。\n" +
+        "价值二：省电。本客户分项计量未提供。\n价值三：少上门。本客户工单未提供。",
+    );
+    const v = checkReport("external", bad).violations.find((x) => x.kind === "价值写成缺口清单");
+    expect(v?.hard).toBe(true);
+  });
+
+  it("价值章只在章末交代一次基线 → 不算缺口清单", () => {
+    const ok = goodReport("external").replace(
+      "价值一 ……度量口径：单次巡检人天。",
+      "价值一：采用后现场巡检减少。现在：靠人工巡检。（怎么核：巡检人天）\n" +
+        "本客户基线未提供，以上为行业通例量级。",
+    );
+    const r = checkReport("external", ok);
+    expect(r.violations.some((x) => x.kind === "价值写成缺口清单")).toBe(false);
+  });
+
   it("篇幅不足只提示，不当硬伤", () => {
     const v = checkReport("external", goodReport("external")).violations.find(
       (x) => x.kind === "篇幅不足",

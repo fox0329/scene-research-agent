@@ -35,6 +35,8 @@ export interface ReportViolation {
     | "缺术语表"
     | "正文用了章号式编号"
     | "说明性套话"
+    | "价值写成缺口清单"
+    | "说明书腔"
     | "篇幅超标"
     | "篇幅不足";
   /** 硬伤 = 必须重写 */
@@ -211,6 +213,14 @@ export function missingChapterArtifacts(
   return missingArtifacts(markdown, sections);
 }
 
+/** 切出某一章的正文（含标题行），用于按章做口吻检查 */
+function chapterSlice(markdown: string, key: string): string {
+  const parts = markdown.split(/\n(?=## )/);
+  return (
+    parts.find((p) => matchChapterKey((p.match(/^## [^\n]*/) ?? [""])[0]) === key) ?? ""
+  );
+}
+
 /** 小节是否写了（认小节名，也认同义关键词） */
 function sectionWritten(sec: ReportSection, subs: readonly string[]): boolean {
   const name = chapterName(sec.title);
@@ -295,6 +305,28 @@ export function checkReport(kind: ReportKind, markdown: string): ReportGateRepor
       kind: "正文用了章号式编号",
       hard: false,
       detail: `正文有 ${numbered.length} 处用「一、二、」当条目编号，与章节层级混淆；分条改用「价值一 / 第一 / 其一」`,
+    });
+  }
+
+  // 价值章的口吻：用户实测反馈——六条价值每条都挂一句「本客户基线未提供 / 待补」，
+  // 那不是价值，是缺口清单。逐条免责算硬伤（要重写），说明书句式只提示。
+  const valueChapter = chapterSlice(markdown, "value");
+  const gapHits = valueChapter.match(/(?:待补|未提供|待补充|无法核实|需客户提供|尚需)/g) ?? [];
+  if (gapHits.length >= 3) {
+    violations.push({
+      kind: "价值写成缺口清单",
+      hard: true,
+      detail:
+        `「核心价值」章里有 ${gapHits.length} 处「待补 / 未提供 / 无法核实」——价值要写成"采用之后变成什么样"，` +
+        "缺口与核实状态最多在章末一句话交代，逐条缺口放「客观与风险」章",
+    });
+  }
+  const manualHits = valueChapter.match(/(?:度量口径是|口径是|本条信息|数据来源[：:])/g) ?? [];
+  if (manualHits.length >= 2) {
+    violations.push({
+      kind: "说明书腔",
+      hard: false,
+      detail: `「核心价值」章有 ${manualHits.length} 处说明书句式（如「度量口径是…」）——指标名放进「怎么核」括号里就够`,
     });
   }
 

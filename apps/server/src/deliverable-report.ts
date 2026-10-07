@@ -261,13 +261,16 @@ async function writeOneReport(args: {
       // 结构塌陷（原来有多个小节、压完成一个都没有）也作废
       const collapsed =
         shorter !== undefined && headingsOf(body).length >= 2 && headingsOf(shorter).length === 0;
-      if (lostArtifact || collapsed) {
+      const fragmented = shorter !== undefined && hasFragment(shorter);
+      if (lostArtifact || collapsed || fragmented) {
         push({
           type: "progress",
-          message: `${label}：${d.title} 压缩会把方案构件/结构压没，保留原正文`,
+          message: fragmented
+            ? `${label}：${d.title} 压缩后出现残句，保留原正文`
+            : `${label}：${d.title} 压缩会把方案构件/结构压没，保留原正文`,
         });
       }
-      if (shorter && !lostArtifact && !collapsed && proseChars(shorter) < current) {
+      if (shorter && !lostArtifact && !collapsed && !fragmented && proseChars(shorter) < current) {
         written.set(d.key, shorter);
         push({
           type: "progress",
@@ -291,6 +294,17 @@ async function writeOneReport(args: {
     });
   }
   return assemble(written, digest, scenario, stageData, kind, args.today, gate.violations, retried);
+}
+
+/** 有没有"残句"：短段落却不像一句完整的话（压缩只删不加，但可能把一句话砍成半句） */
+function hasFragment(markdown: string): boolean {
+  return markdown.split("\n").some((line) => {
+    const t = line.trim().replace(/\*\*$/, "");
+    if (t === "" || t.startsWith("|") || t.startsWith("#") || t.startsWith("-") || t.startsWith(">")) {
+      return false;
+    }
+    return t.length < 12 && !/[。！？：；、）】」…]$/.test(t);
+  });
 }
 
 /** 正文里的小节标题（含章标题），用于压缩前后的骨架比对 */
