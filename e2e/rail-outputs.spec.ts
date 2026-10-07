@@ -147,13 +147,16 @@ test("交付物这一步：第二行是两份报告，点哪份中栏显示哪�
   await expect(page.locator(".ws .pnl-actions")).toContainText("生成报告");
   // v1.32：交付物正文是「报告」（模型撰写的六章总结 / 未生成时是要点版）
   await expect(page.locator(".ws .md-body")).toContainText("场景调研报告");
-  await expect(page.locator(".ws .md-body")).toContainText("来源与覆盖");
+  await expect(page.locator(".ws .md-body")).toContainText("客观与风险");
+  await expect(page.locator(".ws .md-body")).toContainText("主要风险点");
+  // v1.40：内部报告到风险章为止，不再有下一步与附录（变更表 #124）
+  await expect(page.locator(".ws .md-body")).not.toContainText("附录");
 
   // 点第二行的「对外汇报版」→ 同一位置换成另一份口径（对外版不装附录）
   await outputs.filter({ hasText: "对外汇报版" }).click();
   // v1.32：对外材料标题是「<场景名> 解决方案」（报告口径，不是"记录"）
   await expect(page.locator(".ws .md-body")).toContainText("解决方案");
-  await expect(page.locator(".ws .md-body")).not.toContainText("来源与覆盖");
+  await expect(page.locator(".ws .md-body")).not.toContainText("主要风险点");
   await expect(outputs.filter({ hasText: "对外汇报版" })).toHaveClass(/active/);
 
   // 装配原料清单按 G-R9 归右栏「阶段总结」

@@ -255,7 +255,6 @@ function renderBlock(
  * 只按"缺什么输入 → 影响什么"给出风险点；真正的风险表述由模型写。
  */
 function renderRisks(stageData: readonly StageData[]): string {
-  const n = (code: string) => countRows(stageData, code);
   const verdict = (r: StageData): string => String(r.row["verification_verdict"] ?? "");
   const shaky = stageData.filter(
     (r) => verdict(r).includes("单一来源") || verdict(r).includes("无法核实") || verdict(r).includes("有反证"),
@@ -275,7 +274,7 @@ function renderRisks(stageData: readonly StageData[]): string {
     "- **现场条件可能改变可行边界**：点位、承重、既有设备接口、网络与供电任一项不成立，部分房间只能做状态监测，无法纳入统一控制。",
     "- **门槛未过之前方案与报价不作数**" + (veto.length > 0 ? `：${veto.join("、")}任一方否决都会推翻当前技术路径或商务结构。` : "。"),
     "- **交付依赖客户与第三方**：网络、供电、装修收口与既有系统接口分别由客户网络部门、物业与装修总包、原系统厂商负责，任一方延期都会顺延工期。",
-    `- **设备纳管能力有上限**：${n("表4-3")} 条需求—能力对照里，部分只能辅助或外围配合，老旧封闭协议设备与不开放接口的设备只能旁路监测。`,
+    "- **设备纳管能力有上限**：部分需求只能辅助或外围配合；老旧封闭协议设备与不开放接口的设备只能旁路监测，控制覆盖率随现场设备能力浮动。",
   );
   return out.join("\n").trim();
 }
