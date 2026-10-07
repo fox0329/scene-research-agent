@@ -123,12 +123,15 @@ describe("exportFileName", () => {
 });
 
 describe("exportDeliverables — 内部调研报告", () => {
-  it("头部含场景、日期与「核实结论 + 不给决策建议」声明", async () => {
+  it("封面只留身份信息（场景 + 日期），澄清/免责文字一律不出现", async () => {
     const { internal_report } = await exportDeliverables(makeInput());
     expect(internal_report).toContain("# 智慧水务 场景调研报告");
     expect(internal_report).toContain("**生成日期**：2026-09-25");
-    expect(internal_report).toContain("每条信息都带核实结论");
-    expect(internal_report).toContain("不给决策建议");
+    expect(internal_report).not.toContain("怎么读");
+    expect(internal_report).not.toContain("不给决策建议");
+    expect(internal_report).not.toContain("内部版侧重");
+    // 每章导语（口径说明）也不再有
+    expect(internal_report).not.toContain("先讲清场景在业务链条里的位置");
     // 场景锚派生副标题
     // 场景锚派生副标题：场景边界 ｜ 买方类型（新口径里"客户类型"已不在表1-1）
     expect(internal_report).toContain("制水到输配 ｜ 市政水务集团");
@@ -198,7 +201,8 @@ describe("exportDeliverables — 对外汇报材料", () => {
       expect(external_report, t).toContain(t);
     }
     expect(external_report).not.toContain("客观与风险");
-    expect(external_report).toContain("不含结论性建议");
+    expect(external_report).not.toContain("不含结论性建议");
+    expect(external_report).not.toContain("以试点实测为准");
   });
 
   it("只渲染中栏列：不出现来源、证据级、权威性", async () => {

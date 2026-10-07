@@ -33,6 +33,7 @@ export interface ReportViolation {
     | "缺风险或边界"
     | "缺术语表"
     | "正文用了章号式编号"
+    | "说明性套话"
     | "篇幅不足";
   /** 硬伤 = 必须重写 */
   hard: boolean;
@@ -69,8 +70,18 @@ const EXTERNAL_LEAK_PATTERNS: readonly RegExp[] = [
   /ingest-[0-9A-Za-z_-]+/,
 ];
 
-/** 两份报告的最低字数（对应"内部 8–15 页 / 对外 5–8 页"的六成下限） */
-export const REPORT_MIN_CHARS: Record<ReportKind, number> = { internal: 2500, external: 1500 };
+/** 两份报告的最低字数（对应"内部 5–8 页 / 对外 3–5 页"的精要口径，变更表 #116） */
+export const REPORT_MIN_CHARS: Record<ReportKind, number> = { internal: 1800, external: 1200 };
+
+/** 自我说明 / 免责声明这类"澄清文字"（用户要求全部删掉，变更表 #116） */
+const META_PATTERNS: readonly RegExp[] = [
+  /不含决策建议|不给决策建议|不构成决策建议/,
+  /以试点实测为准|最终以实测为准/,
+  /按材料口径的测算/,
+  /除特别说明外/,
+  /本节出现的(?:数量|数字)/,
+  /本材料只陈述|本报告只(?:汇总|陈述)/,
+];
 
 /** 章名归一：去掉「一、」这类序号，便于与模型写的标题对上 */
 function chapterName(title: string): string {
@@ -249,6 +260,15 @@ export function checkReport(kind: ReportKind, markdown: string): ReportGateRepor
       kind: "正文用了章号式编号",
       hard: false,
       detail: `正文有 ${numbered.length} 处用「一、二、」当条目编号，与章节层级混淆；分条改用「价值一 / 第一 / 其一」`,
+    });
+  }
+
+  const meta = META_PATTERNS.flatMap((re) => markdown.match(re) ?? []);
+  if (meta.length > 0) {
+    violations.push({
+      kind: "说明性套话",
+      hard: false,
+      detail: `有 ${meta.length} 处澄清/免责式说明（如「${[...new Set(meta)].slice(0, 3).join("」「")}」），直接删掉——口径写在数字旁边就够`,
     });
   }
 

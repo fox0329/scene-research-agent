@@ -1519,8 +1519,6 @@ export interface ReportChapter {
   internal: readonly ReportBlock[];
   /** 对外版素材 */
   external: readonly ReportBlock[];
-  /** 章节口径说明（可分别给两份） */
-  note?: { internal?: string; external?: string };
 }
 
 export const REPORT_CHAPTERS: readonly ReportChapter[] = [
@@ -1546,10 +1544,6 @@ export const REPORT_CHAPTERS: readonly ReportChapter[] = [
       { code: "表2-7", heading: "现在怎么交付与运维", cols: ["item", "status"] },
       { code: "表3-9", heading: "行业趋势", cols: ["trend", "impact"] },
     ],
-    note: {
-      internal: "先讲清场景在业务链条里的位置与既有体系，再讲现状特征——为后面的方案与价值立前提。",
-      external: "先讲清场景在业务链条里的位置与既有体系，不评价贵方现状好坏。",
-    },
   },
   {
     key: "problems",
@@ -1572,10 +1566,6 @@ export const REPORT_CHAPTERS: readonly ReportChapter[] = [
       { code: "表3-8", heading: "今天还没被满足的需求", cols: ["gap", "who_hurts", "pain_level", "current_alternative"] },
       { code: "表1-3", heading: "门槛与合规要求", cols: ["barrier_type", "barrier_name", "criteria"] },
     ],
-    note: {
-      external: "本节的痛点来自现场做法与多方验证，不含我方内部的规避手法与商务判断。",
-      internal: "问题要归纳成几类（不是逐条搬运），并把哪些来自现场、哪些来自行业通行认识分开写。",
-    },
   },
   {
     key: "solution",
@@ -1602,10 +1592,6 @@ export const REPORT_CHAPTERS: readonly ReportChapter[] = [
       { code: "表5-3", heading: "实施安排", cols: ["item", "content", "window"] },
       { code: "表5-4", heading: "交付与运维", cols: ["item", "content", "sla"] },
     ],
-    note: {
-      internal: "这一章是报告的主体：原则、架构、职责划分、连接关系、选型、实施要点都要自建，素材只作依据。",
-      external: "方案只写清「我方做什么、到哪一步、接口在哪」，不含内部论据与商务判断。",
-    },
   },
   {
     key: "value",
@@ -1624,10 +1610,6 @@ export const REPORT_CHAPTERS: readonly ReportChapter[] = [
       { code: "表4-5", heading: "能力与竞争力自评", as: "table", cols: ["dimension", "weight", "score"] },
       { code: "表6-4", heading: "试点与验收", cols: ["kind", "content"] },
     ],
-    note: {
-      internal: "基线为材料所示或行业通例，逐条标了出处；没有基线的条目不得当成结论用。",
-      external: "数值为按材料口径的测算；验证方式见「怎么测」列，最终以试点实测为准。",
-    },
   },
   {
     key: "risk",
@@ -1641,9 +1623,6 @@ export const REPORT_CHAPTERS: readonly ReportChapter[] = [
     ],
     internal: [],
     external: [],
-    note: {
-      internal: "只汇总数据状态与不确定，不给决策建议——判断由使用者自己做。",
-    },
   },
   {
     key: "next",
@@ -1659,10 +1638,6 @@ export const REPORT_CHAPTERS: readonly ReportChapter[] = [
       { code: "表5-4", heading: "交付与运维", cols: ["item", "content", "sla"] },
       { code: "表6-4", heading: "试点与验收", cols: ["kind", "content"] },
     ],
-    note: {
-      internal: "要做什么、谁来做、需要什么条件、交付什么——不含「该不该做」的判断。",
-      external: "要做什么、需要贵方配合什么、交付什么——不含结论性建议。",
-    },
   },
 ];
 
@@ -1698,13 +1673,11 @@ export const INTERNAL_APPENDIX_SECTIONS: readonly DeliverableSection[] = [
     key: "sources",
     title: "附录 A、来源索引",
     tables: [],
-    note: "按表汇总本场景用到的全部来源；T1 权威 / T2 较权威 / T3 参考 / T4 待验证（G-R1）。",
   },
   {
     key: "coverage",
     title: "附录 B、信息覆盖概览",
     tables: [],
-    note: "逐表记录行数与是否有来源，作为「信息够不够」的客观依据（不构成判定）。",
   },
 ];
 

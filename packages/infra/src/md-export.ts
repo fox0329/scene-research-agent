@@ -398,29 +398,25 @@ function buildReport(
   const sub = anchorLine(stageData);
   const isInternal = kind === "internal";
 
+  // 封面只留身份信息（场景 + 生成日期）：口径说明、免责声明这类澄清文字用户要求全部删掉
   const head = isInternal
     ? [
         `# ${scenario.name} 场景调研报告`,
         "",
         `> **场景**：${scenario.name}${sub ? `（${sub}）` : ""}`,
         `> **生成日期**：${today}`,
-        "> **怎么读**：每条信息都带核实结论（准不准 · 客不客观 · 为什么）；本报告只给可核实的判定与事实，**不给决策建议**——该不该进由使用者自己定。",
-        "> **内部版侧重**：客观事实、边界与风险；来源索引与覆盖情况见附录。",
       ]
     : [
         `# ${scenario.name} 解决方案`,
         "",
         `> **场景**：${scenario.name}${sub ? `（${sub}）` : ""}`,
         `> **日期**：${today}`,
-        "> **怎么读**：本材料只陈述信息与安排，不含决策建议；数值为按材料口径的测算，最终以试点实测为准。",
       ];
 
   const sections: string[] = [head.join("\n")];
 
   for (const chapter of reportChaptersOf(kind)) {
-    const note = isInternal ? chapter.note?.internal : chapter.note?.external;
     const body: string[] = [`## ${reportChapterHeading(kind, chapter.key)}`, ""];
-    if (note) body.push(`> ${note}`, "");
     const text = stripEchoedTitle(bodyOf(chapter.key).trim(), chapter.label);
     body.push(text || "（本节内容待补）");
     sections.push(body.join("\n").trimEnd());
@@ -428,8 +424,8 @@ function buildReport(
 
   if (isInternal) {
     for (const sec of INTERNAL_APPENDIX_SECTIONS) {
-      if (sec.key === "sources") sections.push(renderSourceIndex(sec.title, stageData, sec.note));
-      if (sec.key === "coverage") sections.push(renderCoverage(sec.title, stageData, sec.note));
+      if (sec.key === "sources") sections.push(renderSourceIndex(sec.title, stageData));
+      if (sec.key === "coverage") sections.push(renderCoverage(sec.title, stageData));
     }
   }
   // 术语表由模型撰写（认不出的术语不硬编）；模型没写就不出现这一节，不造假
@@ -468,11 +464,7 @@ export function stripEchoedTitle(body: string, label: string): string {
 }
 
 /** 附录 A：来源索引（按表汇总来源） */
-function renderSourceIndex(
-  title: string,
-  stageData: readonly StageData[],
-  note?: string,
-): string {
+function renderSourceIndex(title: string, stageData: readonly StageData[]): string {
   const byTable = new Map<string, Map<string, number>>();
   for (const r of stageData) {
     const src = String(r.source ?? "").trim();
@@ -482,7 +474,6 @@ function renderSourceIndex(
     byTable.set(r.table_code, inner);
   }
   const lines: string[] = [`## ${title}`, ""];
-  if (note) lines.push(`> ${note}`, "");
   if (byTable.size === 0) {
     lines.push("（暂无带来源的信息）");
     return lines.join("\n");
@@ -497,11 +488,7 @@ function renderSourceIndex(
 }
 
 /** 附录 B：信息覆盖概览（行数 + 有来源行数） */
-function renderCoverage(
-  title: string,
-  stageData: readonly StageData[],
-  note?: string,
-): string {
+function renderCoverage(title: string, stageData: readonly StageData[]): string {
   const byTable = new Map<string, { rows: number; sourced: number }>();
   for (const r of stageData) {
     const cur = byTable.get(r.table_code) ?? { rows: 0, sourced: 0 };
@@ -510,7 +497,6 @@ function renderCoverage(
     byTable.set(r.table_code, cur);
   }
   const lines: string[] = [`## ${title}`, ""];
-  if (note) lines.push(`> ${note}`, "");
   lines.push("| 表号 | 表名 | 行数 | 有来源行数 |", "|---|---|---|---|");
   if (byTable.size === 0) {
     lines.push("| — | — | 0 | 0 |");

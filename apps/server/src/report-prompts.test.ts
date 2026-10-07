@@ -69,8 +69,8 @@ describe("报告提示词（变更表 #112）", () => {
     expect(user).toContain("不得出现决策建议措辞");
   });
 
-  it("两份的篇幅口径不同（内部 8–15 页 / 对外 5–8 页）", () => {
-    expect(buildReportPrompt("internal", base).system).toContain("4000–8000");
-    expect(buildReportPrompt("external", base).system).toContain("2500–4500");
+  it("两份的篇幅口径不同、且都收紧到精要（内部 5–8 页 / 对外 3–5 页）", () => {
+    expect(buildReportPrompt("internal", base).system).toContain("2500–4000");
+    expect(buildReportPrompt("external", base).system).toContain("1800–3000");
   });
 });
