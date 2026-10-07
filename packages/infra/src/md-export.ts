@@ -432,6 +432,20 @@ function buildReport(
   return sections.join("\n\n---\n\n");
 }
 
+/**
+ * 正文字数（**表格不算**）
+ *
+ * 用户要的"精要"针对的是叙述：表格是结构（架构 / 职责 / 选型 / 步骤），本该有；
+ * 流水账是正文把表格里的行又讲一遍。所以压缩预算按这个口径算，不按全文字数算。
+ */
+export function proseChars(markdown: string): number {
+  return markdown
+    .split("\n")
+    .filter((l) => !l.trim().startsWith("|"))
+    .join("\n")
+    .replace(/\s/g, "").length;
+}
+
 /** 归一化标题：去 `#`、去「一、」序号、去括号补充、去粗体标记 */
 function normTitle(text: string): string {
   return text

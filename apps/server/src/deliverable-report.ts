@@ -17,14 +17,25 @@ import { join } from "node:path";
 import type { DshClient, FollowEvent, Scenario, SessionHandle, StageData } from "@scene/contract";
 import { reportChaptersOf, tableDef } from "@scene/contract";
 import type { DbInstance } from "@scene/infra";
-import { buildReportMarkdown, reportChapterDigest, type ChapterDigest } from "@scene/infra";
+import {
+  buildReportMarkdown,
+  proseChars,
+  reportChapterDigest,
+  type ChapterDigest,
+} from "@scene/infra";
 import {
   REPORT_MIN_CHARS,
   checkReport,
   matchChapterKey,
   type ReportViolation,
 } from "@scene/domain";
-import { buildChapterPrompt, buildReportPrompt, type ReportKind } from "./report-prompts.js";
+import {
+  buildChapterPrompt,
+  buildCompressPrompt,
+  buildReportPrompt,
+  chapterProseBudget,
+  type ReportKind,
+} from "./report-prompts.js";
 
 /**
  * 报告正文落盘目录
@@ -217,6 +228,42 @@ async function writeOneReport(args: {
       if (body.trim()) written.set(key, body);
     }
     if (r.error) error = r.error;
+  }
+
+  // 篇幅回炉：正文（表格不计）超预算的章，让模型只删不加地压一次——提示词约束不住篇幅，
+  // 这一步才是能真正把"流水账"压下去的地方；压不动（更长了 / 出错）就保留原样，不截断正文。
+  if (error === undefined) {
+    for (const d of digest) {
+      const body = written.get(d.key)?.trim();
+      if (!body) continue;
+      const budget = chapterProseBudget(kind, d.key);
+      const current = proseChars(body);
+      if (current <= budget) continue;
+      push({
+        type: "progress",
+        message: `${label}：${d.title} 正文 ${current} 字，超过 ${budget} 字预算，正在压短…`,
+      });
+      const r = await streamPrompt({
+        dshClient,
+        session,
+        ...buildCompressPrompt({ kind, title: d.title, markdown: body, budget, current }),
+        label: `${label}（压缩·${d.title}）`,
+        keepaliveMs,
+        push,
+      });
+      if (r.error) {
+        error = r.error;
+        break;
+      }
+      const shorter = splitReportChapters(r.text, [d.key]).get(d.key)?.trim();
+      if (shorter && proseChars(shorter) < current) {
+        written.set(d.key, shorter);
+        push({
+          type: "progress",
+          message: `${label}：${d.title} 压到正文 ${proseChars(shorter)} 字`,
+        });
+      }
+    }
   }
 
   const filled = digest.filter((d) => written.get(d.key)?.trim()).length;

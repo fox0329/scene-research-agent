@@ -150,6 +150,56 @@ function renderAnchor(anchor: readonly Record<string, unknown>[]): string {
     .join("\n");
 }
 
+/**
+ * 每章**正文**字数预算（表格不计）
+ *
+ * 提示词里的"每章 350–600 字"模型只当建议；这里是可执行的硬预算：
+ * 超出就让模型回炉压一次（`buildCompressPrompt`），压不动就保留原样（不截断正文）。
+ */
+const PROSE_BUDGET: Record<ReportKind, Record<string, number>> = {
+  internal: { status: 550, problems: 550, solution: 650, value: 450, risk: 400, next: 300, glossary: 200 },
+  external: { status: 450, problems: 450, solution: 550, value: 400, next: 300, glossary: 200 },
+};
+
+/** 该章正文预算（认不出的章给一个通用上限） */
+export function chapterProseBudget(kind: ReportKind, key: string): number {
+  return PROSE_BUDGET[kind][key] ?? 450;
+}
+
+/** 压到预算内的提示词（只删不加：不许引入素材之外的信息） */
+export function buildCompressPrompt(args: {
+  kind: ReportKind;
+  title: string;
+  markdown: string;
+  budget: number;
+  current: number;
+}): { system: string; user: string } {
+  const { kind, title, markdown, budget, current } = args;
+  return {
+    system: [
+      kind === "internal"
+        ? "你是内部调研报告的定稿编辑。内部报告给「决定要不要进这个场景」的自己人看。"
+        : "你是对外方案的定稿编辑。对外材料给客户的业务与 IT 负责人看。",
+      "",
+      "## 只做一件事：压短，不重写",
+      "1. **只删不加**：不许引入原材料之外的任何信息、数字、结论；不许改数字与判定。",
+      "2. 删的是：同一事实的重复表述、铺垫与过渡句、对表格内容的复述、形容词与套话、",
+      "   自我说明与免责声明（「本材料不含决策建议」「以试点实测为准」这类）。",
+      "3. 留的是：结论、判断、代价、边界、度量口径、表格本身。",
+      "4. **表格原样保留**（表格不算字数）；`## 章名` 与 `### 小节` 标题也保留。",
+      "5. 输出纯 Markdown，不要前言与结语。",
+    ].join("\n"),
+    user: [
+      `## ${title}（当前正文 ${current} 字，表格不计）`,
+      "",
+      markdown,
+      "",
+      `## 任务`,
+      `把上面的正文压到 ${budget} 字以内（表格不计），保留结论与判断，删掉重复与铺垫。`,
+    ].join("\n"),
+  };
+}
+
 /** 某一章在小节上的要求（术语表这类附录章没有小节） */
 function reportSectionsOf(kind: ReportKind, key: string): readonly ReportSection[] {
   return reportChaptersOf(kind).find((c) => c.key === key)?.sections ?? [];

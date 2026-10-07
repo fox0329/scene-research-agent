@@ -134,6 +134,22 @@ describe("交付物报告生成（模型撰写 + 确定性校验）", () => {
     expect(internal).toContain("附录 B、信息覆盖概览");
   });
 
+  it("正文超预算的章回炉压短（模型只删不加），压短后的正文进交付物", async () => {
+    // 现状章第一节的正文灌水到超预算（预算 550 字）
+    const filler = "场景在业务中的位置";
+    const fat = goodReport("internal").replace(
+      `${filler}的归纳正文。`,
+      `${filler}的归纳正文。`.repeat(80),
+    );
+    const squeezed = goodReport("internal").replace(`${filler}的归纳正文。`, "压短后的现状结论。");
+    const { client, calls } = dshOf([fat, squeezed, goodReport("external")]);
+    await run(h.db, client, h.scenarioId);
+
+    const internal = readFileSync(join(h.dir, `${h.scenarioId}.internal.md`), "utf8");
+    expect(internal).toContain("压短后的现状结论。");
+    expect(calls.some((p) => p.includes("压到"))).toBe(true);
+  });
+
   it("对外版不装内部附录，也不出现内部表号", async () => {
     const { client } = dshOf([goodReport("internal"), goodReport("external")]);
     await run(h.db, client, h.scenarioId);
