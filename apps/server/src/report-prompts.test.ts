@@ -25,6 +25,12 @@ describe("报告提示词（变更表 #112）", () => {
     }
   });
 
+  it("禁止正文用「一、二、」编号（会与章号混淆），并给出替代写法", () => {
+    const { system } = buildReportPrompt("internal", base);
+    expect(system).toContain("不许再用「一、二、三、」编号");
+    expect(system).toContain("价值一");
+  });
+
   it("要求报告长出自己的方案构件，并明说「不是前面内容的总结」", () => {
     const { user } = buildReportPrompt("external", base);
     expect(user).toContain("方案构件");

@@ -98,6 +98,17 @@ describe("报告确定性校验（变更表 #112 / #113）", () => {
     expect(r.violations.some((v) => v.kind === "对外泄漏内部信息")).toBe(false);
   });
 
+  it("正文用「一、二、」当条目编号 → 只提示（会和章号混淆）", () => {
+    const r = checkReport(
+      "external",
+      goodReport("external", "\n\n**二、按预约自动就绪、离场自动释放。** 减少占而不用。"),
+    );
+    const v = r.violations.find((x) => x.kind === "正文用了章号式编号");
+    expect(v?.hard).toBe(false);
+    // 章标题本身是 `## 二、…`，不算正文编号
+    expect(v?.detail).toContain("1 处");
+  });
+
   it("缺术语表只提示不拦（附录不该拖住整份报告）", () => {
     const text = goodReport("external").replace("## 附录、术语表", "## 附录、说明");
     const r = checkReport("external", text);

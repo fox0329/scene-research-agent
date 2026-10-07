@@ -1982,6 +1982,7 @@ td.ed {
 .md-body h3 { margin: var(--s3) 0 var(--s2); font-size: var(--ts); color: var(--ct); }
 .md-body h4 { margin: var(--s2) 0 var(--s1); font-size: var(--ts); color: var(--ct2); }
 .md-body p { margin: 0 0 var(--s2); }
+.md-body strong { font-weight: var(--fb); }
 .md-body blockquote {
   margin: 0 0 var(--s2); padding-left: var(--s3);
   border-left: 2px solid var(--cb); color: var(--ct2); font-size: var(--txs);

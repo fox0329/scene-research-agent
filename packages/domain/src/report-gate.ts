@@ -32,6 +32,7 @@ export interface ReportViolation {
     | "出现决策建议"
     | "缺风险或边界"
     | "缺术语表"
+    | "正文用了章号式编号"
     | "篇幅不足";
   /** 硬伤 = 必须重写 */
   hard: boolean;
@@ -239,6 +240,16 @@ export function checkReport(kind: ReportKind, markdown: string): ReportGateRepor
         detail: `内部版必须写清风险与边界（当前风险=${hasRisk ? "有" : "无"}、边界=${hasBoundary ? "有" : "无"}）`,
       });
     }
+  }
+
+  // 正文里再用「一、二、」当条目编号，会和章号混在一起（用户实测：把「**二、按预约…**」看成又开了一章）
+  const numbered = markdown.match(/^\s*\*\*[一二三四五六七八九十]+、/gm) ?? [];
+  if (numbered.length > 0) {
+    violations.push({
+      kind: "正文用了章号式编号",
+      hard: false,
+      detail: `正文有 ${numbered.length} 处用「一、二、」当条目编号，与章节层级混淆；分条改用「价值一 / 第一 / 其一」`,
+    });
   }
 
   if (!written.has("glossary")) {

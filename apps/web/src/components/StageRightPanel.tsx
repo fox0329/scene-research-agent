@@ -20,6 +20,7 @@
 import React, { useMemo, useState } from "react";
 import { enumValues, middleColumns, tableDef } from "@scene/contract";
 import { FoldSection } from "./FoldSection";
+import { splitBold } from "./md-inline";
 import type { StageSnapshot } from "./stage-snapshot";
 import { plainText } from "./text-display";
 
@@ -32,6 +33,13 @@ export interface StageRightPanelProps {
 type Tab = "supplement" | "summary";
 
 /** 极简 Markdown 渲染（标题/列表/引用/表格分隔）——避免引入第三方依赖 */
+/** 行内粗体：报告正文用 `**结论**` 起句，不解析就会把星号原样显示给用户 */
+function inline(text: string): React.ReactNode {
+  const parts = splitBold(text);
+  if (parts.length === 1 && !parts[0]!.bold) return text;
+  return parts.map((p, i) => (p.bold ? <strong key={i}>{p.text}</strong> : p.text));
+}
+
 export function renderMarkdown(md: string): React.ReactNode {
   const lines = md.split("\n");
   const out: React.ReactNode[] = [];
@@ -43,7 +51,7 @@ export function renderMarkdown(md: string): React.ReactNode {
     out.push(
       <ul key={`ul-${out.length}`} className="md-ul">
         {list.map((t, i) => (
-          <li key={i}>{t}</li>
+          <li key={i}>{inline(t)}</li>
         ))}
       </ul>,
     );
@@ -55,11 +63,11 @@ export function renderMarkdown(md: string): React.ReactNode {
     out.push(
       <table key={`tb-${out.length}`} className="schema-table md-table">
         <thead>
-          <tr>{head.map((c, i) => <th key={i}>{c}</th>)}</tr>
+          <tr>{head.map((c, i) => <th key={i}>{inline(c)}</th>)}</tr>
         </thead>
         <tbody>
           {body.map((r, i) => (
-            <tr key={i}>{r.map((c, j) => <td key={j}>{c}</td>)}</tr>
+            <tr key={i}>{r.map((c, j) => <td key={j}>{inline(c)}</td>)}</tr>
           ))}
         </tbody>
       </table>,
@@ -83,12 +91,13 @@ export function renderMarkdown(md: string): React.ReactNode {
     }
     flushList();
 
-    if (line.startsWith("### ")) out.push(<h4 key={out.length}>{line.slice(4)}</h4>);
-    else if (line.startsWith("## ")) out.push(<h3 key={out.length}>{line.slice(3)}</h3>);
-    else if (line.startsWith("# ")) out.push(<h2 key={out.length}>{line.slice(2)}</h2>);
-    else if (line.startsWith("> ")) out.push(<blockquote key={out.length}>{line.slice(2)}</blockquote>);
+    if (line.startsWith("### ")) out.push(<h4 key={out.length}>{inline(line.slice(4))}</h4>);
+    else if (line.startsWith("## ")) out.push(<h3 key={out.length}>{inline(line.slice(3))}</h3>);
+    else if (line.startsWith("# ")) out.push(<h2 key={out.length}>{inline(line.slice(2))}</h2>);
+    else if (line.startsWith("> "))
+      out.push(<blockquote key={out.length}>{inline(line.slice(2))}</blockquote>);
     else if (line.trim() === "" || line.trim() === "---") continue;
-    else out.push(<p key={out.length}>{line}</p>);
+    else out.push(<p key={out.length}>{inline(line)}</p>);
   }
   flushList();
   flushTable();
