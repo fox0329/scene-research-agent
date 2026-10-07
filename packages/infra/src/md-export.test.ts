@@ -145,7 +145,6 @@ describe("exportDeliverables — 内部调研报告", () => {
       "## 三、方案",
       "## 四、价值",
       "## 五、客观与风险",
-      "## 六、下一步",
     ]) {
       expect(internal_report, title).toContain(title);
     }
@@ -155,7 +154,7 @@ describe("exportDeliverables — 内部调研报告", () => {
     expect(internal_report).not.toContain("上下游衔接");
   });
 
-  it("模型写了正文就用模型的（逐章替换，附录仍是确定性装配）", async () => {
+  it("模型写了正文就用模型的（逐章替换）", async () => {
     const input = makeInput();
     const { internal_report } = await exportDeliverables({
       ...input,
@@ -168,23 +167,35 @@ describe("exportDeliverables — 内部调研报告", () => {
     expect(internal_report).toContain("模型归纳：价值集中在两处。");
     // 没给模型的章仍用要点版兜底（章节齐全）
     expect(internal_report).toContain("## 一、现状");
-    expect(internal_report).toContain("附录 A、来源与覆盖");
+    expect(internal_report).not.toContain("附录"); // 内部不再出附录（#124）
   });
 
-  it("附录 A 一张表给出行数、有来源与主要来源", async () => {
+  it("内部版只有五章（到「客观与风险」）且不出附录", async () => {
     const { internal_report } = await exportDeliverables(makeInput());
-    expect(internal_report).toContain("## 附录 A、来源与覆盖");
-    expect(internal_report).toContain("| 表号 | 表名 | 行数 | 有来源 | 主要来源 |");
-    expect(internal_report).toMatch(/\| 表1-1 \| 场景概述 \| 3 \| 3 \| 《白皮书》p\.3（3 条） \|/);
-    // 旧的两张附录不再出现
+    const h2 = internal_report.match(/^## .*$/gm) ?? [];
+    expect(h2.map((h) => h.replace(/^## /, ""))).toEqual([
+      "一、现状",
+      "二、场景与问题",
+      "三、方案",
+      "四、价值",
+      "五、客观与风险",
+    ]);
+    expect(internal_report).not.toContain("附录");
     expect(internal_report).not.toContain("来源索引");
-    expect(internal_report).not.toContain("信息覆盖概览");
+  });
+
+  it("风险章兜底只说风险点，不列数据统计", async () => {
+    const { internal_report } = await exportDeliverables(makeInput());
+    expect(internal_report).toContain("### 主要风险点");
+    expect(internal_report).toContain("本客户侧输入缺失");
+    expect(internal_report).not.toContain("条：有来源");
+    expect(internal_report).not.toContain("数据状态");
   });
 
   it("无阶段总结也照样出报告（正文不再依赖阶段总结）", async () => {
     const { internal_report } = await exportDeliverables({ ...makeInput(), stageSummaries: [] });
     expect(internal_report).toContain("## 五、客观与风险");
-    expect(internal_report).toContain("附录 A、来源与覆盖");
+    expect(internal_report).not.toContain("附录"); // 内部不再出附录（#124）
   });
 });
 
@@ -274,7 +285,7 @@ describe("exportDeliverables — 空数据", () => {
       generatedAt: "2026-09-25",
     });
     expect(internal_report).toContain("# 空场景 场景调研报告");
-    expect(internal_report).toContain("| — | — | 0 | 0 | — |");
+    expect(internal_report).toContain("### 主要风险点");
     expect(external_report).toContain("# 空场景 解决方案");
     expect(external_report).toContain("本节信息待补充");
   });

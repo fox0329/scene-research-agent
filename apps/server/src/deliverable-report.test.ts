@@ -148,10 +148,9 @@ describe("交付物报告生成（模型撰写 + 确定性校验）", () => {
     const internal = readFileSync(join(h.dir, `${h.scenarioId}.internal.md`), "utf8");
     expect(internal).toContain("## 一、现状");
     expect(internal).toContain("## 五、客观与风险");
-    expect(internal).toContain("## 六、下一步");
-    // 内部版带附录（来源与覆盖一张表 + 模型写的术语表）
-    expect(internal).toContain("附录 A、来源与覆盖");
-    expect(internal).toContain("附录 B、术语表");
+    expect(internal).not.toContain("## 六、下一步");
+    // 内部版到风险章为止，不出附录（变更表 #124）
+    expect(internal).not.toContain("附录");
   });
 
   it("正文超预算的章回炉压短（模型只删不加），压短后的正文进交付物", async () => {
@@ -209,7 +208,7 @@ describe("交付物报告生成（模型撰写 + 确定性校验）", () => {
     const { client } = dshOf([goodReport("internal"), goodReport("external")]);
     await run(h.db, client, h.scenarioId);
     const external = readFileSync(join(h.dir, `${h.scenarioId}.external.md`), "utf8");
-    // 内部附录（来源与覆盖）不出现；术语表由模型写，写了才出现
+    // 内部附录不再存在；对外术语表由模型写，写了才出现
     expect(external).not.toContain("来源索引");
     expect(external).not.toContain("信息覆盖概览");
     expect(external).not.toMatch(/表\d+-\d+/);

@@ -154,6 +154,7 @@ const ARTIFACT_LABEL: Record<ReportArtifact, string> = {
   "value-with-metric": "带度量口径的价值条目",
   boundary: "边界声明",
   glossary: "术语表",
+  "risk-list": "风险点（至少 3 条）",
 };
 
 /** 每种构件的存在性判据（宁可宽松，只拦"完全没长出来"） */
@@ -167,6 +168,9 @@ const ARTIFACT_CHECKS: Record<ReportArtifact, (md: string, tables: number) => bo
   "value-with-metric": (md) => /(?:指标|口径|度量|怎么测|可度量)/.test(md),
   boundary: (md) => /(?:不替代|不参与|不承担|不做|不在本方案范围)/.test(md),
   glossary: (md) => /术语/.test(md),
+  // 风险章只写风险点：至少 3 条（风险 / 不确定 / 前置条件 / 依赖 / 否决 这类），不给数据统计
+  "risk-list": (md) =>
+    (md.match(/(?:^|\n)\s*(?:[-*|]|\*\*)?[^\n]{0,40}(?:风险|不确定|前置条件|依赖|否决|门槛未过)/g) ?? []).length >= 3,
 };
 
 /** 某个小节标题下是否有至少 n 条非空内容（压缩后模型常把编号换成小节 + 条目） */
@@ -339,7 +343,7 @@ export function checkReport(kind: ReportKind, markdown: string): ReportGateRepor
     });
   }
 
-  if (!written.has("glossary")) {
+  if (kind === "external" && !written.has("glossary")) {
     violations.push({
       kind: "缺术语表",
       hard: false,

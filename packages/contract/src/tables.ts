@@ -1449,6 +1449,7 @@ export interface DeliverableSection {
 
 /** 章节里必须自建的小节，以及这一小节要产出的「方案构件」 */
 export type ReportArtifact =
+  | "risk-list"
   /** 自建表格（层次/职责/选型/步骤这类，素材表里没有现成结构） */
   | "table"
   /** 带编号的连接关系（① ② ③…），与接口表一一对应 */
@@ -1614,12 +1615,14 @@ export const REPORT_CHAPTERS: readonly ReportChapter[] = [
   {
     key: "risk",
     label: "客观与风险",
-    /* 只有内部版有这一章：由代码按数据状态汇总（哪些结论立得住 / 哪些待验证 / 数据状态） */
+    /* 只有内部版有这一章。用户定调（变更表 #124）：只说风险点，不列证据、不写来源统计 */
     only: "internal",
     sections: [
-      { title: "哪些结论立得住", keywords: ["立得住", "站得住", "结论"] },
-      { title: "哪些待验证", keywords: ["待验证", "验证", "不确定"] },
-      { title: "数据状态", keywords: ["数据", "来源"], artifacts: ["table"] },
+      {
+        title: "主要风险点",
+        keywords: ["风险", "不确定", "前置条件", "门槛", "依赖"],
+        artifacts: ["risk-list"],
+      },
     ],
     internal: [],
     external: [],
@@ -1627,6 +1630,8 @@ export const REPORT_CHAPTERS: readonly ReportChapter[] = [
   {
     key: "next",
     label: "下一步",
+    /* 内部版不写"下一步"（变更表 #124：用户要求内部报告到风险章为止） */
+    only: "external",
     sections: [{ title: "步骤与交付物", keywords: ["步骤", "交付物", "计划", "安排"], artifacts: ["table"] }],
     internal: [
       { code: "表5-3", heading: "实施安排", cols: ["item", "content", "window", "man_days", "rollback"] },
@@ -1662,18 +1667,15 @@ export function reportChapterHeadings(kind: ReportKind): readonly string[] {
 }
 
 /** 术语表（两份都要，模型撰写；内部版排在附录 A/B 之后） */
-export const REPORT_GLOSSARY: { internal: string; external: string } = {
-  internal: "附录 B、术语表",
+export const REPORT_GLOSSARY: { external: string } = {
   external: "附录、术语表",
 };
 
-/** 内部调研报告：附录部分（术语表由模型撰写，不在此列） */
-export const INTERNAL_APPENDIX_SECTIONS: readonly DeliverableSection[] = [
-  {
-    key: "coverage",
-    /* 原「附录 A 来源索引」与「附录 B 信息覆盖概览」内容重叠（都在逐表数来源），用户要精要 → 合成一张表 */
-    title: "附录 A、来源与覆盖",
-    tables: [],
-  },
-];
+/**
+ * 内部调研报告：附录部分
+ *
+ * 变更表 #124：用户要求内部报告到「五、客观与风险」为止，附录（来源与覆盖、术语表）一并去掉——
+ * 逐条出处仍在系统内的表里可查，不必在交付物里再列一遍。
+ */
+export const INTERNAL_APPENDIX_SECTIONS: readonly DeliverableSection[] = [];
 
