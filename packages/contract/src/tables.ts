@@ -1526,10 +1526,14 @@ export const REPORT_CHAPTERS: readonly ReportChapter[] = [
   {
     key: "status",
     label: "现状",
+    /* 变更表 #126：定稿版现状章 = 章首导语（场景在业务里的位置）+ 体系表 + 「现状特征与提升空间」，
+       前两段不设小节标题，所以契约里只登记一个小节 */
     sections: [
-      { title: "场景在业务中的位置", keywords: ["位置", "定位", "在业务"] },
-      { title: "既有体系构成", keywords: ["既有", "体系", "构成"], artifacts: ["table"] },
-      { title: "现状特征与提升空间", keywords: ["特征", "提升空间", "现状"] },
+      {
+        title: "现状特征与提升空间",
+        keywords: ["特征", "提升空间", "症结", "现状"],
+        artifacts: ["table"],
+      },
     ],
     internal: [
       { code: "表1-1", heading: "场景锚（在讲哪个场景）" },

@@ -260,7 +260,7 @@ async function writeOneReport(args: {
           missingChapterArtifacts(kind, d.key, body).length;
       // 结构塌陷（原来有多个小节、压完成一个都没有）也作废
       const collapsed =
-        shorter !== undefined && headingsOf(body).length >= 2 && headingsOf(shorter).length === 0;
+        shorter !== undefined && headingsOf(body).length >= 1 && headingsOf(shorter).length === 0;
       const fragmented = shorter !== undefined && hasFragment(shorter);
       if (lostArtifact || collapsed || fragmented) {
         push({
@@ -308,8 +308,12 @@ function hasFragment(markdown: string): boolean {
 }
 
 /** 正文里的小节标题（含章标题），用于压缩前后的骨架比对 */
+/**
+ * 小节标题（`###` 及更深）——只数小节，不数章标题：
+ * 压缩后连一个小节标题都不剩，说明整章被压成一团，这次压缩作废。
+ */
 function headingsOf(markdown: string): string[] {
-  return (markdown.match(/^#{2,4} .*$/gm) ?? []).map((h) => h.trim());
+  return (markdown.match(/^#{3,4} .*$/gm) ?? []).map((h) => h.trim());
 }
 
 /** 已写成章节拼成整篇（给确定性校验用：校验的是最终正文，不是模型的原文） */

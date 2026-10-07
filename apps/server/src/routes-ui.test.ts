@@ -1166,8 +1166,8 @@ describe("交付物导出", () => {
       generated: boolean;
       generated_at: string | null;
     };
-    // v1.32：内部版标题是「场景调研报告」（报告，不是"记录/材料"）
-    expect(body.internal_report).toContain("场景调研报告");
+    // v1.41：内部版标题是「<场景> 内部调研报告 <日期>」（不是"记录/材料"）
+    expect(body.internal_report).toContain("内部调研报告");
     expect(body.internal_report).toContain("取正文场景");
     expect(body.external_report).toContain("取正文场景");
     // 要点版没有"生成时间"（正式版才有）——见下一条用例

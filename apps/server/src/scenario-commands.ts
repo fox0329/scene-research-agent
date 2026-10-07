@@ -138,8 +138,9 @@ export async function executeAppCommand(
       });
       const outDir = process.env["EXPORT_DIR"] ?? join(process.cwd(), "exports");
       mkdirSync(outDir, { recursive: true });
-      const internalPath = join(outDir, exportFileName(scenario.name, "internal"));
-      const externalPath = join(outDir, exportFileName(scenario.name, "external"));
+      const date = new Date().toISOString().slice(0, 10);
+      const internalPath = join(outDir, exportFileName(scenario.name, "internal", date));
+      const externalPath = join(outDir, exportFileName(scenario.name, "external", date));
       writeFileSync(internalPath, result.internal_report, "utf-8");
       writeFileSync(externalPath, result.external_report, "utf-8");
       return `【执行结果】交付物已导出（双口径）：\n内部调研报告 ${internalPath}\n对外汇报材料 ${externalPath}`;

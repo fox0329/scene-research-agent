@@ -44,17 +44,28 @@ import {
 
 // ─── 命名规则（00b §11.5） ──────────────────────────────────
 
+/** 报告类型名（标题与文件名共用） */
+export function reportTypeName(type: "internal" | "external"): string {
+  return type === "internal" ? "内部调研报告" : "对外汇报材料";
+}
+
 /**
- * 按 00b §11.5 生成交付物文件名
+ * 交付物文件名：**场景名称 + 报告类型 + 日期**
  *
- * @param scenarioName 场景名（当前未参与命名，预留扩展）
+ * 用户定调（2026-10-07 / 变更表 #126）：`智慧会议室 内部调研报告 2026-10-07.md`。
+ *
+ * @param scenarioName 场景名
  * @param type 内部或对外
+ * @param date 生成日期（YYYY-MM-DD）
  */
 export function exportFileName(
-  _scenarioName: string,
+  scenarioName: string,
   type: "internal" | "external",
+  date: string,
 ): string {
-  return type === "internal" ? "内部调研报告.md" : "对外汇报材料.md";
+  const safe = scenarioName.replace(/[/\\:*?"<>|]/g, "_").trim();
+  const parts = [safe, reportTypeName(type), date].filter((x) => x !== "");
+  return `${parts.join(" ")}.md`;
 }
 
 // ─── 主入口 ────────────────────────────────────────────────
@@ -371,7 +382,7 @@ function buildReport(
   // 封面只留身份信息（场景 + 生成日期）：口径说明、免责声明这类澄清文字用户要求全部删掉
   const head = isInternal
     ? [
-        `# ${scenario.name} 场景调研报告`,
+        `# ${scenario.name} ${reportTypeName(kind)} ${today}`,
         "",
         `> **场景**：${scenario.name}${sub ? `（${sub}）` : ""}`,
         `> **生成日期**：${today}`,

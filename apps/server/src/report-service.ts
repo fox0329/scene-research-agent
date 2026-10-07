@@ -85,8 +85,9 @@ export function writeReportFiles(
   const pair = getReportPair(db, scenario);
   const outDir = exportDir();
   mkdirSync(outDir, { recursive: true });
-  const internalPath = join(outDir, exportFileName(scenario.name, "internal"));
-  const externalPath = join(outDir, exportFileName(scenario.name, "external"));
+  const date = new Date().toISOString().slice(0, 10);
+  const internalPath = join(outDir, exportFileName(scenario.name, "internal", date));
+  const externalPath = join(outDir, exportFileName(scenario.name, "external", date));
   writeFileSync(internalPath, pair.internal.markdown, "utf8");
   writeFileSync(externalPath, pair.external.markdown, "utf8");
   return { internal_path: internalPath, external_path: externalPath };

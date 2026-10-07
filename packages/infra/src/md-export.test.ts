@@ -109,23 +109,26 @@ function makeInput(): DeliverableInput {
 }
 
 describe("exportFileName", () => {
-  it("内部报告文件名", () => {
-    expect(exportFileName("智慧水务", "internal")).toBe("内部调研报告.md");
+  it("文件名 = 场景名称 + 报告类型 + 日期", () => {
+    expect(exportFileName("智慧会议室", "internal", "2026-10-07")).toBe(
+      "智慧会议室 内部调研报告 2026-10-07.md",
+    );
+    expect(exportFileName("智慧会议室", "external", "2026-10-07")).toBe(
+      "智慧会议室 对外汇报材料 2026-10-07.md",
+    );
   });
 
-  it("对外材料文件名", () => {
-    expect(exportFileName("智慧水务", "external")).toBe("对外汇报材料.md");
-  });
-
-  it("不同场景名不影响文件名（命名规则固定）", () => {
-    expect(exportFileName("A", "internal")).toBe(exportFileName("B", "internal"));
+  it("场景名里的路径字符替换成下划线", () => {
+    expect(exportFileName("A/B:C", "internal", "2026-10-07")).toBe(
+      "A_B_C 内部调研报告 2026-10-07.md",
+    );
   });
 });
 
 describe("exportDeliverables — 内部调研报告", () => {
   it("封面只留身份信息（场景 + 日期），澄清/免责文字一律不出现", async () => {
     const { internal_report } = await exportDeliverables(makeInput());
-    expect(internal_report).toContain("# 智慧水务 场景调研报告");
+    expect(internal_report).toContain("# 智慧水务 内部调研报告 ");
     expect(internal_report).toContain("**生成日期**：2026-09-25");
     expect(internal_report).not.toContain("怎么读");
     expect(internal_report).not.toContain("不给决策建议");
@@ -284,7 +287,7 @@ describe("exportDeliverables — 空数据", () => {
       stageData: [],
       generatedAt: "2026-09-25",
     });
-    expect(internal_report).toContain("# 空场景 场景调研报告");
+    expect(internal_report).toContain("# 空场景 内部调研报告 ");
     expect(internal_report).toContain("### 主要风险点");
     expect(external_report).toContain("# 空场景 解决方案");
     expect(external_report).toContain("本节信息待补充");

@@ -155,7 +155,7 @@ describe("交付物报告生成（模型撰写 + 确定性校验）", () => {
 
   it("正文超预算的章回炉压短（模型只删不加），压短后的正文进交付物", async () => {
     // 现状章第一节的正文灌水到超预算（预算 550 字）
-    const filler = "场景在业务中的位置";
+    const filler = "现状特征与提升空间";
     const fat = goodReport("internal").replace(
       `${filler}的归纳正文。`,
       `${filler}的归纳正文。`.repeat(80),
@@ -170,7 +170,7 @@ describe("交付物报告生成（模型撰写 + 确定性校验）", () => {
   });
 
   it("压缩把方案构件压没 → 作废这次压缩，保留原正文（缺构件比偏长更糟）", async () => {
-    const filler = "场景在业务中的位置";
+    const filler = "现状特征与提升空间";
     const fat = goodReport("internal").replace(
       `${filler}的归纳正文。`,
       `${filler}的归纳正文。`.repeat(80),
@@ -188,7 +188,7 @@ describe("交付物报告生成（模型撰写 + 确定性校验）", () => {
   });
 
   it("压缩只删叙述、结构与构件都在 → 采用压缩结果", async () => {
-    const filler = "场景在业务中的位置";
+    const filler = "现状特征与提升空间";
     const fat = goodReport("internal").replace(
       `${filler}的归纳正文。`,
       `${filler}的归纳正文。`.repeat(80),
