@@ -187,7 +187,7 @@ describe("exportDeliverables — 内部调研报告", () => {
   it("风险章兜底只说风险点，不列数据统计", async () => {
     const { internal_report } = await exportDeliverables(makeInput());
     expect(internal_report).toContain("### 主要风险点");
-    expect(internal_report).toContain("本客户侧输入缺失");
+    expect(internal_report).toContain("现场条件可能改变可行边界");
     expect(internal_report).not.toContain("条：有来源");
     expect(internal_report).not.toContain("数据状态");
   });

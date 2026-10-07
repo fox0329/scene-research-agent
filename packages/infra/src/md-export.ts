@@ -255,21 +255,9 @@ function renderBlock(
  * 只按"缺什么输入 → 影响什么"给出风险点；真正的风险表述由模型写。
  */
 function renderRisks(stageData: readonly StageData[]): string {
-  const verdict = (r: StageData): string => String(r.row["verification_verdict"] ?? "");
-  const shaky = stageData.filter(
-    (r) => verdict(r).includes("单一来源") || verdict(r).includes("无法核实") || verdict(r).includes("有反证"),
-  ).length;
   const veto = valuesOf(stageData, "表1-3", "veto_holder");
 
   const out: string[] = ["### 主要风险点", ""];
-  out.push(
-    "- **本客户侧输入缺失**：会议室清单、既有设备台账、预约与使用数据、分项能耗、故障工单、信创目录对照项、试点判据阈值都还没有——价值幅度与验收判据暂时只能按行业通例量级设计，进方案前需要客户侧补齐。",
-  );
-  if (shaky > 0) {
-    out.push(
-      "- **部分结论只能当假设**：存在仅有单一来源或无法核实的信息，属行业通行认识而非本客户事实，落地前必须现场验证。",
-    );
-  }
   out.push(
     "- **现场条件可能改变可行边界**：点位、承重、既有设备接口、网络与供电任一项不成立，部分房间只能做状态监测，无法纳入统一控制。",
     "- **门槛未过之前方案与报价不作数**" + (veto.length > 0 ? `：${veto.join("、")}任一方否决都会推翻当前技术路径或商务结构。` : "。"),
