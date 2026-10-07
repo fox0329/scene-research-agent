@@ -421,7 +421,7 @@ function buildReport(
     const note = isInternal ? chapter.note?.internal : chapter.note?.external;
     const body: string[] = [`## ${reportChapterHeading(kind, chapter.key)}`, ""];
     if (note) body.push(`> ${note}`, "");
-    const text = bodyOf(chapter.key).trim();
+    const text = stripEchoedTitle(bodyOf(chapter.key).trim(), chapter.label);
     body.push(text || "（本节内容待补）");
     sections.push(body.join("\n").trimEnd());
   }
@@ -440,6 +440,31 @@ function buildReport(
   }
 
   return sections.join("\n\n---\n\n");
+}
+
+/** 归一化标题：去 `#`、去「一、」序号、去括号补充、去粗体标记 */
+function normTitle(text: string): string {
+  return text
+    .replace(/^#+\s*/, "")
+    .replace(/^[一二三四五六七八九十]+[、.．]\s*/, "")
+    .replace(/\*\*/g, "")
+    .replace(/[（(].*?[)）]\s*$/, "")
+    .trim();
+}
+
+/**
+ * 去掉正文开头重复的章标题
+ *
+ * 实测模型会在 `## 一、现状` 之后又把「一、现状」当正文第一行抄一遍——同一章名连着出现两次，
+ * 读者以为是排版错误。装配时只删这一行重复标题，其余正文一字不动。
+ */
+export function stripEchoedTitle(body: string, label: string): string {
+  const lines = body.split("\n");
+  const i = lines.findIndex((l) => l.trim() !== "");
+  if (i < 0) return body;
+  if (normTitle(lines[i]!) !== normTitle(label)) return body;
+  lines.splice(i, 1);
+  return lines.join("\n").trim();
 }
 
 /** 附录 A：来源索引（按表汇总来源） */

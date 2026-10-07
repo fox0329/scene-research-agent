@@ -278,4 +278,16 @@ describe("exportDeliverables — 空数据", () => {
     expect(external_report).toContain("# 空场景 解决方案");
     expect(external_report).toContain("本节信息待补充");
   });
+
+  it("模型把章名当正文抄了一遍 → 装配时去掉重复那一行，正文不动", async () => {
+    const input = makeInput();
+    input.chapters = [
+      { key: "status", markdown: "一、现状\n\n本场景处在办公空间与协同软件的交叉点。" },
+    ];
+    const { internal_report } = await exportDeliverables(input);
+    expect(internal_report).toContain("## 一、现状");
+    expect(internal_report).not.toMatch(/## 一、现状\n\n> [^\n]+\n\n一、现状/);
+    expect(internal_report.match(/一、现状/g)?.length).toBe(1);
+    expect(internal_report).toContain("本场景处在办公空间与协同软件的交叉点。");
+  });
 });

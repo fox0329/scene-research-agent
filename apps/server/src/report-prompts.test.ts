@@ -25,6 +25,11 @@ describe("报告提示词（变更表 #112）", () => {
     }
   });
 
+  it("要求章名只写一次（不许在正文里再抄一遍）", () => {
+    const { system } = buildReportPrompt("internal", base);
+    expect(system).toContain("章名只写一次");
+  });
+
   it("禁止正文用「一、二、」编号（会与章号混淆），并给出替代写法", () => {
     const { system } = buildReportPrompt("internal", base);
     expect(system).toContain("不许再用「一、二、三、」编号");
