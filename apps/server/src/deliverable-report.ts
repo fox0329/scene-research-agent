@@ -252,7 +252,14 @@ async function writeOneReport(args: {
         break;
       }
       const shorter = splitReportChapters(r.text, [d.key]).get(d.key)?.trim();
-      if (shorter && proseChars(shorter) < current) {
+      // 守卫：压缩只许删叙述，不许吃掉小节标题（实测有一次把「### 设计原则」整节压没了，
+      // 结果是交付物缺方案构件）。少了任何一个小节标题就作废这次压缩，保留原正文。
+      const keptHeadings = headingsOf(shorter ?? "");
+      const lostHeading = headingsOf(body).some((h) => !keptHeadings.includes(h));
+      if (lostHeading) {
+        push({ type: "progress", message: `${label}：${d.title} 压缩吃掉了小节标题，保留原正文` });
+      }
+      if (shorter && !lostHeading && proseChars(shorter) < current) {
         written.set(d.key, shorter);
         push({
           type: "progress",
@@ -276,6 +283,11 @@ async function writeOneReport(args: {
     });
   }
   return assemble(written, digest, scenario, stageData, kind, args.today, gate.violations, retried);
+}
+
+/** 正文里的小节标题（含章标题），用于压缩前后的骨架比对 */
+function headingsOf(markdown: string): string[] {
+  return (markdown.match(/^#{2,4} .*$/gm) ?? []).map((h) => h.trim());
 }
 
 /** 已写成章节拼成整篇（给确定性校验用：校验的是最终正文，不是模型的原文） */

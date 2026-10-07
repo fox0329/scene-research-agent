@@ -150,6 +150,21 @@ describe("交付物报告生成（模型撰写 + 确定性校验）", () => {
     expect(calls.some((p) => p.includes("压到"))).toBe(true);
   });
 
+  it("压缩吃掉小节标题 → 作废这次压缩，保留原正文（缺构件比偏长更糟）", async () => {
+    const filler = "场景在业务中的位置";
+    const fat = goodReport("internal").replace(
+      `${filler}的归纳正文。`,
+      `${filler}的归纳正文。`.repeat(80),
+    );
+    // 压缩结果更短，但整节标题没了 → 不能采用
+    const lost = "## 一、现状\n\n只留一句话，小节标题被压没了。";
+    const { client } = dshOf([fat, lost, goodReport("external")]);
+    await run(h.db, client, h.scenarioId);
+    const internal = readFileSync(join(h.dir, `${h.scenarioId}.internal.md`), "utf8");
+    expect(internal).toContain(`### ${filler}`);
+    expect(internal).not.toContain("小节标题被压没了");
+  });
+
   it("对外版不装内部附录，也不出现内部表号", async () => {
     const { client } = dshOf([goodReport("internal"), goodReport("external")]);
     await run(h.db, client, h.scenarioId);
