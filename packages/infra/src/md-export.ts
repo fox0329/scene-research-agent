@@ -92,7 +92,7 @@ function truncate(v: unknown, max = 70): string {
 }
 
 /** 每个要点块的条数上限：报告要收口，明细留在系统内表格 */
-const MAX_BULLETS = 8;
+const MAX_BULLETS = 12;
 
 /** 把「标签：值」拼起来，空值整段丢掉（报告里不该出现空标签） */
 function segs(parts: readonly (readonly [string, unknown])[]): string {
@@ -243,12 +243,6 @@ function renderBlock(
       return out.join("\n").trim();
     }
     for (const b of bullets.slice(0, MAX_BULLETS)) out.push(`- ${b}`);
-    if (bullets.length > MAX_BULLETS) {
-      out.push(
-        "",
-        `> 本表共 ${bullets.length} 条，此处只列 ${MAX_BULLETS} 条要点；完整清单在系统内「${block.code} ${t.name}」表中逐行可查。`,
-      );
-    }
     out.push("");
   }
   return out.join("\n").trimEnd();

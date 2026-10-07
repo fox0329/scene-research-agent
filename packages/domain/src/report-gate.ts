@@ -34,6 +34,7 @@ export interface ReportViolation {
     | "缺术语表"
     | "正文用了章号式编号"
     | "说明性套话"
+    | "篇幅超标"
     | "篇幅不足";
   /** 硬伤 = 必须重写 */
   hard: boolean;
@@ -72,6 +73,9 @@ const EXTERNAL_LEAK_PATTERNS: readonly RegExp[] = [
 
 /** 两份报告的最低字数（对应"内部 5–8 页 / 对外 3–5 页"的精要口径，变更表 #116） */
 export const REPORT_MIN_CHARS: Record<ReportKind, number> = { internal: 1800, external: 1200 };
+
+/** 正文字数上限（超过就是没归纳，用户要精要：变更表 #116） */
+export const REPORT_MAX_CHARS: Record<ReportKind, number> = { internal: 6000, external: 4500 };
 
 /** 自我说明 / 免责声明这类"澄清文字"（用户要求全部删掉，变更表 #116） */
 const META_PATTERNS: readonly RegExp[] = [
@@ -277,6 +281,14 @@ export function checkReport(kind: ReportKind, markdown: string): ReportGateRepor
       kind: "缺术语表",
       hard: false,
       detail: "附录缺术语表：把报告里客户/新人可能不熟的术语逐个解释（只解释通行含义，不自己发明定义）",
+    });
+  }
+
+  if (text.length > REPORT_MAX_CHARS[kind]) {
+    violations.push({
+      kind: "篇幅超标",
+      hard: false,
+      detail: `正文 ${text.length} 字，超过 ${REPORT_MAX_CHARS[kind]} 字上限——把并列事实合并成结论，细节留给表格`,
     });
   }
 

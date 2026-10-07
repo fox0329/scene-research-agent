@@ -115,6 +115,13 @@ describe("报告确定性校验（变更表 #112 / #113）", () => {
     expect(r.violations.find((v) => v.kind === "缺术语表")?.hard).toBe(false);
   });
 
+  it("篇幅超标只提示（要精要，不要流水账）", () => {
+    const long = goodReport("external") + "\n\n" + "补充废话。".repeat(1000);
+    const v = checkReport("external", long).violations.find((x) => x.kind === "篇幅超标");
+    expect(v?.hard).toBe(false);
+    expect(v?.detail).toContain("超过");
+  });
+
   it("篇幅不足只提示，不当硬伤", () => {
     const v = checkReport("external", goodReport("external")).violations.find(
       (x) => x.kind === "篇幅不足",

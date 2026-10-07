@@ -364,7 +364,9 @@ export function createDeliverableReportCommand(deps: DeliverableReportDeps) {
     const task = (async (): Promise<void> => {
       try {
         for (const kind of ["internal", "external"] as const) {
-          const digest = reportChapterDigest(kind, stageData, { full: true });
+          // 不再把每张表的全量行塞给模型（#116 用户要精要）：每块最多 MAX_BULLETS 行，
+          // 模型据此归纳；完整清单仍在系统内的表里逐行可查。
+          const digest = reportChapterDigest(kind, stageData);
           const written = await writeOneReport({
             kind,
             scenario,
