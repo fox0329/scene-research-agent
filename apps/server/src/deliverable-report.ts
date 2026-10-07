@@ -18,7 +18,7 @@ import type { DshClient, FollowEvent, Scenario, SessionHandle, StageData } from 
 import { reportChaptersOf, tableDef } from "@scene/contract";
 import type { DbInstance } from "@scene/infra";
 import { buildReportMarkdown, reportChapterDigest, type ChapterDigest } from "@scene/infra";
-import { proseChars } from "@scene/domain";
+import { missingChapterArtifacts, proseChars } from "@scene/domain";
 import {
   REPORT_MIN_CHARS,
   checkReport,
@@ -252,14 +252,22 @@ async function writeOneReport(args: {
         break;
       }
       const shorter = splitReportChapters(r.text, [d.key]).get(d.key)?.trim();
-      // 守卫：压缩只许删叙述，不许吃掉小节标题（实测有一次把「### 设计原则」整节压没了，
-      // 结果是交付物缺方案构件）。少了任何一个小节标题就作废这次压缩，保留原正文。
-      const keptHeadings = headingsOf(shorter ?? "");
-      const lostHeading = headingsOf(body).some((h) => !keptHeadings.includes(h));
-      if (lostHeading) {
-        push({ type: "progress", message: `${label}：${d.title} 压缩吃掉了小节标题，保留原正文` });
+      // 守卫：压缩是"只删不加"，但不许把方案构件删掉（实测有一次把「### 设计原则」整节压没了，
+      // 交付物因此缺构件、判硬伤）。构件变少就作废这次压缩，保留原正文——宁可偏长，不能缺构件。
+      const lostArtifact =
+        shorter !== undefined &&
+        missingChapterArtifacts(kind, d.key, shorter).length >
+          missingChapterArtifacts(kind, d.key, body).length;
+      // 结构塌陷（原来有多个小节、压完成一个都没有）也作废
+      const collapsed =
+        shorter !== undefined && headingsOf(body).length >= 2 && headingsOf(shorter).length === 0;
+      if (lostArtifact || collapsed) {
+        push({
+          type: "progress",
+          message: `${label}：${d.title} 压缩会把方案构件/结构压没，保留原正文`,
+        });
       }
-      if (shorter && !lostHeading && proseChars(shorter) < current) {
+      if (shorter && !lostArtifact && !collapsed && proseChars(shorter) < current) {
         written.set(d.key, shorter);
         push({
           type: "progress",

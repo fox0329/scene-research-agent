@@ -194,6 +194,23 @@ function missingArtifacts(markdown: string, sections: readonly ReportSection[]):
   return out;
 }
 
+/**
+ * 某一章压缩后还缺哪些方案构件
+ *
+ * 压缩是"只删不加"，但模型偶尔会把整节（如「### 设计原则」）压没——那就把构件压丢了。
+ * 用它做守恒检查：压缩**不许让构件变少**（缺构件是硬伤，比篇幅偏长严重）。
+ */
+export function missingChapterArtifacts(
+  kind: ReportKind,
+  chapterKey: string,
+  markdown: string,
+): string[] {
+  const chapter = reportChaptersOf(kind).find((c) => c.key === chapterKey);
+  if (!chapter) return [];
+  const sections = chapter.sections;
+  return missingArtifacts(markdown, sections);
+}
+
 /** 小节是否写了（认小节名，也认同义关键词） */
 function sectionWritten(sec: ReportSection, subs: readonly string[]): boolean {
   const name = chapterName(sec.title);

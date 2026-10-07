@@ -254,6 +254,7 @@ export type {
 export {
   checkReport,
   matchChapterKey,
+  missingChapterArtifacts,
   reportChapterHeadings,
   reportViolationsBrief,
   REPORT_MAX_CHARS,

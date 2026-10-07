@@ -61,6 +61,26 @@ function dshOf(responses: string[]): { client: DshClient; calls: string[] } {
   return { client, calls };
 }
 
+/** 按提示词内容决定返回什么（两份报告并发写，按调用顺序编号不可靠） */
+function dshByPrompt(
+  pick: (input: { system: string; user: string }) => string,
+): { client: DshClient; calls: string[] } {
+  const calls: string[] = [];
+  const client = {
+    createSession: async ({ title }: { title: string }) => ({ sessionId: `s-${title}` }),
+    prompt: (_h: unknown, input: { system: string; user: string }) => {
+      calls.push(input.user);
+      const text = pick(input);
+      return (async function* (): AsyncGenerator<FollowEvent> {
+        yield { type: "text", text };
+        yield { type: "done" };
+      })();
+    },
+    cancel: async () => {},
+  } as unknown as DshClient;
+  return { client, calls };
+}
+
 interface Harness {
   db: DbInstance;
   scenarioId: string;
@@ -150,19 +170,39 @@ describe("交付物报告生成（模型撰写 + 确定性校验）", () => {
     expect(calls.some((p) => p.includes("压到"))).toBe(true);
   });
 
-  it("压缩吃掉小节标题 → 作废这次压缩，保留原正文（缺构件比偏长更糟）", async () => {
+  it("压缩把方案构件压没 → 作废这次压缩，保留原正文（缺构件比偏长更糟）", async () => {
     const filler = "场景在业务中的位置";
     const fat = goodReport("internal").replace(
       `${filler}的归纳正文。`,
       `${filler}的归纳正文。`.repeat(80),
     );
-    // 压缩结果更短，但整节标题没了 → 不能采用
+    // 压缩结果更短，但整章的小节结构被压平（原本 3 个小节，压完一个标题都没有）→ 不能采用
     const lost = "## 一、现状\n\n只留一句话，小节标题被压没了。";
-    const { client } = dshOf([fat, lost, goodReport("external")]);
+    const { client } = dshByPrompt(({ system, user }) => {
+      if (user.includes("压到")) return lost;
+      return system.includes("对外汇报材料") ? goodReport("external") : fat;
+    });
     await run(h.db, client, h.scenarioId);
     const internal = readFileSync(join(h.dir, `${h.scenarioId}.internal.md`), "utf8");
-    expect(internal).toContain(`### ${filler}`);
+    expect(internal).toContain(`${filler}的归纳正文。`.repeat(80));
     expect(internal).not.toContain("小节标题被压没了");
+  });
+
+  it("压缩只删叙述、结构与构件都在 → 采用压缩结果", async () => {
+    const filler = "场景在业务中的位置";
+    const fat = goodReport("internal").replace(
+      `${filler}的归纳正文。`,
+      `${filler}的归纳正文。`.repeat(80),
+    );
+    // 同一章、小节标题与构件都保留，只是把灌水的叙述压成一句话
+    const tight = fat.replace(`${filler}的归纳正文。`.repeat(80), "压短后的现状结论。");
+    const { client } = dshByPrompt(({ system, user }) => {
+      if (user.includes("压到")) return tight;
+      return system.includes("对外汇报材料") ? goodReport("external") : fat;
+    });
+    await run(h.db, client, h.scenarioId);
+    const internal = readFileSync(join(h.dir, `${h.scenarioId}.internal.md`), "utf8");
+    expect(internal).toContain("压短后的现状结论。");
   });
 
   it("对外版不装内部附录，也不出现内部表号", async () => {
