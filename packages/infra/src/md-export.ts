@@ -418,7 +418,6 @@ function buildReport(
 
   if (isInternal) {
     for (const sec of INTERNAL_APPENDIX_SECTIONS) {
-      if (sec.key === "sources") sections.push(renderSourceIndex(sec.title, stageData));
       if (sec.key === "coverage") sections.push(renderCoverage(sec.title, stageData));
     }
   }
@@ -471,47 +470,39 @@ export function stripEchoedTitle(body: string, label: string): string {
   return lines.join("\n").trim();
 }
 
-/** 附录 A：来源索引（按表汇总来源） */
-function renderSourceIndex(title: string, stageData: readonly StageData[]): string {
-  const byTable = new Map<string, Map<string, number>>();
-  for (const r of stageData) {
-    const src = String(r.source ?? "").trim();
-    if (!src) continue;
-    const inner = byTable.get(r.table_code) ?? new Map<string, number>();
-    inner.set(src, (inner.get(src) ?? 0) + 1);
-    byTable.set(r.table_code, inner);
-  }
-  const lines: string[] = [`## ${title}`, ""];
-  if (byTable.size === 0) {
-    lines.push("（暂无带来源的信息）");
-    return lines.join("\n");
-  }
-  for (const [code, sources] of byTable) {
-    const name = tableDef(code)?.name ?? "";
-    lines.push(`### ${code}${name ? " " + name : ""}`, "");
-    for (const [src, n] of sources) lines.push(`- ${src}（${n} 条）`);
-    lines.push("");
-  }
-  return lines.join("\n").trimEnd();
-}
-
-/** 附录 B：信息覆盖概览（行数 + 有来源行数） */
+/**
+ * 附录 A：来源与覆盖（逐表给行数、有来源行数、主要来源）
+ *
+ * 原先分成「来源索引」「信息覆盖概览」两张（各自都有 36 行 × 若干来源），内容重叠且占版面；
+ * 用户要精要（变更表 #119）→ 合成一张表：来源只列前两条 + 「等 N 处」。
+ */
 function renderCoverage(title: string, stageData: readonly StageData[]): string {
-  const byTable = new Map<string, { rows: number; sourced: number }>();
+  const byTable = new Map<string, { rows: number; sourced: number; sources: Map<string, number> }>();
   for (const r of stageData) {
-    const cur = byTable.get(r.table_code) ?? { rows: 0, sourced: 0 };
+    const cur = byTable.get(r.table_code) ?? { rows: 0, sourced: 0, sources: new Map<string, number>() };
     cur.rows += 1;
-    if (String(r.source ?? "").trim() !== "") cur.sourced += 1;
+    const src = String(r.source ?? "").trim();
+    if (src !== "") {
+      cur.sourced += 1;
+      cur.sources.set(src, (cur.sources.get(src) ?? 0) + 1);
+    }
     byTable.set(r.table_code, cur);
   }
   const lines: string[] = [`## ${title}`, ""];
-  lines.push("| 表号 | 表名 | 行数 | 有来源行数 |", "|---|---|---|---|");
+  lines.push("| 表号 | 表名 | 行数 | 有来源 | 主要来源 |", "|---|---|---|---|---|");
   if (byTable.size === 0) {
-    lines.push("| — | — | 0 | 0 |");
+    lines.push("| — | — | 0 | 0 | — |");
     return lines.join("\n");
   }
   for (const [code, v] of byTable) {
-    lines.push(`| ${code} | ${tableDef(code)?.name ?? ""} | ${v.rows} | ${v.sourced} |`);
+    const top = [...v.sources.entries()].sort((a, b) => b[1] - a[1]);
+    const shown = top.slice(0, 2).map(([src, n]) => `${cell(src)}（${n} 条）`);
+    const more = top.length > 2 ? ` 等 ${top.length} 处` : "";
+    lines.push(
+      `| ${code} | ${tableDef(code)?.name ?? ""} | ${v.rows} | ${v.sourced} | ${
+        shown.length > 0 ? shown.join("、") + more : "—"
+      } |`,
+    );
   }
   return lines.join("\n");
 }

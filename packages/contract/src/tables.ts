@@ -1663,20 +1663,16 @@ export function reportChapterHeadings(kind: ReportKind): readonly string[] {
 
 /** 术语表（两份都要，模型撰写；内部版排在附录 A/B 之后） */
 export const REPORT_GLOSSARY: { internal: string; external: string } = {
-  internal: "附录 C、术语表",
+  internal: "附录 B、术语表",
   external: "附录、术语表",
 };
 
 /** 内部调研报告：附录部分（术语表由模型撰写，不在此列） */
 export const INTERNAL_APPENDIX_SECTIONS: readonly DeliverableSection[] = [
   {
-    key: "sources",
-    title: "附录 A、来源索引",
-    tables: [],
-  },
-  {
     key: "coverage",
-    title: "附录 B、信息覆盖概览",
+    /* 原「附录 A 来源索引」与「附录 B 信息覆盖概览」内容重叠（都在逐表数来源），用户要精要 → 合成一张表 */
+    title: "附录 A、来源与覆盖",
     tables: [],
   },
 ];

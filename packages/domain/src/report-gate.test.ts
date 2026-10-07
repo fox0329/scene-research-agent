@@ -28,7 +28,7 @@ function goodReport(kind: ReportKind, extra = ""): string {
     return `## ${reportChapterHeading(kind, c.key)}\n\n${body}`;
   });
   const glossary =
-    kind === "internal" ? "## 附录 C、术语表" : "## 附录、术语表";
+    kind === "internal" ? "## 附录 B、术语表" : "## 附录、术语表";
   return [
     ...chapters,
     `${glossary}\n\n| 术语 | 说明 |\n|---|---|\n| 门槛 | 进场的前置条件 |`,

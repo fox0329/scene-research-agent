@@ -2,7 +2,7 @@
  * @scene/infra — 交付物导出测试（v1.4 装配式）
  *
  * 覆盖：
- * - 内部报告 = 阶段总结装配 + 附录（来源索引、信息覆盖概览）
+ * - 内部报告 = 阶段总结装配 + 附录（来源与覆盖一张表）
  * - 对外材料 = 章节 ← 表映射，**只渲染中栏列**
  * - **两份文档都不含建议与判断**（这是本次重写的核心约束）
  * - 对外材料不含内部信息（竞品身份表、证据级标签、利润池）
@@ -168,27 +168,23 @@ describe("exportDeliverables — 内部调研报告", () => {
     expect(internal_report).toContain("模型归纳：价值集中在两处。");
     // 没给模型的章仍用要点版兜底（章节齐全）
     expect(internal_report).toContain("## 一、现状");
-    expect(internal_report).toContain("附录 A、来源索引");
+    expect(internal_report).toContain("附录 A、来源与覆盖");
   });
 
-  it("附录 A 来源索引按表汇总来源", async () => {
+  it("附录 A 一张表给出行数、有来源与主要来源", async () => {
     const { internal_report } = await exportDeliverables(makeInput());
-    expect(internal_report).toContain("## 附录 A、来源索引");
-    expect(internal_report).toContain("### 表1-2 场景环节地图");
-    expect(internal_report).toContain("《白皮书》p.3（1 条）");
-  });
-
-  it("附录 B 信息覆盖概览给出行数与有来源行数", async () => {
-    const { internal_report } = await exportDeliverables(makeInput());
-    expect(internal_report).toContain("## 附录 B、信息覆盖概览");
-    expect(internal_report).toContain("| 表号 | 表名 | 行数 | 有来源行数 |");
-    expect(internal_report).toMatch(/\| 表1-1 \| 场景概述 \| 3 \| 3 \|/);
+    expect(internal_report).toContain("## 附录 A、来源与覆盖");
+    expect(internal_report).toContain("| 表号 | 表名 | 行数 | 有来源 | 主要来源 |");
+    expect(internal_report).toMatch(/\| 表1-1 \| 场景概述 \| 3 \| 3 \| 《白皮书》p\.3（3 条） \|/);
+    // 旧的两张附录不再出现
+    expect(internal_report).not.toContain("来源索引");
+    expect(internal_report).not.toContain("信息覆盖概览");
   });
 
   it("无阶段总结也照样出报告（正文不再依赖阶段总结）", async () => {
     const { internal_report } = await exportDeliverables({ ...makeInput(), stageSummaries: [] });
     expect(internal_report).toContain("## 五、客观与风险");
-    expect(internal_report).toContain("附录 B、信息覆盖概览");
+    expect(internal_report).toContain("附录 A、来源与覆盖");
   });
 });
 
@@ -278,7 +274,7 @@ describe("exportDeliverables — 空数据", () => {
       generatedAt: "2026-09-25",
     });
     expect(internal_report).toContain("# 空场景 场景调研报告");
-    expect(internal_report).toContain("（暂无带来源的信息）");
+    expect(internal_report).toContain("| — | — | 0 | 0 | — |");
     expect(external_report).toContain("# 空场景 解决方案");
     expect(external_report).toContain("本节信息待补充");
   });

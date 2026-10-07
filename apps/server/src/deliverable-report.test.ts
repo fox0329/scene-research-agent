@@ -35,7 +35,7 @@ function goodReport(kind: "internal" | "external"): string {
       .join("\n\n");
     return `## ${reportChapterHeading(kind, c.key)}\n\n${body}`;
   });
-  const glossary = kind === "internal" ? "## 附录 C、术语表" : "## 附录、术语表";
+  const glossary = kind === "internal" ? "## 附录 B、术语表" : "## 附录、术语表";
   return (
     chapters.join("\n\n") +
     `\n\n${glossary}\n\n| 术语 | 说明 |\n|---|---|\n| 门槛 | 进场前置条件 |`
@@ -129,9 +129,9 @@ describe("交付物报告生成（模型撰写 + 确定性校验）", () => {
     expect(internal).toContain("## 一、现状");
     expect(internal).toContain("## 五、客观与风险");
     expect(internal).toContain("## 六、下一步");
-    // 内部版带附录（来源索引 / 覆盖概览）
-    expect(internal).toContain("附录 A、来源索引");
-    expect(internal).toContain("附录 B、信息覆盖概览");
+    // 内部版带附录（来源与覆盖一张表 + 模型写的术语表）
+    expect(internal).toContain("附录 A、来源与覆盖");
+    expect(internal).toContain("附录 B、术语表");
   });
 
   it("正文超预算的章回炉压短（模型只删不加），压短后的正文进交付物", async () => {
@@ -154,7 +154,7 @@ describe("交付物报告生成（模型撰写 + 确定性校验）", () => {
     const { client } = dshOf([goodReport("internal"), goodReport("external")]);
     await run(h.db, client, h.scenarioId);
     const external = readFileSync(join(h.dir, `${h.scenarioId}.external.md`), "utf8");
-    // 内部附录（来源索引 / 覆盖概览）不出现；术语表由模型写，写了才出现
+    // 内部附录（来源与覆盖）不出现；术语表由模型写，写了才出现
     expect(external).not.toContain("来源索引");
     expect(external).not.toContain("信息覆盖概览");
     expect(external).not.toMatch(/表\d+-\d+/);
