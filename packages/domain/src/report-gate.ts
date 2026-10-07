@@ -14,6 +14,7 @@
  * 带度量口径的价值条目、边界、术语表）是否真的长出来了。
  */
 
+import { proseChars } from "./md-metrics.js";
 import {
   reportChaptersOf,
   type ReportArtifact,
@@ -159,12 +160,25 @@ const ARTIFACT_CHECKS: Record<ReportArtifact, (md: string, tables: number) => bo
   table: (_md, tables) => tables >= 3,
   "numbered-connections": (md) =>
     /[①②③④⑤⑥⑦⑧⑨⑩]/.test(md) || /(?:^|\n)\s*\|\s*\d+\s*\|/.test(md),
-  // 「原则一/原则二」这种枚举才算真的写了原则（只挂一个小节标题不算）
-  principles: (md) => /原则\s*[一二三四五1-5]/.test(md),
+  // 「原则一/原则二」编号算；压缩后常写成「### 设计原则」+ 若干条，只要小节下有内容也算
+  principles: (md) => /原则\s*[一二三四五1-5]/.test(md) || sectionHasBullets(md, "原则", 2),
   "value-with-metric": (md) => /(?:指标|口径|度量|怎么测|可度量)/.test(md),
   boundary: (md) => /(?:不替代|不参与|不承担|不做|不在本方案范围)/.test(md),
   glossary: (md) => /术语/.test(md),
 };
+
+/** 某个小节标题下是否有至少 n 条非空内容（压缩后模型常把编号换成小节 + 条目） */
+function sectionHasBullets(markdown: string, keyword: string, n: number): boolean {
+  const lines = markdown.split("\n");
+  const at = lines.findIndex((l) => /^#{3,4}\s/.test(l) && l.includes(keyword));
+  if (at < 0) return false;
+  let count = 0;
+  for (let i = at + 1; i < lines.length; i++) {
+    if (/^#{1,4}\s/.test(lines[i]!)) break;
+    if (lines[i]!.trim() !== "") count += 1;
+  }
+  return count >= n;
+}
 
 /** 哪些方案构件完全没长出来（硬伤：报告不能只是素材的复述） */
 function missingArtifacts(markdown: string, sections: readonly ReportSection[]): string[] {
@@ -284,19 +298,21 @@ export function checkReport(kind: ReportKind, markdown: string): ReportGateRepor
     });
   }
 
-  if (text.length > REPORT_MAX_CHARS[kind]) {
+  // 注意：`text` 去掉了所有空白（表格行首的 `|` 信息也没了），篇幅必须按**原始 markdown** 的正文算
+  const prose = proseChars(markdown);
+  if (prose > REPORT_MAX_CHARS[kind]) {
     violations.push({
       kind: "篇幅超标",
       hard: false,
-      detail: `正文 ${text.length} 字，超过 ${REPORT_MAX_CHARS[kind]} 字上限——把并列事实合并成结论，细节留给表格`,
+      detail: `正文（表格不计）${prose} 字，超过 ${REPORT_MAX_CHARS[kind]} 字上限——把并列事实合并成结论，细节留给表格`,
     });
   }
 
-  if (text.length < REPORT_MIN_CHARS[kind]) {
+  if (prose < REPORT_MIN_CHARS[kind]) {
     violations.push({
       kind: "篇幅不足",
       hard: false,
-      detail: `正文 ${text.length} 字，低于 ${REPORT_MIN_CHARS[kind]} 字下限（可能被截断或写得太简）`,
+      detail: `正文（表格不计）${prose} 字，低于 ${REPORT_MIN_CHARS[kind]} 字下限（可能被截断或写得太简）`,
     });
   }
 

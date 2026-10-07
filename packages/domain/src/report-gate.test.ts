@@ -122,6 +122,21 @@ describe("报告确定性校验（变更表 #112 / #113）", () => {
     expect(v?.detail).toContain("超过");
   });
 
+  it("篇幅按正文字数算：表格再长也不算流水账", () => {
+    const rows = Array.from({ length: 400 }, (_, i) => `| 行${i} | 说明${i} |`).join("\n");
+    const md = `${goodReport("external")}\n\n| 序号 | 连接 |\n|---|---|\n${rows}\n`;
+    expect(checkReport("external", md).violations.some((v) => v.kind === "篇幅超标")).toBe(false);
+  });
+
+  it("原则写成「### 设计原则 + 条目」（没有原则一/二编号）也算构件齐全", () => {
+    const md = goodReport("external").replace(
+      "原则一：只做会场设备侧。",
+      "### 设计原则\n\n- 辅助不替代\n- 能接的接、不能接的明说\n",
+    );
+    const v = checkReport("external", md).violations.find((x) => x.kind === "缺少方案构件");
+    expect(v).toBeUndefined();
+  });
+
   it("篇幅不足只提示，不当硬伤", () => {
     const v = checkReport("external", goodReport("external")).violations.find(
       (x) => x.kind === "篇幅不足",

@@ -17,12 +17,8 @@ import { join } from "node:path";
 import type { DshClient, FollowEvent, Scenario, SessionHandle, StageData } from "@scene/contract";
 import { reportChaptersOf, tableDef } from "@scene/contract";
 import type { DbInstance } from "@scene/infra";
-import {
-  buildReportMarkdown,
-  proseChars,
-  reportChapterDigest,
-  type ChapterDigest,
-} from "@scene/infra";
+import { buildReportMarkdown, reportChapterDigest, type ChapterDigest } from "@scene/infra";
+import { proseChars } from "@scene/domain";
 import {
   REPORT_MIN_CHARS,
   checkReport,
@@ -297,9 +293,10 @@ function briefOf(
   digest: readonly ChapterDigest[],
 ): string {
   const missing = digest.filter((d) => !written.get(d.key)?.trim()).map((d) => d.title);
+  // 只带硬伤：像「缺小节」这种提示性项塞进重写提示，等于让模型把刚压缩掉的铺陈又写回来
   return [
     "上一版的问题（重写时逐条改掉，六章仍要齐全）：",
-    ...violations.map((v) => `- 【${v.kind}】${v.detail}`),
+    ...violations.filter((v) => v.hard).map((v) => `- 【${v.kind}】${v.detail}`),
     ...(missing.length > 0 ? [`- 【缺章】这几章完全没写出来：${missing.join("、")}`] : []),
   ].join("\n");
 }

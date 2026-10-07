@@ -66,7 +66,6 @@ export {
   exportDeliverables,
   exportFileName,
   buildReportMarkdown,
-  proseChars,
   reportChapterDigest,
 } from "./md-export.js";
 export type { ChapterDigest, DigestOptions } from "./md-export.js";

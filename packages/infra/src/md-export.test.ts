@@ -10,7 +10,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { exportDeliverables, exportFileName, proseChars } from "./md-export.js";
+import { exportDeliverables, exportFileName } from "./md-export.js";
 import type { DeliverableInput, StageData } from "@scene/contract";
 
 // ─── 测试数据构造 ────────────────────────────────────────────
@@ -291,8 +291,4 @@ describe("exportDeliverables — 空数据", () => {
     expect(internal_report).toContain("本场景处在办公空间与协同软件的交叉点。");
   });
 
-  it("正文字数不计表格（表格是结构，正文才是流水账）", () => {
-    const md = "## 一、现状\n\n这是一句话。\n\n| 层次 | 组成 |\n|---|---|\n| 主链 | PLC |\n";
-    expect(proseChars(md)).toBe("##一、现状这是一句话。".length);
-  });
 });
