@@ -101,32 +101,42 @@ function fingerprintPath(path: string): string {
   return join(dirname(path), ".state", `${basename(path)}.sha256`);
 }
 
-function sha256(text: string): string {
-  return createHash("sha256").update(text, "utf8").digest("hex");
+function sha256(payload: string | Buffer): string {
+  return createHash("sha256").update(payload).digest("hex");
 }
 
 export function safeWriteFile(path: string, content: string): SafeWriteResult {
+  return safeWrite(path, Buffer.from(content, "utf8"));
+}
+
+/** 同 safeWriteFile，但写二进制（导出 Word 用）；指纹算法一致，同一个文件两种调用可互认 */
+export function safeWriteFileBytes(path: string, bytes: Uint8Array): SafeWriteResult {
+  return safeWrite(path, Buffer.from(bytes));
+}
+
+function safeWrite(path: string, payload: Buffer): SafeWriteResult {
   const fp = fingerprintPath(path);
-  const next = sha256(content);
+  const next = sha256(payload);
   if (!existsSync(path)) {
     mkdirSync(dirname(path), { recursive: true });
-    writeFileSync(path, content, "utf8");
+    writeFileSync(path, payload);
     recordFingerprint(fp, next);
     return { path, written: true, overwritten: false };
   }
-  const current = sha256(readFileSync(path, "utf8"));
+  const current = sha256(readFileSync(path));
   if (current === next) return { path, written: false, overwritten: false }; // 一模一样：不碰文件
   const recorded = existsSync(fp) ? readFileSync(fp, "utf8").trim() : "";
   if (recorded === current) {
     backupBeforeOverwrite(path);
-    writeFileSync(path, content, "utf8");
+    writeFileSync(path, payload);
     recordFingerprint(fp, next);
     return { path, written: true, overwritten: true };
   }
   // 被手改过：保住用户的版本，新内容另存
   const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
-  const alt = join(dirname(path), `${basename(path, ".md")} (应用版 ${stamp}).md`);
-  writeFileSync(alt, content, "utf8");
+  const ext = basename(path).includes(".") ? `.${basename(path).split(".").pop() as string}` : "";
+  const alt = join(dirname(path), `${basename(path, ext)} (应用版 ${stamp})${ext}`);
+  writeFileSync(alt, payload);
   recordFingerprint(fingerprintPath(alt), next);
   return {
     path: alt,

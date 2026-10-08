@@ -1,6 +1,7 @@
 import { test, expect } from "@playwright/test";
 import { createRequire } from "node:module";
-import { readdirSync, statSync } from "node:fs";
+import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from "node:fs";
+import { homedir } from "node:os";
 import { join } from "node:path";
 
 /**
@@ -163,4 +164,24 @@ test("交付物这一步：第二行是两份报告，点哪份中栏显示哪�
   // 装配原料清单按 G-R9 归右栏「阶段总结」
   await page.locator(".det-tabs .det-tab", { hasText: "阶段总结" }).click();
   await expect(page.locator(".det-body")).toContainText("装配原料");
+
+  // 变更表 #133：「导出到文件」= 选文件夹 → 按模版写 Word。
+  // 系统对话框在 e2e 里没法点，所以拦掉 pick-folder 请求直接给一个临时目录。
+  const dir = mkdtempSync(join(homedir(), ".scene-e2e-docx-"));
+  try {
+    await page.route("**/deliverables/pick-folder", (route) =>
+      route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ dir }) }),
+    );
+    await page.locator(".ws .pnl-actions button", { hasText: "导出到文件" }).click();
+    await expect(page.locator(".toast-item")).toContainText("Word 已导出", { timeout: 30_000 });
+    const files = readdirSync(dir).filter((f) => f.endsWith(".docx"));
+    expect(files.length, files.join(",")).toBe(2);
+    for (const f of files) {
+      expect(f).toMatch(/对外汇报材料|内部调研报告/);
+      // zip 魔数：真是 docx 而不是空文件
+      expect(readFileSync(join(dir, f)).subarray(0, 2).toString("utf8")).toBe("PK");
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

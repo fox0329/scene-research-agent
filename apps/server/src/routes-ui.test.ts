@@ -9,8 +9,8 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { existsSync, readFileSync, readdirSync, writeFileSync, mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import type { DshClient, FollowEvent, StageId } from "@scene/contract";
 import { createDb } from "@scene/infra";
@@ -1147,6 +1147,75 @@ describe("交付物导出", () => {
       url: "/api/v1/projects/nope/deliverables/export",
     });
     expect(res.statusCode).toBe(404);
+  });
+
+  it("POST export-docx 把两份报告按模版写成 Word 到指定文件夹（变更表 #133）", async () => {
+    const h = makeHarness();
+    const { scenarioId } = seedScenario(h.db, "Word 场景");
+    const dir = mkdtempSync(join(homedir(), ".scene-docx-test-"));
+    try {
+      const res = await h.app.inject({
+        method: "POST",
+        url: `/api/v1/projects/${scenarioId}/deliverables/export-docx`,
+        payload: { dir },
+      });
+      expect(res.statusCode).toBe(200);
+      const { files } = res.json() as { files: string[] };
+      expect(files.length).toBe(2);
+      for (const f of files) {
+        expect(f.startsWith(dir)).toBe(true);
+        expect(f.endsWith(".docx")).toBe(true);
+        const head = readFileSync(f).subarray(0, 2).toString("utf8");
+        expect(head, f).toBe("PK"); // zip 魔数
+      }
+      expect(files.some((f) => f.includes("内部调研报告"))).toBe(true);
+      expect(files.some((f) => f.includes("对外汇报材料"))).toBe(true);
+
+      // 再导一次：同一份报告字节一致 → 一个字节都不该动（变更表 #131 的先读后写）
+      const again = await h.app.inject({
+        method: "POST",
+        url: `/api/v1/projects/${scenarioId}/deliverables/export-docx`,
+        payload: { dir },
+      });
+      expect(again.statusCode).toBe(200);
+      const second = again.json() as { files: string[]; unchanged: string[] };
+      expect(second.files).toEqual([]);
+      expect(second.unchanged.length).toBe(2);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("POST export-docx 可以只导一份；目录非法或缺失 → 400", async () => {
+    const h = makeHarness();
+    const { scenarioId } = seedScenario(h.db, "Word 场景");
+    const dir = mkdtempSync(join(homedir(), ".scene-docx-test-"));
+    try {
+      const one = await h.app.inject({
+        method: "POST",
+        url: `/api/v1/projects/${scenarioId}/deliverables/export-docx`,
+        payload: { dir, kind: "external" },
+      });
+      expect(one.statusCode).toBe(200);
+      expect((one.json() as { files: string[] }).files.length).toBe(1);
+
+      const outside = await h.app.inject({
+        method: "POST",
+        url: `/api/v1/projects/${scenarioId}/deliverables/export-docx`,
+        payload: { dir: "/etc" },
+      });
+      expect(outside.statusCode).toBe(400);
+      expect(outside.json().error).toContain("主目录");
+
+      const missing = await h.app.inject({
+        method: "POST",
+        url: `/api/v1/projects/${scenarioId}/deliverables/export-docx`,
+        payload: {},
+      });
+      expect(missing.statusCode).toBe(400);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it("GET /deliverables：中栏取两份报告正文（装配但不落盘）", async () => {

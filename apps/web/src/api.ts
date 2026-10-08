@@ -523,6 +523,17 @@ export const api = {
       `/projects/${encodeURIComponent(id)}/deliverables/export`,
       { method: "POST" },
     ),
+  /** 弹系统对话框选导出文件夹（变更表 #133）；取消会抛错，调用方回退到手填路径 */
+  pickExportFolder: (id: string) =>
+    req<{ dir: string }>(`/projects/${encodeURIComponent(id)}/deliverables/pick-folder`, {
+      method: "POST",
+    }),
+  /** 按模版把报告写成 Word 落到指定文件夹 */
+  exportDocx: (id: string, dir: string, kind?: "internal" | "external") =>
+    req<{ files: string[]; unchanged: string[]; notice?: string }>(
+      `/projects/${encodeURIComponent(id)}/deliverables/export-docx`,
+      { method: "POST", body: { dir, kind } },
+    ),
 
   listConversations: (projectId: string) =>
     req<ApiConversation[]>(`/projects/${encodeURIComponent(projectId)}/conversations`),

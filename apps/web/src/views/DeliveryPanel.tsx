@@ -52,6 +52,7 @@ type ReportKey = (typeof REPORTS)[number]["key"];
 function deliveryNote(
   flow: ApiFlowStatus,
   paths: { internal_path: string; external_path: string } | null,
+  docxPaths: string[] = [],
 ): string {
   const lines = [
     "## 装配原料",
@@ -79,9 +80,12 @@ function deliveryNote(
     "## 导出",
   );
   if (paths) {
-    lines.push(`- 内部版：\`${paths.internal_path}\``, `- 客户版：\`${paths.external_path}\``);
-  } else {
-    lines.push("- 还没导出。点中栏右上「生成并导出交付物」写出两份文件。");
+    lines.push(`- Markdown 内部版：\`${paths.internal_path}\``, `- Markdown 客户版：\`${paths.external_path}\``);
+  }
+  if (docxPaths.length > 0) {
+    for (const p of docxPaths) lines.push(`- Word：\`${p}\``);
+  } else if (!paths) {
+    lines.push("- 还没导出。点中栏右上「导出到文件」选一个文件夹，写出两份 Word。");
   }
   lines.push("", "> 交付物只陈述信息与缺口，不含建议或判断——判断由使用者自己做。");
   return lines.join("\n");
@@ -106,6 +110,11 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
   /** true = 模型撰写的正式版；false = 确定性要点版（提示引导生成） */
   const [generated, setGenerated] = useState(false);
   const [paths, setPaths] = useState<{ internal_path: string; external_path: string } | null>(null);
+  /** 已导出的 Word 文件（右栏展示） */
+  const [docxPaths, setDocxPaths] = useState<string[]>([]);
+  const [busyWord, setBusyWord] = useState(false);
+  /** 弹不出系统对话框时，回退到让用户手填路径（null = 不显示） */
+  const [manualDir, setManualDir] = useState<string | null>(null);
 
   const loadReports = useCallback(async () => {
     if (!live || !projectId) return;
@@ -183,6 +192,48 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
     }
   }, [live, projectId, busy, showToast, onExported]);
 
+  /** 选文件夹（弹系统对话框）→ 把两份报告按模版写成 Word */
+  const exportWordInto = useCallback(
+    async (dir: string) => {
+      if (!projectId) return;
+      setBusyWord(true);
+      try {
+        const r = await api.exportDocx(projectId, dir);
+        const all = [...r.files, ...r.unchanged];
+        setDocxPaths(all);
+        const head = r.files.length > 0 ? `Word 已导出到 ${dir}` : `Word 已是最新（未改动）：${dir}`;
+        showToast(r.notice ? `${head}；${r.notice}` : head);
+        onExported?.();
+      } catch (err: unknown) {
+        showToast(`导出 Word 失败：${err instanceof Error ? err.message : String(err)}`);
+      } finally {
+        setBusyWord(false);
+      }
+    },
+    [projectId, showToast, onExported],
+  );
+
+  const handleExportWord = useCallback(async () => {
+    if (!live || !projectId) {
+      showToast("演示模式：交付物导出仅在实时数据模式可用");
+      return;
+    }
+    if (busyWord) return;
+    setBusyWord(true);
+    let dir: string | null = null;
+    try {
+      dir = (await api.pickExportFolder(projectId)).dir;
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      showToast(message);
+      // 取消就不打扰；弹不出对话框（非 macOS / 无权限）才回退到手填路径
+      if (!message.includes("取消")) setManualDir((cur) => cur ?? "");
+    } finally {
+      setBusyWord(false);
+    }
+    if (dir) await exportWordInto(dir);
+  }, [live, projectId, busyWord, showToast, exportWordInto]);
+
   const snapshot = useMemo<StageSnapshot>(
     () => ({
       stage: 6,
@@ -190,7 +241,7 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
       title: `第 ${FLOW_TOTAL}/${FLOW_TOTAL} 步 · ${step.title}`,
       rows: [],
       completeness: null,
-      summary: deliveryNote(flow, paths),
+      summary: deliveryNote(flow, paths, docxPaths),
       summaryLoading: false,
       activeTable: null,
       supplements: [],
@@ -198,7 +249,7 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
       onRefreshSummary: () => void loadReports(),
       onSupplementChange: () => undefined,
     }),
-    [flow, paths, step.title, loadReports],
+    [flow, paths, docxPaths, step.title, loadReports],
   );
 
   useEffect(() => {
@@ -225,10 +276,41 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
                 ? "重新生成报告"
                 : "生成报告"}
           </button>
+          <button
+            className="btn"
+            type="button"
+            disabled={busyWord}
+            onClick={() => void handleExportWord()}
+          >
+            {busyWord ? "导出中…" : "导出到文件"}
+          </button>
           <button className="btn" type="button" disabled={busy} onClick={() => void handleExport()}>
-            {busy ? "导出中…" : "导出到文件"}
+            {busy ? "导出中…" : "导出 Markdown"}
           </button>
         </div>
+        {manualDir !== null ? (
+          <div className="pnl-actions dir-row">
+            <input
+              className="settings-input"
+              type="text"
+              value={manualDir}
+              placeholder="文件夹绝对路径，例如 /Users/you/Documents/报告"
+              aria-label="导出文件夹路径"
+              onChange={(e) => setManualDir(e.target.value)}
+            />
+            <button
+              className="btn"
+              type="button"
+              disabled={busyWord || manualDir.trim() === ""}
+              onClick={() => void exportWordInto(manualDir.trim())}
+            >
+              导出到该路径
+            </button>
+            <button className="btn" type="button" onClick={() => setManualDir(null)}>
+              收起
+            </button>
+          </div>
+        ) : null}
       </div>
 
       <div className="pnl-b">

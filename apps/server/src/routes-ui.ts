@@ -47,6 +47,8 @@ import type { ProviderModelEntry } from "@scene/infra";
 import type { SseHub } from "./sse-hub.js";
 import { createDeliverableReportCommand } from "./deliverable-report.js";
 import { getReportPair, writeReportFiles } from "./report-service.js";
+import { exportReportDocx } from "./docx-export.js";
+import { assertExportDir, pickFolder } from "./folder-picker.js";
 import { createConverseCommand, type ChatImportOutcome } from "./converse.js";
 import { requestScenarioClarify } from "./scenario-clarify.js";
 import { makeSourceLookup, runPostcheck } from "./postcheck-pass.js";
@@ -365,6 +367,43 @@ export function registerUiRoutes(app: FastifyInstance, deps: UiRoutesDeps): void
     const scenario = db.scenarioRepo.getById(id);
     if (!scenario) return notFound(reply, `场景 ${id} 不存在`);
     return writeReportFiles(db, scenario);
+  });
+
+  /** 弹系统对话框让用户选导出文件夹（变更表 #133）；取消返回 409，界面回退到手填路径 */
+  app.post("/api/v1/projects/:id/deliverables/pick-folder", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const scenario = db.scenarioRepo.getById(id);
+    if (!scenario) return notFound(reply, `场景 ${id} 不存在`);
+    const picked = await pickFolder(`把「${scenario.name}」的报告导出到哪个文件夹？`);
+    if (!picked.dir) return reply.code(409).send({ error: picked.reason ?? "未选择文件夹" });
+    return { dir: picked.dir };
+  });
+
+  /** 导出 Word（按《Word 输出格式规范》生成 docx）到用户选的文件夹（变更表 #133） */
+  app.post("/api/v1/projects/:id/deliverables/export-docx", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const scenario = db.scenarioRepo.getById(id);
+    if (!scenario) return notFound(reply, `场景 ${id} 不存在`);
+    const body = (request.body ?? {}) as { dir?: unknown; kind?: unknown };
+    if (typeof body.dir !== "string" || body.dir.trim() === "") {
+      return reply.code(400).send({ error: "缺少导出目录 dir" });
+    }
+    let dir: string;
+    try {
+      dir = assertExportDir(body.dir);
+    } catch (err: unknown) {
+      return reply.code(400).send({ error: err instanceof Error ? err.message : String(err) });
+    }
+    const kinds =
+      body.kind === "internal" || body.kind === "external"
+        ? ([body.kind] as ("internal" | "external")[])
+        : (["internal", "external"] as ("internal" | "external")[]);
+    try {
+      return await exportReportDocx(db, scenario, dir, kinds);
+    } catch (err: unknown) {
+      request.log.error(err);
+      return reply.code(500).send({ error: `生成 Word 失败：${err instanceof Error ? err.message : String(err)}` });
+    }
   });
 }
 

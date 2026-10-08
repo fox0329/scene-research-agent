@@ -65,6 +65,7 @@ export type { ConnectionCheckResult, ModelsFetchResult } from "./provider-check.
 export {
   backupBeforeOverwrite,
   safeWriteFile,
+  safeWriteFileBytes,
   exportDeliverables,
   exportFileName,
   buildReportMarkdown,
@@ -75,3 +76,4 @@ export type { ChapterDigest, DigestOptions, SafeWriteResult } from "./md-export.
 
 /** 文件存储适配器 — TODO M1 实现 */
 export {};export * from "./source-index.js";
+export { reportMarkdownToDocx, type DocxOptions } from "./docx-report.js";
