@@ -8,8 +8,12 @@
  * 变更表 #136（用户定调）：「交付物不再分内部调研版和外部汇报版，直接用外部汇报版生成
  * 一个版本，就叫 XXX解决方案」。
  * 变更表 #137：交付物是**两份并列**——「<场景>解决方案」与「<场景>建设工作方案」。
- * 中栏一次只显示一份：看哪份由流程轴第二行的 chip 决定（`tab`），编辑与保存都只作用于
- * 当前这一份（切份即丢弃未保存的草稿，绝不把 A 的草稿写到 B）。
+ * 中栏一次只显示一份：看哪份由**中栏顶部那一行右侧的两个 chip** 决定（`tab`），编辑与保存
+ * 都只作用于当前这一份（切份即丢弃未保存的草稿，绝不把 A 的草稿写到 B）。
+ *
+ * 变更表 #140（用户定调）：「重新生成报告 / 编辑 / 导出这几个按钮移到上面去」——动作行居中栏
+ * 顶部一行：左边是动作（生成 / 编辑 / 导出 Word / 导出 PPT / 导出 Markdown），右边是两份
+ * 交付物的 chip（原来挂在流程轴第二行，现在同一步里只有一个入口）。
  *
  * 中栏显示报告正文；还没生成正式版时显示确定性要点版，并在正文上方提示"当前是要点版"。
  * 「装配原料清单」与导出路径按 G-R9 归右栏。
@@ -39,9 +43,9 @@ export interface DeliveryPanelProps {
   onStageSnapshot?: (snap: StageSnapshot | null) => void;
   /** 导出完成（刷新项目列表：场景可能已标记完成） */
   onExported?: () => void;
-  /** 流程轴第二行点了某个交付物 chip：`id` 变化时切到 `code` 那一份 */
+  /** 外部一次性选择某个交付物 chip：`id` 变化时切到 `code` 那一份 */
   pick?: { id: number; code: string | null };
-  /** 回报此刻看的是哪一份 → 流程轴第二行据此高亮 */
+  /** 回报此刻看的是哪一份（中栏顶部高亮；`shownOutput` 也据此更新） */
   onReportChange?: (key: string) => void;
 }
 
@@ -161,7 +165,7 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
   const label = deliveryLabel(tab);
 
   /**
-   * 流程轴第二行点了哪份 chip 就切到哪份
+   * 外部一次性选择（`pick`）→ 切到那一份
    *
    * **切份即丢弃未保存的草稿**：草稿属于上一份，留着会被下一次保存写到另一份上去。
    * 点的是当前这一份则不动草稿（那不算切换）。
@@ -173,10 +177,20 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
     setTab(next);
   }, [pick, tab]);
 
-  /* 回报此刻看的是哪一份：流程轴第二行据此高亮 */
+  /* 回报此刻看的是哪一份（中栏顶部 chip 自己就是高亮来源，这里只为外部对账） */
   useEffect(() => {
     onReportChange?.(tab);
   }, [onReportChange, tab]);
+
+  /** 中栏顶部点交付物 chip：与外部 `pick` 同一条规则——切份丢弃未保存的草稿 */
+  const handlePickReport = useCallback(
+    (next: DeliverableKind) => {
+      if (next === tab) return;
+      setDraft(null);
+      setTab(next);
+    },
+    [tab],
+  );
 
   /**
    * 报告生成 = 一次长跑（几分钟），复用「本步分析」的运行态：
@@ -316,8 +330,10 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
 
   return (
     <div className="pnl">
-      {/* 动作行保留；两份交付物的选择在流程轴第二行（用户定调 2026-10-06：输出物挂到阶段名下面） */}
-      <div className="pnl-h">
+      {/* 变更表 #140（用户定调）：动作行与两份交付物的 chip 合成**中栏顶部一行**——
+          左边是本步动作（生成 / 编辑 / 导出 Word / 导出 PPT / 导出 Markdown），
+          右边是这一份还是那一份（原来挂在流程轴第二行，这一步已不再画） */}
+      <div className="pnl-h pnl-h--wrap">
         <div className="pnl-actions">
           <button
             className="btn primary"
@@ -361,7 +377,16 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
             disabled={busyWord}
             onClick={() => void handleExportWord()}
           >
-            {busyWord ? "导出中…" : "导出到文件"}
+            {busyWord ? "导出中…" : "导出Word文档"}
+          </button>
+          {/* PPT：本轮只放进来的入口，版式定了才接真实导出（用户定调「先加个入口」） */}
+          <button
+            className="btn"
+            type="button"
+            title="PPT 导出版式还没定，先把入口放这里"
+            onClick={() => showToast("PPT 导出开发中：版式定了就接上")}
+          >
+            导出PPT文档
           </button>
           <button className="btn" type="button" disabled={busy} onClick={() => void handleExport()}>
             {busy ? "导出中…" : "导出 Markdown"}
@@ -390,6 +415,22 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
             </button>
           </div>
         ) : null}
+        {/* 两份交付物：同一行里靠右。名字取契约 `REPORT_KIND_LABEL`（与报告标题、
+            导出文件名同源），`active` 高亮当前这一份，点一下切份（切份丢弃草稿） */}
+        <div className="pnl-actions pnl-actions--end" role="group" aria-label="交付物">
+          {DELIVERY_OUTPUTS.map((o) => (
+            <button
+              key={o.key}
+              type="button"
+              className={`chip${tab === o.key ? " active" : ""}`}
+              title={deliveryHint(o.key)}
+              aria-pressed={tab === o.key}
+              onClick={() => handlePickReport(o.key)}
+            >
+              {o.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className="pnl-b">
@@ -422,7 +463,7 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
             {!generated && !gen.running ? (
               <p className="brief-hint">
                 当前是「{label}」的「要点版」（系统按章节 ← 表映射直接搬的数据要点，只是一份提纲）。
-                点右上「生成报告」，模型会读完全部表格后一次写出两份交付物的归纳正文。
+                点上方「生成报告」，模型会读完全部表格后一次写出两份交付物的归纳正文。
               </p>
             ) : null}
             {draft !== null ? (

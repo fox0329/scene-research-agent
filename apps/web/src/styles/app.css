@@ -2178,7 +2178,24 @@ td.ed {
   margin-left: auto;
 }
 
-/* 「导出到文件」弹不出系统对话框时，就地手填导出文件夹（变更表 #133）
+/* 交付物这一步（变更表 #140）：左侧动作 + 右侧两份交付物 chip 同一行。
+   放不下时整组换行；组内也允许收缩换行，窄屏不把按钮文案折成两行字 */
+.pnl-h--wrap {
+  flex-wrap: wrap;
+  gap: var(--s2);
+}
+
+.pnl-h--wrap > .pnl-actions {
+  flex-wrap: wrap;
+  flex-shrink: 1;
+}
+
+/* 同一行里靠右的那一组（两份交付物的 chip）：吃掉左侧余量推到行末 */
+.pnl-actions--end {
+  margin-left: auto;
+}
+
+/* 「导出Word文档」弹不出系统对话框时，就地手填导出文件夹（变更表 #133）
    输入框独占一行、按钮另起一行——不造 design-spec §472 禁止的「输入框 + 按钮同排」 */
 .pnl-h .dir-row {
   flex: 1 1 100%;

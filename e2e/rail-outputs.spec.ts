@@ -12,12 +12,13 @@ import { join } from "node:path";
  *   表格的名称能始终显示。」「直接将阶段的内容列表，放到上面场景定义、认识场景、
  *   理解商业等几个阶段名称下面就行，用户点击某个阶段下面一行就显示该阶段的几个输出物。」
  *
- * 本套件锁住四件事：
+ * 本套件锁住五件事：
  *  ① 第一行仍是 7 个阶段名，第二行是**当前正在看的那一步**的输出物；
- *  ② 点第二行的某一项 → 中栏真的换成它（表 → 那张表的表格；交付物 → 那一份报告，
- *     交付物步是两份：解决方案 + 建设工作方案，变更表 #137）；
+ *  ② 点第二行的某一项 → 中栏真的换成它（表 → 那张表的表格）；
  *  ③ 第二行在中栏滚动容器 `.ws` 外面 → 上下滚表格时它始终可见（用户要解决的正是这个）；
- *  ④ 中栏不再自己再来一行表名（上一版曾在表格上面压一层粘性表头，用户否掉了）。
+ *  ④ 中栏不再自己再来一行表名（上一版曾在表格上面压一层粘性表头，用户否掉了）；
+ *  ⑤ 交付物这一步例外（变更表 #140）：两份交付物（解决方案 / 建设工作方案）的切换入口
+ *     在**中栏顶部**与动作同一行、靠右，流程轴第二行在这一步不再画这两个 chip。
  */
 
 const LIVE = "http://127.0.0.1:46175";
@@ -126,7 +127,7 @@ test("流程轴：阶段名一行 + 本步输出物一行，点第二行换中�
   await expect(page.locator(".flow-outputs .chip").filter({ hasText: "需求-能力对照" })).toHaveCount(0);
 });
 
-test("交付物这一步：第二行是两份交付物，中栏跟着切换（联真）", async ({ page }) => {
+test("交付物这一步：两份交付物在中栏顶部切换，流程轴第二行不再画它们（联真）", async ({ page }) => {
   const name = `E2E 交付物输出物 ${Date.now()}`;
   const projectId = await newProject(page, name);
   await completeSteps(page, projectId, 7);
@@ -136,18 +137,34 @@ test("交付物这一步：第二行是两份交付物，中栏跟着切换（�
   await page.locator(".proj-hd", { hasText: name }).click();
   await page.locator(".flow-nodes .flow-node", { hasText: "交付物" }).click();
 
-  // 第二行＝交付物这一步的输出物：两份（解决方案 + 建设工作方案，变更表 #137），不是表
-  const outputs = page.locator(".flow-outputs .chip");
-  await expect(outputs).toHaveCount(2);
-  await expect(outputs.nth(0)).toHaveText("解决方案");
-  await expect(outputs.nth(1)).toHaveText("建设工作方案");
+  // 变更表 #140：两份交付物的 chip 移到**中栏顶部**（原来挂在流程轴第二行，变更表 #137）
+  const chips = page.locator(".ws .pnl-h .chip");
+  await expect(chips).toHaveCount(2);
+  await expect(chips.nth(0)).toHaveText("解决方案");
+  await expect(chips.nth(1)).toHaveText("建设工作方案");
+  await expect(chips.filter({ hasText: "解决方案" })).toHaveClass(/active/);
+
+  // 与左侧动作**同一行**、贴右（不是掉到下一行，也不是挤在按钮中间）
+  const actions = page.locator(".ws .pnl-actions").first();
+  const headBox = (await page.locator(".ws .pnl-h").boundingBox())!;
+  const actionsBox = (await actions.boundingBox())!;
+  const chipsBox = (await page.locator(".ws .pnl-actions--end").boundingBox())!;
+  const midY = (b: { y: number; height: number }) => b.y + b.height / 2;
+  expect(Math.abs(midY(chipsBox) - midY(actionsBox))).toBeLessThanOrEqual(8);
+  expect(chipsBox.x).toBeGreaterThan(actionsBox.x + actionsBox.width);
+  expect(headBox.x + headBox.width - (chipsBox.x + chipsBox.width)).toBeLessThanOrEqual(20);
+
+  // 动作同一行：改名后的导出 Word、只是入口的导出 PPT、以及保留的导出 Markdown
+  await expect(actions).toContainText("生成报告");
+  await expect(actions).toContainText("导出Word文档");
+  await expect(actions).toContainText("导出PPT文档");
+  await expect(actions).toContainText("导出 Markdown");
 
   // 默认看「解决方案」：中栏是它的正文
   await expect(page.locator(".ws .delivery-steps")).toHaveCount(0);
   // 还没跑模型 → 正文上方说清「当前是要点版」，并给出生成入口（v1.32）
   await expect(page.locator(".ws .brief-hint")).toContainText("要点版");
-  await expect(page.locator(".ws .pnl-actions")).toContainText("生成报告");
-  await expect(outputs.filter({ hasText: "解决方案" })).toHaveClass(/active/);
+  await expect(actions).toContainText("生成报告");
   // 变更表 #136：解决方案正文是「<场景名>解决方案」，五章、章标题不带手写序号
   await expect(page.locator(".ws .md-body")).toContainText("解决方案");
   for (const h of ["现状", "场景与问题", "方案", "价值", "下一步"]) {
@@ -157,33 +174,42 @@ test("交付物这一步：第二行是两份交付物，中栏跟着切换（�
   await expect(page.locator(".ws .md-body")).not.toContainText("附录");
 
   // 变更表 #137：点「建设工作方案」→ 中栏正文换成那一份（construction 章名出现，solution 章名消失）
-  await outputs.filter({ hasText: "建设工作方案" }).click();
-  await expect(outputs.filter({ hasText: "建设工作方案" })).toHaveClass(/active/);
+  await chips.filter({ hasText: "建设工作方案" }).click();
+  await expect(chips.filter({ hasText: "建设工作方案" })).toHaveClass(/active/);
+  await expect(chips.filter({ hasText: "解决方案" })).not.toHaveClass(/active/);
   await expect(page.locator(".ws .md-body")).toContainText("建设背景与必要性");
   await expect(page.locator(".ws .md-body")).toContainText("建设内容");
   await expect(page.locator(".ws .md-body")).not.toContainText("场景与问题");
+
+  // 变更表 #140：流程轴第二行在这一步**不再画**这两个 chip（切换入口只在中栏顶部一处）
+  await expect(page.locator(".flow-outputs")).toHaveCount(0);
+  await expect(page.locator(".flow-outputs .chip")).toHaveCount(0);
+
+  // 导出 PPT 只是入口（用户定调「先加个入口」）：点一下给提示，不做真实导出
+  await actions.locator("button", { hasText: "导出PPT文档" }).click();
+  await expect(page.locator(".toast-item").filter({ hasText: "PPT 导出开发中" }).last()).toBeVisible();
 
   // 装配原料清单按 G-R9 归右栏「阶段总结」
   await page.locator(".det-tabs .det-tab", { hasText: "阶段总结" }).click();
   await expect(page.locator(".det-body")).toContainText("装配原料");
 
   // 变更表 #135：中栏可编辑并保存——改的是**当前这一份**（建设工作方案）→ 中栏与磁盘都变
-  await page.locator(".ws .pnl-actions button", { hasText: "编辑" }).click();
+  await actions.locator("button", { hasText: "编辑" }).click();
   const editor = page.locator(".ws .report-editor");
   await expect(editor).toBeVisible();
   await editor.fill("# E2E 改过的建设工作方案\n\n## 建设内容\n\n这段字是 e2e 写进去的。\n");
-  await page.locator(".ws .pnl-actions button", { hasText: "保存" }).click();
+  await actions.locator("button", { hasText: "保存" }).click();
   await expect(page.locator(".toast-item").filter({ hasText: "已保存" }).last()).toBeVisible({ timeout: 20_000 });
   await expect(page.locator(".ws .md-body")).toContainText("这段字是 e2e 写进去的");
 
-  // 变更表 #133：「导出到文件」= 选文件夹 → 按模版写 Word（#137：一次两份）。
+  // 变更表 #133：「导出Word文档」= 选文件夹 → 按模版写 Word（#137：一次两份）。
   // 系统对话框在 e2e 里没法点，所以拦掉 pick-folder 请求直接给一个临时目录。
   const dir = mkdtempSync(join(homedir(), ".scene-e2e-docx-"));
   try {
     await page.route("**/deliverables/pick-folder", (route) =>
       route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ dir }) }),
     );
-    await page.locator(".ws .pnl-actions button", { hasText: "导出到文件" }).click();
+    await actions.locator("button", { hasText: "导出Word文档" }).click();
     await expect(page.locator(".toast-item").filter({ hasText: "Word 已导出" }).last()).toBeVisible({
       timeout: 30_000,
     });

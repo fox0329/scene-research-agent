@@ -6,7 +6,7 @@ import { AnchorStepPanel } from "./AnchorStepPanel";
 import { DeliveryPanel } from "./DeliveryPanel";
 import { DemoFirstStep } from "./DemoFlowPanels";
 import { FlowRail } from "../components/FlowRail";
-import { stepOutputsOf, type StepOutput } from "../components/step-outputs";
+import { railOutputsOf, type StepOutput } from "../components/step-outputs";
 import { api, type ApiAnchorRow, type ApiFlowStatus } from "../api";
 import { useAsync } from "../hooks/useAsync";
 import { useStageAnalysis } from "../hooks/useStageAnalysis";
@@ -97,9 +97,10 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
   const current = flow?.steps.find((s) => s.id === flow.currentStep);
   const stepStage = (flowStep(step).stage ?? DELIVERY_STAGE) as InfoStageId;
 
-  /* 流程轴第二行：当前正在看的那一步的输出物（交付物步 = 解决方案 + 建设工作方案两份） */
+  /* 流程轴第二行：当前正在看的那一步的输出物（表名 / 表·子块）。
+     交付物这一步不占这一行——两份交付物的切换入口在中栏顶部（变更表 #140） */
   const railOutputs = useMemo<StepOutput[]>(
-    () => stepOutputsOf(step, flowStep(step).tables, FLOW_TOTAL),
+    () => railOutputsOf(step, flowStep(step).tables, FLOW_TOTAL),
     [step],
   );
   /* 高亮哪一项：面板回报过就用它；第 1 步只有一张锚表、面板不上报，恒定高亮它 */

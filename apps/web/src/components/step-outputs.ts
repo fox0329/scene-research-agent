@@ -10,7 +10,8 @@
  *  - 分析步：流程定义 `flowStep(n).tables` 里的表；**多子块表的每块各占一项**
  *    （与中栏 v1.26 的口径一致：架构块 / 接口块各自成"表"，列结构本来就不同）
  *  - 交付物步：不是表，而是**两份**客户端可读的正式交付物——「<场景>解决方案」
- *    与「<场景>建设工作方案」（变更表 #136 / #137）
+ *    与「<场景>建设工作方案」（变更表 #136 / #137）。**这两份的切换入口在中栏顶部**
+ *    （变更表 #140），流程轴第二行在这一步不画 chip。
  *
  * 为什么抽出来：流程轴第二行与中栏面板必须**指同一批东西**，靠一个函数保证，
  * 而不是两处各写一套（写歪了就会出现"轴上点了 A、中栏显示 B"）。
@@ -71,7 +72,13 @@ export function stepOutputs(tables: readonly string[]): StepOutput[] {
   });
 }
 
-/** 一步的输出物：交付物步是两份报告，其余步按流程定义的表集展开 */
-export function stepOutputsOf(stepId: number, tables: readonly string[], totalSteps: number): StepOutput[] {
-  return stepId === totalSteps ? [...DELIVERY_OUTPUTS] : stepOutputs(tables);
+/**
+ * 流程轴第二行要画的输出物（变更表 #140）
+ *
+ * 交付物这一步**不画**：两份的切换入口移到中栏顶部（与动作按钮同一行、靠右），
+ * 轴上也画一遍就是同一个动作开两个入口。其余步与 `stepOutputs` 完全一致
+ * ——表名挂在阶段名下面、滚表格时始终可见（2026-10-06 用户定调，这条不变）。
+ */
+export function railOutputsOf(stepId: number, tables: readonly string[], totalSteps: number): StepOutput[] {
+  return stepId === totalSteps ? [] : stepOutputs(tables);
 }
