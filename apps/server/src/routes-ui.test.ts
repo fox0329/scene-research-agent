@@ -1186,6 +1186,62 @@ describe("交付物导出", () => {
     }
   });
 
+  it("PUT deliverables/:kind 保存中栏改过的正文（变更表 #135）", async () => {
+    const h = makeHarness();
+    const { scenarioId } = seedScenario(h.db, "保存场景");
+    const dir = mkdtempSync(join(homedir(), ".scene-save-test-"));
+    process.env.DELIVERABLE_DIR = dir;
+    try {
+      // 第一次保存：文件不存在 → 新建
+      const first = await h.app.inject({
+        method: "PUT",
+        url: `/api/v1/projects/${scenarioId}/deliverables/internal`,
+        payload: { markdown: "# 保存场景 内部调研报告 2026-10-07\n\n## 一、现状\n\n手改的正文\n" },
+      });
+      expect(first.statusCode).toBe(200);
+      const path = join(dir, `${scenarioId}.internal.md`);
+      expect(readFileSync(path, "utf8")).toContain("手改的正文");
+
+      // 内容一模一样 → 不落盘（先读后写）
+      const same = await h.app.inject({
+        method: "PUT",
+        url: `/api/v1/projects/${scenarioId}/deliverables/internal`,
+        payload: { markdown: readFileSync(path, "utf8") },
+      });
+      expect(same.json().written).toBe(false);
+
+      // 读回来：界面显示的正是刚保存的内容
+      const view = await h.app.inject({
+        method: "GET",
+        url: `/api/v1/projects/${scenarioId}/deliverables`,
+      });
+      expect(view.json().internal_report).toContain("手改的正文");
+
+      // 参数校验
+      const badKind = await h.app.inject({
+        method: "PUT",
+        url: `/api/v1/projects/${scenarioId}/deliverables/whatever`,
+        payload: { markdown: "x" },
+      });
+      expect(badKind.statusCode).toBe(400);
+      const empty = await h.app.inject({
+        method: "PUT",
+        url: `/api/v1/projects/${scenarioId}/deliverables/internal`,
+        payload: { markdown: "   " },
+      });
+      expect(empty.statusCode).toBe(400);
+      const missing = await h.app.inject({
+        method: "PUT",
+        url: `/api/v1/projects/${scenarioId}/deliverables/external`,
+        payload: {},
+      });
+      expect(missing.statusCode).toBe(400);
+    } finally {
+      delete process.env.DELIVERABLE_DIR;
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("POST export-docx 可以只导一份；目录非法或缺失 → 400", async () => {
     const h = makeHarness();
     const { scenarioId } = seedScenario(h.db, "Word 场景");

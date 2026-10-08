@@ -83,6 +83,22 @@ export function getReportPair(
   };
 }
 
+/**
+ * 用户在中栏改完报告正文后保存（变更表 #135）。
+ * 落盘同样走先读后写：内容没变不碰文件；文件被应用之外改过则保留那份、新内容另存。
+ */
+export function saveReportFile(
+  scenario: Scenario,
+  kind: "internal" | "external",
+  markdown: string,
+): { path: string; written: boolean; overwritten: boolean; notice?: string } {
+  const dir = deliverableDir();
+  mkdirSync(dir, { recursive: true });
+  const saved = safeWriteFile(deliverableReportPath(scenario.id, kind), markdown);
+  if (saved.notice) console.warn(`[save] ${saved.notice}`);
+  return saved;
+}
+
 /** 导出两份报告到 `exports/`（写盘内容 = 界面所见） */
 export function writeReportFiles(
   db: DbInstance,

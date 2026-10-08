@@ -46,7 +46,7 @@ import {
 import type { ProviderModelEntry } from "@scene/infra";
 import type { SseHub } from "./sse-hub.js";
 import { createDeliverableReportCommand } from "./deliverable-report.js";
-import { getReportPair, writeReportFiles } from "./report-service.js";
+import { getReportPair, saveReportFile, writeReportFiles } from "./report-service.js";
 import { exportReportDocx } from "./docx-export.js";
 import { assertExportDir, pickFolder } from "./folder-picker.js";
 import { createConverseCommand, type ChatImportOutcome } from "./converse.js";
@@ -367,6 +367,27 @@ export function registerUiRoutes(app: FastifyInstance, deps: UiRoutesDeps): void
     const scenario = db.scenarioRepo.getById(id);
     if (!scenario) return notFound(reply, `场景 ${id} 不存在`);
     return writeReportFiles(db, scenario);
+  });
+
+  /** 保存中栏改过的报告正文（变更表 #135）：写回数据/deliverables，先读后写留档 */
+  app.put("/api/v1/projects/:id/deliverables/:kind", async (request, reply) => {
+    const { id, kind } = request.params as { id: string; kind: string };
+    const scenario = db.scenarioRepo.getById(id);
+    if (!scenario) return notFound(reply, `场景 ${id} 不存在`);
+    if (kind !== "internal" && kind !== "external") {
+      return reply.code(400).send({ error: `报告类型只能是 internal 或 external，收到 ${kind}` });
+    }
+    const body = (request.body ?? {}) as { markdown?: unknown };
+    if (typeof body.markdown !== "string") {
+      return reply.code(400).send({ error: "缺少正文 markdown" });
+    }
+    if (body.markdown.trim() === "") {
+      return reply.code(400).send({ error: "正文不能是空的" });
+    }
+    if (body.markdown.length > 200_000) {
+      return reply.code(400).send({ error: "正文过长（超过 20 万字），拒绝保存" });
+    }
+    return saveReportFile(scenario, kind, body.markdown);
   });
 
   /** 弹系统对话框让用户选导出文件夹（变更表 #133）；取消返回 409，界面回退到手填路径 */

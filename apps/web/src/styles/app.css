@@ -2185,6 +2185,28 @@ td.ed {
   flex-wrap: wrap;
   margin-top: var(--s2);
 }
+/* 中栏报告正文编辑器（变更表 #135）：与正文同宽同字号，等宽字体便于对齐 Markdown 表格 */
+.report-editor {
+  display: block;
+  width: 100%;
+  min-height: 60vh;
+  padding: var(--s3);
+  font-family: var(--fm);
+  font-size: var(--ts);
+  line-height: 1.6;
+  color: var(--ct);
+  background: var(--csr);
+  border: 1px solid var(--cb);
+  border-radius: var(--r4);
+  outline: none;
+  resize: vertical;
+}
+
+.report-editor:focus-visible {
+  border-color: var(--cp);
+  box-shadow: 0 0 0 2px var(--cp-s);
+}
+
 .pnl-h .dir-row .settings-input {
   flex: 1 1 100%;
   min-width: 0;

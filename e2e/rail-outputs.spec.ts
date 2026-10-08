@@ -165,6 +165,15 @@ test("交付物这一步：第二行是两份报告，点哪份中栏显示哪�
   await page.locator(".det-tabs .det-tab", { hasText: "阶段总结" }).click();
   await expect(page.locator(".det-body")).toContainText("装配原料");
 
+  // 变更表 #135：中栏可编辑并保存——改完点保存 → 中栏与磁盘都变
+  await page.locator(".ws .pnl-actions button", { hasText: "编辑" }).click();
+  const editor = page.locator(".ws .report-editor");
+  await expect(editor).toBeVisible();
+  await editor.fill("# E2E 改过的报告\n\n## 一、现状\n\n这段字是 e2e 写进去的。\n");
+  await page.locator(".ws .pnl-actions button", { hasText: "保存" }).click();
+  await expect(page.locator(".toast-item").filter({ hasText: "已保存" }).last()).toBeVisible({ timeout: 20_000 });
+  await expect(page.locator(".ws .md-body")).toContainText("这段字是 e2e 写进去的");
+
   // 变更表 #133：「导出到文件」= 选文件夹 → 按模版写 Word。
   // 系统对话框在 e2e 里没法点，所以拦掉 pick-folder 请求直接给一个临时目录。
   const dir = mkdtempSync(join(homedir(), ".scene-e2e-docx-"));
@@ -173,7 +182,9 @@ test("交付物这一步：第二行是两份报告，点哪份中栏显示哪�
       route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ dir }) }),
     );
     await page.locator(".ws .pnl-actions button", { hasText: "导出到文件" }).click();
-    await expect(page.locator(".toast-item")).toContainText("Word 已导出", { timeout: 30_000 });
+    await expect(page.locator(".toast-item").filter({ hasText: "Word 已导出" }).last()).toBeVisible({
+      timeout: 30_000,
+    });
     const files = readdirSync(dir).filter((f) => f.endsWith(".docx"));
     expect(files.length, files.join(",")).toBe(2);
     for (const f of files) {

@@ -523,6 +523,12 @@ export const api = {
       `/projects/${encodeURIComponent(id)}/deliverables/export`,
       { method: "POST" },
     ),
+  /** 保存中栏编辑后的报告正文（变更表 #135） */
+  saveDeliverable: (id: string, kind: "internal" | "external", markdown: string) =>
+    req<{ path: string; written: boolean; overwritten: boolean; notice?: string }>(
+      `/projects/${encodeURIComponent(id)}/deliverables/${kind}`,
+      { method: "PUT", body: { markdown } },
+    ),
   /** 弹系统对话框选导出文件夹（变更表 #133）；取消会抛错，调用方回退到手填路径 */
   pickExportFolder: (id: string) =>
     req<{ dir: string }>(`/projects/${encodeURIComponent(id)}/deliverables/pick-folder`, {

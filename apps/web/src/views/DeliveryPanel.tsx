@@ -115,6 +115,9 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
   const [busyWord, setBusyWord] = useState(false);
   /** 弹不出系统对话框时，回退到让用户手填路径（null = 不显示） */
   const [manualDir, setManualDir] = useState<string | null>(null);
+  /** 正在编辑的草稿（变更表 #135）：只存当前口径，切回来看得见、不丢字 */
+  const [draft, setDraft] = useState<{ kind: ReportKey; text: string } | null>(null);
+  const [saving, setSaving] = useState(false);
 
   const loadReports = useCallback(async () => {
     if (!live || !projectId) return;
@@ -191,6 +194,22 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
       setBusy(false);
     }
   }, [live, projectId, busy, showToast, onExported]);
+
+  /** 保存中栏改过的正文 → 写回应用（服务端先读后写留档） */
+  const handleSave = useCallback(async () => {
+    if (!projectId || !draft) return;
+    setSaving(true);
+    try {
+      const r = await api.saveDeliverable(projectId, draft.kind, draft.text);
+      showToast(r.notice ? `已保存（${r.notice}）` : "已保存");
+      setDraft(null);
+      await loadReports();
+    } catch (err: unknown) {
+      showToast(`保存失败：${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setSaving(false);
+    }
+  }, [projectId, draft, showToast, loadReports]);
 
   /** 选文件夹（弹系统对话框）→ 把两份报告按模版写成 Word */
   const exportWordInto = useCallback(
@@ -276,6 +295,30 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
                 ? "重新生成报告"
                 : "生成报告"}
           </button>
+          {draft && draft.kind === tab ? (
+            <>
+              <button
+                className="btn primary"
+                type="button"
+                disabled={saving || draft.text.trim() === ""}
+                onClick={() => void handleSave()}
+              >
+                {saving ? "保存中…" : "保存"}
+              </button>
+              <button className="btn" type="button" disabled={saving} onClick={() => setDraft(null)}>
+                取消
+              </button>
+            </>
+          ) : (
+            <button
+              className="btn"
+              type="button"
+              disabled={!live || body === ""}
+              onClick={() => setDraft({ kind: tab, text: body })}
+            >
+              编辑
+            </button>
+          )}
           <button
             className="btn"
             type="button"
@@ -346,7 +389,16 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
                 内部版侧重客观与风险，对外版侧重痛点、方案与价值。
               </p>
             ) : null}
-            <div className="md-body">{renderMarkdown(body)}</div>
+            {draft && draft.kind === tab ? (
+              <textarea
+                className="report-editor"
+                aria-label="报告正文（Markdown）"
+                value={draft.text}
+                onChange={(e) => setDraft({ kind: tab, text: e.target.value })}
+              />
+            ) : (
+              <div className="md-body">{renderMarkdown(body)}</div>
+            )}
           </>
         )}
       </div>
