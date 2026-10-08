@@ -17,6 +17,13 @@ function sectionBody(sec: ReportSection): string {
   if (arts.includes("numbered-connections")) parts.push("① 仪表 → 网关；② 网关 → 平台。");
   if (arts.includes("principles")) parts.push("原则一 不替代原系统；原则二 不参与安全联锁。");
   if (arts.includes("value-with-metric")) parts.push("价值一 ……度量口径：单次巡检人天。");
+  if (arts.includes("value-table"))
+    parts.push(
+      "| 价值 | 现在 | 采用后 | 怎么核 |\n|---|---|---|---|\n" +
+        "| 价值一：会前就绪 | 提前 5–10 分钟接线 | 碰一碰秒级就绪 | 预约时间与就绪时间戳差 |\n" +
+        "| 价值二：离场释放 | 占而不用 | 自动释放 | 按月比对预约与实际通电 |\n" +
+        "| 价值三：故障改远程 | 靠报修到场 | 远程监控与 OTA | 工单上门次数对比 |",
+    );
   if (arts.includes("boundary")) parts.push("边界：不做安全联锁，不承担 SIS 职责。");
   return parts.join("\n\n");
 }
@@ -25,14 +32,22 @@ function sectionBody(sec: ReportSection): string {
 function goodReport(kind: ReportKind, extra = ""): string {
   const chapters = reportChaptersOf(kind).map((c) => {
     const body = c.sections.map((sec) => `### ${sec.title}\n\n${sectionBody(sec)}`).join("\n\n");
-    // 章级构件（「五、主要风险点」章下不设小节，直接写风险点）
-    const chapterBody = (c.artifacts ?? []).includes("risk-list")
-      ? [
-          "**现场条件风险。** 点位不成立时只能旁路监测。",
-          "**纳管上限风险。** 封闭协议设备只能保留原厂控制。",
-          "**门槛风险。** 任一方否决即推翻技术路径。",
-        ].join("\n\n")
-      : "";
+    // 章级构件：内部版风险章直接写风险点；对外版价值章的边界写在章下（不套小节标题）
+    const chArts = c.artifacts ?? [];
+    const chapterBody = [
+      chArts.includes("risk-list")
+        ? [
+            "**现场条件风险。** 点位不成立时只能旁路监测。",
+            "**纳管上限风险。** 封闭协议设备只能保留原厂控制。",
+            "**门槛风险。** 任一方否决即推翻技术路径。",
+          ].join("\n\n")
+        : "",
+      chArts.includes("boundary")
+        ? "**不替代**：不替代客户既有系统。\n\n**不参与**：不参与客户数据治理。\n\n**不承担**：不承担强电施工资质。\n\n**受限条件**：端层认证仅限自研载体。"
+        : "",
+    ]
+      .filter(Boolean)
+      .join("\n\n");
     return `## ${reportChapterHeading(kind, c.key)}\n\n${[body, chapterBody].filter(Boolean).join("\n\n")}`;
   });
   // 术语表只对外（内部报告到风险章为止，变更表 #124）

@@ -30,18 +30,34 @@ function goodReport(kind: "internal" | "external"): string {
         if (arts.includes("principles")) lines.push("", "原则一 不替代原系统；原则二 不参与联锁。");
         if (arts.includes("value-with-metric")) lines.push("", "价值一 ……度量口径：单次巡检人天。");
         if (arts.includes("boundary")) lines.push("", "边界：不替代原系统，不做安全联锁。");
+        if (arts.includes("value-table"))
+          lines.push(
+            "",
+            "| 价值 | 现在 | 采用后 | 怎么核 |",
+            "|---|---|---|---|",
+            "| 价值一：会前不再逐台开机 | 提前 5–10 分钟接线（行业 3~10 分钟） | 碰一碰拉起，秒级就绪 | 预约开始时间与设备就绪时间戳差 |",
+            "| 价值二：离场自动释放 | 占而不用与找不到房并存 | 自动释放、超时回收 | 按月比对预约与实际通电时段 |",
+            "| 价值三：故障改远程 | 靠报修与到场 | 远程监控与 OTA | 工单上门次数与修复时长同期对比 |",
+          );
         return lines.join("\n");
       })
       .join("\n\n");
     // 章级构件（如「五、主要风险点」章下不设小节，直接写风险点）
     const chapterArts = c.artifacts ?? [];
-    const chapterBody = chapterArts.includes("risk-list")
-      ? [
-          "**现场条件风险。** 点位与承重不成立时只能旁路监测。应对：勘测逐间出条件清单。",
-          "**纳管上限风险。** 封闭协议设备只能保留原厂控制。应对：把纳管清单写进设计输入。",
-          "**门槛风险。** 任一方否决即推翻技术路径。应对：设计阶段同步准备材料。",
-        ].join("\n\n")
-      : "";
+    const chapterBody = [
+      chapterArts.includes("risk-list")
+        ? [
+            "**现场条件风险。** 点位与承重不成立时只能旁路监测。应对：勘测逐间出条件清单。",
+            "**纳管上限风险。** 封闭协议设备只能保留原厂控制。应对：把纳管清单写进设计输入。",
+            "**门槛风险。** 任一方否决即推翻技术路径。应对：设计阶段同步准备材料。",
+          ].join("\n\n")
+        : "",
+      chapterArts.includes("boundary")
+        ? "**不替代**：不替代客户既有系统。\n\n**不参与**：不参与客户数据治理。\n\n**不承担**：不承担强电施工资质。\n\n**受限条件**：端层认证仅限自研载体。"
+        : "",
+    ]
+      .filter(Boolean)
+      .join("\n\n");
     const merged = [body, chapterBody].filter(Boolean).join("\n\n");
     return `## ${reportChapterHeading(kind, c.key)}\n\n${merged}`;
   });

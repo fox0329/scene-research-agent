@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { reportChapterHeading, reportChaptersOf } from "@scene/contract";
 import type { ChapterDigest } from "@scene/infra";
-import { buildReportPrompt } from "./report-prompts.js";
+import { buildReportPrompt, chapterProseBudget } from "./report-prompts.js";
 
 const digest: ChapterDigest[] = reportChaptersOf("internal").map((c) => ({
   key: c.key,
@@ -69,8 +69,18 @@ describe("报告提示词（变更表 #112）", () => {
     expect(user).toContain("不得出现决策建议措辞");
   });
 
-  it("两份的篇幅口径不同、且都收紧到精要（内部 5–8 页 / 对外 3–5 页）", () => {
+  it("两份的篇幅口径不同，且都按用户定稿实测校准（内部 2500–4000 / 对外 3000–3600）", () => {
     expect(buildReportPrompt("internal", base).system).toContain("2500–4000");
-    expect(buildReportPrompt("external", base).system).toContain("1800–3000");
+    // 变更表 #129：对外定稿正文 3442 字，原来写 1800–3000 会把定稿压掉
+    expect(buildReportPrompt("external", base).system).toContain("3000–3600");
+  });
+
+  it("逐章回炉线不低于用户定稿的实测篇幅（否则一生成就被压改）", () => {
+    // 对外定稿实测：现状 933 / 问题 429 / 方案 1203 / 价值 422 / 下一步 323
+    expect(chapterProseBudget("external", "status")).toBeGreaterThan(933);
+    expect(chapterProseBudget("external", "solution")).toBeGreaterThan(1203);
+    expect(chapterProseBudget("external", "problems")).toBeGreaterThan(429);
+    expect(chapterProseBudget("external", "value")).toBeGreaterThan(422);
+    expect(chapterProseBudget("external", "next")).toBeGreaterThan(323);
   });
 });

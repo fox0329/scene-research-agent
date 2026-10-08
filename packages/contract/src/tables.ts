@@ -1449,6 +1449,7 @@ export interface DeliverableSection {
 
 /** 章节里必须自建的小节，以及这一小节要产出的「方案构件」 */
 export type ReportArtifact =
+  /** 风险点清单（内部版第五章：章下直接写，不套小节） */
   | "risk-list"
   /** 自建表格（层次/职责/选型/步骤这类，素材表里没有现成结构） */
   | "table"
@@ -1456,8 +1457,10 @@ export type ReportArtifact =
   | "numbered-connections"
   /** 我方设计原则（原则一/原则二…） */
   | "principles"
-  /** 价值条目（每条必须带度量口径） */
+  /** 价值条目段落式（内部版：价值N / 现在 / 采用后） */
   | "value-with-metric"
+  /** 对外价值表（价值 / 现在 / 采用后 / 怎么核 四列） */
+  | "value-table"
   /** 边界声明：明确「不做什么」 */
   | "boundary"
   /** 术语表（术语 + 说明） */
@@ -1475,6 +1478,10 @@ export interface ReportSection {
   keywords?: readonly string[];
   /** 这一小节必须自建的构件（校验据此把关，不来自任何表） */
   artifacts?: readonly ReportArtifact[];
+  /** 只在这份口径里出现的小节（缺省 = 两份都有） */
+  only?: ReportKind;
+  /** 章下直接写、不套 `###` 小节标题（校验不要求它单独成节） */
+  noHeading?: boolean;
 }
 
 export interface ReportBlock {
@@ -1531,6 +1538,17 @@ export const REPORT_CHAPTERS: readonly ReportChapter[] = [
     /* 变更表 #126：定稿版现状章 = 章首导语（场景在业务里的位置）+ 体系表 + 「现状特征与提升空间」，
        前两段不设小节标题，所以契约里只登记一个小节 */
     sections: [
+      /* 变更表 #129：对外版这两个小节有小节标题；内部版这两段并进章首导语，不设标题 */
+      {
+        title: "场景在业务中的位置",
+        keywords: ["位置", "定位", "在业务中"],
+        only: "external",
+      },
+      {
+        title: "既有体系构成",
+        keywords: ["体系构成", "构成", "阶段归纳", "分层"],
+        only: "external",
+      },
       {
         title: "现状特征与提升空间",
         keywords: ["特征", "提升空间", "症结", "现状"],
@@ -1555,10 +1573,14 @@ export const REPORT_CHAPTERS: readonly ReportChapter[] = [
   {
     key: "problems",
     label: "场景与问题",
-    /* 变更表 #127：用户定稿只保留「场景边界 + 典型问题」，门槛与合规不再进交付物 */
+    /* 变更表 #127：内部版只保留「场景边界 + 典型问题」；#129：对外版保留「门槛与合规」 */
     sections: [
-      { title: "场景边界", keywords: ["边界"] },
-      { title: "典型问题", keywords: ["问题", "痛点"] },
+      /* 变更表 #129：内部版这两节有小节标题；对外版直接写在章下（用户定稿如此） */
+      { title: "场景边界", keywords: ["边界"], only: "internal" },
+      { title: "典型问题", keywords: ["问题", "痛点"], only: "internal" },
+      { title: "场景边界", keywords: ["边界"], only: "external", noHeading: true },
+      { title: "典型问题", keywords: ["问题", "痛点"], only: "external", noHeading: true },
+      { title: "门槛与合规", keywords: ["门槛", "合规"], only: "external" },
     ],
     internal: [
       { code: "表1-2", heading: "各环节现在的问题", cols: ["link", "pain"] },
@@ -1570,6 +1592,7 @@ export const REPORT_CHAPTERS: readonly ReportChapter[] = [
     external: [
       { code: "表1-2", heading: "各环节现在的问题", cols: ["link", "pain"] },
       { code: "表3-8", heading: "今天还没被满足的需求", cols: ["gap", "who_hurts", "pain_level", "current_alternative"] },
+      { code: "表1-3", heading: "门槛与合规要求", cols: ["barrier_type", "barrier_name", "criteria"] },
     ],
   },
   {
@@ -1581,6 +1604,8 @@ export const REPORT_CHAPTERS: readonly ReportChapter[] = [
       { title: "主辅职责对照", keywords: ["职责", "主辅"], artifacts: ["table"] },
       { title: "连接关系与接口", keywords: ["连接", "接口"], artifacts: ["numbered-connections"] },
       { title: "选型与配置", keywords: ["选型", "配置", "组成", "清单"], artifacts: ["table"] },
+      /* 变更表 #129：对外版保留「实施要点」（推进窗口 + 回退路径），内部版不写 */
+      { title: "实施要点", keywords: ["实施", "要点", "部署"], only: "external" },
     ],
     internal: [
       { code: "表4-2", heading: "我方在哪些环节参与、以什么角色", cols: ["link", "can_touch", "our_role", "role_reason"] },
@@ -1600,10 +1625,20 @@ export const REPORT_CHAPTERS: readonly ReportChapter[] = [
   {
     key: "value",
     label: "价值",
+    /* 变更表 #129：内部版段落式（价值N / 现在 / 采用后，不写怎么核）；对外版四列表格（含怎么核） */
     sections: [
-      { title: "核心价值", keywords: ["价值", "收益"], artifacts: ["value-with-metric"] },
-      { title: "能力边界", keywords: ["边界", "不做"], artifacts: ["boundary"] },
+      { title: "核心价值", keywords: ["价值", "收益"], artifacts: ["value-with-metric"], only: "internal" },
+      {
+        title: "核心价值",
+        keywords: ["价值", "收益"],
+        artifacts: ["value-table"],
+        only: "external",
+        noHeading: true,
+      },
+      { title: "能力边界", keywords: ["边界", "不做"], only: "internal" },
     ],
+    /* 两条口径都要写边界：对外版是「不替代 / 不参与 / 不承担 / 受限条件」四段，不套小节标题 */
+    artifacts: ["boundary"],
     internal: [
       { code: "表6-1", heading: "收益 → 指标 → 基线与预期", as: "table", cols: ["benefit", "metric", "baseline", "expected", "how_to_measure"] },
       { code: "表4-5", heading: "竞争力自评", as: "table", cols: ["dimension", "weight", "score", "basis"] },

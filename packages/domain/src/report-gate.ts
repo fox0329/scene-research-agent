@@ -151,6 +151,7 @@ function markdownTableCount(markdown: string): number {
 const ARTIFACT_LABEL: Record<ReportArtifact, string> = {
   table: "自建表格",
   "numbered-connections": "带编号的连接关系",
+  "value-table": "对外价值表（价值/现在/采用后/怎么核）",
   principles: "设计原则",
   "value-with-metric": "带度量口径的价值条目",
   boundary: "边界声明",
@@ -160,6 +161,26 @@ const ARTIFACT_LABEL: Record<ReportArtifact, string> = {
 
 /** 每种构件的存在性判据（宁可宽松，只拦"完全没长出来"） */
 const ARTIFACT_CHECKS: Record<ReportArtifact, (md: string, tables: number) => boolean> = {
+  // 对外价值表：表头要有「价值 / 现在 / 采用后 / 怎么核」，正文至少 3 行价值
+  // 对外价值表：要有一行表头同时含「价值 / 现在 / 采用后 / 怎么核」，表头之后至少 3 行价值
+  // （注意：价值表通常不是全文第一张表——现状章的分层表在前，所以按表头行去找）
+  "value-table": (md) => {
+    const lines = md.split("\n");
+    const cols = ["价值", "现在", "采用后", "怎么核"];
+    for (let i = 0; i < lines.length; i += 1) {
+      const head = lines[i] ?? "";
+      if (!head.trim().startsWith("|")) continue;
+      if (!cols.every((c) => head.includes(c))) continue;
+      let body = 0;
+      for (let j = i + 2; j < lines.length; j += 1) {
+        const l = lines[j] ?? "";
+        if (!l.trim().startsWith("|")) break;
+        body += 1;
+      }
+      if (body >= 3) return true;
+    }
+    return false;
+  },
   // 要的是"报告自己画了表"：架构 / 职责对照 / 选型 / 步骤这类，至少三张
   table: (_md, tables) => tables >= 3,
   "numbered-connections": (md) =>
@@ -187,8 +208,14 @@ function sectionHasBullets(markdown: string, keyword: string, n: number): boolea
   return count >= n;
 }
 
+/** 某口径下的小节（跨口径共用的小节两边都算） */
+function sectionsOf(kind: ReportKind, sections: readonly ReportSection[]): readonly ReportSection[] {
+  return sections.filter((sec) => sec.only === undefined || sec.only === kind);
+}
+
 /** 哪些方案构件完全没长出来（硬伤：报告不能只是素材的复述） */
 function missingArtifacts(
+  kind: ReportKind,
   markdown: string,
   sections: readonly ReportSection[],
   chapterArtifacts: readonly ReportArtifact[] = [],
@@ -196,7 +223,7 @@ function missingArtifacts(
 ): string[] {
   const tables = markdownTableCount(markdown);
   const out: string[] = [];
-  for (const sec of sections) {
+  for (const sec of sectionsOf(kind, sections)) {
     for (const a of sec.artifacts ?? []) {
       if (!ARTIFACT_CHECKS[a](markdown, tables)) {
         out.push(`${ARTIFACT_LABEL[a]}（在「${sec.title}」里）`);
@@ -224,7 +251,7 @@ export function missingChapterArtifacts(
 ): string[] {
   const chapter = reportChaptersOf(kind).find((c) => c.key === chapterKey);
   if (!chapter) return [];
-  return missingArtifacts(markdown, chapter.sections, chapter.artifacts, chapter.label);
+  return missingArtifacts(kind, markdown, chapter.sections, chapter.artifacts, chapter.label);
 }
 
 /** 切出某一章的正文（含标题行），用于按章做口吻检查 */
@@ -243,8 +270,15 @@ function sectionWritten(sec: ReportSection, subs: readonly string[]): boolean {
 }
 
 /** 哪些小节没单独成节（只提示：换个说法或并进本章导语都不算缺陷） */
-function missingSections(sections: readonly ReportSection[], subs: readonly string[]): string[] {
-  return sections.filter((sec) => !sectionWritten(sec, subs)).map((sec) => `「${sec.title}」`);
+function missingSections(
+  kind: ReportKind,
+  sections: readonly ReportSection[],
+  subs: readonly string[],
+): string[] {
+  return sectionsOf(kind, sections)
+    .filter((sec) => !sec.noHeading)
+    .filter((sec) => !sectionWritten(sec, subs))
+    .map((sec) => `「${sec.title}」`);
 }
 
 /** 一份报告的确定性校验 */
@@ -263,7 +297,7 @@ export function checkReport(kind: ReportKind, markdown: string): ReportGateRepor
     // 章节齐了才查小节与构件：缺章时先补章，别一次甩一堆问题给模型
     const sections = defs.flatMap((c) => c.sections);
     const miss = defs.flatMap((c) =>
-      missingArtifacts(markdown, c.sections, c.artifacts, c.label),
+      missingArtifacts(kind, markdown, c.sections, c.artifacts, c.label),
     );
     if (miss.length > 0) {
       violations.push({
@@ -272,7 +306,7 @@ export function checkReport(kind: ReportKind, markdown: string): ReportGateRepor
         detail: `报告要有自己的方案构件（不是把素材复述一遍），当前缺：${miss.join("、")}`,
       });
     }
-    const missSec = missingSections(sections, subs);
+    const missSec = missingSections(kind, sections, subs);
     if (missSec.length > 0) {
       violations.push({
         kind: "缺小节",
