@@ -370,6 +370,7 @@ export const PPT_OUTLINE_QUALITY = {
    *
    * 判定就是"标题里有没有这些词之一"——词表**宁宽不严**（宁可放过一句平庸的标题，
    * 也不误杀一句好标题）；连带数字的标题（如「四步走到全量覆盖」之外的「3 周上线」）也算有判断。
+   * 同一张词表也被 ⑤ 判"这一条像不像一句话"复用（变更表 #146 补充）。
    */
   judgmentWords: [
     // 情态与判断
@@ -456,6 +457,10 @@ export const PPT_OUTLINE_QUALITY = {
     "路径",
     "账本",
     "台账",
+    "采用",
+    "支持",
+    "负责",
+    "实现",
     // 动作（单字，宁宽不严）
     "换",
     "走",
@@ -505,6 +510,17 @@ export const PPT_OUTLINE_QUALITY = {
   /** ⑤ 页间不重复：同一页最多报几条重复（免得一条重复刷满问题清单） */
   duplicatePerPage: 3,
   /**
+   * ⑤ 页间不重复：**只有"像一句话"的重复才判**（变更表 #146 补充）
+   *
+   * 真跑误报：「人体存在传感器」这类**专有名词**在第 4 页讲建设内容、第 5 页讲设备清单时各提一次，
+   * 完全正常，却被当成"两页说了同一件事"。所以重复项必须满足任一条才算句子：
+   * ① 含标点（`duplicatePunct`）；② 归一化后 ≥ `duplicateSentenceMinChars` 字；
+   * ③ 含 `judgmentWords` 里的判断/动作词。纯名词短语（无标点且 ≤8 字）一律不判。
+   */
+  duplicatePunct: "，。；：、",
+  /** ⑤ 页间不重复：归一化后到这个字数就算"像一句话"（不再要求有标点或动词） */
+  duplicateSentenceMinChars: 10,
+  /**
    * ⑥ 叙事顺序：页必须按「现状与问题 → 方案与建设 → 价值与收益」排
    *
    * 命中范围是**这一页自己的框**（`title` / `subtitle` / `highlight` / `kicker`），
@@ -524,7 +540,13 @@ export const PPT_OUTLINE_QUALITY = {
       pattern: "价值|收益|成效|效果|回报|结果|提升|降低|节省|缩短|达标|改善|收益",
     },
   ] as const,
-  /** ⑦ 自包含：这些词一旦出现，说明大纲在"指别人去看原文"，PPT 是独立文件，一律不许写 */
+  /**
+   * ⑦ 自包含：这些词一旦出现，说明大纲在"指别人去看原文"，PPT 是独立文件，一律不许写
+   *
+   * 注意「目录」**不在这里**（变更表 #146 补充）：报告正文里它常是正当内容词
+   * （「按客户信创目录逐项核定」「设备目录」），只在它充当**一页的结构性标签**时才算禁语，
+   * 见 `selfContainedDirLabels` / `dirLabelMaxChars`。
+   */
   selfContainedBanned: [
     "参考正文",
     "详见正文",
@@ -536,8 +558,14 @@ export const PPT_OUTLINE_QUALITY = {
     "待补齐",
     "建议采用",
     "谢谢观看",
-    "目录",
   ] as const,
+  /**
+   * ⑦ 自包含：**结构性标签**（不是子串）——页面的框（kicker / title / subtitle / highlight）
+   * 去空白后等于下面任一个，或以「目录」结尾且总长 ≤ `dirLabelMaxChars`，才算"这是目录页"
+   */
+  selfContainedDirLabels: ["目录", "内容目录", "本页目录", "本期目录", "本章目录"] as const,
+  /** ⑦ 自包含：以「目录」结尾的结构性标签最多几个字（「内容目录」4 字算，「按客户目录逐项核定」11 字不算） */
+  dirLabelMaxChars: 6,
   /** ⑧ 图标与版式：白名单外的图标名一律不合格（渲染前就被 `normalizePptIcon` 兜掉，这里是判据） */
   iconWhitelist: PPT_ICONS,
 } as const;

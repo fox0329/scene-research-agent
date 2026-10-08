@@ -956,6 +956,16 @@ describe("checkPptOutlineQuality — ① 观点型标题", () => {
     expect(Array.from(long).length).toBeGreaterThan(PPT_LIMITS.titleChars);
     expect(codesOf(checkPptOutlineQuality(deckWith(1, { title: long }), MD), "标题超长")).toEqual([2]);
   });
+
+  it("#146 补充：**长标题**不因「没有动词」被误判（「四层架构加一脑一平台」11 字是合格标题）", () => {
+    const deck = deckWith(2, { title: "四层架构加一脑一平台" });
+    expect(codesOf(checkPptOutlineQuality(deck, MD), "非观点型标题")).toEqual([]);
+  });
+
+  it("#146 补充：短标题没判断词仍然判弱（「设备清单」4 字）", () => {
+    const deck = deckWith(2, { title: "设备清单" });
+    expect(codesOf(checkPptOutlineQuality(deck, MD), "非观点型标题")).toEqual([3]);
+  });
 });
 
 describe("checkPptOutlineQuality — ② 记忆点", () => {
@@ -1032,6 +1042,30 @@ describe("checkPptOutlineQuality — ⑤ 页间不重复", () => {
     deck.pages[3]!.blocks[1]!.head = "今天";
     expect(codesOf(checkPptOutlineQuality(deck, MD), "两页重复")).toEqual([]);
   });
+
+  it("#146 补充：**专有名词**在两页各提一次不算重复（「人体存在传感器」）", () => {
+    const deck = okDeck();
+    deck.pages[3]!.blocks[0]!.lines[0] = "人体存在传感器";
+    deck.pages[4]!.blocks[1]!.lines[0] = "人体存在传感器";
+    expect(codesOf(checkPptOutlineQuality(deck, MD), "两页重复")).toEqual([]);
+  });
+
+  it("#146 补充：像一句话的重复照报（有标点或有判断词）", () => {
+    const deck = okDeck();
+    deck.pages[1]!.blocks[0]!.lines[0] = "设备之间互不相通，状态不可见";
+    deck.pages[3]!.blocks[0]!.lines[0] = "设备之间互不相通，状态不可见";
+    const issues = checkPptOutlineQuality(deck, MD);
+    expect(codesOf(issues, "两页重复")).toEqual([4]);
+    expect(issues[0]!.detail).toContain("第 2 页与第 4 页");
+  });
+
+  it("#146 补充：无标点但够长（≥10 字）的整句重复也照报", () => {
+    const deck = okDeck();
+    const line = "每一台设备都要逐台贴码登记留痕";
+    deck.pages[1]!.blocks[0]!.lines[0] = line;
+    deck.pages[3]!.blocks[0]!.lines[0] = line;
+    expect(codesOf(checkPptOutlineQuality(deck, MD), "两页重复")).toEqual([4]);
+  });
 });
 
 describe("checkPptOutlineQuality — ⑥ 叙事顺序（问题 → 方案 → 价值）", () => {
@@ -1053,16 +1087,42 @@ describe("checkPptOutlineQuality — ⑥ 叙事顺序（问题 → 方案 → �
     const issues = checkPptOutlineQuality(deck, MD);
     expect(codesOf(issues, "叙事顺序错")).toEqual([2, 3]);
     expect(issues[0]!.detail).toContain("问题 → 方案 → 价值");
+    expect(issues[0]!.detail).toContain("框里出现「建设」"); // 点名触发词（#146 补充）
   });
 });
 
 describe("checkPptOutlineQuality — ⑦ 自包含", () => {
-  it("写「详见报告」「谢谢观看」「目录」这类话 → 不自包含", () => {
+  it("写「详见报告」「谢谢观看」这类话 → 不自包含", () => {
     const deck = okDeck();
     deck.pages[0]!.blocks[0]!.lines[0] = "设备清单详见报告第三章";
     deck.pages[1]!.highlight = "谢谢观看";
     const issues = checkPptOutlineQuality(deck, MD);
     expect(codesOf(issues, "不自包含")).toEqual([1, 2]);
+  });
+
+  it("#146 补充：正文里的「目录」是正当内容词，不报（「按客户目录逐项核定」）", () => {
+    const deck = okDeck();
+    deck.pages[0]!.blocks[0]!.lines[0] = "按客户信创目录逐项核定型号";
+    deck.pages[1]!.title = "按设备目录逐项核对";
+    expect(codesOf(checkPptOutlineQuality(deck, MD), "不自包含")).toEqual([]);
+  });
+
+  it("#146 补充：「目录」当结构性标签时才报（「内容目录」当标题）", () => {
+    const deck = okDeck();
+    deck.pages[2]!.title = "内容目录";
+    const issues = checkPptOutlineQuality(deck, MD);
+    expect(codesOf(issues, "不自包含")).toEqual([3]);
+    expect(issues[0]!.detail).toContain("目录页");
+  });
+
+  it("#146 补充：同一条问题不重复上报（同一页同一个词命中两次 → 输出 1 条）", () => {
+    const deck = okDeck();
+    deck.pages[0]!.blocks[0]!.lines[0] = "设备清单参考正文第三章";
+    deck.pages[0]!.blocks[0]!.lines[1] = "巡检记录参考正文第四章";
+    const issues = checkPptOutlineQuality(deck, MD).filter((i) => i.code === "不自包含");
+    expect(issues).toHaveLength(1);
+    expect(issues[0]!.page).toBe(1);
+    expect(issues[0]!.detail).toContain("参考正文");
   });
 });
 

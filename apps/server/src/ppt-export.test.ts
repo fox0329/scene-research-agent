@@ -20,7 +20,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { PPT_LIMITS, PPT_OUTLINE_ROUNDS, type DshClient, type FollowEvent, type PptPage, type ReportKind } from "@scene/contract";
 import { createDb, type DbInstance } from "@scene/infra";
 import { deliverableReportPath } from "./deliverable-report.js";
-import { exportReportPptx, pptFileName } from "./ppt-export.js";
+import { dedupeIssues, exportReportPptx, pptFileName } from "./ppt-export.js";
 
 // ─── fixture：假技能（finalize 嵌图标 + 转档器写占位文件，都记日志） ──────
 
@@ -317,10 +317,17 @@ function weakTitleJson(pages = 6, count = 1): string {
   return JSON.stringify(deck);
 }
 
-/** 把第 1 页的一句话抄到第 5 页（一处「两页重复」问题，点名第 5 页） */
+/**
+ * 把第 1 页的一句话抄到第 5 页（一处「两页重复」问题，点名第 5 页）
+ *
+ * 抄的必须是**像一句话**的句子（#146 补充：专有名词不算重复），所以这里用一句带标点的结论。
+ * 两页的其它内容逐页不同，所以整份稿子只有这 1 处问题。
+ */
+const DUP_SENTENCE = "口径写进系统，现场按码走";
 function duplicateJson(pages = 6): string {
   const deck = JSON.parse(outlineJson(pages)) as { pages: PptPage[] };
-  deck.pages[4]!.highlight = deck.pages[0]!.highlight;
+  deck.pages[0]!.highlight = DUP_SENTENCE;
+  deck.pages[4]!.highlight = DUP_SENTENCE;
   return JSON.stringify(deck);
 }
 
@@ -360,7 +367,13 @@ interface PromptRecord {
  */
 function mockDsh(
   texts: string[],
-  opts: { counter?: { calls: number }; prompts?: PromptRecord[]; onCall?: (index: number) => void } = {},
+  opts: {
+    counter?: { calls: number };
+    prompts?: PromptRecord[];
+    onCall?: (index: number) => void;
+    /** 这几次调用直接回错误事件（模拟供应商偶发失败） */
+    errorAt?: readonly number[];
+  } = {},
 ): DshClient {
   let call = 0;
   return {
@@ -373,6 +386,10 @@ function mockDsh(
       opts.prompts?.push({ system: input.system, user: input.user });
       if (opts.counter) opts.counter.calls = call;
       return (async function* () {
+        if (opts.errorAt?.includes(index)) {
+          yield { type: "error", message: "供应商偶发 500" };
+          return;
+        }
         yield { type: "text", text };
         yield { type: "done" };
       })();
@@ -627,6 +644,20 @@ describe("exportReportPptx — 不合格就重跑（#146 修复闭环）", () =>
     expect(calls.calls).toBe(3); // 生成 + 轮内重试 + 优化
   });
 
+  it("#146 补充：生成调用报错 → 也是轮内重试一次（不是整轮作废）", async () => {
+    const calls = { calls: 0 };
+    const result = await runExport(h, {
+      dshClient: mockDsh([outlineJson(6), outlineJson(6)], { counter: calls, errorAt: [0] }),
+    });
+    expect(result.files).toHaveLength(1);
+    const progress = messages(h.events);
+    expect(progress).toContain("模型调用出错");
+    expect(progress).toContain("供应商偶发 500");
+    expect(progress).toContain("重试一次…");
+    expect(result.notice ?? "").not.toContain("未达标");
+    expect(calls.calls).toBe(3); // 首次报错 → 重试 → 优化
+  });
+
   it("解析不出来 → 轮内重试一次；重试成功照常导出", async () => {
     const calls = { calls: 0 };
     const result = await runExport(h, {
@@ -773,6 +804,13 @@ describe("exportReportPptx — 不合格就重跑（#146 修复闭环）", () =>
       old.cleanup();
       warn.mockRestore();
     }
+  });
+
+  it("#146 补充：同一页同一码同一句话只算一条（喂给下一轮的问题不许重复）", () => {
+    const dup = { page: 3, code: "不自包含", detail: "出现「目录」——PPT 不做目录页" };
+    const kept = dedupeIssues([dup, { ...dup }, { page: 4, code: "不自包含", detail: dup.detail }]);
+    expect(kept).toHaveLength(2);
+    expect(kept.map((i) => i.page)).toEqual([3, 4]);
   });
 
   it("合同里的页数口径没被改歪（5–10 页、目标 7 页、三轮闭环）", () => {

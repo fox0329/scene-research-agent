@@ -856,9 +856,18 @@ function hasJudgment(title: string): boolean {
   return PPT_OUTLINE_QUALITY.judgmentWords.some((w) => norm.includes(w));
 }
 
-/** 一页命中叙事线的第几段（-1 = 没命中，不参与顺序判定；多段命中取最靠前那段） */
-function narrativeGroupOf(frame: string): number {
-  return PPT_OUTLINE_QUALITY.narrative.findIndex((group) => new RegExp(group.pattern).test(frame));
+/**
+ * 一页命中叙事线的第几段，以及**命中的那个词**（-1 = 没命中，不参与顺序判定；多段命中取最靠前那段）
+ *
+ * 命中词一并带出来是给 notice / 日志用的：真跑要能一眼看出"这一页凭什么被算成现状页"
+ * （变更表 #146 补充：issue 文案里点名触发词）。
+ */
+function narrativeGroupOf(frame: string): { group: number; hit: string } {
+  for (const [group, item] of PPT_OUTLINE_QUALITY.narrative.entries()) {
+    const hit = new RegExp(item.pattern).exec(frame);
+    if (hit !== null) return { group, hit: hit[0] };
+  }
+  return { group: -1, hit: "" };
 }
 
 /** 版式与字段是否成套（沿用 `parsePptOutline` 的同一组限额，不重复实现降级） */
@@ -925,11 +934,13 @@ function titleIssues(page: PptPage, index: number): PptOutlineQualityIssue[] {
     });
     return out;
   }
-  if (!hasJudgment(title)) {
+  if (Array.from(title).length <= PPT_OUTLINE_QUALITY.weakTitleShortChars && !hasJudgment(title)) {
+    // #146 补充：**只在短标题上**要求判断语气——口径是「≤8 字且不含判断词」
+    // （真跑误报：「四层架构加一脑一平台」11 字、没有动词，却是一句合格的架构页标题）
     out.push({
       code: "非观点型标题",
       page: page1,
-      detail: `标题「${title}」看不出观点（既没有空词、也没有动词/判断词）——要写成一句话的判断`,
+      detail: `标题「${title}」看不出观点（${Array.from(title).length} 字、也没有动词/判断词）——要写成一句话的判断`,
     });
   }
   return out;
@@ -981,16 +992,41 @@ function numberIssues(page: PptPage, index: number, mdNorm: string): PptOutlineQ
   return out;
 }
 
-/** 一页的自包含问题（不许写"参考正文""详见报告"这类指路话） */
+/**
+ * 「目录」是不是被当成了一页的**结构性标签**（变更表 #146 补充）
+ *
+ * 报告正文里「目录」是正当内容词（「按客户信创目录逐项核定」「设备目录」），禁它的本意是
+ * **不许做目录页**，所以只在页面的框（kicker / title / subtitle / highlight）上、且整格就是
+ * 「目录 / 内容目录 / …」或以「目录」结尾（≤ `dirLabelMaxChars` 字）时才算。
+ */
+function dirLabelHit(text: string): string | null {
+  const norm = text.replace(/\s+/g, "");
+  if (norm === "") return null;
+  if ((PPT_OUTLINE_QUALITY.selfContainedDirLabels as readonly string[]).includes(norm)) return norm;
+  return norm.endsWith("目录") && norm.length <= PPT_OUTLINE_QUALITY.dirLabelMaxChars ? norm : null;
+}
+
+/** 一页的自包含问题（不许写"参考正文""详见报告"这类指路话，也不许出现目录页的痕迹） */
 function selfContainedIssues(page: PptPage, index: number): PptOutlineQualityIssue[] {
   const out: PptOutlineQualityIssue[] = [];
+  // ① 结构性标签：只看"这一页的框"——目录页的痕迹只会留在标题/副题/小节标签/结论带上
+  for (const text of [page.kicker, page.title, page.subtitle, page.highlight]) {
+    const label = dirLabelHit(text);
+    if (label === null) continue;
+    out.push({
+      code: "不自包含",
+      page: index + 1,
+      detail: `出现「${label}」——PPT 不做目录页，每页都要直接写内容（这是独立文件，不靠页间指路）`,
+    });
+  }
+  // ② 指路话：正文条目里也不许出现（「目录」不在此列，见上面的说明）
   for (const text of pageTexts(page)) {
     const hit = PPT_OUTLINE_QUALITY.selfContainedBanned.find((word) => text.includes(word));
     if (hit === undefined) continue;
     out.push({
       code: "不自包含",
       page: index + 1,
-      detail: `出现「${hit}」——PPT 是独立文件，所有要素要直接写清（不许"参考正文/详见报告"，也不许「${PPT_OUTLINE_QUALITY.selfContainedBanned.slice(-3).join("、")}」这类话）`,
+      detail: `出现「${hit}」——PPT 是独立文件，每页都要直接写清（不许"参考正文 / 详见报告"这类指路话，也不许"建议采用 / 谢谢观看"这类与这一页无关的话）`,
     });
     if (out.length >= PPT_OUTLINE_QUALITY.duplicatePerPage) break;
   }
@@ -1021,7 +1057,21 @@ function shapeIssues(page: PptPage, index: number): PptOutlineQualityIssue[] {
   return out;
 }
 
-/** 页间重复（归一化后同一句话出现在两页就要报，并指出两页页号） */
+/**
+ * 这一条像不像"一句话"（变更表 #146 补充）
+ *
+ * 页间重复要抓的是"两页说了同一件事"，不是"两页都提到了同一个名词"：真跑误报了
+ * 「人体存在传感器」——第 4 页讲建设内容、第 5 页讲设备清单各提一次是正常的。
+ * 所以重复项必须满足任一条：① 含标点；② 归一化后 ≥ `duplicateSentenceMinChars` 字；
+ * ③ 含判断/动作词（复用 `judgmentWords`）。纯名词短语（无标点且 ≤8 字）一律不判。
+ */
+function isSentenceLike(text: string, norm: string): boolean {
+  if (new RegExp(`[${PPT_OUTLINE_QUALITY.duplicatePunct}]`).test(text)) return true;
+  if (norm.length >= PPT_OUTLINE_QUALITY.duplicateSentenceMinChars) return true;
+  return PPT_OUTLINE_QUALITY.judgmentWords.some((word) => norm.includes(word));
+}
+
+/** 页间重复（归一化后同一句话出现在两页就要报，并指出两页页号；专有名词不算） */
 function duplicateIssues(pages: readonly PptPage[]): PptOutlineQualityIssue[] {
   const out: PptOutlineQualityIssue[] = [];
   const first = new Map<string, number>();
@@ -1032,6 +1082,7 @@ function duplicateIssues(pages: readonly PptPage[]): PptOutlineQualityIssue[] {
     for (const text of pageTexts(page)) {
       const norm = normalizeForCompare(text);
       if (norm.length < PPT_OUTLINE_QUALITY.duplicateMinChars) continue;
+      if (!isSentenceLike(text, norm)) continue;
       const at = first.get(norm);
       if (at === undefined) {
         first.set(norm, i + 1);
@@ -1050,24 +1101,26 @@ function duplicateIssues(pages: readonly PptPage[]): PptOutlineQualityIssue[] {
   return out;
 }
 
-/** 叙事顺序（问题 → 方案 → 价值；顺序错就报，点名到页） */
+/** 叙事顺序（问题 → 方案 → 价值；顺序错就报，点名到页 + 点名触发词） */
 function narrativeIssues(pages: readonly PptPage[]): PptOutlineQualityIssue[] {
   const out: PptOutlineQualityIssue[] = [];
   let maxGroup = -1;
   let maxPage = 0;
+  let maxHit = "";
   for (const [i, page] of pages.entries()) {
-    const group = narrativeGroupOf(pageFrame(page));
+    const { group, hit } = narrativeGroupOf(pageFrame(page));
     if (group < 0) continue;
     if (group < maxGroup) {
       out.push({
         code: "叙事顺序错",
         page: i + 1,
-        detail: `第 ${i + 1} 页讲的是「${PPT_OUTLINE_QUALITY.narrative[group]!.label}」，却排在讲「${PPT_OUTLINE_QUALITY.narrative[maxGroup]!.label}」的第 ${maxPage} 页之后（叙事线只能是 问题 → 方案 → 价值）`,
+        detail: `第 ${i + 1} 页讲的是「${PPT_OUTLINE_QUALITY.narrative[group]!.label}」（框里出现「${hit}」），却排在讲「${PPT_OUTLINE_QUALITY.narrative[maxGroup]!.label}」（「${maxHit}」）的第 ${maxPage} 页之后（叙事线只能是 问题 → 方案 → 价值）`,
       });
       continue;
     }
     maxGroup = group;
     maxPage = i + 1;
+    maxHit = hit;
   }
   return out;
 }
@@ -1078,6 +1131,9 @@ function narrativeIssues(pages: readonly PptPage[]): PptOutlineQualityIssue[] {
  * @param outline 已经过 `parsePptOutline` 归一的大纲（也可以用别处构造的同形对象）
  * @param markdown 这份 PPT 的来源**报告正文**（判"数字是不是编的"唯一依据）
  * @returns 逐条问题（空数组 = 大纲合格）；**调用方不许拿它拒绝导出**，它是"下一轮改什么"的输入
+ *
+ * 输出按 `问题码 + 页码 + detail` 去重（变更表 #146 补充）：同一页同一个词命中两次会产出两条
+ * 一字不差的问题，喂给下一轮提示词会让模型以为有两处。
  */
 export function checkPptOutlineQuality(
   outline: PptOutline,
@@ -1103,5 +1159,11 @@ export function checkPptOutlineQuality(
   }
   out.push(...duplicateIssues(outline.pages));
   out.push(...narrativeIssues(outline.pages));
-  return out;
+  const seen = new Set<string>();
+  return out.filter((issue) => {
+    const key = `${issue.code}|${issue.page}|${issue.detail}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }

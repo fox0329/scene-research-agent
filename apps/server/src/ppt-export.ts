@@ -171,17 +171,24 @@ async function buildOutline(args: {
     keepaliveMs,
     push,
   });
-  if (first.error) return { outline: null, error: first.error, notes: [], session };
 
-  let parsed = parsePptOutline(first.text);
+  let parsed: PptOutlineParse = first.error
+    ? { outline: null, pages: 0, pageSentences: [], dropped: 0, trimmed: 0, scrubbed: 0, notes: [], error: first.error }
+    : parsePptOutline(first.text);
   // 诊断（变更表 #142 收尾）：模型偶发返回非 JSON，失败时把长度与开头记进服务端日志，
   // 方便定位"到底是返空、返了说明、还是 JSON 被截断"，不把原文写进用户可见的 notice
-  if (parsed.outline === null) {
+  if (first.error) {
+    console.warn(`[ppt] 大纲首次调用失败：${first.error}`);
+  } else if (parsed.outline === null) {
     console.warn(
       `[ppt] 大纲首次解析失败：返回 ${first.text.length} 字｜开头 ${JSON.stringify(first.text.trim().slice(0, 120))}｜原因 ${parsed.error ?? "-"}`,
     );
   }
-  const reason = retryReason(parsed, first.text.trim().length);
+  // 轮内重试一次（变更表 #146）：生成调用报错也算一种"这一次没拿到"——
+  // 真跑遇到过供应商偶发错误直接作废整轮（每轮约 2 分钟），重试一次就过去了
+  const reason = first.error
+    ? `模型调用出错（${first.error}）`
+    : retryReason(parsed, first.text.trim().length);
   if (reason !== null) {
     push({ type: "progress", message: `PPT：${reason}，重试一次…` });
     const again = await streamPrompt({
@@ -244,6 +251,22 @@ function issueText(issues: readonly PptIssue[]): string {
     .slice(0, 4)
     .map((i) => `第 ${i.page} 页${i.code}：${i.detail}`)
     .join("；");
+}
+
+/**
+ * 合并后的清单去重（变更表 #146 补充）
+ *
+ * 同一页同一个词命中两次、或大纲判据与版面门禁判出同一句话，会产出两条一字不差的问题；
+ * 喂给下一轮提示词会让模型以为有两处，notice 里也会重复念叨。按 `问题码 + 页码 + detail` 去重。
+ */
+export function dedupeIssues(issues: readonly PptIssue[]): PptIssue[] {
+  const seen = new Set<string>();
+  return issues.filter((issue) => {
+    const key = `${issue.code}|${issue.page}|${issue.detail}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 /**
@@ -583,6 +606,8 @@ export async function exportReportPptx(args: PptExportArgs): Promise<PptExportRe
       const built = await buildOutline({ dshClient, scenario, kind, markdown, keepaliveMs, push, feedback });
       if (built.outline === null) {
         lastError = built.error ?? "模型未返回合规 JSON";
+        // 诊断（变更表 #146 补充）：整轮没拿到大纲时留一行日志，真跑复盘才说得清"这一轮为什么重来"
+        console.warn(`[ppt-export] 第 ${round} 轮没拿到合规大纲：${lastError}`);
         continue;
       }
 
@@ -619,7 +644,7 @@ export async function exportReportPptx(args: PptExportArgs): Promise<PptExportRe
       for (const issue of deck.render) {
         console.warn(`[ppt-export] 版面检查未过（渲染类）第 ${issue.page} 页${issue.code}：${issue.detail}`);
       }
-      const issues: PptIssue[] = [...checkPptOutlineQuality(outline, markdown), ...deck.all];
+      const issues: PptIssue[] = dedupeIssues([...checkPptOutlineQuality(outline, markdown), ...deck.all]);
       if (issues.length === 0) {
         push({ type: "progress", message: `PPT：版面检查通过（${rendered.pages.length} 页）` });
         return await finishExport({ projectDir, scenario, kind, dir, script, skillDir, notes, push });
