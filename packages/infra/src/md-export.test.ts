@@ -210,7 +210,8 @@ describe("exportDeliverables — 内部调研报告", () => {
 describe("exportDeliverables — 对外汇报材料", () => {
   it("含客户视角章节且不含结论性建议", async () => {
     const { external_report } = await exportDeliverables(makeInput());
-    expect(external_report).toContain("# 智慧水务 解决方案");
+    // 变更表 #132：一级标题与文件名统一
+    expect(external_report).toMatch(/^# 智慧水务 对外汇报材料 \d{4}-\d{2}-\d{2}$/m);
     // 与内部版同一套骨架，对外少一章「主要风险点」（变更表 #113/#128）
     for (const t of ["一、现状", "二、场景与问题", "三、方案", "四、价值", "五、下一步"]) {
       expect(external_report, t).toContain(t);
@@ -294,7 +295,7 @@ describe("exportDeliverables — 空数据", () => {
     });
     expect(internal_report).toContain("# 空场景 内部调研报告 ");
     expect(internal_report).toContain("## 五、主要风险点");
-    expect(external_report).toContain("# 空场景 解决方案");
+    expect(external_report).toMatch(/^# 空场景 对外汇报材料 \d{4}-\d{2}-\d{2}$/m);
     expect(external_report).toContain("本节信息待补充");
   });
 

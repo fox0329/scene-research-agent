@@ -155,8 +155,8 @@ test("交付物这一步：第二行是两份报告，点哪份中栏显示哪�
 
   // 点第二行的「对外汇报版」→ 同一位置换成另一份口径（对外版不装附录）
   await outputs.filter({ hasText: "对外汇报版" }).click();
-  // v1.32：对外材料标题是「<场景名> 解决方案」（报告口径，不是"记录"）
-  await expect(page.locator(".ws .md-body")).toContainText("解决方案");
+  // 变更表 #132：对外一级标题与文件名统一——「<场景名> 对外汇报材料 <日期>」
+  await expect(page.locator(".ws .md-body")).toContainText("对外汇报材料");
   await expect(page.locator(".ws .md-body")).not.toContainText("主要风险点");
   await expect(outputs.filter({ hasText: "对外汇报版" })).toHaveClass(/active/);
 

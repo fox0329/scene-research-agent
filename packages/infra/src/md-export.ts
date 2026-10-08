@@ -493,7 +493,8 @@ function buildReport(
         `> **生成日期**：${today}`,
       ]
     : [
-        `# ${scenario.name} 解决方案`,
+        /* 变更表 #132：与文件名、与内部版统一——`# <场景> 对外汇报材料 <日期>` */
+        `# ${scenario.name} ${reportTypeName(kind)} ${today}`,
         "",
         `> **场景**：${scenario.name}${sub ? `（${sub}）` : ""}`,
         `> **日期**：${today}`,
