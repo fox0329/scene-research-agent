@@ -670,9 +670,14 @@ export async function exportReportPptx(args: PptExportArgs): Promise<PptExportRe
       type: "progress",
       message: `PPT：三轮仍未全达标，按问题最少的一轮（第 ${best.round} 轮）导出…`,
     });
+    // 完整判据口径只进日志（变更表 #146 补充 2）：用户已经等了六分钟，不该再读一份规范；
+    // notice 只留"第 N 页 + 一句话问题 + 已按问题最少的一轮导出"
+    console.warn(
+      `[ppt-export] 三轮仍未全达标（按第 ${best.round} 轮导出）：${issueText(best.issues)}｜${outlineMinRequirementText()}｜${minRequirementText()}`,
+    );
     const notice =
       `已生成，但仍有 ${best.issues.length} 处未达标：${issueText(best.issues)}` +
-      `（${outlineMinRequirementText()}；${minRequirementText()}；已按问题最少的一轮（第 ${best.round} 轮）导出）`;
+      `（已按问题最少的一轮（第 ${best.round} 轮）导出）`;
     return await finishExport({
       projectDir,
       scenario,

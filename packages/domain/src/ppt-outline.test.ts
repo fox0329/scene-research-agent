@@ -1059,6 +1059,20 @@ describe("checkPptOutlineQuality — ⑤ 页间不重复", () => {
     expect(issues[0]!.detail).toContain("第 2 页与第 4 页");
   });
 
+  it("#146 补充 2：**短动作短语**不判——「人走自动释放」6 字、命中「走」也不许报", () => {
+    const deck = okDeck();
+    deck.pages[1]!.blocks[0]!.lines[0] = "人走自动释放";
+    deck.pages[3]!.blocks[1]!.lines[0] = "人走自动释放";
+    expect(codesOf(checkPptOutlineQuality(deck, MD), "两页重复")).toEqual([]);
+  });
+
+  it("#146 补充 2：短句里有**多字**动作词照报（「做法写进系统」命中「写进」）", () => {
+    const deck = okDeck();
+    deck.pages[1]!.blocks[0]!.lines[0] = "做法写进系统";
+    deck.pages[3]!.blocks[1]!.lines[0] = "做法写进系统";
+    expect(codesOf(checkPptOutlineQuality(deck, MD), "两页重复")).toEqual([4]);
+  });
+
   it("#146 补充：无标点但够长（≥10 字）的整句重复也照报", () => {
     const deck = okDeck();
     const line = "每一台设备都要逐台贴码登记留痕";
@@ -1069,9 +1083,9 @@ describe("checkPptOutlineQuality — ⑤ 页间不重复", () => {
 });
 
 describe("checkPptOutlineQuality — ⑥ 叙事顺序（问题 → 方案 → 价值）", () => {
-  /** 只改"这一页的框"（叙事顺序只看 kicker / title / subtitle / highlight） */
-  const framed = (i: number, kicker: string): PptPage =>
-    okPage(i, { kicker, subtitle: `第${i + 1}批内容写清边界` });
+  /** 只改"这一页的标签"（叙事顺序只看 kicker，归不进才看 title；#146 补充 2） */
+  const framed = (i: number, kicker: string, over: Partial<PptPage> = {}): PptPage =>
+    okPage(i, { kicker, subtitle: `第${i + 1}批内容写清边界`, ...over });
 
   it("顺序对：问题页在前、方案页居中、价值页在后 → 不报", () => {
     const deck: PptOutline = {
@@ -1080,14 +1094,77 @@ describe("checkPptOutlineQuality — ⑥ 叙事顺序（问题 → 方案 → �
     expect(codesOf(checkPptOutlineQuality(deck, MD), "叙事顺序错")).toEqual([]);
   });
 
-  it("顺序错：价值页排在方案页与问题页之前 → 点名到页", () => {
+  it("顺序错：价值页排在方案页与问题页之前 → 点名到页 + 点名触发词", () => {
     const deck: PptOutline = {
       pages: [framed(0, "价值与收益"), framed(1, "建设方案"), framed(2, "现状与痛点")],
     };
     const issues = checkPptOutlineQuality(deck, MD);
     expect(codesOf(issues, "叙事顺序错")).toEqual([2, 3]);
     expect(issues[0]!.detail).toContain("问题 → 方案 → 价值");
-    expect(issues[0]!.detail).toContain("框里出现「建设」"); // 点名触发词（#146 补充）
+    expect(issues[0]!.detail).toContain("小节标签「建设」");
+  });
+
+  it("#146 补充 2：只比**首次出现**——中间插一页保障/风险内容不算错", () => {
+    const deck: PptOutline = {
+      pages: [
+        framed(0, "现状与痛点"),
+        framed(1, "建设方案"),
+        framed(2, "风险不回升"), // 标题里带「风险」，但 kicker 不是问题组词 → 不参与
+        framed(3, "价值与收益"),
+      ],
+    };
+    expect(codesOf(checkPptOutlineQuality(deck, MD), "叙事顺序错")).toEqual([]);
+  });
+
+  it("#146 补充 2：末页写「把机制用起来，问题不回潮」**不报**（末页收尾豁免 + 只算开头词）", () => {
+    const deck: PptOutline = {
+      pages: [
+        framed(0, "现状与痛点"),
+        framed(1, "建设方案"),
+        framed(2, "价值与收益"),
+        framed(3, "后续安排", { title: "把机制用起来，问题不回潮" }),
+      ],
+    };
+    expect(codesOf(checkPptOutlineQuality(deck, MD), "叙事顺序错")).toEqual([]);
+  });
+
+  it("#146 补充 2：标题写「四类问题一起解决」不算问题页（只看开头词，不是出现过）", () => {
+    const deck: PptOutline = {
+      pages: [framed(0, "建设方案"), framed(1, "价值与收益")],
+    };
+    deck.pages[0]!.title = "四类问题一起解决";
+    expect(codesOf(checkPptOutlineQuality(deck, MD), "叙事顺序错")).toEqual([]);
+  });
+
+  it("#146 补充 2：subtitle / highlight / 块内容一律不参与分类", () => {
+    const deck: PptOutline = {
+      pages: [
+        framed(0, "本节要点", { subtitle: "现状与问题先说清", highlight: "风险先兜住" }),
+        framed(1, "落地做法", { highlight: "价值可量化" }),
+      ],
+    };
+    deck.pages[0]!.blocks[0]!.lines[0] = "现状不清就别动手";
+    expect(codesOf(checkPptOutlineQuality(deck, MD), "叙事顺序错")).toEqual([]);
+  });
+
+  it("#146 补充 2：真正的「价值与收益」排在第 2 页（早于方案页）→ **要报**", () => {
+    const deck: PptOutline = {
+      pages: [framed(0, "现状与痛点"), framed(1, "价值与收益"), framed(2, "建设方案")],
+    };
+    const issues = checkPptOutlineQuality(deck, MD);
+    expect(codesOf(issues, "叙事顺序错")).toEqual([3]);
+    expect(issues[0]!.detail).toContain("小节标签「建设」");
+  });
+
+  it("#146 补充 2：kicker 归不进时看 title；title 也归不进就不判", () => {
+    const byTitle: PptOutline = {
+      pages: [framed(0, "第一页", { title: "现状与痛点" }), framed(1, "第二页", { title: "建设方案" })],
+    };
+    expect(codesOf(checkPptOutlineQuality(byTitle, MD), "叙事顺序错")).toEqual([]);
+    const neither: PptOutline = {
+      pages: [framed(0, "先看清"), framed(1, "动手做")],
+    };
+    expect(codesOf(checkPptOutlineQuality(neither, MD), "叙事顺序错")).toEqual([]);
   });
 });
 

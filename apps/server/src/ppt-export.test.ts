@@ -598,6 +598,7 @@ describe("exportReportPptx — 不合格就重跑（#146 修复闭环）", () =>
 
   it("三轮都不通过 → 照常导出 + notice 点名未达标（不拒绝写出、不抛错）", async () => {
     const calls = { calls: 0 };
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     const result = await runExport(h, {
       dshClient: mockDsh([duplicateJson(), duplicateJson()], { counter: calls }),
     });
@@ -607,7 +608,12 @@ describe("exportReportPptx — 不合格就重跑（#146 修复闭环）", () =>
     expect(result.notice).toContain("已生成，但仍有");
     expect(result.notice).toContain("未达标");
     expect(result.notice).toContain("第 5 页两页重复");
-    expect(result.notice).toContain("大纲最低要求：");
+    expect(result.notice).toContain("已按问题最少的一轮");
+    // #146 补充 2：完整判据口径搬进日志，notice 不再贴规范
+    expect(result.notice).not.toContain("大纲最低要求：");
+    expect(result.notice).not.toContain("最低要求：内容字号");
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("大纲最低要求："));
+    warn.mockRestore();
     expect(result.notice).not.toContain("版面检查未通过"); // 旧口径不许再出现
     expect(result.notice).not.toContain("PPT 未导出");
     expect(messages(h.events)).toContain("PPT：正在从正文提取大纲（第 3 轮）…");

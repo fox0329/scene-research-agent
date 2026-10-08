@@ -791,9 +791,48 @@ function pageTexts(page: PptPage): string[] {
   return [...new Set(out.map((t) => t.trim()).filter((t) => t !== ""))];
 }
 
-/** 一页自己的"框"（标题 / 副题 / 记忆点 / 小节标签）——叙事顺序只看这里，不扫正文条目 */
-function pageFrame(page: PptPage): string {
-  return [page.kicker, page.title, page.subtitle, page.highlight].join("｜");
+/**
+ * 一页在叙事线上的位置（`group` = -1 表示这一页不参与顺序判定）
+ *
+ * `field` 是命中的那个字段（`kicker` / `title`），`hit` 是命中的那个词——都只为把问题说清楚。
+ */
+interface NarrativeHit {
+  group: number;
+  hit: string;
+  fieldLabel: string;
+}
+
+const NO_NARRATIVE: NarrativeHit = { group: -1, hit: "", fieldLabel: "" };
+
+/** 归一化后按"**等值或以该词开头**"匹配词表（不是"出现过"：「把机制用起来」不算问题页） */
+function wordsHit(text: string, words: readonly string[]): string | null {
+  const norm = text.replace(/\s+/g, "");
+  if (norm === "") return null;
+  return words.find((word) => norm === word || norm.startsWith(word)) ?? null;
+}
+
+/**
+ * 一页归到叙事线的哪一段（变更表 #146 补充 2）
+ *
+ * 规则（真跑被误报坑过一轮又一轮，所以收紧）：
+ * ① **只看 `kicker`**（模型给这一页定的栏目名，最可靠），`kicker` 归不进**才**看 `title`；
+ *    `subtitle` / `highlight` / 块内容一律不参与——一页标题写「四类问题一起解决」不是"问题页"。
+ * ② 匹配是**等值或以词开头**，不是"出现过"——末页「把机制用起来，问题不回潮」不归类。
+ * ③ **末页豁免**：末页归到 `narrativeClosing`（展望 / 保障 / 下一步 / 监管 / 协同）整页不判——
+ *    收尾回望问题是正常的，把它算成"问题页"排到方案页之后是纯误报。
+ */
+function narrativeGroupOf(page: PptPage, isLast: boolean): NarrativeHit {
+  for (const [fieldLabel, text] of [
+    ["小节标签", page.kicker],
+    ["标题", page.title],
+  ] as const) {
+    const hit = wordsHit(text, PPT_OUTLINE_QUALITY.narrative.flatMap((g) => g.words));
+    if (hit === null) continue;
+    if (isLast && wordsHit(text, PPT_OUTLINE_QUALITY.narrativeClosing.words) !== null) return NO_NARRATIVE;
+    const group = PPT_OUTLINE_QUALITY.narrative.findIndex((g) => (g.words as readonly string[]).includes(hit));
+    return { group, hit, fieldLabel };
+  }
+  return NO_NARRATIVE;
 }
 
 /** 判重用的归一化：去掉空白与标点，只比"说的是不是同一件事" */
@@ -854,20 +893,6 @@ function hasJudgment(title: string): boolean {
   const norm = normalizeForCompare(title);
   if (/\d/.test(norm)) return true;
   return PPT_OUTLINE_QUALITY.judgmentWords.some((w) => norm.includes(w));
-}
-
-/**
- * 一页命中叙事线的第几段，以及**命中的那个词**（-1 = 没命中，不参与顺序判定；多段命中取最靠前那段）
- *
- * 命中词一并带出来是给 notice / 日志用的：真跑要能一眼看出"这一页凭什么被算成现状页"
- * （变更表 #146 补充：issue 文案里点名触发词）。
- */
-function narrativeGroupOf(frame: string): { group: number; hit: string } {
-  for (const [group, item] of PPT_OUTLINE_QUALITY.narrative.entries()) {
-    const hit = new RegExp(item.pattern).exec(frame);
-    if (hit !== null) return { group, hit: hit[0] };
-  }
-  return { group: -1, hit: "" };
 }
 
 /** 版式与字段是否成套（沿用 `parsePptOutline` 的同一组限额，不重复实现降级） */
@@ -1058,17 +1083,25 @@ function shapeIssues(page: PptPage, index: number): PptOutlineQualityIssue[] {
 }
 
 /**
+ * 判"像不像一句话"用的词（变更表 #146 补充 2）：只取 `judgmentWords` 里**两个字以上**的
+ *
+ * 单字动词（走 / 用 / 定 / 核…）是为**标题**判定收的"宁宽不严"，拿来判句子会误命中——
+ * 真跑报过「人走自动释放」（命中「走」）这种 6 字动作短语。判句子的词只能是多字的。
+ */
+const SENTENCE_WORDS = PPT_OUTLINE_QUALITY.judgmentWords.filter((word) => Array.from(word).length >= 2);
+
+/**
  * 这一条像不像"一句话"（变更表 #146 补充）
  *
  * 页间重复要抓的是"两页说了同一件事"，不是"两页都提到了同一个名词"：真跑误报了
  * 「人体存在传感器」——第 4 页讲建设内容、第 5 页讲设备清单各提一次是正常的。
  * 所以重复项必须满足任一条：① 含标点；② 归一化后 ≥ `duplicateSentenceMinChars` 字；
- * ③ 含判断/动作词（复用 `judgmentWords`）。纯名词短语（无标点且 ≤8 字）一律不判。
+ * ③ 含两个字的判断/动作词（`SENTENCE_WORDS`）。纯名词/动作短语一律不判。
  */
 function isSentenceLike(text: string, norm: string): boolean {
   if (new RegExp(`[${PPT_OUTLINE_QUALITY.duplicatePunct}]`).test(text)) return true;
   if (norm.length >= PPT_OUTLINE_QUALITY.duplicateSentenceMinChars) return true;
-  return PPT_OUTLINE_QUALITY.judgmentWords.some((word) => norm.includes(word));
+  return SENTENCE_WORDS.some((word) => norm.includes(word));
 }
 
 /** 页间重复（归一化后同一句话出现在两页就要报，并指出两页页号；专有名词不算） */
@@ -1101,28 +1134,43 @@ function duplicateIssues(pages: readonly PptPage[]): PptOutlineQualityIssue[] {
   return out;
 }
 
-/** 叙事顺序（问题 → 方案 → 价值；顺序错就报，点名到页 + 点名触发词） */
+/**
+ * 叙事顺序（问题 → 方案 → 价值；**只比三个组各自第一次出现的页码**，变更表 #146 补充 2）
+ *
+ * 为什么不再"逐页非递减"：那一页讲保障、风险回潮、监管配合这类内容再正常不过，逐页比会把它们
+ * 全当成"顺序错"，而且每轮换一批（模型被假问题牵着改，越改越乱）。现在只要求
+ * `首次(问题) < 首次(方案) < 首次(价值)`——三组各自第一次出现的位置对就行，
+ * 中间夹多少页、夹的是什么组都不管。三组里缺哪组就只比剩下两组。
+ */
 function narrativeIssues(pages: readonly PptPage[]): PptOutlineQualityIssue[] {
   const out: PptOutlineQualityIssue[] = [];
-  let maxGroup = -1;
-  let maxPage = 0;
-  let maxHit = "";
+  const firstAt = new Map<number, { page: number; hit: string; fieldLabel: string }>();
   for (const [i, page] of pages.entries()) {
-    const { group, hit } = narrativeGroupOf(pageFrame(page));
-    if (group < 0) continue;
-    if (group < maxGroup) {
-      out.push({
-        code: "叙事顺序错",
-        page: i + 1,
-        detail: `第 ${i + 1} 页讲的是「${PPT_OUTLINE_QUALITY.narrative[group]!.label}」（框里出现「${hit}」），却排在讲「${PPT_OUTLINE_QUALITY.narrative[maxGroup]!.label}」（「${maxHit}」）的第 ${maxPage} 页之后（叙事线只能是 问题 → 方案 → 价值）`,
-      });
-      continue;
-    }
-    maxGroup = group;
-    maxPage = i + 1;
-    maxHit = hit;
+    const hit = narrativeGroupOf(page, i === pages.length - 1);
+    if (hit.group < 0 || firstAt.has(hit.group)) continue;
+    firstAt.set(hit.group, { page: i + 1, hit: hit.hit, fieldLabel: hit.fieldLabel });
   }
-  return out;
+  const describe = (group: number): string => {
+    const at = firstAt.get(group);
+    return at === undefined
+      ? ""
+      : `第 ${at.page} 页讲的是「${PPT_OUTLINE_QUALITY.narrative[group]!.label}」（${at.fieldLabel}「${at.hit}」）`;
+  };
+  // 两两比：先出现的组必须页码更小；谁排错了就点谁的名
+  for (const [before, after] of [
+    [0, 1],
+    [1, 2],
+  ] as const) {
+    const a = firstAt.get(before);
+    const b = firstAt.get(after);
+    if (a === undefined || b === undefined || a.page < b.page) continue;
+    out.push({
+      code: "叙事顺序错",
+      page: a.page,
+      detail: `${describe(before)}，却排在第 ${b.page} 页「${PPT_OUTLINE_QUALITY.narrative[after]!.label}」（${b.fieldLabel}「${b.hit}」）之后（叙事线只能是 问题 → 方案 → 价值）`,
+    });
+  }
+  return out.sort((x, y) => x.page - y.page);
 }
 
 /**
