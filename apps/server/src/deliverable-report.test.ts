@@ -33,12 +33,23 @@ function goodReport(kind: "internal" | "external"): string {
         return lines.join("\n");
       })
       .join("\n\n");
-    return `## ${reportChapterHeading(kind, c.key)}\n\n${body}`;
+    // 章级构件（如「五、主要风险点」章下不设小节，直接写风险点）
+    const chapterArts = c.artifacts ?? [];
+    const chapterBody = chapterArts.includes("risk-list")
+      ? [
+          "**现场条件风险。** 点位与承重不成立时只能旁路监测。应对：勘测逐间出条件清单。",
+          "**纳管上限风险。** 封闭协议设备只能保留原厂控制。应对：把纳管清单写进设计输入。",
+          "**门槛风险。** 任一方否决即推翻技术路径。应对：设计阶段同步准备材料。",
+        ].join("\n\n")
+      : "";
+    const merged = [body, chapterBody].filter(Boolean).join("\n\n");
+    return `## ${reportChapterHeading(kind, c.key)}\n\n${merged}`;
   });
-  const glossary = kind === "internal" ? "## 附录 B、术语表" : "## 附录、术语表";
+  // 术语表只对外（变更表 #124）
+  const glossary = kind === "external" ? "## 附录、术语表" : "";
   return (
     chapters.join("\n\n") +
-    `\n\n${glossary}\n\n| 术语 | 说明 |\n|---|---|\n| 门槛 | 进场前置条件 |`
+    (glossary ? `\n\n${glossary}\n\n| 术语 | 说明 |\n|---|---|\n| 门槛 | 进场前置条件 |` : "")
   );
 }
 
@@ -147,7 +158,7 @@ describe("交付物报告生成（模型撰写 + 确定性校验）", () => {
     expect(existsSync(join(h.dir, `${h.scenarioId}.external.md`))).toBe(true);
     const internal = readFileSync(join(h.dir, `${h.scenarioId}.internal.md`), "utf8");
     expect(internal).toContain("## 一、现状");
-    expect(internal).toContain("## 五、客观与风险");
+    expect(internal).toContain("## 五、主要风险点");
     expect(internal).not.toContain("## 六、下一步");
     // 内部版到风险章为止，不出附录（变更表 #124）
     expect(internal).not.toContain("附录");

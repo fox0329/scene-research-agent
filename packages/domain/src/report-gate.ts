@@ -107,7 +107,8 @@ const CHAPTER_ALIASES: readonly (readonly [string, readonly string[]])[] = [
   ["problems", ["场景与问题", "存在的问题", "问题", "痛点"]],
   ["solution", ["方案", "我们的方案", "解决方案"]],
   ["value", ["价值", "能够提供的价值", "收益"]],
-  ["risk", ["客观与风险", "风险与不确定", "客观与不确定"]],
+  // 「主要风险点」是用户定稿的章名（变更表 #128），旧名一并认，避免历史报告被判缺章
+  ["risk", ["主要风险点", "客观与风险", "风险与不确定", "客观与不确定", "风险"]],
   ["next", ["下一步", "实施路径", "后续步骤"]],
   ["glossary", ["术语表", "术语"]],
 ];
@@ -187,7 +188,12 @@ function sectionHasBullets(markdown: string, keyword: string, n: number): boolea
 }
 
 /** 哪些方案构件完全没长出来（硬伤：报告不能只是素材的复述） */
-function missingArtifacts(markdown: string, sections: readonly ReportSection[]): string[] {
+function missingArtifacts(
+  markdown: string,
+  sections: readonly ReportSection[],
+  chapterArtifacts: readonly ReportArtifact[] = [],
+  chapterLabel = "",
+): string[] {
   const tables = markdownTableCount(markdown);
   const out: string[] = [];
   for (const sec of sections) {
@@ -195,6 +201,11 @@ function missingArtifacts(markdown: string, sections: readonly ReportSection[]):
       if (!ARTIFACT_CHECKS[a](markdown, tables)) {
         out.push(`${ARTIFACT_LABEL[a]}（在「${sec.title}」里）`);
       }
+    }
+  }
+  for (const a of chapterArtifacts) {
+    if (!ARTIFACT_CHECKS[a](markdown, tables)) {
+      out.push(chapterLabel ? `${ARTIFACT_LABEL[a]}（在「${chapterLabel}」章里）` : ARTIFACT_LABEL[a]);
     }
   }
   return out;
@@ -213,8 +224,7 @@ export function missingChapterArtifacts(
 ): string[] {
   const chapter = reportChaptersOf(kind).find((c) => c.key === chapterKey);
   if (!chapter) return [];
-  const sections = chapter.sections;
-  return missingArtifacts(markdown, sections);
+  return missingArtifacts(markdown, chapter.sections, chapter.artifacts, chapter.label);
 }
 
 /** 切出某一章的正文（含标题行），用于按章做口吻检查 */
@@ -252,7 +262,9 @@ export function checkReport(kind: ReportKind, markdown: string): ReportGateRepor
   } else {
     // 章节齐了才查小节与构件：缺章时先补章，别一次甩一堆问题给模型
     const sections = defs.flatMap((c) => c.sections);
-    const miss = missingArtifacts(markdown, sections);
+    const miss = defs.flatMap((c) =>
+      missingArtifacts(markdown, c.sections, c.artifacts, c.label),
+    );
     if (miss.length > 0) {
       violations.push({
         kind: "缺少方案构件",

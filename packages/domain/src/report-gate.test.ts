@@ -25,25 +25,33 @@ function sectionBody(sec: ReportSection): string {
 function goodReport(kind: ReportKind, extra = ""): string {
   const chapters = reportChaptersOf(kind).map((c) => {
     const body = c.sections.map((sec) => `### ${sec.title}\n\n${sectionBody(sec)}`).join("\n\n");
-    return `## ${reportChapterHeading(kind, c.key)}\n\n${body}`;
+    // 章级构件（「五、主要风险点」章下不设小节，直接写风险点）
+    const chapterBody = (c.artifacts ?? []).includes("risk-list")
+      ? [
+          "**现场条件风险。** 点位不成立时只能旁路监测。",
+          "**纳管上限风险。** 封闭协议设备只能保留原厂控制。",
+          "**门槛风险。** 任一方否决即推翻技术路径。",
+        ].join("\n\n")
+      : "";
+    return `## ${reportChapterHeading(kind, c.key)}\n\n${[body, chapterBody].filter(Boolean).join("\n\n")}`;
   });
-  const glossary =
-    kind === "internal" ? "## 附录 B、术语表" : "## 附录、术语表";
-  return [
-    ...chapters,
-    `${glossary}\n\n| 术语 | 说明 |\n|---|---|\n| 门槛 | 进场的前置条件 |`,
-  ].join("\n\n") + extra;
+  // 术语表只对外（内部报告到风险章为止，变更表 #124）
+  const glossary = kind === "external" ? "## 附录、术语表" : "";
+  const table = glossary
+    ? `${glossary}\n\n| 术语 | 说明 |\n|---|---|\n| 门槛 | 进场的前置条件 |`
+    : "";
+  return [...chapters, table].filter(Boolean).join("\n\n") + extra;
 }
 
 describe("报告确定性校验（变更表 #112 / #113）", () => {
   it("章节齐 + 方案构件齐 → 通过（对外 5 章 / 内部 6 章）", () => {
     const ext = checkReport("external", goodReport("external"));
     expect(ext.ok).toBe(true);
-    // 5 章 + 术语表（对外没有「客观与风险」）
+    // 对外：5 章 + 术语表；内部：5 章、无附录
     expect(ext.chapters.length).toBe(reportChaptersOf("external").length + 1);
     const int = checkReport("internal", goodReport("internal"));
     expect(int.ok).toBe(true);
-    expect(int.chapters.length).toBe(reportChaptersOf("internal").length + 1);
+    expect(int.chapters.length).toBe(reportChaptersOf("internal").length);
   });
 
   it("缺章是硬伤（模型漏写一章不能就这么交付）", () => {

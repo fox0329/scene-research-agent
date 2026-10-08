@@ -155,7 +155,7 @@ describe("exportDeliverables — 内部调研报告", () => {
       "## 二、场景与问题",
       "## 三、方案",
       "## 四、价值",
-      "## 五、客观与风险",
+      "## 五、主要风险点",
     ]) {
       expect(internal_report, title).toContain(title);
     }
@@ -181,7 +181,7 @@ describe("exportDeliverables — 内部调研报告", () => {
     expect(internal_report).not.toContain("附录"); // 内部不再出附录（#124）
   });
 
-  it("内部版只有五章（到「客观与风险」）且不出附录", async () => {
+  it("内部版只有五章（到「主要风险点」）且不出附录", async () => {
     const { internal_report } = await exportDeliverables(makeInput());
     const h2 = internal_report.match(/^## .*$/gm) ?? [];
     expect(h2.map((h) => h.replace(/^## /, ""))).toEqual([
@@ -189,7 +189,7 @@ describe("exportDeliverables — 内部调研报告", () => {
       "二、场景与问题",
       "三、方案",
       "四、价值",
-      "五、客观与风险",
+      "五、主要风险点",
     ]);
     expect(internal_report).not.toContain("附录");
     expect(internal_report).not.toContain("来源索引");
@@ -197,15 +197,16 @@ describe("exportDeliverables — 内部调研报告", () => {
 
   it("风险章兜底只说风险点，不列数据统计", async () => {
     const { internal_report } = await exportDeliverables(makeInput());
-    expect(internal_report).toContain("### 主要风险点");
+    expect(internal_report).toContain("## 五、主要风险点");
     expect(internal_report).toContain("现场条件可能改变可行边界");
     expect(internal_report).not.toContain("条：有来源");
     expect(internal_report).not.toContain("数据状态");
+    expect(internal_report).not.toContain("客观与风险");
   });
 
   it("无阶段总结也照样出报告（正文不再依赖阶段总结）", async () => {
     const { internal_report } = await exportDeliverables({ ...makeInput(), stageSummaries: [] });
-    expect(internal_report).toContain("## 五、客观与风险");
+    expect(internal_report).toContain("## 五、主要风险点");
     expect(internal_report).not.toContain("附录"); // 内部不再出附录（#124）
   });
 });
@@ -214,11 +215,11 @@ describe("exportDeliverables — 对外汇报材料", () => {
   it("含客户视角章节且不含结论性建议", async () => {
     const { external_report } = await exportDeliverables(makeInput());
     expect(external_report).toContain("# 智慧水务 解决方案");
-    // 与内部版同一套骨架，对外少一章「客观与风险」（变更表 #113）
+    // 与内部版同一套骨架，对外少一章「主要风险点」（变更表 #113/#128）
     for (const t of ["一、现状", "二、场景与问题", "三、方案", "四、价值", "五、下一步"]) {
       expect(external_report, t).toContain(t);
     }
-    expect(external_report).not.toContain("客观与风险");
+    expect(external_report).not.toContain("主要风险点");
     expect(external_report).not.toContain("不含结论性建议");
     expect(external_report).not.toContain("以试点实测为准");
   });
@@ -296,7 +297,7 @@ describe("exportDeliverables — 空数据", () => {
       generatedAt: "2026-09-25",
     });
     expect(internal_report).toContain("# 空场景 内部调研报告 ");
-    expect(internal_report).toContain("### 主要风险点");
+    expect(internal_report).toContain("## 五、主要风险点");
     expect(external_report).toContain("# 空场景 解决方案");
     expect(external_report).toContain("本节信息待补充");
   });

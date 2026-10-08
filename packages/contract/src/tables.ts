@@ -1516,6 +1516,8 @@ export interface ReportChapter {
   only?: ReportKind;
   /** 必须写出的小节（`###` 级）与自建构件 */
   sections: readonly ReportSection[];
+  /** 整章级构件（章下不设小节时用，例如「五、主要风险点」直接写 N 条风险） */
+  artifacts?: readonly ReportArtifact[];
   /** 内部版素材 */
   internal: readonly ReportBlock[];
   /** 对外版素材 */
@@ -1615,16 +1617,11 @@ export const REPORT_CHAPTERS: readonly ReportChapter[] = [
   },
   {
     key: "risk",
-    label: "客观与风险",
-    /* 只有内部版有这一章。用户定调（变更表 #124）：只说风险点，不列证据、不写来源统计 */
+    /* 用户定稿（变更表 #128）：章名就叫「主要风险点」，章下直接写风险点，不再套一层小节 */
+    label: "主要风险点",
     only: "internal",
-    sections: [
-      {
-        title: "主要风险点",
-        keywords: ["风险", "不确定", "前置条件", "门槛", "依赖"],
-        artifacts: ["risk-list"],
-      },
-    ],
+    sections: [],
+    artifacts: ["risk-list"],
     internal: [],
     external: [],
   },
