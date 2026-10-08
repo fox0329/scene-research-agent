@@ -1,27 +1,52 @@
 /**
- * @scene/infra — PPT 页面渲染测试（变更表 #141 立、#142 升）
+ * @scene/infra — PPT 页面渲染测试（变更表 #141 立、#142 升、#144 升）
  *
- * 一份 7 页示例大纲（七种布局各一页）逐项断言：白底、统一骨架（小节标签 / 大标题 / 副题 /
- * 结论带 / 页码 / 页脚）、每页形状数 ≥22、文字条数 ≥12、0 越界、0 压字、
- * XML 转义、`dominant-baseline`/`<foreignObject>`/网络字体一个都没有、落盘文件名。
+ * 一份 7 页示例大纲（七种布局各一页）逐项断言：白底、统一骨架（页顶渐变主色带 / 小节标签胶囊 +
+ * 图标 / 36px 大标题 + 橙短横 / 副题 / 结论带 + `bulb` / 页码胶囊 / 页脚）、每页形状数 ≥22、
+ * 文字条数 ≥12、0 越界、0 压字、XML 转义、`dominant-baseline`/`<foreignObject>`/网络字体一个都没有、
+ * 落盘文件名；#144 追加：图标占位（名字都在 `PPT_ICONS` 白名单内、每页 ≥4）、颜色层次（每页 ≥6 色、
+ * 卡底填充 / 轮换强调竖条 / 渐变主色带 / 细分隔线）、字内强调（行首关键词 `<tspan>`、数字 `<tspan>`、
+ * 语气色）与「每页强调 ≥3 处」。
  */
 
 import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it, expect } from "vitest";
-import { PPT_LIMITS, type PptOutline, type PptPage } from "@scene/contract";
 import {
+  PPT_DEFAULT_ICON,
+  PPT_ICON_LIB,
+  PPT_ICONS,
+  PPT_LIMITS,
+  type PptBlock,
+  type PptOutline,
+  type PptPage,
+} from "@scene/contract";
+import {
+  PPT_BAR_COLORS,
   PPT_CANVAS,
   PPT_COLORS,
   escXml,
   estimateTextWidth,
+  PPT_TONE_VALUE,
+  pptBarColor,
+  pptEmphasisOf,
+  pptToneOf,
   renderPptDeck,
   renderPptPage,
   wrapText,
   writePptSvgs,
 } from "./ppt-svg.js";
-import { checkPptDeck, countSvgShapes, countSvgTexts, svgTextRects } from "./ppt-quality.js";
+import {
+  PPT_QUALITY,
+  checkPptDeck,
+  countSvgColors,
+  countSvgEmphasis,
+  countSvgIcons,
+  countSvgShapes,
+  countSvgTexts,
+  svgTextRects,
+} from "./ppt-quality.js";
 
 const SCENARIO = "智慧会议室";
 
@@ -30,6 +55,7 @@ function page(over: Partial<PptPage> = {}): PptPage {
   return {
     layout: "要点清单",
     kicker: "现场现状",
+    icon: "presentation",
     title: "现场今天怎么转",
     subtitle: "人工记录、事后补录，数据留不下来",
     blocks: [],
@@ -52,6 +78,7 @@ function sampleDeck(): PptOutline {
       page({
         layout: "网格要点",
         kicker: "项目硬规则",
+        icon: "list-check",
         title: "四条硬规则管住现场",
         subtitle: "把口径写进系统，巡检不再靠人记",
         bullets: [],
@@ -61,21 +88,25 @@ function sampleDeck(): PptOutline {
           {
             head: "设备台账",
             note: "谁在现场、什么型号",
+            icon: "file-text",
             lines: ["按区域建台账，逐台贴码", "型号与位置一次录清", "换机改码当场更新"],
           },
           {
             head: "巡检任务",
             note: "照班次自动发单",
+            icon: "calendar-check",
             lines: ["每班次派发到人", "漏项当场提醒", "完成时间自动留痕", "任务超时升级到班长"],
           },
           {
             head: "异常上报",
             note: "现场拍照即上报",
+            icon: "alert-triangle",
             lines: ["异常必传现场照片", "按等级通知到人", "处理过程全程可查"],
           },
           {
             head: "数据口径",
             note: "一处录入全系统共用",
+            icon: "database",
             lines: ["台账只在一处录入", "报表按同一口径出数", "月度对账有据可依", "口径变更留版本记录"],
           },
         ],
@@ -83,6 +114,7 @@ function sampleDeck(): PptOutline {
       page({
         layout: "双栏对比",
         kicker: "今天与建成后",
+        icon: "arrows-split",
         title: "同一件事两种做法",
         subtitle: "左边是今天的代价，右边是建成后的样子",
         bullets: [],
@@ -92,11 +124,13 @@ function sampleDeck(): PptOutline {
           {
             head: "今天的做法",
             note: "纸质表单为主",
+            icon: "file-text",
             lines: ["巡检靠纸质表单，一天一交", "数据事后补录，口径对不上", "异常靠电话上报，常常漏", "月底对账翻单据，两天起步"],
           },
           {
             head: "建成后的做法",
             note: "扫码巡检、自动留痕",
+            icon: "list-check",
             lines: ["扫码巡检，当场提交", "数据实时入库，口径唯一", "异常自动派单到人", "月底一键出账，当天完成"],
           },
         ],
@@ -104,55 +138,60 @@ function sampleDeck(): PptOutline {
       page({
         layout: "流程阶段",
         kicker: "推进路径",
+        icon: "route",
         title: "四步走到全量覆盖",
         subtitle: "先在一个楼层跑通，再复制到全区",
         bullets: [],
         highlight: "先跑通一层，再谈全区",
         stages: [
-          { head: "样板层建设", note: "一个楼层先装齐，跑通扫码巡检" },
-          { head: "单点验证", note: "连续两周比对纸质记录，口径对齐" },
-          { head: "分批复制", note: "按楼层分批上线，每批一周" },
-          { head: "全区运行", note: "全区纳管，报表自动出数" },
+          { head: "样板层建设", note: "一个楼层先装齐，跑通扫码巡检", icon: "building-community" },
+          { head: "单点验证", note: "连续两周比对纸质记录，口径对齐", icon: "checkup-list" },
+          { head: "分批复制", note: "按楼层分批上线，每批一周", icon: "devices" },
+          { head: "全区运行", note: "全区纳管，报表自动出数", icon: "sitemap" },
         ],
       }),
       page({
         layout: "分层架构",
         kicker: "总体架构",
+        icon: "hierarchy",
         title: "四层架构怎么落",
         subtitle: "每一层各管一段，接口统一",
         bullets: [],
         chips: ["物联网关", "统一纳管"],
         highlight: "层与层之间只认接口",
         layers: [
-          { head: "应用层", items: ["巡检看板", "异常工单", "月度报表"] },
-          { head: "平台层", items: ["设备纳管", "规则引擎", "数据接口"] },
-          { head: "网络层", items: ["物联网关", "室内组网"] },
-          { head: "感知层", items: ["扫码终端", "温湿度探头", "门禁读头"] },
+          { head: "应用层", icon: "chart-bar", items: ["巡检看板", "异常工单", "月度报表"] },
+          { head: "平台层", icon: "server", items: ["设备纳管", "规则引擎", "数据接口"] },
+          { head: "网络层", icon: "antenna", items: ["物联网关", "室内组网"] },
+          { head: "感知层", icon: "wifi", items: ["扫码终端", "温湿度探头", "门禁读头"] },
         ],
       }),
       page({
         layout: "数据卡片",
         kicker: "关键数字",
+        icon: "gauge",
         title: "四项变化看得见",
         subtitle: "口径都取自这份报告正文",
         bullets: [],
         highlight: "变化要能被量出来",
         cards: [
-          { value: "12 个", label: "纳管楼层" },
-          { value: "480 台", label: "纳管设备" },
-          { value: "2 天", label: "对账周期" },
-          { value: "1 张表", label: "统一口径" },
+          { value: "12 个", label: "纳管楼层", icon: "building-skyscraper" },
+          { value: "480 台", label: "纳管设备", icon: "devices" },
+          { value: "2 天", label: "对账周期", icon: "clock" },
+          { value: "1 张表", label: "统一口径", icon: "report-analytics" },
         ],
       }),
       page({
         layout: "表格",
         kicker: "分工与节奏",
+        icon: "briefcase",
         title: "谁在哪一步做什么",
         subtitle: "每一行一件交付物",
         bullets: [],
         highlight: "责任到人，节点到周",
         table: {
           head: ["阶段", "做什么", "谁负责", "周期", "验收依据"],
+          icons: ["route", "list-check", "users", "clock", "circle-check"],
           rows: [
             ["样板层", "装齐终端并贴码", "运维班", "第 1 周", "扫码记录连续"],
             ["单点验证", "比对纸质与系统记录", "信息部", "第 2 周", "差异逐条说明"],
@@ -165,6 +204,7 @@ function sampleDeck(): PptOutline {
       page({
         layout: "要点清单",
         kicker: "下一步",
+        icon: "list-check",
         title: "接下来先做五件事",
         subtitle: "每一件都能当周落地",
         bullets: [
@@ -361,10 +401,10 @@ describe("renderPptPage — 质量门禁（密度 / 出界 / 压字 / 信息量�
       subtitle: "这一句副题也挺长的，需要用估算宽度换行并且不能溢出画布边界",
       bullets: [],
       blocks: [
-        { head: "很长很长的块头", note: "很长很长的小注", lines: ["第一条很长的内容行".repeat(4)] },
-        { head: "块二", note: "", lines: ["第二条".repeat(8)] },
-        { head: "块三", note: "", lines: ["第三条".repeat(8)] },
-        { head: "块四", note: "", lines: ["第四条".repeat(8)] },
+        { head: "很长很长的块头", note: "很长很长的小注", icon: "file-text", lines: ["第一条很长的内容行".repeat(4)] },
+        { head: "块二", note: "", icon: "server", lines: ["第二条".repeat(8)] },
+        { head: "块三", note: "", icon: "network", lines: ["第三条".repeat(8)] },
+        { head: "块四", note: "", icon: "database", lines: ["第四条".repeat(8)] },
       ],
       highlight: "结论带也可以很长很长但一定要被裁到画布以内不出界",
       chips: ["很长的标签甲乙丙丁戊己庚辛", "标签二", "标签三"],
@@ -375,6 +415,7 @@ describe("renderPptPage — 质量门禁（密度 / 出界 / 压字 / 信息量�
       bullets: [],
       table: {
         head: ["层次", "承担什么", "谁负责", "周期", "备注"],
+        icons: ["hierarchy", "list-check", "users", "clock", "file-text"],
         rows: Array.from({ length: 6 }, (_, i) => [`行${i}`, "内容".repeat(20), "信息部", "第1—2个月", "备注"]),
       },
     });
@@ -437,7 +478,7 @@ describe("renderPptPage — 要点清单加密", () => {
     const svg = renderPptPage(list(five), { index: 0, total: 1, scenarioName: SCENARIO });
     for (let i = 1; i <= five.length; i += 1) {
       expect(svg).toContain(`id="item-${i}"`);
-      expect(svg).toContain(`id="item-${i}-text"`);
+      expect(svg).toContain(`id="item-${i}-main-1-text"`);
     }
     // 带逗号的那几条会拆出次要说明行
     expect(svg).toContain('id="item-1-note"');
@@ -448,17 +489,17 @@ describe("renderPptPage — 要点清单加密", () => {
     expect(svg).toContain('width="44" height="44"');
   });
 
-  it("条间有 n−1 条 1px 浅蓝分隔线，最后一条下面不画", () => {
+  it("条间有 n−1 条 1px 细分隔线（#144 换 #D6E7F8），最后一条下面不画", () => {
     const svg = renderPptPage(list(five), { index: 0, total: 1, scenarioName: SCENARIO });
     expect((svg.match(/<line /g) ?? []).length).toBe(five.length - 1);
-    expect(svg).toContain(`stroke="${PPT_COLORS.border}" stroke-width="1"`);
+    expect(svg).toContain(`stroke="${PPT_COLORS.divider}" stroke-width="1"`);
   });
 
   it("断不出两半的短句只画主句（不硬拆、不重复）", () => {
     const short = ["全区纳管出报表", "口径写进系统里", "异常自动派单"];
     const svg = renderPptPage(list(short), { index: 0, total: 1, scenarioName: SCENARIO });
     for (let i = 1; i <= short.length; i += 1) {
-      expect(svg).toContain(`id="item-${i}-text"`);
+      expect(svg).toContain(`id="item-${i}-main-1-text"`);
       expect(svg).not.toContain(`id="item-${i}-note"`);
     }
     expect(checkPptDeck([svg]).map((x) => x.code)).not.toContain("文本相交");
@@ -519,5 +560,201 @@ describe("wrapText / estimateTextWidth", () => {
 
   it("全角比半角宽（同一把尺给换行、溢出与压字判据共用）", () => {
     expect(estimateTextWidth("中中", 20)).toBeGreaterThan(estimateTextWidth("ab", 20));
+  });
+});
+
+
+describe("renderPptPage — 图标（#144：用足 ppt-master 的图标库）", () => {
+  const deck = sampleDeck();
+  const ctx = (i: number): { index: number; total: number; scenarioName: string } => ({
+    index: i,
+    total: deck.pages.length,
+    scenarioName: SCENARIO,
+  });
+  const svgs = deck.pages.map((p, i) => renderPptPage(p, ctx(i)));
+
+  it("每页图标 ≥4，且每个名字都在 PPT_ICONS 白名单里（渲染产物里没有清单外的名字）", () => {
+    for (const [i, svg] of svgs.entries()) {
+      const names = [...svg.matchAll(new RegExp(`data-icon="${PPT_ICON_LIB}/([^"]+)"`, "g"))].map((m) => m[1]!);
+      expect(countSvgIcons(svg), `第 ${i + 1} 页只有 ${names.length} 个图标`).toBeGreaterThanOrEqual(
+        PPT_QUALITY.minIconsPerPage,
+      );
+      for (const name of names) expect(PPT_ICONS as readonly string[], `${name} 不在清单里`).toContain(name);
+    }
+  });
+
+  it("图标一律走 data-icon 占位（渲染层不读技能目录：产物里没有真实图标 path）", () => {
+    for (const [i, svg] of svgs.entries()) {
+      expect(svg, `第 ${i + 1} 页不该出现真实图标`).not.toContain("<path");
+      expect(svg, `第 ${i + 1} 页`).toContain(`data-icon="${PPT_ICON_LIB}/`);
+    }
+  });
+
+  it("清单外的名字（含历史遗留的 device-desktop-video）回落 PPT_DEFAULT_ICON", () => {
+    const svg = renderPptPage(
+      page({
+        layout: "要点清单",
+        icon: "device-desktop-video",
+        bullets: ["全区纳管出报表", "口径写进系统里", "异常自动派单"],
+      }),
+      ctx(0),
+    );
+    expect(svg).toContain(`data-icon="${PPT_ICON_LIB}/${PPT_DEFAULT_ICON}"`);
+    expect(svg).not.toContain("device-desktop-video");
+    expect(svg).not.toContain("projector-screen");
+    expect(svg).not.toContain("whiteboard");
+  });
+
+  it("位置与尺寸：小节标签 22×22、块头 28×28（#E3F2FD 卡头横条上）、卡片 28、表头每列 14、结论带固定 bulb", () => {
+    const grid = svgs[0]!;
+    expect(grid).toContain('id="kicker-icon"');
+    expect(grid).toContain('x="92" y="40" width="22" height="22"');
+    for (let i = 1; i <= 4; i += 1) expect(grid).toContain(`id="block-${i}-icon"`);
+    expect(grid).toContain('width="28" height="28" fill="#0D47A1"');
+    expect(svgs[1]).toContain('id="col-1-icon"');
+    expect(svgs[2]).toContain('id="stage-1-icon"');
+    expect(svgs[3]).toContain('id="layer-1-icon"');
+    expect(svgs[4]).toContain('id="card-1-icon"');
+    for (let i = 1; i <= 5; i += 1) expect(svgs[5]).toContain(`id="th-${i}-icon"`);
+    expect(svgs[5]).toContain('width="14" height="14"');
+    expect(svgs[6]).toContain('id="item-1-icon"');
+    for (const [i, svg] of svgs.entries()) {
+      expect(svg, `第 ${i + 1} 页结论带要挂 bulb`).toContain(`data-icon="${PPT_ICON_LIB}/bulb"`);
+      expect(svg).toContain('id="highlight-icon"');
+    }
+  });
+});
+
+describe("renderPptPage — 颜色层次（#144：色阶 + 语义色）", () => {
+  const deck = sampleDeck();
+  const svgs = deck.pages.map((p, i) =>
+    renderPptPage(p, { index: i, total: deck.pages.length, scenarioName: SCENARIO }),
+  );
+
+  it("每页至少 6 种颜色", () => {
+    for (const [i, svg] of svgs.entries()) {
+      const colors = countSvgColors(svg);
+      expect(colors, `第 ${i + 1} 页只有 ${colors} 种颜色`).toBeGreaterThanOrEqual(PPT_QUALITY.minColorsPerPage);
+    }
+  });
+
+  it("页顶 8px 通栏渐变主色带 + 右上页码做成 #E3F2FD 胶囊", () => {
+    const svg = svgs[0]!;
+    expect(svg).toContain('<linearGradient id="pptTopBand" x1="0" y1="0" x2="1" y2="0">');
+    expect(svg).toContain(`<stop offset="0" stop-color="${PPT_COLORS.primary}"/>`);
+    expect(svg).toContain(`<stop offset="1" stop-color="${PPT_COLORS.primaryAlt}"/>`);
+    expect(svg).toContain('fill="url(#pptTopBand)"');
+    expect(svg).toContain('width="1280" height="8"');
+    expect(svg).toContain(`height="24" rx="12" fill="${PPT_COLORS.lightBlue}"`);
+  });
+
+  it("块卡：卡底 #F7FAFE + 卡头 #E3F2FD 横条（34 高）+ 左侧 5px 强调竖条按块轮换四色", () => {
+    const svg = svgs[0]!;
+    expect(svg).toContain(`fill="${PPT_COLORS.subtle}" stroke="${PPT_COLORS.border}"`);
+    expect(svg).toContain('height="34"');
+    const bars = [...svg.matchAll(/width="5" height="200" rx="2\.5" fill="([^"]+)"/g)].map((m) => m[1]!);
+    expect(bars).toEqual([...PPT_BAR_COLORS]);
+  });
+
+  it("语气着色：命中问题词 → 橙条，命中价值词 → 绿条，其余按轮换", () => {
+    const blocks: PptBlock[] = [
+      { head: "现场问题", note: "今天的难点", icon: "alert-triangle", lines: ["纸质表单，常常漏"] },
+      { head: "建成后收益", note: "效率提升", icon: "trending-up", lines: ["扫码提交，当天出数"] },
+      { head: "中性块", note: "", icon: "file-text", lines: ["照班次派单"] },
+    ];
+    const svg = renderPptPage(page({ layout: "网格要点", bullets: [], blocks }), {
+      index: 0,
+      total: 1,
+      scenarioName: SCENARIO,
+    });
+    const bars = [...svg.matchAll(/width="5" height="200" rx="2\.5" fill="([^"]+)"/g)].map((m) => m[1]!);
+    expect(bars).toEqual([PPT_COLORS.orange, PPT_COLORS.green, PPT_BAR_COLORS[2]]);
+    expect(pptToneOf("今天的难点")).toBe("problem");
+    expect(pptToneOf("效率提升")).toBe("value");
+    expect(pptBarColor(0, "没什么语气的块")).toBe(PPT_BAR_COLORS[0]);
+    expect(PPT_TONE_VALUE.test("对账改善")).toBe(true);
+  });
+
+  it("列间 / 行间用 #D6E7F8 细分隔线（网格与双栏）", () => {
+    const grid = svgs[0]!;
+    expect(grid).toContain('id="grid-rules"');
+    expect(grid).toContain(`stroke="${PPT_COLORS.divider}" stroke-width="1"`);
+    expect(svgs[1]).toContain('id="col-rules"');
+  });
+
+  it("结论带：#E3F2FD 底 + 左侧 6px 橙条 + bulb 图标 + 19px 粗深蓝字", () => {
+    const svg = svgs[0]!;
+    expect(svg).toContain(`<g id="highlight">`);
+    expect(svg).toContain('width="6" height="30" rx="3" fill="#FF9800"');
+    expect(svg).toContain('font-size="19" fill="#0D47A1" font-weight="bold"');
+  });
+});
+
+describe("renderPptPage — 字内强调（#144：重点要突出）", () => {
+  const ctx = { index: 0, total: 1, scenarioName: SCENARIO };
+
+  it("pptEmphasisOf：只有第一个 ：，、 之前且 ≤8 字的前缀才算关键词", () => {
+    expect(pptEmphasisOf("会前准备：把设备台账补齐")).toEqual({ prefix: "会前准备", number: null });
+    expect(pptEmphasisOf("这是一句超过八个字的前缀：说明").prefix).toBe("");
+    expect(pptEmphasisOf("没有分隔符的一行")).toEqual({ prefix: "", number: null });
+    expect(pptEmphasisOf("设备台账、巡检任务")).toEqual({ prefix: "设备台账", number: null });
+  });
+
+  it("pptEmphasisOf：数字带单位一起抽出来，只抽第一处", () => {
+    expect(pptEmphasisOf("对账周期从 2 天压到 4 小时").number).toBe("2 天");
+    expect(pptEmphasisOf("纳管 480 台设备，覆盖 12 个楼层").number).toBe("480 台");
+    expect(pptEmphasisOf("准确率 95%").number).toBe("95%");
+    expect(pptEmphasisOf("没有数字的一行")).toEqual({ prefix: "", number: null });
+  });
+
+  it("行首关键词：20px 粗深蓝 tspan，其余 16px 正文色", () => {
+    const svg = renderPptPage(
+      page({
+        layout: "网格要点",
+        bullets: [],
+        blocks: [{ head: "设备台账", note: "", icon: "file-text", lines: ["按区域建台账，逐台贴码"] }],
+      }),
+      ctx,
+    );
+    expect(svg).toContain(
+      // 分隔符留在正文段里（只把关键词本身加粗放大）
+      `<tspan font-size="20" fill="${PPT_COLORS.primary}" font-weight="bold">按区域建台账</tspan>，逐台贴码`,
+    );
+  });
+
+  it("数字强调：22px 粗橙 tspan，同一行只强调第一处（避免花）", () => {
+    const svg = renderPptPage(page({ layout: "要点清单", bullets: ["对账周期从 2 天压到 4 小时"] }), ctx);
+    const orange = [...svg.matchAll(/<tspan font-size="22" fill="#FF9800" font-weight="bold">([^<]*)<\/tspan>/g)].map(
+      (m) => m[1]!,
+    );
+    expect(orange).toEqual(["2 天"]);
+  });
+
+  it("没有分隔符的行整行默认样式（不硬拆）；超长前缀也不拆", () => {
+    const plain = /<g id="item-1-main-1-text">([\s\S]*?)<\/g>/.exec(
+      renderPptPage(page({ layout: "要点清单", bullets: ["全区纳管出报表"] }), ctx),
+    )![1]!;
+    expect(plain).not.toContain("<tspan");
+
+    const long = /<g id="item-1-main-1-text">([\s\S]*?)<\/g>/.exec(
+      renderPptPage(page({ layout: "要点清单", bullets: ["这是一句超过八个字的前缀：后面的说明"] }), ctx),
+    )![1]!;
+    expect(long).not.toContain("<tspan");
+  });
+
+  it("标题下 80×6 圆角橙短横（每页都有）", () => {
+    const svg = renderPptPage(page(), ctx);
+    expect(svg).toContain('<rect x="80" y="106" width="80" height="6" rx="3" fill="#FF9800"/>');
+  });
+
+  it("每页强调 ≥3 处（字内强调段 + 16px 以上粗体重点字）", () => {
+    const deck = sampleDeck();
+    for (const [i, p] of deck.pages.entries()) {
+      const svg = renderPptPage(p, { index: i, total: deck.pages.length, scenarioName: SCENARIO });
+      const emphasis = countSvgEmphasis(svg);
+      expect(emphasis, `第 ${i + 1} 页（${p.layout}）只有 ${emphasis} 处强调`).toBeGreaterThanOrEqual(
+        PPT_QUALITY.minEmphasisPerPage,
+      );
+    }
   });
 });

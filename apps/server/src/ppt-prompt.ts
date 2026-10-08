@@ -12,7 +12,13 @@
  * 页面太空由 `apps/server/src/ppt-export.ts` 的重试兜（见 `THIN_PAGE_MIN`）。
  */
 
-import { PPT_LIMITS, REPORT_KIND_LABEL, type ReportKind } from "@scene/contract";
+import {
+  PPT_DEFAULT_ICON,
+  PPT_ICONS,
+  PPT_LIMITS,
+  REPORT_KIND_LABEL,
+  type ReportKind,
+} from "@scene/contract";
 
 /** 报告口径名（与标题、导出文件名同源） */
 function kindLabel(kind: ReportKind): string {
@@ -74,6 +80,7 @@ export const PPT_PAGE_RULES: readonly string[] = [
   `- \`表格\`：\`table\` ≤ ${PPT_LIMITS.table.maxRows} 行 × ≤ ${PPT_LIMITS.table.maxCols} 列（表头 ≥2 列），表头 ≤ ${PPT_LIMITS.table.headChars} 字、单元格 ≤ ${PPT_LIMITS.table.cellChars} 字（**要写满行与列**）。`,
   `- \`要点清单\`（兜底）：\`bullets\` ${PPT_LIMITS.bullets.min}–${PPT_LIMITS.bullets.max} 行、每行 ≤ ${PPT_LIMITS.bullets.chars} 字；只在上面六种都排不出时用。`,
   `- \`chips\` 技术/能力标签 ${PPT_LIMITS.chips.max} 个以内、每个 ≤ ${PPT_LIMITS.chips.chars} 字（排不排得下由页面决定，给最有信息量的几个）。`,
+  `- 图标：每页 1 个 \`icon\`、每个块/栏/阶段/层/卡片各 1 个 \`icon\`、\`table.icons\` 与表头列一一对应（见上面的「图标」一节）。`,
 ];
 
 /** 七种布局各要什么（与契约 `PptPage` 一一对应） */
@@ -90,6 +97,26 @@ export const PPT_LAYOUT_SPEC: readonly string[] = [
   "  只写 `layout` 不给字段，这一页会被降级成兜底清单，页面上就只剩两三条——**宁可改用 `网格要点` 写满四块**。",
 ];
 
+/**
+ * 图标清单与用法（变更表 #144）
+ *
+ * 技能的图标库有 11,631 个 SVG，但**只有清单里的名字确认存在**——名字写错一处，那一处的图标就
+ * 静默消失（`finalize_svg.py` 只替换它认得的名字）。所以清单**原样**给模型，并写死兜底与对义提示。
+ */
+export const PPT_ICON_RULES: readonly string[] = [
+  "## 图标（每页都要有；从下面这份清单里挑，一个字母都不要改）",
+  `- 清单：${PPT_ICONS.join("、")}。`,
+  `- 每一页给一个 \`icon\`（这一页讲什么就给什么，≤1 个）；每个 \`blocks\` / \`columns\` / \`stages\` / \`layers\` / \`cards\` 元素各给一个 \`icon\`（该块讲什么就给什么）；`,
+  `  \`table.icons\` 与表头列一一对应（几列就给几个，列讲什么就给什么）。`,
+  `- **只能从上面清单里选，选不出就用 \`${PPT_DEFAULT_ICON}\`**；不许自创名字（清单外的名字会被丢掉，那一处就没图标了）。`,
+  "- 按意思挑，不要每块都用同一个：台账/清单→file-text、设备→device-desktop、网络→network、云→cloud、服务器→server、",
+  "  数据库→database、安全→shield-check、目标→target、路线→route、数据→chart-bar、人员→users、时间→clock、视频→video、",
+  "  设置→settings、计划→calendar-check、核对→checkup-list、风险→alert-triangle、增长→trending-up、能力→puzzle、接入→plug、",
+  "  移动端→device-mobile、无线→wifi、算力→cpu、实时→activity、调优→adjustments、供电→bolt、公司→building-skyscraper 或 briefcase、",
+  "  进出门禁→door-enter / door-exit、音频→headphones 或 microphone、汇报→speakerphone、报表→report-analytics、指标→gauge、",
+  "  分流→arrows-split、分工→hierarchy 或 sitemap、完成→circle-check、提示→info-circle 或 bulb、告警→alert-circle。",
+];
+
 /** 输出格式（三个调用共用同一段；示例与契约字段、限额逐字一致） */
 export const PPT_JSON_SPEC: readonly string[] = [
   "## 输出（**只输出这一段 JSON**）",
@@ -102,13 +129,14 @@ export const PPT_JSON_SPEC: readonly string[] = [
       {
         layout: "网格要点",
         kicker: "项目硬规则",
+        icon: "list-check",
         title: "四条硬规则管住现场",
         subtitle: "把口径写进系统，巡检不再靠人记",
         blocks: [
-          { head: "设备台账", note: "谁在现场、什么型号", lines: ["按区域建台账，逐台贴码", "型号与位置一次录清", "换机改码当场更新"] },
-          { head: "巡检任务", note: "照班次自动发单", lines: ["每班次派发到人", "漏项当场提醒", "完成时间自动留痕"] },
-          { head: "异常上报", note: "现场拍照即上报", lines: ["异常必传现场照片", "按等级通知到人", "处理过程全程可查"] },
-          { head: "数据口径", note: "一处录入全系统共用", lines: ["台账只在一处录入", "报表按同一口径出数", "月度对账有据可依"] },
+          { head: "设备台账", note: "谁在现场、什么型号", icon: "file-text", lines: ["按区域建台账，逐台贴码", "型号与位置一次录清", "换机改码当场更新"] },
+          { head: "巡检任务", note: "照班次自动发单", icon: "calendar-check", lines: ["每班次派发到人", "漏项当场提醒", "完成时间自动留痕"] },
+          { head: "异常上报", note: "现场拍照即上报", icon: "alert-triangle", lines: ["异常必传现场照片", "按等级通知到人", "处理过程全程可查"] },
+          { head: "数据口径", note: "一处录入全系统共用", icon: "database", lines: ["台账只在一处录入", "报表按同一口径出数", "月度对账有据可依"] },
         ],
         chips: ["扫码巡检", "自动派单"],
         highlight: "口径写进系统，现场按码走",
@@ -116,34 +144,38 @@ export const PPT_JSON_SPEC: readonly string[] = [
       {
         layout: "双栏对比",
         kicker: "今天与建成后",
+        icon: "arrows-split",
         title: "同一件事两种做法",
         subtitle: "左边是今天的代价，右边是建成后的样子",
         columns: [
-          { head: "今天的做法", note: "纸质表单为主", lines: ["巡检靠纸质表单，一天一交", "数据事后补录，口径对不上", "异常靠电话上报，常常漏"] },
-          { head: "建成后的做法", note: "扫码巡检、自动留痕", lines: ["扫码巡检，当场提交", "数据实时入库，口径唯一", "异常自动派单到人"] },
+          { head: "今天的做法", note: "纸质表单为主", icon: "file-text", lines: ["巡检靠纸质表单，一天一交", "数据事后补录，口径对不上", "异常靠电话上报，常常漏"] },
+          { head: "建成后的做法", note: "扫码巡检、自动留痕", icon: "list-check", lines: ["扫码巡检，当场提交", "数据实时入库，口径唯一", "异常自动派单到人"] },
         ],
         highlight: "同样的活，换个干法",
       },
       {
         layout: "流程阶段",
         kicker: "推进路径",
+        icon: "route",
         title: "四步走到全量覆盖",
         subtitle: "先在一个楼层跑通，再复制到全区",
         stages: [
-          { head: "样板层建设", note: "一个楼层先装齐，跑通扫码巡检" },
-          { head: "单点验证", note: "连续两周比对纸质记录，口径对齐" },
-          { head: "分批复制", note: "按楼层分批上线，每批一周" },
-          { head: "全区运行", note: "全区纳管，报表自动出数" },
+          { head: "样板层建设", note: "一个楼层先装齐，跑通扫码巡检", icon: "building-community" },
+          { head: "单点验证", note: "连续两周比对纸质记录，口径对齐", icon: "checkup-list" },
+          { head: "分批复制", note: "按楼层分批上线，每批一周", icon: "devices" },
+          { head: "全区运行", note: "全区纳管，报表自动出数", icon: "sitemap" },
         ],
         highlight: "先跑通一层，再谈全区",
       },
       {
         layout: "表格",
         kicker: "分工与节奏",
+        icon: "briefcase",
         title: "谁在哪一步做什么",
         subtitle: "每一行一件交付物，责任到人、节点到周",
         table: {
           head: ["阶段", "做什么", "谁负责", "周期", "验收依据"],
+          icons: ["route", "list-check", "users", "clock", "circle-check"],
           rows: [
             ["样板层", "装齐终端并贴码", "运维班", "第 1 周", "扫码记录连续"],
             ["单点验证", "比对纸质与系统记录", "信息部", "第 2 周", "差异逐条说明"],
@@ -175,6 +207,8 @@ export function buildPptOutlinePrompt(
     "",
     "## 七种布局怎么用",
     ...PPT_LAYOUT_SPEC,
+    "",
+    ...PPT_ICON_RULES,
     "",
     ...PPT_JSON_SPEC,
   ].join("\n");
@@ -212,6 +246,9 @@ export function buildPptRetryPrompt(
     "",
     "## 页面口径（不变）",
     ...PPT_PAGE_RULES,
+    "",
+    // 重试也是整页重发，图标清单必须一起带上（否则新写的块又只能回落 presentation）
+    ...PPT_ICON_RULES,
     "",
     ...PPT_JSON_SPEC,
   ].join("\n");

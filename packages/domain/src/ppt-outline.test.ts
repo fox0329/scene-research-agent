@@ -1,13 +1,14 @@
 /**
- * @scene/domain — PPT 大纲校验测试（变更表 #141 立、#142 升）
+ * @scene/domain — PPT 大纲校验测试（变更表 #141 立、#142 升、#144 升）
  *
  * 覆盖全部判定分支：合法 / 页数越界 clamp / 非法页丢弃 / 缺布局与旧布局名 /
  * 各字段超限截断（且不许把页删空）/ 布局回落（网格不足 3 块 → 要点清单）/ 禁用词 /
- * 旧字段兼容（subtitle ← takeaway、blocks ← bullets）/ 每页有效短句数（空页判定依据）。
+ * 旧字段兼容（subtitle ← takeaway、blocks ← bullets）/ 每页有效短句数（空页判定依据）/
+ * #144 图标归一（缺 → 兜底、清单外 → 兜底、带库前缀 → 剥前缀、表头列一一对应）。
  */
 
 import { describe, it, expect } from "vitest";
-import { PPT_LIMITS } from "@scene/contract";
+import { PPT_DEFAULT_ICON, PPT_ICONS, PPT_LIMITS } from "@scene/contract";
 import { hasPptBanned, parsePptOutline, pptBannedHit, pptPageSentences } from "./ppt-outline.js";
 
 /** 一页合规的网格要点页（默认布局，字段最全） */
@@ -616,5 +617,168 @@ describe("parsePptOutline — 明确失败值", () => {
     expect(r.outline).toBeNull();
     expect(r.error).toContain("没有可用页面");
     expect(r.notes.length).toBeGreaterThan(0);
+  });
+});
+
+
+describe("parsePptOutline — 图标归一（#144）", () => {
+  it("页 / 块 / 栏 / 阶段 / 层 / 卡片 / 表头列的 icon 都原样收下", () => {
+    const r = parsePptOutline(
+      JSON.stringify({
+        pages: [
+          page({
+            icon: "sitemap",
+            blocks: [
+              { head: "设备台账", note: "谁在现场", icon: "file-text", lines: ["逐台贴码"] },
+              { head: "巡检任务", note: "照班次发单", icon: "calendar-check", lines: ["派发到人"] },
+              { head: "异常上报", note: "拍照即上报", icon: "alert-triangle", lines: ["必传照片"] },
+            ],
+          }),
+          {
+            layout: "双栏对比",
+            kicker: "今天与建成后",
+            icon: "arrows-split",
+            title: "同一件事两种做法",
+            subtitle: "左边是今天，右边是建成后",
+            columns: [
+              { head: "今天", note: "纸质表单", icon: "file-text", lines: ["纸质记录", "人工统计", "事后补录"] },
+              { head: "建成后", note: "扫码巡检", icon: "list-check", lines: ["自动采集", "实时看板", "自动派单"] },
+            ],
+            highlight: "同样的活，换个干法",
+          },
+          {
+            layout: "流程阶段",
+            kicker: "推进路径",
+            icon: "route",
+            title: "四步走到全量覆盖",
+            subtitle: "先跑通一层，再复制到全区",
+            stages: [
+              { head: "样板层", note: "一个楼层先装齐", icon: "building-community" },
+              { head: "验证", note: "两周比对纸质记录", icon: "checkup-list" },
+              { head: "复制", note: "按楼层分批上线", icon: "devices" },
+            ],
+            highlight: "先跑通一层，再谈全区",
+          },
+          {
+            layout: "分层架构",
+            kicker: "总体架构",
+            icon: "hierarchy",
+            title: "四层架构怎么落",
+            subtitle: "自上而下各司其职",
+            layers: [
+              { head: "应用层", icon: "chart-bar", items: ["巡检看板", "异常工单"] },
+              { head: "平台层", icon: "server", items: ["设备纳管", "规则引擎"] },
+              { head: "感知层", icon: "wifi", items: ["扫码终端", "温湿度探头"] },
+            ],
+            highlight: "分层清楚才好落地",
+          },
+          {
+            layout: "数据卡片",
+            kicker: "关键数字",
+            icon: "gauge",
+            title: "四项变化看得见",
+            subtitle: "口径都取自这份报告正文",
+            cards: [
+              { value: "12 个", label: "纳管楼层", icon: "building-skyscraper" },
+              { value: "480 台", label: "纳管设备", icon: "devices" },
+              { value: "2 天", label: "对账周期", icon: "clock" },
+            ],
+            highlight: "变化要能被量出来",
+          },
+          {
+            layout: "表格",
+            kicker: "分工与节奏",
+            icon: "briefcase",
+            title: "谁在哪一步做什么",
+            subtitle: "每一行一件交付物",
+            table: {
+              head: ["阶段", "做什么", "谁负责"],
+              icons: ["route", "list-check", "users"],
+              rows: [
+                ["样板层", "装齐终端并贴码", "运维班"],
+                ["单点验证", "比对纸质与系统记录", "信息部"],
+              ],
+            },
+            highlight: "责任到人，节点到周",
+          },
+        ],
+      }),
+    );
+    expect(r.error).toBeUndefined();
+    const [grid, cols, stages, layers, cards, table] = r.outline!.pages;
+    expect(grid!.icon).toBe("sitemap");
+    expect(grid!.blocks.map((b) => b.icon)).toEqual(["file-text", "calendar-check", "alert-triangle"]);
+    expect(cols!.columns.map((c) => c.icon)).toEqual(["file-text", "list-check"]);
+    expect(stages!.stages.map((s) => s.icon)).toEqual(["building-community", "checkup-list", "devices"]);
+    expect(layers!.layers.map((l) => l.icon)).toEqual(["chart-bar", "server", "wifi"]);
+    expect(cards!.cards.map((c) => c.icon)).toEqual(["building-skyscraper", "devices", "clock"]);
+    expect(table!.table!.icons).toEqual(["route", "list-check", "users"]);
+  });
+
+  it("缺 icon → 兜底 presentation；清单外的名字 → 同样兜底（历史遗留的 device-desktop-video）", () => {
+    const r = parsePptOutline(
+      JSON.stringify({
+        pages: [
+          page({
+            blocks: [
+              { head: "设备台账", note: "谁在现场", lines: ["逐台贴码"] },
+              { head: "巡检任务", note: "照班次发单", icon: "device-desktop-video", lines: ["派发到人"] },
+              { head: "异常上报", note: "拍照即上报", icon: "projector-screen", lines: ["必传照片"] },
+            ],
+          }),
+        ],
+      }),
+    );
+    const icons = r.outline!.pages[0]!.blocks.map((b) => b.icon);
+    expect(icons).toEqual([PPT_DEFAULT_ICON, PPT_DEFAULT_ICON, PPT_DEFAULT_ICON]);
+    expect(r.outline!.pages[0]!.icon).toBe(PPT_DEFAULT_ICON);
+  });
+
+  it("带库前缀的写法剥掉前缀照收；空白 / 非字符串也兜底", () => {
+    const r = parsePptOutline(
+      JSON.stringify({
+        pages: [
+          page({
+            icon: "tabler-outline/cloud",
+            blocks: [
+              { head: "设备台账", note: "", icon: "  server  ", lines: ["逐台贴码"] },
+              { head: "巡检任务", note: "", icon: 42, lines: ["派发到人"] },
+              { head: "异常上报", note: "", lines: ["必传照片"] },
+            ],
+          }),
+        ],
+      }),
+    );
+    const icons = r.outline!.pages[0]!.blocks.map((b) => b.icon);
+    expect(r.outline!.pages[0]!.icon).toBe("cloud");
+    expect(icons).toEqual(["server", PPT_DEFAULT_ICON, PPT_DEFAULT_ICON]);
+    // 归一后的名字一定在清单里（渲染层与门禁都按这个假设走）
+    for (const name of [r.outline!.pages[0]!.icon, ...icons]) {
+      expect(PPT_ICONS as readonly string[]).toContain(name);
+    }
+  });
+
+  it("表头 icons 少于列数 → 缺的那几列兜底（一列一个，绝不越界）", () => {
+    const r = parsePptOutline(
+      JSON.stringify({
+        pages: [
+          page({
+            layout: "表格",
+            blocks: [],
+            table: {
+              head: ["阶段", "做什么", "谁负责", "周期"],
+              icons: ["route"],
+              rows: [["样板层", "装齐终端并贴码", "运维班", "第 1 周"]],
+            },
+          }),
+        ],
+      }),
+    );
+    expect(r.outline!.pages[0]!.table!.icons).toEqual([
+      "route",
+      PPT_DEFAULT_ICON,
+      PPT_DEFAULT_ICON,
+      PPT_DEFAULT_ICON,
+    ]);
   });
 });

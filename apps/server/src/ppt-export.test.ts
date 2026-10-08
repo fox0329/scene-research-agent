@@ -1,25 +1,71 @@
 /**
- * @scene/server — 导出 PPT 测试（变更表 #141）
+ * @scene/server — 导出 PPT 测试（变更表 #141 立、#144 升）
  *
  * **不真跑用户的技能**（慢，还依赖本机装的依赖）：用 `PPT_MASTER_DIR` 指到一个 fixture 目录，
- * 里面放一个假的 `scripts/svg_to_pptx.py`——它只把命令行与 svg 页数记到日志、写一个占位 pptx。
- * 由此验证：命令行参数正确、产物落到目标目录、临时目录被清理、进度阶段齐、失败只回 notice。
+ * 里面放假的 `scripts/finalize_svg.py`（图标收尾）与 `scripts/svg_to_pptx.py`（转档）——
+ * 两者只把命令行与看到的东西记进 `PPT_FAKE_LOG`（一行一条 JSON），转档器再写一个占位 pptx。
+ * 由此验证：**两步的先后次序与参数逐字固定**（#144）、命令行参数正确、产物落到目标目录、
+ * 临时目录被清理、进度阶段齐、finalize 失败/缺脚本都只 warn 不阻断、失败只回 notice。
  */
 
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import type { DshClient, FollowEvent, PptPage } from "@scene/contract";
 import { createDb, type DbInstance } from "@scene/infra";
 import { exportReportPptx, pptFileName } from "./ppt-export.js";
 
-// ─── fixture：假技能（导出器只写占位文件 + 记录命令行） ──────
+// ─── fixture：假技能（finalize 嵌图标 + 转档器写占位文件，都记日志） ──────
 
-/** 假导出器：把 argv 与 svg_output 下的页数写进 `PPT_FAKE_LOG`，再写一个占位 pptx */
+/** 两个假脚本共用的记账函数（追加一行 JSON，便于断言"谁先谁后"） */
+const LOG_HELPER = [
+  "import json, os, pathlib",
+  "def log_line(rec):",
+  "    p = os.environ.get('PPT_FAKE_LOG')",
+  "    if p:",
+  "        with open(p, 'a', encoding='utf-8') as fh:",
+  "            fh.write(json.dumps(rec, ensure_ascii=False) + '\\n')",
+].join("\n");
+
+/**
+ * 假 finalize：按真技能的契约**从 svg_output 读、往 svg_final 写**，
+ * 把 `<use data-icon=…>` 换成 `<!-- icon: … -->` + 一个假图标组（真技能从图标库取路径），
+ * 并把每页的占位数 / 收尾后的残留数写进日志。
+ */
+const FAKE_FINALIZE = [
+  LOG_HELPER,
+  "import re, sys",
+  "args = sys.argv[1:]",
+  "proj = pathlib.Path(args[0])",
+  "src = proj / 'svg_output'",
+  "dst = proj / 'svg_final'",
+  "dst.mkdir(parents=True, exist_ok=True)",
+  "pages = []",
+  "for f in sorted(src.glob('*.svg')):",
+  "    text = f.read_text(encoding='utf-8')",
+  "    icons = len(re.findall(r'data-icon=\"', text))",
+  "    text = re.sub(r'<use data-icon=\"([^\"]+)\"[^>]*/>',",
+  "                  r'<!-- icon: \\1 --><g transform=\"translate(0, 0)\"><path d=\"M0 0h1v1z\"/></g>', text)",
+  "    (dst / f.name).write_text(text, encoding='utf-8')",
+  "    pages.append({'name': f.name, 'icons': icons, 'residue': text.count('data-icon=\"')})",
+  "log_line({'step': 'finalize', 'argv': sys.argv, 'pages': pages})",
+  "print('图标已嵌入：%d 页' % len(pages))",
+].join("\n");
+
+/** 假 finalize（失败版）：非 0 退出 + stderr 有话说 */
+const FAKE_FINALIZE_FAIL = [
+  LOG_HELPER,
+  "import sys",
+  "log_line({'step': 'finalize-fail', 'argv': sys.argv})",
+  "sys.stderr.write('fake finalize boom\\n')",
+  "sys.exit(4)",
+].join("\n");
+
+/** 假转档器：记 argv、svg_output 页数与"转档时 svg_final 里还有多少 data-icon 残留"，再写占位 pptx */
 const FAKE_OK = [
-  "import json, os, pathlib, sys",
-  "log = os.environ.get('PPT_FAKE_LOG')",
+  LOG_HELPER,
+  "import sys",
   "out = None",
   "args = sys.argv[1:]",
   "for i, a in enumerate(args):",
@@ -27,25 +73,49 @@ const FAKE_OK = [
   "        out = args[i + 1]",
   "if out is None:",
   "    sys.exit(2)",
-  "svgs = sorted(os.listdir(os.path.join(args[0], 'svg_output')))",
-  "if log:",
-  "    pathlib.Path(log).write_text(json.dumps({'argv': sys.argv, 'svgs': svgs}), encoding='utf-8')",
+  "proj = pathlib.Path(args[0])",
+  "svgs = sorted(os.listdir(proj / 'svg_output'))",
+  "final_dir = proj / 'svg_final'",
+  "residue = None",
+  "if final_dir.exists():",
+  "    residue = sum(p.read_text(encoding='utf-8').count('data-icon=\"') for p in sorted(final_dir.glob('*.svg')))",
+  "log_line({'step': 'convert', 'argv': sys.argv, 'svgs': svgs, 'finalResidue': residue})",
   "pathlib.Path(out).write_bytes(b'PK\\x03\\x04fake-pptx')",
   "print('导出完成：0 失败')",
 ].join("\n");
 
-/** 假导出器（失败版）：非 0 退出 + stderr 有话说 */
+/** 假转档器（失败版）：非 0 退出 + stderr 有话说 */
 const FAKE_FAIL = [
   "import sys",
   "sys.stderr.write('Traceback: 假导出器故意失败\\n')",
   "sys.exit(3)",
 ].join("\n");
 
-function makeSkill(body: string): string {
+/** 假技能目录：转档器必有；finalize 传 null 就是"老版本技能"（没有收尾脚本） */
+function makeSkill(body: string, finalizeBody: string | null = FAKE_FINALIZE): string {
   const dir = mkdtempSync(join(tmpdir(), "scene-ppt-skill-"));
   mkdirSync(join(dir, "scripts"), { recursive: true });
   writeFileSync(join(dir, "scripts", "svg_to_pptx.py"), body, "utf8");
+  if (finalizeBody !== null) writeFileSync(join(dir, "scripts", "finalize_svg.py"), finalizeBody, "utf8");
   return dir;
+}
+
+/** 日志里的一行（两个假脚本一起按顺序记） */
+interface LogRecord {
+  step: string;
+  argv: string[];
+  svgs?: string[];
+  finalResidue?: number | null;
+  pages?: { name: string; icons: number; residue: number }[];
+}
+
+/** 读假脚本的日志（一行一条 JSON，按发生次序） */
+function readLog(log: string): LogRecord[] {
+  if (!existsSync(log)) return [];
+  return readFileSync(log, "utf8")
+    .split("\n")
+    .filter((line) => line.trim() !== "")
+    .map((line) => JSON.parse(line) as LogRecord);
 }
 
 // ─── 场景与 DSH 桩 ─────────────────────────────────────────
@@ -67,37 +137,39 @@ function outlineJson(pages = 6): string {
   const page = (i: number): PptPage => ({
     layout: layouts[i % layouts.length]!,
     kicker: `小节${i + 1}`,
+    icon: "presentation",
     title: `第${i + 1}页标题`,
     subtitle: `第${i + 1}页的一句副题`,
     blocks: [
-      { head: "设备台账", note: "谁在现场", lines: ["逐台贴码", "型号一次录清", "换机当场更新"] },
-      { head: "巡检任务", note: "照班次发单", lines: ["派发到人", "漏项提醒", "时间留痕"] },
-      { head: "异常上报", note: "拍照即上报", lines: ["必传照片", "分级通知", "过程可查"] },
-      { head: "数据口径", note: "一处录入", lines: ["只录一次", "同一口径", "对账有据"] },
+      { head: "设备台账", note: "谁在现场", icon: "file-text", lines: ["逐台贴码", "型号一次录清", "换机当场更新"] },
+      { head: "巡检任务", note: "照班次发单", icon: "calendar-check", lines: ["派发到人", "漏项提醒", "时间留痕"] },
+      { head: "异常上报", note: "拍照即上报", icon: "alert-triangle", lines: ["必传照片", "分级通知", "过程可查"] },
+      { head: "数据口径", note: "一处录入", icon: "database", lines: ["只录一次", "同一口径", "对账有据"] },
     ],
     columns: [
-      { head: "今天", note: "纸质表单", lines: ["纸质记录", "人工统计", "事后补录"] },
-      { head: "建成后", note: "扫码巡检", lines: ["自动采集", "实时看板", "自动派单"] },
+      { head: "今天", note: "纸质表单", icon: "file-text", lines: ["纸质记录", "人工统计", "事后补录"] },
+      { head: "建成后", note: "扫码巡检", icon: "list-check", lines: ["自动采集", "实时看板", "自动派单"] },
     ],
     stages: [
-      { head: "样板层", note: "一个楼层先装齐" },
-      { head: "验证", note: "两周比对纸质记录" },
-      { head: "复制", note: "按楼层分批上线" },
-      { head: "全区", note: "全区纳管出报表" },
+      { head: "样板层", note: "一个楼层先装齐", icon: "building-community" },
+      { head: "验证", note: "两周比对纸质记录", icon: "checkup-list" },
+      { head: "复制", note: "按楼层分批上线", icon: "devices" },
+      { head: "全区", note: "全区纳管出报表", icon: "sitemap" },
     ],
     layers: [
-      { head: "应用层", items: ["巡检看板", "异常工单"] },
-      { head: "平台层", items: ["设备纳管", "规则引擎"] },
-      { head: "感知层", items: ["扫码终端", "温湿度探头"] },
+      { head: "应用层", icon: "chart-bar", items: ["巡检看板", "异常工单"] },
+      { head: "平台层", icon: "server", items: ["设备纳管", "规则引擎"] },
+      { head: "感知层", icon: "wifi", items: ["扫码终端", "温湿度探头"] },
     ],
     cards: [
-      { value: "12 个", label: "纳管楼层" },
-      { value: "480 台", label: "纳管设备" },
-      { value: "2 天", label: "对账周期" },
-      { value: "1 张表", label: "统一口径" },
+      { value: "12 个", label: "纳管楼层", icon: "building-skyscraper" },
+      { value: "480 台", label: "纳管设备", icon: "devices" },
+      { value: "2 天", label: "对账周期", icon: "clock" },
+      { value: "1 张表", label: "统一口径", icon: "report-analytics" },
     ],
     table: {
       head: ["阶段", "做什么", "谁负责"],
+      icons: ["route", "list-check", "users"],
       rows: [
         ["样板层", "装齐终端并贴码", "运维班"],
         ["单点验证", "比对纸质与系统记录", "信息部"],
@@ -159,12 +231,12 @@ interface Harness {
   cleanup: () => void;
 }
 
-function makeHarness(skillBody = FAKE_OK): Harness {
+function makeHarness(skillBody = FAKE_OK, finalizeBody: string | null = FAKE_FINALIZE): Harness {
   const db = createDb(":memory:");
   const { scenarioId, scenario } = seed(db);
   const dir = mkdtempSync(join(homedir(), ".scene-ppt-test-"));
-  const skill = makeSkill(skillBody);
-  const log = join(mkdtempSync(join(tmpdir(), "scene-ppt-log-")), "argv.json");
+  const skill = makeSkill(skillBody, finalizeBody);
+  const log = join(mkdtempSync(join(tmpdir(), "scene-ppt-log-")), "steps.jsonl");
   process.env.PPT_FAKE_LOG = log;
   const events: FollowEvent[] = [];
   return {
@@ -221,7 +293,7 @@ describe("exportReportPptx", () => {
     expect(readFileSync(saved).subarray(0, 2).toString("utf8")).toBe("PK");
 
     // 假导出器记下的命令行：项目目录 + -o 输出 + --no-compat + -f ppt169
-    const logged = JSON.parse(readFileSync(h.log, "utf8")) as { argv: string[]; svgs: string[] };
+    const logged = readLog(h.log).find((r) => r.step === "convert")!;
     const argv = logged.argv;
     expect(argv[1]!.includes("scene-ppt-")).toBe(true); // 临时项目目录
     expect(logged.svgs).toEqual([
@@ -320,6 +392,69 @@ describe("exportReportPptx", () => {
     });
     expect(result.files).toEqual([]);
     expect(result.notice).toContain("PPT 大纲生成失败");
+  });
+
+  it("#144 先 finalize（--only embed-icons fix-rounded）再转档：同一个临时项目目录、逐字一样的参数", async () => {
+    const result = await runExport(h);
+    expect(result.files).toHaveLength(1);
+    const records = readLog(h.log);
+    expect(records.map((r) => r.step)).toEqual(["finalize", "convert"]);
+    const fin = records[0]!;
+    const conv = records[1]!;
+    expect(fin.argv[0]!.endsWith("finalize_svg.py")).toBe(true);
+    expect(fin.argv[1]!.includes("scene-ppt-")).toBe(true);
+    expect(fin.argv.slice(2)).toEqual(["--only", "embed-icons", "fix-rounded"]);
+    // 转档这一步的参数保持原样（不加 -s final：原生转档读 svg_output）
+    expect(conv.argv[1]).toBe(fin.argv[1]);
+    expect(conv.argv.slice(2)).toEqual(["-o", join(fin.argv[1]!, "out.pptx"), "--no-compat", "-f", "ppt169"]);
+    // 进度里明说了这一步，且在"正在转成 PPTX"之前
+    const text = messages(h.events);
+    expect(text).toContain("PPT：正在嵌入图标…");
+    expect(text.indexOf("正在嵌入图标")).toBeLessThan(text.indexOf("正在转成 PPTX"));
+  });
+
+  it("#144 每页都有图标占位（≥4 个/页），收尾之后一个 data-icon 残留都不剩", async () => {
+    await runExport(h);
+    const records = readLog(h.log);
+    const fin = records.find((r) => r.step === "finalize")!;
+    expect(fin.pages).toHaveLength(6);
+    for (const page of fin.pages!) {
+      expect(page.icons, `${page.name} 只有 ${page.icons} 个图标占位`).toBeGreaterThanOrEqual(4);
+      expect(page.residue, `${page.name} 收尾后还有占位残留`).toBe(0);
+    }
+    // 转档器看到 svg_final 时，占位已全部换成图标
+    expect(records.find((r) => r.step === "convert")!.finalResidue).toBe(0);
+  });
+
+  it("#144 finalize 失败（非 0 退出）→ 只 warn，照常导出 pptx", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const bad = makeHarness(FAKE_OK, FAKE_FINALIZE_FAIL);
+    try {
+      const result = await runExport(bad);
+      expect(result.files.length + result.unchanged.length).toBe(1);
+      expect(result.notice ?? "").not.toContain("收尾");
+      expect(warn.mock.calls.map((c) => String(c[0])).join("｜")).toContain("finalize_svg.py");
+      // 收尾失败也照样走到转档（不阻断）
+      expect(readLog(bad.log).map((r) => r.step)).toEqual(["finalize-fail", "convert"]);
+    } finally {
+      bad.cleanup();
+      warn.mockRestore();
+    }
+  });
+
+  it("#144 老技能没有 scripts/finalize_svg.py → 跳过这一步，照常导出（只 warn）", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const old = makeHarness(FAKE_OK, null);
+    try {
+      const result = await runExport(old);
+      expect(result.files.length + result.unchanged.length).toBe(1);
+      expect(readLog(old.log).map((r) => r.step)).toEqual(["convert"]);
+      expect(messages(old.events)).not.toContain("正在嵌入图标");
+      expect(warn.mock.calls.map((c) => String(c[0])).join("｜")).toContain("跳过图标嵌入");
+    } finally {
+      old.cleanup();
+      warn.mockRestore();
+    }
   });
 
   it("转档失败（非 0 退出）→ notice 带 stderr 尾巴，不产文件", async () => {

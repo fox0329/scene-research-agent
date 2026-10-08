@@ -1,15 +1,23 @@
 /**
- * @scene/server — PPT 提示词测试（变更表 #142 收尾）
+ * @scene/server — PPT 提示词测试（变更表 #142 收尾、#144 升）
  *
  * 真跑暴露的问题：模型声明了版式却不给对应字段（`layout: "表格"` 没有 `table`），
  * 确定性层降级后就是一页只有两三条的空页。所以提示词里**必须**有这三条硬约束：
  * ① 版式与字段成套；② 每页写到 12 条以上；③ 给不出字段就用网格要点写满四块。
+ * #144 再加一条：**图标清单原样给模型**（每页一个、每块一个、表头列一一对应），
+ * 且写死"清单外一律兜底 `presentation`"——名字写错那处图标就没了。
  * 再加上重试提示要**点名到页**。这里锁住这些文案，免得以后改提示词又改丢。
  */
 
 import { describe, it, expect } from "vitest";
-import { PPT_LIMITS, type PptPage } from "@scene/contract";
-import { PPT_JSON_SPEC, PPT_LAYOUT_FIELD_RULES, buildPptOutlinePrompt, buildPptRetryPrompt } from "./ppt-prompt.js";
+import { PPT_DEFAULT_ICON, PPT_ICONS, PPT_LIMITS, type PptPage } from "@scene/contract";
+import {
+  PPT_ICON_RULES,
+  PPT_JSON_SPEC,
+  PPT_LAYOUT_FIELD_RULES,
+  buildPptOutlinePrompt,
+  buildPptRetryPrompt,
+} from "./ppt-prompt.js";
 
 /** 首次提示的系统文案（模型真正读到的口径） */
 const firstSystem = buildPptOutlinePrompt("solution", "智慧会议室", "# 正文").system;
@@ -68,6 +76,46 @@ describe("首次提示 —— 硬约束在文案里", () => {
   });
 });
 
+describe("首次提示 —— 图标（#144）", () => {
+  it("白名单**原样**贴在提示词里（模型只能从这 47 个里挑）", () => {
+    for (const name of PPT_ICONS) expect(firstSystem, `清单里少了 ${name}`).toContain(name);
+    expect(PPT_ICON_RULES.join("\n")).toContain(PPT_ICONS.join("、"));
+    // 一个字母都不许改：整份清单是连续的一串
+    expect(firstSystem).toContain(PPT_ICONS.join("、"));
+  });
+
+  it("写死兜底与「不许自创名字」，并说清每处该给几个图标", () => {
+    expect(firstSystem).toContain(`选不出就用 \`${PPT_DEFAULT_ICON}\``);
+    expect(firstSystem).toContain("不许自创名字");
+    expect(firstSystem).toContain("每一页给一个 `icon`");
+    expect(firstSystem).toContain("`table.icons` 与表头列一一对应");
+    expect(firstSystem).toContain("一个字母都不要改");
+  });
+
+  it("按意思挑的对义提示在文案里（台账→file-text、网络→network、风险→alert-triangle）", () => {
+    expect(firstSystem).toContain("台账/清单→file-text");
+    expect(firstSystem).toContain("网络→network");
+    expect(firstSystem).toContain("风险→alert-triangle");
+  });
+
+  it("示例 JSON 里每页 / 每块 / 每阶段都带图标，且名字都在白名单内", () => {
+    const pages = examplePages();
+    for (const p of pages) {
+      expect(PPT_ICONS as readonly string[], `${p.layout} 页缺 icon`).toContain(p.icon);
+      // 示例里每页只写自己用到的字段，缺的那些按空数组过（真实返回也一样）
+      for (const b of p.blocks ?? []) expect(PPT_ICONS as readonly string[]).toContain(b.icon);
+      for (const c of p.columns ?? []) expect(PPT_ICONS as readonly string[]).toContain(c.icon);
+      for (const s of p.stages ?? []) expect(PPT_ICONS as readonly string[]).toContain(s.icon);
+      for (const l of p.layers ?? []) expect(PPT_ICONS as readonly string[]).toContain(l.icon);
+      for (const c of p.cards ?? []) expect(PPT_ICONS as readonly string[]).toContain(c.icon);
+      if (p.table) {
+        expect(p.table.icons).toHaveLength(p.table.head.length); // 与表头列一一对应
+        for (const name of p.table.icons) expect(PPT_ICONS as readonly string[]).toContain(name);
+      }
+    }
+  });
+});
+
 describe("重试提示 —— 点名到页", () => {
   const reason = "第 5 页只有 2 条（每页请写到 12 条以上）";
   const retry = buildPptRetryPrompt("construction", "智慧会议室", reason);
@@ -79,6 +127,9 @@ describe("重试提示 —— 点名到页", () => {
     expect(retry.system).toContain(`每一页都写到 ${PPT_LIMITS.minSentencesPerPage} 条以上有效短句`);
     expect(retry.system).toContain("不要再交一页只有两三条的空页");
     expect(retry.system).toContain("版式与字段必须成套"); // 重试也带上成套规则
+    // 重试是整页重发，图标清单必须一起带上（否则新写的块只能回落兜底图标）
+    expect(retry.system).toContain(PPT_ICONS.join("、"));
+    expect(retry.system).toContain("不许自创名字");
   });
 
   it("没给原因时退回「解析不出来」的口径（旧路径不变）", () => {

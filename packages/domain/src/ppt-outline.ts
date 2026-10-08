@@ -15,10 +15,12 @@
  */
 
 import {
+  PPT_DEFAULT_ICON,
   PPT_DEFAULT_LAYOUT,
   PPT_LAYOUT_ALIASES,
   PPT_LIMITS,
   PPT_LAYOUTS,
+  normalizePptIcon,
   type PptBlock,
   type PptCard,
   type PptColumn,
@@ -124,6 +126,15 @@ function cut(value: unknown, max: number): { text: string; truncated: boolean } 
   return { text: chars.slice(0, max).join(""), truncated: true };
 }
 
+/**
+ * 图标归一：模型给的名字必须在 `PPT_ICONS` 白名单里，否则回落 `PPT_DEFAULT_ICON`
+ *
+ * 判定留在确定性层（渲染层只负责画）：名字写错不该让整页崩，也不该让那一页空着没图标。
+ */
+function iconOf(value: unknown): string {
+  return normalizePptIcon(value);
+}
+
 interface TextList {
   items: string[];
   trimmed: number;
@@ -199,7 +210,7 @@ function blocksOf(value: unknown): Blocks {
     if (head.truncated || note.truncated) trimmed += 1;
     trimmed += lines.trimmed;
     scrubbed += lines.scrubbed;
-    blocks.push({ head: head.text, note: note.text, lines: lines.items });
+    blocks.push({ head: head.text, note: note.text, lines: lines.items, icon: iconOf(o["icon"]) });
   }
   return { blocks, trimmed, scrubbed };
 }
@@ -233,7 +244,7 @@ function columnsOf(value: unknown): Columns {
     const rawLines = Array.isArray(o["lines"]) && o["lines"].length > 0 ? o["lines"] : o["bullets"];
     const lines = textList(rawLines, PPT_LIMITS.columns.lineChars, PPT_LIMITS.columns.maxLines);
     if (head.truncated || note.truncated) trimmed += 1;
-    columns.push({ head: head.text, note: note.text, lines: lines.items });
+    columns.push({ head: head.text, note: note.text, lines: lines.items, icon: iconOf(o["icon"]) });
     trimmed += lines.trimmed;
     scrubbed += lines.scrubbed;
   }
@@ -266,7 +277,7 @@ function stagesOf(value: unknown): Stages {
       continue;
     }
     if (head.truncated || note.truncated) trimmed += 1;
-    stages.push({ head: head.text, note: note.text });
+    stages.push({ head: head.text, note: note.text, icon: iconOf(o["icon"]) });
   }
   return { stages, trimmed, scrubbed };
 }
@@ -299,7 +310,7 @@ function layersOf(value: unknown): Layers {
     if (head.truncated) trimmed += 1;
     trimmed += items.trimmed;
     scrubbed += items.scrubbed;
-    layers.push({ head: head.text, items: items.items });
+    layers.push({ head: head.text, items: items.items, icon: iconOf(o["icon"]) });
   }
   return { layers, trimmed, scrubbed };
 }
@@ -331,7 +342,7 @@ function cardsOf(value: unknown): Cards {
       continue;
     }
     if (value0.truncated || label.truncated) trimmed += 1;
-    cards.push({ value: value0.text, label: label.text });
+    cards.push({ value: value0.text, label: label.text, icon: iconOf(o["icon"]) });
   }
   return { cards, trimmed, scrubbed };
 }
@@ -359,6 +370,9 @@ function tableOf(value: unknown): Table {
   }
   if (head.length < 2) return { table: null, trimmed, scrubbed };
 
+  const rawIcons = Array.isArray(o["icons"]) ? o["icons"] : [];
+  const icons = head.map((_, i) => iconOf(rawIcons[i]));
+
   const rows: string[][] = [];
   const rawRows = Array.isArray(o["rows"]) ? o["rows"] : [];
   if (rawRows.length > PPT_LIMITS.table.maxRows) trimmed += rawRows.length - PPT_LIMITS.table.maxRows;
@@ -379,7 +393,7 @@ function tableOf(value: unknown): Table {
     rows.push(cells);
     if (rows.length >= PPT_LIMITS.table.maxRows) break;
   }
-  return { table: rows.length === 0 ? null : { head, rows }, trimmed, scrubbed };
+  return { table: rows.length === 0 ? null : { head, rows, icons }, trimmed, scrubbed };
 }
 
 // ─── 版式回落 ──────────────────────────────────────────────
@@ -395,6 +409,7 @@ interface PageResult {
 interface SettleArgs {
   layout: PptLayout;
   kicker: string;
+  icon: string;
   title: string;
   subtitle: string;
   highlight: string;
@@ -440,7 +455,7 @@ function unique(lines: readonly string[]): string[] {
  * `网格要点` 不足 3 块 → 降级（3 块照画，2 块以下降级）。降级只搬内容、不删内容。
  */
 function settle(args: SettleArgs): PptPage | null {
-  const { kicker, title, subtitle, highlight, chips, notes } = args;
+  const { kicker, icon, title, subtitle, highlight, chips, notes } = args;
   let { layout } = args;
   let bullets = args.bullets;
   const { blocks, columns, stages, layers, cards, table } = args;
@@ -501,6 +516,7 @@ function settle(args: SettleArgs): PptPage | null {
   return {
     layout,
     kicker,
+    icon,
     title,
     subtitle,
     blocks: layout === "网格要点" ? blocks : [],
@@ -599,6 +615,7 @@ function normalizePage(item: unknown, index: number): PageResult {
   const page = settle({
     layout,
     kicker: kickerText,
+    icon: iconOf(o["icon"]),
     title: title.text,
     subtitle: subtitle.text,
     highlight: highlightText,
@@ -635,6 +652,7 @@ function chunkToBlocks(
     head: i === 0 ? cut(title, PPT_LIMITS.blocks.headChars).text : "",
     note: "",
     lines,
+    icon: PPT_DEFAULT_ICON,
   }));
 }
 

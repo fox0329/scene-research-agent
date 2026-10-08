@@ -1,12 +1,15 @@
 /**
  * @scene/server — 导出 PPT（变更表 #141 立、#142 升：信息量与排版）
  *
- * 用户点一次「导出PPT文档」，全自动跑完四步，不需要任何交互：
+ * 用户点一次「导出PPT文档」，全自动跑完五步，不需要任何交互：
  *   1. **取正文**：当前项目该口径的交付物正文（`solution` / `construction` 各自可导）；
  *   2. **模型产大纲**（一次调用 + 不合要求时重试一次）：严格 JSON、5–10 页、无封面尾页、
- *      问题 → 方案 → 价值、每页写满——口径见 `docs/PPT输出要求.md` 与 `ppt-prompt.ts`；
- *   3. **确定性渲染**：`@scene/infra` 按七种布局画 SVG（绝不让模型写 SVG）；
- *   4. **转档**：调用户本机的 ppt-master 技能（`PPT_MASTER_DIR` 可配）导出 pptx，落到用户选的目录。
+ *      问题 → 方案 → 价值、每页写满、每处内容配图标——口径见 `docs/PPT输出要求.md` 与 `ppt-prompt.ts`；
+ *   3. **确定性渲染**：`@scene/infra` 按七种布局画 SVG（绝不让模型写 SVG）；图标只写
+ *      `data-icon` 占位（渲染层不读技能目录，保持渲染确定性）；
+ *   4. **图标收尾**（变更表 #144）：调技能自带的 `finalize_svg.py --only embed-icons fix-rounded`
+ *      把占位换成真实图标、圆角矩形转路径——**这一步失败只 warn、不阻断**；
+ *   5. **转档**：调用户本机的 ppt-master 技能（`PPT_MASTER_DIR` 可配）导出 pptx，落到用户选的目录。
  *
  * 重试的三种触发（只重试一次）：① 解析不出来；② 页数少于下限；③ **有页面内容太少（空页）**——
  * ③ 是 #142 真跑暴露的问题：模型声明了 `layout` 却不给对应字段，降级后就是一页只有两三条的空清单。
@@ -53,6 +56,16 @@ export function pptMasterDir(): string {
 /** 技能里的导出器脚本；技能没装返回 null（调用方只提示、不报错） */
 export function pptExporterScript(dir = pptMasterDir()): string | null {
   const script = join(dir, "scripts", "svg_to_pptx.py");
+  return existsSync(script) ? script : null;
+}
+
+/**
+ * 技能里的 SVG 收尾脚本（图标嵌入 + 圆角转路径）；老版本技能没有它 → 返回 null（只提示、不报错）
+ *
+ * 与转档脚本同一套"技能目录可配"的口径：`PPT_MASTER_DIR` → `~/.dsh/skills/ppt-master`。
+ */
+export function pptFinalizeScript(dir = pptMasterDir()): string | null {
+  const script = join(dir, "scripts", "finalize_svg.py");
   return existsSync(script) ? script : null;
 }
 
@@ -241,6 +254,49 @@ function renderPages(
   }
 }
 
+/**
+ * 转档前先收尾 SVG（变更表 #144）
+ *
+ * **参数逐字固定**：`finalize_svg.py <项目目录> --only embed-icons fix-rounded`。
+ * `--only` 里**不带 `flatten-text`**：PPT 里的文字必须仍是可编辑文本（`<tspan>` 强调段由
+ * ppt-master 的原生转档保留成同一段落的多个 run）。超时与转档同一套。
+ */
+async function finalizeSvgs(
+  script: string,
+  projectDir: string,
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  try {
+    await run("python3", [script, projectDir, "--only", "embed-icons", "fix-rounded"], {
+      timeout: PPT_EXPORT_TIMEOUT_MS,
+      maxBuffer: 8 * 1024 * 1024,
+    });
+    return { ok: true };
+  } catch (err: unknown) {
+    const e = err as { code?: string; killed?: boolean; stderr?: unknown; message?: string };
+    if (e.code === "ENOENT") return { ok: false, reason: "本机没有可用的 python3" };
+    if (e.killed) return { ok: false, reason: `收尾超过 ${PPT_EXPORT_TIMEOUT_MS / 1000} 秒未完成` };
+    const detail = String(e.stderr ?? e.message ?? "").trim().slice(-300);
+    return { ok: false, reason: detail === "" ? "收尾子进程失败" : detail };
+  }
+}
+
+/**
+ * 图标收尾（找不到脚本 / 跑失败都只 `console.warn`，**绝不阻断导出**）
+ *
+ * 图标是"锦上添花"：技能缺脚本、python3 挂了、图标库对不上，都不该让用户拿不到 pptx。
+ * 技能目录本身缺失走的是上面「找不到 ppt-master 技能」那条既有 notice 分支。
+ */
+async function embedIcons(skillDir: string, projectDir: string, push: PptExportArgs["push"]): Promise<void> {
+  const script = pptFinalizeScript(skillDir);
+  if (script === null) {
+    console.warn("[ppt-export] 技能里没有 scripts/finalize_svg.py，跳过图标嵌入（老版本技能？）");
+    return;
+  }
+  push({ type: "progress", message: "PPT：正在嵌入图标…" });
+  const done = await finalizeSvgs(script, projectDir);
+  if (!done.ok) console.warn(`[ppt-export] finalize_svg.py 未成功，跳过图标嵌入继续导出：${done.reason}`);
+}
+
 /** 跑技能里的导出器（`--no-compat`：本机没装 cairosvg，原生模式在 PowerPoint 里可编辑） */
 async function convertToPptx(
   script: string,
@@ -309,6 +365,7 @@ export async function exportReportPptx(args: PptExportArgs): Promise<PptExportRe
     projectDir = mkdtempSync(join(tmpdir(), `scene-ppt-${safeSegment(scenario.id)}-`));
     const rendered = renderPages(built.outline, projectDir, scenario.name, push);
     if (rendered.svgDir === null) return refuse(`PPT 未导出：${rendered.error ?? "渲染失败"}`);
+    await embedIcons(args.skillDir ?? pptMasterDir(), projectDir, push);
     push({ type: "progress", message: "PPT：正在转成 PPTX…" });
     const outFile = join(projectDir, "out.pptx");
     const converted = await convertToPptx(script, projectDir, outFile);

@@ -77,26 +77,36 @@ export type { ChapterDigest, DigestOptions, SafeWriteResult } from "./md-export.
 export {};export * from "./source-index.js";
 export { reportMarkdownToDocx, type DocxOptions } from "./docx-report.js";
 
-/** PPT 页面渲染（变更表 #141 立、#142 升：白底 + 七种高密度布局） */
+/** PPT 页面渲染（变更表 #141 立、#142 升：白底 + 七种高密度布局；#144 升：图标 + 颜色层次 + 字内强调） */
 export {
   PPT_CANVAS,
   PPT_COLORS,
+  PPT_BAR_COLORS,
   PPT_FONT,
   PPT_FONT_MONO,
+  PPT_TONE_PROBLEM,
+  PPT_TONE_VALUE,
   PPT_LAYOUT_RENDERERS,
   escXml,
   estimateTextWidth,
+  pptBarColor,
+  pptEmphasisOf,
+  pptToneOf,
   wrapText,
   renderPptPage,
   renderPptDeck,
   writePptSvgs,
 } from "./ppt-svg.js";
-export type { PptRenderContext, PptSvgPage } from "./ppt-svg.js";
+export type { PptEmphasis, PptRenderContext, PptSvgPage } from "./ppt-svg.js";
 
-/** PPT 质量门禁（变更表 #142：密度 / 骨架 / 出界 / 压字 / 信息量，确定性判定） */
+/** PPT 质量门禁（#142 立、#144 升：密度 / 骨架 / 出界 / 压字 / 信息量 / 图标 / 颜色 / 强调） */
 export {
   PPT_QUALITY,
+  PPT_SEMANTIC_COLORS,
   checkPptDeck,
+  countSvgColors,
+  countSvgEmphasis,
+  countSvgIcons,
   countSvgShapes,
   countSvgTexts,
   svgTextRects,
