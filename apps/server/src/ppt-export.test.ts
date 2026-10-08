@@ -61,23 +61,48 @@ function seed(db: DbInstance, name = "PPT 场景"): { scenarioId: string; scenar
   return { scenarioId: scenario.id, scenario };
 }
 
-/** 一份合规的 6 页大纲 JSON */
+/** 一份合规的 6 页大纲 JSON（七种布局轮着来，每页都写满） */
 function outlineJson(pages = 6): string {
+  const layouts = ["网格要点", "双栏对比", "流程阶段", "分层架构", "数据卡片", "表格"] as const;
   const page = (i: number): PptPage => ({
-    layout: (["要点", "双栏对比", "数据卡片", "图文说明", "表格", "要点"] as const)[i % 6]!,
+    layout: layouts[i % layouts.length]!,
+    kicker: `小节${i + 1}`,
     title: `第${i + 1}页标题`,
-    takeaway: `第${i + 1}页的一句话要点`,
-    bullets: ["要点甲", "要点乙", "要点丙"],
+    subtitle: `第${i + 1}页的一句副题`,
+    blocks: [
+      { head: "设备台账", note: "谁在现场", lines: ["逐台贴码", "型号一次录清", "换机当场更新"] },
+      { head: "巡检任务", note: "照班次发单", lines: ["派发到人", "漏项提醒", "时间留痕"] },
+      { head: "异常上报", note: "拍照即上报", lines: ["必传照片", "分级通知", "过程可查"] },
+      { head: "数据口径", note: "一处录入", lines: ["只录一次", "同一口径", "对账有据"] },
+    ],
     columns: [
-      { head: "今天", bullets: ["纸质记录"] },
-      { head: "建成后", bullets: ["自动采集"] },
+      { head: "今天", note: "纸质表单", lines: ["纸质记录", "人工统计", "事后补录"] },
+      { head: "建成后", note: "扫码巡检", lines: ["自动采集", "实时看板", "自动派单"] },
+    ],
+    stages: [
+      { head: "样板层", note: "一个楼层先装齐" },
+      { head: "验证", note: "两周比对纸质记录" },
+      { head: "复制", note: "按楼层分批上线" },
+    ],
+    layers: [
+      { head: "应用层", items: ["巡检看板", "异常工单"] },
+      { head: "平台层", items: ["设备纳管", "规则引擎"] },
+      { head: "感知层", items: ["扫码终端", "温湿度探头"] },
     ],
     cards: [
-      { value: "统一纳管", label: "设备台账" },
-      { value: "实时可见", label: "运行状态" },
-      { value: "闭环处置", label: "异常工单" },
+      { value: "12 个", label: "纳管楼层" },
+      { value: "480 台", label: "纳管设备" },
+      { value: "2 天", label: "对账周期" },
     ],
-    table: { head: ["层次", "承担什么"], rows: [["感知层", "采集现场数据"]] },
+    table: {
+      head: ["阶段", "做什么", "谁负责"],
+      rows: [
+        ["样板层", "装齐终端并贴码", "运维班"],
+        ["单点验证", "比对纸质与系统记录", "信息部"],
+      ],
+    },
+    chips: ["扫码巡检"],
+    highlight: `第${i + 1}页的结论带`,
   });
   return JSON.stringify({ pages: Array.from({ length: pages }, (_, i) => page(i)) });
 }

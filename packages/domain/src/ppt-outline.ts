@@ -1,13 +1,14 @@
 /**
- * @scene/domain — PPT 大纲的确定性校验与兜底（变更表 #141）
+ * @scene/domain — PPT 大纲的确定性校验与兜底（变更表 #141 立、#142 升）
  *
- * 模型只产内容（一页页的标题、要点、对比、卡片、表格），**能不能上这一页由本模块说了算**：
- * 页数规模、字段长度、各组数量、禁用词（占位 / 决策建议 / 内部痕迹），全部在这里逐条判定。
+ * 模型只产内容（一页页的小节标签、标题、副题、块/栏/阶段/层/卡片/表格/标签、结论带），
+ * **能不能上这一页由本模块说了算**：页数规模、字段长度、各组数量、布局回落、
+ * 禁用词（占位 / 决策建议 / 内部痕迹），全部在这里逐条判定。
  * 判定留在确定性层（AGENTS.md §三.5），渲染层因此可以假定拿到的页一定能画。
  *
  * 铁律：
  *  - 模型返回不合法 → 明确失败值（`outline: null` + `error`），调用方据此重试一次再兜底提示；
- *  - 页内字段超限 → **截断**（截断不许把一页的正文全部抹掉）；缺布局按「要点」处理；
+ *  - 页内字段超限 → **截断**（截断不许把一页的正文全部抹掉）；缺字段按布局回落，绝不产空版式；
  *  - 页数超上限 → 截掉尾部页面；不足下限 → 保留（无法凭空造页），只记提示。
  *
  * 纯函数、无 IO。
@@ -15,13 +16,17 @@
 
 import {
   PPT_DEFAULT_LAYOUT,
+  PPT_LAYOUT_ALIASES,
   PPT_LIMITS,
   PPT_LAYOUTS,
+  type PptBlock,
   type PptCard,
   type PptColumn,
+  type PptLayer,
   type PptLayout,
   type PptOutline,
   type PptPage,
+  type PptStage,
   type PptTable,
 } from "@scene/contract";
 import { jsonSlice } from "./report-review.js";
@@ -60,7 +65,7 @@ export interface PptOutlineParse {
   dropped: number;
   /** 被截断的字段数（超字数上限或超条目上限） */
   trimmed: number;
-  /** 因禁用词被擦掉的条目数（要点 / 栏内条目 / 卡片 / 表格行） */
+  /** 因禁用词被擦掉的条目数（块行 / 栏行 / 阶段 / 层 / 卡片 / 表格行 / 标签） */
   scrubbed: number;
   /** 提示（页数不足、布局回落、禁用词丢弃等），不阻断 */
   notes: string[];
@@ -84,7 +89,7 @@ interface TextList {
   scrubbed: number;
 }
 
-/** 字符串数组（要点 / 栏内条目）：去空、去重、擦禁用词、截断、限量 */
+/** 字符串数组（内容行 / 标签）：去空、去重、擦禁用词、截断、限量 */
 function textList(value: unknown, max: number, limit: number): TextList {
   const items: string[] = [];
   let trimmed = 0;
@@ -104,12 +109,58 @@ function textList(value: unknown, max: number, limit: number): TextList {
   return { items: items.slice(0, limit), trimmed, scrubbed };
 }
 
-/** 布局归一：缺 / 不认识的取值一律按「要点」排（内容比版式重要） */
+/** 布局归一：缺 / 旧名 / 不认识的取值按兜底布局排（内容比版式重要） */
 function layoutOf(value: unknown): { layout: PptLayout; note?: string } {
   const raw = typeof value === "string" ? value.trim() : "";
   if ((PPT_LAYOUTS as readonly string[]).includes(raw)) return { layout: raw as PptLayout };
+  const alias = PPT_LAYOUT_ALIASES[raw];
+  if (alias) return { layout: alias };
   if (raw === "") return { layout: PPT_DEFAULT_LAYOUT };
-  return { layout: PPT_DEFAULT_LAYOUT, note: `布局「${cut(raw, 12).text}」不认识，按「要点」排` };
+  return {
+    layout: PPT_DEFAULT_LAYOUT,
+    note: `布局「${cut(raw, 12).text}」不认识，按「${PPT_DEFAULT_LAYOUT}」排`,
+  };
+}
+
+// ─── 各布局的字段归一 ──────────────────────────────────────
+
+interface Blocks {
+  blocks: PptBlock[];
+  trimmed: number;
+  scrubbed: number;
+}
+
+/** 网格要点：最多 4 块，块头 / 小注 / 内容行逐项截断与擦禁用词 */
+function blocksOf(value: unknown): Blocks {
+  let trimmed = 0;
+  let scrubbed = 0;
+  const blocks: PptBlock[] = [];
+  if (!Array.isArray(value)) return { blocks, trimmed, scrubbed };
+  const limit = PPT_LIMITS.blocks.count;
+  if (value.length > limit) trimmed += value.length - limit;
+  for (const raw of value.slice(0, limit)) {
+    if (typeof raw !== "object" || raw === null) {
+      scrubbed += 1;
+      continue;
+    }
+    const o = raw as Record<string, unknown>;
+    const head = cut(o["head"], PPT_LIMITS.blocks.headChars);
+    const note = cut(o["note"], PPT_LIMITS.blocks.noteChars);
+    if (hasPptBanned(`${head.text}｜${note.text}`)) {
+      scrubbed += 1;
+      continue;
+    }
+    const lines = textList(o["lines"], PPT_LIMITS.blocks.lineChars, PPT_LIMITS.blocks.maxLines);
+    if (head.text === "" && lines.items.length === 0) {
+      scrubbed += 1;
+      continue;
+    }
+    if (head.truncated || note.truncated) trimmed += 1;
+    trimmed += lines.trimmed;
+    scrubbed += lines.scrubbed;
+    blocks.push({ head: head.text, note: note.text, lines: lines.items });
+  }
+  return { blocks, trimmed, scrubbed };
 }
 
 interface Columns {
@@ -118,7 +169,7 @@ interface Columns {
   scrubbed: number;
 }
 
-/** 双栏：恰好 2 组，组标题与条目都要合规，超限截断 */
+/** 双栏对比：恰好 2 组，栏头 / 小注 / 内容行都要合规，超限截断 */
 function columnsOf(value: unknown): Columns {
   let trimmed = 0;
   let scrubbed = 0;
@@ -132,17 +183,84 @@ function columnsOf(value: unknown): Columns {
     }
     const o = raw as Record<string, unknown>;
     const head = cut(o["head"], PPT_LIMITS.columns.headChars);
+    const note = cut(o["note"], PPT_LIMITS.columns.noteChars);
+    if (head.text === "" || hasPptBanned(`${head.text}｜${note.text}`)) {
+      scrubbed += 1;
+      continue;
+    }
+    // 兼容 #141 的 `bullets` 字段名
+    const rawLines = Array.isArray(o["lines"]) && o["lines"].length > 0 ? o["lines"] : o["bullets"];
+    const lines = textList(rawLines, PPT_LIMITS.columns.lineChars, PPT_LIMITS.columns.maxLines);
+    if (head.truncated || note.truncated) trimmed += 1;
+    columns.push({ head: head.text, note: note.text, lines: lines.items });
+    trimmed += lines.trimmed;
+    scrubbed += lines.scrubbed;
+  }
+  return { columns, trimmed, scrubbed };
+}
+
+interface Stages {
+  stages: PptStage[];
+  trimmed: number;
+  scrubbed: number;
+}
+
+/** 流程阶段：3–5 个，多则截、不够由 settle 回落 */
+function stagesOf(value: unknown): Stages {
+  let trimmed = 0;
+  let scrubbed = 0;
+  const stages: PptStage[] = [];
+  if (!Array.isArray(value)) return { stages, trimmed, scrubbed };
+  if (value.length > PPT_LIMITS.stages.max) trimmed += value.length - PPT_LIMITS.stages.max;
+  for (const raw of value.slice(0, PPT_LIMITS.stages.max)) {
+    if (typeof raw !== "object" || raw === null) {
+      scrubbed += 1;
+      continue;
+    }
+    const o = raw as Record<string, unknown>;
+    const head = cut(o["head"], PPT_LIMITS.stages.headChars);
+    const note = cut(o["note"], PPT_LIMITS.stages.noteChars);
+    if (head.text === "" || hasPptBanned(`${head.text}｜${note.text}`)) {
+      scrubbed += 1;
+      continue;
+    }
+    if (head.truncated || note.truncated) trimmed += 1;
+    stages.push({ head: head.text, note: note.text });
+  }
+  return { stages, trimmed, scrubbed };
+}
+
+interface Layers {
+  layers: PptLayer[];
+  trimmed: number;
+  scrubbed: number;
+}
+
+/** 分层架构：3–4 层，每层 2–4 个组件 */
+function layersOf(value: unknown): Layers {
+  let trimmed = 0;
+  let scrubbed = 0;
+  const layers: PptLayer[] = [];
+  if (!Array.isArray(value)) return { layers, trimmed, scrubbed };
+  if (value.length > PPT_LIMITS.layers.max) trimmed += value.length - PPT_LIMITS.layers.max;
+  for (const raw of value.slice(0, PPT_LIMITS.layers.max)) {
+    if (typeof raw !== "object" || raw === null) {
+      scrubbed += 1;
+      continue;
+    }
+    const o = raw as Record<string, unknown>;
+    const head = cut(o["head"], PPT_LIMITS.layers.headChars);
     if (head.text === "" || hasPptBanned(head.text)) {
       scrubbed += 1;
       continue;
     }
+    const items = textList(o["items"], PPT_LIMITS.layers.itemChars, PPT_LIMITS.layers.maxItems);
     if (head.truncated) trimmed += 1;
-    const bullets = textList(o["bullets"], PPT_LIMITS.columns.bulletChars, PPT_LIMITS.columns.bullets);
-    columns.push({ head: head.text, bullets: bullets.items });
-    trimmed += bullets.trimmed;
-    scrubbed += bullets.scrubbed;
+    trimmed += items.trimmed;
+    scrubbed += items.scrubbed;
+    layers.push({ head: head.text, items: items.items });
   }
-  return { columns, trimmed, scrubbed };
+  return { layers, trimmed, scrubbed };
 }
 
 interface Cards {
@@ -223,6 +341,8 @@ function tableOf(value: unknown): Table {
   return { table: rows.length === 0 ? null : { head, rows }, trimmed, scrubbed };
 }
 
+// ─── 版式回落 ──────────────────────────────────────────────
+
 /** 一页的归一化结果（page === null = 这页非法，丢掉） */
 interface PageResult {
   page: PptPage | null;
@@ -233,61 +353,133 @@ interface PageResult {
 
 interface SettleArgs {
   layout: PptLayout;
+  kicker: string;
   title: string;
-  takeaway: string;
-  bullets: string[];
+  subtitle: string;
+  highlight: string;
+  blocks: PptBlock[];
   columns: PptColumn[];
+  stages: PptStage[];
+  layers: PptLayer[];
   cards: PptCard[];
   table: PptTable | null;
+  chips: string[];
+  bullets: string[];
   notes: string[];
 }
 
+/** 把各布局的内容摊平成一行行短句（降级到「要点清单」时用，尽量不丢内容） */
+function flatten(args: {
+  blocks: readonly PptBlock[];
+  columns: readonly PptColumn[];
+  stages: readonly PptStage[];
+  layers: readonly PptLayer[];
+  cards: readonly PptCard[];
+}): string[] {
+  const out: string[] = [];
+  for (const b of args.blocks) out.push(...b.lines);
+  for (const c of args.columns) out.push(...c.lines);
+  for (const s of args.stages) out.push(s.note === "" ? s.head : `${s.head}：${s.note}`);
+  for (const l of args.layers) out.push(`${l.head}：${l.items.join("、")}`);
+  for (const c of args.cards) out.push(c.label === "" ? c.value : `${c.value}：${c.label}`);
+  return out;
+}
+
+/** 去重（保序） */
+function unique(lines: readonly string[]): string[] {
+  const out: string[] = [];
+  for (const line of lines) if (line !== "" && !out.includes(line)) out.push(line);
+  return out;
+}
+
 /**
- * 版式回落：这一页的内容撑不起它自己要的版式时，降级到「要点」而不是留一张空版式
+ * 版式回落：这一页的内容撑不起它自己要的版式时，降级到「要点清单」而不是留一张空版式
  *
- * 例：`双栏对比` 只给了一栏 → 按要点排它那一栏的条目；`表格` 没给出合规表 → 按要点排。
+ * 例：`双栏对比` 只给了一栏 → 它的内容搬进要点行；`分层架构` 不足 3 层 → 同上；
+ * `网格要点` 不足 3 块 → 降级（3 块照画，2 块以下降级）。降级只搬内容、不删内容。
  */
 function settle(args: SettleArgs): PptPage | null {
-  const { title, takeaway, notes } = args;
-  let { layout, columns, cards, table } = args;
+  const { kicker, title, subtitle, highlight, chips, notes } = args;
+  let { layout } = args;
   let bullets = args.bullets;
+  const { blocks, columns, stages, layers, cards, table } = args;
   const fallback: string[] = [];
 
-  if (layout === "双栏对比" && columns.length < PPT_LIMITS.columns.count) {
-    for (const c of columns) fallback.push(...c.bullets);
-    fallback.push(...columns.filter((c) => c.bullets.length === 0).map((c) => c.head));
-    notes.push("双栏对比不足两栏，按要点排");
+  /** 降级到兜底布局：把本布局的内容摊平留给要点行 */
+  const degrade = (reason: string, lines: readonly string[]): void => {
+    notes.push(`${reason}，按「${PPT_DEFAULT_LAYOUT}」排`);
+    fallback.push(...lines);
     layout = PPT_DEFAULT_LAYOUT;
-    columns = [];
-    cards = [];
-    table = null;
+  };
+
+  if (layout === "网格要点" && blocks.length < PPT_LIMITS.blocks.min) {
+    degrade(`网格要点不足 ${PPT_LIMITS.blocks.min} 块`, flatten({ blocks, columns: [], stages: [], layers: [], cards: [] }));
+  }
+  if (layout === "双栏对比" && columns.length < PPT_LIMITS.columns.count) {
+    degrade("双栏对比不足两栏", flatten({ blocks: [], columns, stages: [], layers: [], cards: [] }));
+  }
+  if (layout === "流程阶段" && stages.length < PPT_LIMITS.stages.min) {
+    degrade(
+      `流程阶段不足 ${PPT_LIMITS.stages.min} 个`,
+      flatten({ blocks: [], columns: [], stages, layers: [], cards: [] }),
+    );
+  }
+  if (layout === "分层架构" && layers.length < PPT_LIMITS.layers.min) {
+    degrade(
+      `分层架构不足 ${PPT_LIMITS.layers.min} 层`,
+      flatten({ blocks: [], columns: [], stages: [], layers, cards: [] }),
+    );
   }
   if (layout === "数据卡片" && cards.length < PPT_LIMITS.cards.min) {
-    fallback.push(...cards.map((c) => (c.label === "" ? c.value : `${c.value}：${c.label}`)));
-    notes.push(`数据卡片不足 ${PPT_LIMITS.cards.min} 张，按要点排`);
-    layout = PPT_DEFAULT_LAYOUT;
-    columns = [];
-    cards = [];
+    degrade(
+      `数据卡片不足 ${PPT_LIMITS.cards.min} 张`,
+      flatten({ blocks: [], columns: [], stages: [], layers: [], cards }),
+    );
   }
   if (layout === "表格" && table === null) {
-    notes.push("表格页没有合规表格，按要点排");
-    layout = PPT_DEFAULT_LAYOUT;
-    columns = [];
-    cards = [];
+    degrade("表格页没有合规表格", bullets);
   }
-  if (bullets.length === 0) bullets = fallback.slice(0, PPT_LIMITS.bullets.max);
+
+  if (layout === PPT_DEFAULT_LAYOUT) {
+    // 要点清单：优先用模型给的 bullets，不够就用降级兜底的行补足
+    const pool = unique([...bullets, ...fallback]).map((line) => cut(line, PPT_LIMITS.bullets.chars).text);
+    bullets = unique(pool).slice(0, PPT_LIMITS.bullets.max);
+  }
 
   const hasContent =
-    bullets.length > 0 || columns.length > 0 || cards.length > 0 || table !== null || takeaway !== "";
+    bullets.length > 0 ||
+    blocks.length > 0 ||
+    columns.length > 0 ||
+    stages.length > 0 ||
+    layers.length > 0 ||
+    cards.length > 0 ||
+    table !== null ||
+    subtitle !== "";
   if (!hasContent) return null;
-  return { layout, title, takeaway, bullets, columns, cards, table };
+
+  return {
+    layout,
+    kicker,
+    title,
+    subtitle,
+    blocks: layout === "网格要点" ? blocks : [],
+    columns: layout === "双栏对比" ? columns : [],
+    stages: layout === "流程阶段" ? stages : [],
+    layers: layout === "分层架构" ? layers : [],
+    cards: layout === "数据卡片" ? cards : [],
+    table: layout === "表格" ? table : null,
+    chips,
+    highlight,
+    takeaway: subtitle,
+    bullets,
+  };
 }
 
 /**
  * 一页的逐条校验
  *
- * 顺序很重要：先判标题与禁用词（页级问题只能丢页），再把超限字段截断，
- * 最后按布局补齐/回落——**任何一步都不许把一页的正文抹干净**（抹干净就丢页，不产空页）。
+ * 顺序很重要：先判标签 / 标题 / 副题 / 结论带的禁用词（页级问题只能丢页），
+ * 再把超限字段截断，最后按布局补齐 / 回落——**任何一步都不许把一页的正文抹干净**。
  */
 function normalizePage(item: unknown, index: number): PageResult {
   const where = `第 ${index + 1} 页`;
@@ -296,11 +488,16 @@ function normalizePage(item: unknown, index: number): PageResult {
   }
   const o = item as Record<string, unknown>;
   const title = cut(o["title"], PPT_LIMITS.titleChars);
-  const takeaway = cut(o["takeaway"], PPT_LIMITS.takeawayChars);
   if (title.text === "") {
     return { page: null, trimmed: 0, scrubbed: 0, notes: [`${where}没有标题，已丢弃`] };
   }
-  const banned = pptBannedHit(`${title.text}｜${takeaway.text}`);
+  // 副题：新字段优先，缺则回退 #141 的 `takeaway`
+  const subtitle = cut(o["subtitle"] ?? o["takeaway"], PPT_LIMITS.subtitleChars);
+  const kicker = cut(o["kicker"], PPT_LIMITS.kickerChars);
+  const highlight = cut(o["highlight"], PPT_LIMITS.highlightChars);
+  const banned = pptBannedHit(
+    `${kicker.text}｜${title.text}｜${subtitle.text}｜${highlight.text}`,
+  );
   if (banned !== null) {
     return {
       page: null,
@@ -311,31 +508,93 @@ function normalizePage(item: unknown, index: number): PageResult {
   }
 
   const notes: string[] = [];
-  let trimmed = (title.truncated ? 1 : 0) + (takeaway.truncated ? 1 : 0);
+  let trimmed =
+    (title.truncated ? 1 : 0) +
+    (subtitle.truncated ? 1 : 0) +
+    (kicker.truncated ? 1 : 0) +
+    (highlight.truncated ? 1 : 0);
   const { layout, note } = layoutOf(o["layout"]);
   if (note) notes.push(`${where}${note}`);
+
   const bullets = textList(o["bullets"], PPT_LIMITS.bullets.chars, PPT_LIMITS.bullets.max);
+  const chips = textList(o["chips"], PPT_LIMITS.chips.chars, PPT_LIMITS.chips.max);
+  const blocks = blocksOf(o["blocks"]);
   const cols = columnsOf(o["columns"]);
+  const stages = stagesOf(o["stages"]);
+  const layers = layersOf(o["layers"]);
   const cards = cardsOf(o["cards"]);
   const table = tableOf(o["table"]);
-  trimmed += bullets.trimmed + cols.trimmed + cards.trimmed + table.trimmed;
-  const scrubbed = bullets.scrubbed + cols.scrubbed + cards.scrubbed + table.scrubbed;
+  trimmed +=
+    bullets.trimmed +
+    chips.trimmed +
+    blocks.trimmed +
+    cols.trimmed +
+    stages.trimmed +
+    layers.trimmed +
+    cards.trimmed +
+    table.trimmed;
+  const scrubbed =
+    bullets.scrubbed +
+    chips.scrubbed +
+    blocks.scrubbed +
+    cols.scrubbed +
+    stages.scrubbed +
+    layers.scrubbed +
+    cards.scrubbed +
+    table.scrubbed;
   if (scrubbed > 0) notes.push(`${where}擦掉 ${scrubbed} 处不能进客户材料的内容`);
+
+  // 兼容 #141：缺 `blocks` 但有 `bullets` → 转成 1–2 块（不足 3 块再由 settle 降级到要点清单）
+  let normalizedBlocks = blocks.blocks;
+  if (normalizedBlocks.length === 0 && bullets.items.length > 0) {
+    normalizedBlocks = chunkToBlocks(bullets.items, title.text, notes, where);
+  }
+  // 小节标签缺失 → 用标题前 8 字兜底（胶囊必须存在，不然页面缺一个锚点）
+  const kickerText = kicker.text === "" ? cut(title.text, PPT_LIMITS.kickerChars).text : kicker.text;
+  if (kicker.text === "") notes.push(`${where}缺小节标签，用标题前 ${PPT_LIMITS.kickerChars} 字兜底`);
+  // 结论带缺失 → 用副题（副题也空 → 用标题），保证每页都有一条
+  const highlightText = highlight.text === "" ? subtitle.text || title.text : highlight.text;
 
   const page = settle({
     layout,
+    kicker: kickerText,
     title: title.text,
-    takeaway: takeaway.text,
-    bullets: bullets.items,
+    subtitle: subtitle.text,
+    highlight: highlightText,
+    blocks: normalizedBlocks,
     columns: cols.columns,
+    stages: stages.stages,
+    layers: layers.layers,
     cards: cards.cards,
     table: table.table,
+    chips: chips.items,
+    bullets: bullets.items,
     notes,
   });
   if (page === null) {
     return { page: null, trimmed, scrubbed, notes: [...notes, `${where}没有可展示的内容，已丢弃`] };
   }
   return { page, trimmed, scrubbed, notes };
+}
+
+/** 旧 `bullets` → 1–2 块（每块最多 4 行；块头用标题，第二块无头） */
+function chunkToBlocks(
+  bullets: readonly string[],
+  title: string,
+  notes: string[],
+  where: string,
+): PptBlock[] {
+  const size = PPT_LIMITS.blocks.maxLines;
+  const chunks: string[][] = [];
+  for (let i = 0; i < bullets.length && chunks.length < 2; i += size) {
+    chunks.push(bullets.slice(i, i + size));
+  }
+  notes.push(`${where}用的是旧 bullets 字段，已转成 ${chunks.length} 块`);
+  return chunks.map((lines, i) => ({
+    head: i === 0 ? cut(title, PPT_LIMITS.blocks.headChars).text : "",
+    note: "",
+    lines,
+  }));
 }
 
 /** 整体失败值（调用方据此重试一次 / 提示"未导出 PPT"） */

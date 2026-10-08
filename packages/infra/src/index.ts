@@ -77,11 +77,12 @@ export type { ChapterDigest, DigestOptions, SafeWriteResult } from "./md-export.
 export {};export * from "./source-index.js";
 export { reportMarkdownToDocx, type DocxOptions } from "./docx-report.js";
 
-/** PPT 页面渲染（变更表 #141：确定性 SVG，五种布局） */
+/** PPT 页面渲染（变更表 #141 立、#142 升：白底 + 七种高密度布局） */
 export {
   PPT_CANVAS,
   PPT_COLORS,
   PPT_FONT,
+  PPT_FONT_MONO,
   PPT_LAYOUT_RENDERERS,
   escXml,
   estimateTextWidth,
@@ -91,3 +92,13 @@ export {
   writePptSvgs,
 } from "./ppt-svg.js";
 export type { PptRenderContext, PptSvgPage } from "./ppt-svg.js";
+
+/** PPT 质量门禁（变更表 #142：密度 / 骨架 / 出界 / 压字 / 信息量，确定性判定） */
+export {
+  PPT_QUALITY,
+  checkPptDeck,
+  countSvgShapes,
+  countSvgTexts,
+  svgTextRects,
+} from "./ppt-quality.js";
+export type { PptQualityCode, PptQualityIssue, PptTextRect } from "./ppt-quality.js";
