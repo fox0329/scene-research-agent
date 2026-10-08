@@ -9,8 +9,16 @@
  * - 空数据降级、文件命名规则
  */
 
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import { describe, it, expect } from "vitest";
-import { exportDeliverables, exportFileName } from "./md-export.js";
+import {
+  backupBeforeOverwrite,
+  exportDeliverables,
+  exportFileName,
+} from "./md-export.js";
 import type { DeliverableInput, StageData } from "@scene/contract";
 
 // ─── 测试数据构造 ────────────────────────────────────────────
@@ -305,4 +313,23 @@ describe("exportDeliverables — 空数据", () => {
     expect(internal_report).toContain("本场景处在办公空间与协同软件的交叉点。");
   });
 
+});
+
+describe("backupBeforeOverwrite", () => {
+  it("覆盖前把旧内容留进 .history/，手改不会被静默吃掉", () => {
+    const dir = mkdtempSync(join(tmpdir(), "scene-bak-"));
+    try {
+      const file = join(dir, "智慧会议室 内部调研报告 2026-10-07.md");
+      writeFileSync(file, "第一版（用户手改）", "utf8");
+      const saved = backupBeforeOverwrite(file);
+      expect(saved).toBeTruthy();
+      expect(readFileSync(saved!, "utf8")).toBe("第一版（用户手改）");
+      writeFileSync(file, "第二版（重新生成）", "utf8");
+      expect(readFileSync(file, "utf8")).toBe("第二版（重新生成）");
+      // 文件不存在时不留档、不报错
+      expect(backupBeforeOverwrite(join(dir, "没有这个文件.md"))).toBeNull();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });

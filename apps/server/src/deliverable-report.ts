@@ -17,7 +17,12 @@ import { join } from "node:path";
 import type { DshClient, FollowEvent, Scenario, SessionHandle, StageData } from "@scene/contract";
 import { reportChaptersOf, tableDef } from "@scene/contract";
 import type { DbInstance } from "@scene/infra";
-import { buildReportMarkdown, reportChapterDigest, type ChapterDigest } from "@scene/infra";
+import {
+  backupBeforeOverwrite,
+  buildReportMarkdown,
+  reportChapterDigest,
+  type ChapterDigest,
+} from "@scene/infra";
 import { missingChapterArtifacts, proseChars } from "@scene/domain";
 import {
   REPORT_MIN_CHARS,
@@ -466,6 +471,8 @@ export function createDeliverableReportCommand(deps: DeliverableReportDeps) {
           result.retried = result.retried || written.retried;
           if (written.violations.some((v) => v.hard)) result.passed = false;
           mkdirSync(deliverableDir(), { recursive: true });
+          // 用户会直接在交付物上改字：覆盖前留档，手改永远可恢复（变更表 #127）
+          backupBeforeOverwrite(deliverableReportPath(scenario.id, kind));
           writeFileSync(deliverableReportPath(scenario.id, kind), written.markdown, "utf8");
         }
       } catch (err: unknown) {

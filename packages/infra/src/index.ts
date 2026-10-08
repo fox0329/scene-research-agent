@@ -63,10 +63,12 @@ export type { ConnectionCheckResult, ModelsFetchResult } from "./provider-check.
 
 /** 交付物导出（Markdown） */
 export {
+  backupBeforeOverwrite,
   exportDeliverables,
   exportFileName,
   buildReportMarkdown,
   reportChapterDigest,
+  reportDateOf,
 } from "./md-export.js";
 export type { ChapterDigest, DigestOptions } from "./md-export.js";
 

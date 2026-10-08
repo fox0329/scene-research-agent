@@ -1553,15 +1553,14 @@ export const REPORT_CHAPTERS: readonly ReportChapter[] = [
   {
     key: "problems",
     label: "场景与问题",
+    /* 变更表 #127：用户定稿只保留「场景边界 + 典型问题」，门槛与合规不再进交付物 */
     sections: [
       { title: "场景边界", keywords: ["边界"] },
       { title: "典型问题", keywords: ["问题", "痛点"] },
-      { title: "门槛与合规", keywords: ["门槛", "合规"] },
     ],
     internal: [
       { code: "表1-2", heading: "各环节现在的问题", cols: ["link", "pain"] },
       { code: "表3-8", heading: "没被满足的需求（内部排序与验证）", cols: ["rank", "gap", "who_hurts", "pain_level", "current_alternative", "cross_validation"] },
-      { code: "表1-3", heading: "门槛与合规", cols: ["barrier_type", "barrier_name", "veto_holder", "criteria", "industry_practice"] },
       { code: "表3-4", heading: "竞争对手位势（内部）", cols: ["dimension", "competitor_a", "competitor_b", "competitor_c"] },
       { code: "表3-6", heading: "替代方案，客户为什么会选它（内部）", cols: ["alternative", "customer_gets", "unit_cost", "chosen_when"] },
       { code: "表3-7", heading: "同行踩过的坑（内部复盘）", cols: ["pitfall", "consequence", "avoid_in_design"] },
@@ -1569,7 +1568,6 @@ export const REPORT_CHAPTERS: readonly ReportChapter[] = [
     external: [
       { code: "表1-2", heading: "各环节现在的问题", cols: ["link", "pain"] },
       { code: "表3-8", heading: "今天还没被满足的需求", cols: ["gap", "who_hurts", "pain_level", "current_alternative"] },
-      { code: "表1-3", heading: "门槛与合规要求", cols: ["barrier_type", "barrier_name", "criteria"] },
     ],
   },
   {
@@ -1581,7 +1579,6 @@ export const REPORT_CHAPTERS: readonly ReportChapter[] = [
       { title: "主辅职责对照", keywords: ["职责", "主辅"], artifacts: ["table"] },
       { title: "连接关系与接口", keywords: ["连接", "接口"], artifacts: ["numbered-connections"] },
       { title: "选型与配置", keywords: ["选型", "配置", "组成", "清单"], artifacts: ["table"] },
-      { title: "实施要点", keywords: ["实施", "要点", "部署"] },
     ],
     internal: [
       { code: "表4-2", heading: "我方在哪些环节参与、以什么角色", cols: ["link", "can_touch", "our_role", "role_reason"] },

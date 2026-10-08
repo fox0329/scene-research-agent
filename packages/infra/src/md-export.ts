@@ -28,6 +28,9 @@
  * 输出纯 Markdown 字符串，不写文件。
  */
 
+import { copyFileSync, existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
+import { basename, dirname, join } from "node:path";
+
 import {
   INTERNAL_APPENDIX_SECTIONS,
   REPORT_GLOSSARY,
@@ -42,7 +45,36 @@ import {
   type StageData,
 } from "@scene/contract";
 
+// ─── 覆盖留档 ──────────────────────────────────────────────
+
+/**
+ * 覆盖前留档：把已有文件复制到同目录 `.history/<名字>.<时间戳>.md`
+ *
+ * 用户会直接在交付物上改字（删章节、改措辞），而"重新生成/重新导出"必然整篇覆盖。
+ * 留一份历史，手改永远不会被静默吃掉；每个文件最多保留最近 10 份。
+ */
+export function backupBeforeOverwrite(path: string): string | null {
+  if (!existsSync(path)) return null;
+  const dir = join(dirname(path), ".history");
+  mkdirSync(dir, { recursive: true });
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+  const target = join(dir, `${basename(path, ".md")}.${stamp}.md`);
+  copyFileSync(path, target);
+  const kept = readdirSync(dir)
+    .filter((f) => f.startsWith(`${basename(path, ".md")}.`))
+    .sort()
+    .reverse();
+  for (const old of kept.slice(10)) rmSync(join(dir, old), { force: true });
+  return target;
+}
+
 // ─── 命名规则（00b §11.5） ──────────────────────────────────
+
+/** 取报告自己的生成日期（封面 `> **生成日期**：YYYY-MM-DD`），取不到再用兜底日期 */
+export function reportDateOf(markdown: string, fallback: string): string {
+  const m = markdown.match(/>\s*\*\*(?:生成)?日期\*\*：\s*(\d{4}-\d{2}-\d{2})/);
+  return m?.[1] ?? fallback;
+}
 
 /** 报告类型名（标题与文件名共用） */
 export function reportTypeName(type: "internal" | "external"): string {

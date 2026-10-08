@@ -14,7 +14,13 @@ import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "no
 import { join } from "node:path";
 import type { Scenario } from "@scene/contract";
 import type { DbInstance } from "@scene/infra";
-import { buildReportMarkdown, exportFileName, type ChapterDigest } from "@scene/infra";
+import {
+  backupBeforeOverwrite,
+  buildReportMarkdown,
+  exportFileName,
+  reportDateOf,
+  type ChapterDigest,
+} from "@scene/infra";
 import { reportChapterDigest } from "@scene/infra";
 import { deliverableDir, deliverableReportPath } from "./deliverable-report.js";
 
@@ -85,9 +91,15 @@ export function writeReportFiles(
   const pair = getReportPair(db, scenario);
   const outDir = exportDir();
   mkdirSync(outDir, { recursive: true });
-  const date = new Date().toISOString().slice(0, 10);
-  const internalPath = join(outDir, exportFileName(scenario.name, "internal", date));
-  const externalPath = join(outDir, exportFileName(scenario.name, "external", date));
+  // 文件名用报告自己的生成日期：隔天导出不会再生成一份日期不同的同名报告
+  const today = new Date().toISOString().slice(0, 10);
+  const internalDate = reportDateOf(pair.internal.markdown, today);
+  const externalDate = reportDateOf(pair.external.markdown, today);
+  const internalPath = join(outDir, exportFileName(scenario.name, "internal", internalDate));
+  const externalPath = join(outDir, exportFileName(scenario.name, "external", externalDate));
+  // 导出即覆盖：先把上一版移进 .history/，避免手改被静默吃掉（变更表 #127）
+  backupBeforeOverwrite(internalPath);
+  backupBeforeOverwrite(externalPath);
   writeFileSync(internalPath, pair.internal.markdown, "utf8");
   writeFileSync(externalPath, pair.external.markdown, "utf8");
   return { internal_path: internalPath, external_path: externalPath };
