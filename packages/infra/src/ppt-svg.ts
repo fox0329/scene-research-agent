@@ -857,17 +857,45 @@ function checklistLines(page: PptPage): string[] {
   return out.slice(0, PPT_LIMITS.bullets.max);
 }
 
-/** 要点清单（兜底布局）：大序号 + 一行大字 */
+/** 要点行的断句符（把一条要点拆成「主句 + 次要说明」） */
+const ITEM_BREAKS = "：:，,；;、";
+
+/**
+ * 一条要点 → 主句 + 次要说明
+ *
+ * 在第一个"断得出两边"的标点处断（主句 ≥6 字、说明 ≥4 字），断不出就不拆、整条当主句。
+ * 这样模型给的 `head：note`（降级路径）天然会拆开，`短句，补充` 也会拆成两行，页面才有层次。
+ */
+function splitItem(text: string): { head: string; note: string } {
+  const chars = Array.from(text);
+  for (const [i, ch] of chars.entries()) {
+    if (!ITEM_BREAKS.includes(ch)) continue;
+    const head = chars.slice(0, i).join("").trim();
+    const note = chars.slice(i + 1).join("").trim();
+    if (Array.from(head).length >= 6 && Array.from(note).length >= 4) return { head, note };
+  }
+  return { head: text, note: "" };
+}
+
+/**
+ * 要点清单（兜底布局）：大序号 + 一行大字 + 次要说明行 + 条间分隔线
+ *
+ * 这是兜底版式，但**兜底也不许是一张白页**：每条给足三件（44×44 序号底衬 / 20px 主句 /
+ * 15px 次要说明），条与条之间加一条 1px 浅蓝分隔线——5 条时形状数也过质量门禁的密度线（22）。
+ * 次要说明来自这一条自己的后半句（`splitItem`），断不出就只画主句（那一行垂直居中）。
+ */
 function renderChecklist(page: PptPage): string {
-  const lines = checklistLines(page);
-  const n = lines.length;
+  const items = checklistLines(page).map(splitItem);
+  const n = items.length;
   if (n === 0) return "";
   const gap = LIST.gap;
   const rowH = Math.min(LIST.rowH, Math.floor((BODY.h - gap * (n - 1)) / n));
-  return lines
-    .map((text, i) => {
+  const maxW = CONTENT_W - 80 - 24;
+  return items
+    .map((item, i) => {
       const y = BODY.top + i * (rowH + gap);
       const boxY = y + (rowH - 44) / 2;
+      const mid = y + rowH / 2;
       return [
         `<g id="item-${i + 1}">`,
         rect({ x: PAD, y, w: CONTENT_W, h: rowH, fill: PPT_COLORS.card, stroke: PPT_COLORS.border, strokeWidth: 1.5, rx: 10 }),
@@ -884,12 +912,32 @@ function renderChecklist(page: PptPage): string {
         textBlock({
           id: `item-${i + 1}-text`,
           x: PAD + 80,
-          y: y + rowH / 2 + 20 * 0.35,
+          y: item.note === "" ? mid + 20 * 0.35 : mid - 6,
           size: 20,
           fill: PPT_COLORS.text,
-          lines: wrapText(text, 20, CONTENT_W - 80 - 24, 2),
+          lines: wrapText(item.head, 20, maxW, 1),
           lineHeight: 26,
         }),
+        item.note === ""
+          ? ""
+          : textBlock({
+              id: `item-${i + 1}-note`,
+              x: PAD + 80,
+              y: mid + 22,
+              size: 15,
+              fill: PPT_COLORS.muted,
+              lines: wrapText(item.note, 15, maxW, 1),
+              lineHeight: 22,
+            }),
+        i < n - 1
+          ? line({
+              x1: PAD + 16,
+              y1: y + rowH + gap / 2,
+              x2: PAD + CONTENT_W - 16,
+              y2: y + rowH + gap / 2,
+              stroke: PPT_COLORS.border,
+            })
+          : "",
         `</g>`,
       ].join("");
     })

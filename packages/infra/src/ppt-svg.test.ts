@@ -414,6 +414,57 @@ describe("renderPptPage — 质量门禁（密度 / 出界 / 压字 / 信息量�
   });
 });
 
+/** 要点清单（兜底版式）在 #142 收尾时加密：每条三件 + 条间分隔线 */
+describe("renderPptPage — 要点清单加密", () => {
+  const five = [
+    "巡检靠纸质表单，一天一交",
+    "数据事后补录，口径对不上",
+    "异常靠电话上报，常常漏掉",
+    "台账分散在各班组手里",
+    "月底对账要翻两天单据",
+  ];
+  const list = (bullets: string[]): PptPage => page({ layout: "要点清单", blocks: [], bullets });
+
+  it("5 条要点也过密度线（≥22 形状）且门禁 0 问题", () => {
+    const svg = renderPptPage(list(five), { index: 0, total: 1, scenarioName: SCENARIO });
+    const shapes = countSvgShapes(svg);
+    expect(shapes, `只有 ${shapes} 个形状`).toBeGreaterThanOrEqual(22);
+    expect(countSvgTexts(svg)).toBeGreaterThanOrEqual(PPT_LIMITS.minSentencesPerPage);
+    expect(checkPptDeck([svg])).toEqual([]);
+  });
+
+  it("每条三件：44×44 序号底衬 + 20px 主句 + 15px 次要说明", () => {
+    const svg = renderPptPage(list(five), { index: 0, total: 1, scenarioName: SCENARIO });
+    for (let i = 1; i <= five.length; i += 1) {
+      expect(svg).toContain(`id="item-${i}"`);
+      expect(svg).toContain(`id="item-${i}-text"`);
+    }
+    // 带逗号的那几条会拆出次要说明行
+    expect(svg).toContain('id="item-1-note"');
+    expect(svg).toContain("巡检靠纸质表单");
+    expect(svg).toContain("一天一交");
+    expect(svg).toContain('font-size="15"');
+    // 序号底衬 44×44
+    expect(svg).toContain('width="44" height="44"');
+  });
+
+  it("条间有 n−1 条 1px 浅蓝分隔线，最后一条下面不画", () => {
+    const svg = renderPptPage(list(five), { index: 0, total: 1, scenarioName: SCENARIO });
+    expect((svg.match(/<line /g) ?? []).length).toBe(five.length - 1);
+    expect(svg).toContain(`stroke="${PPT_COLORS.border}" stroke-width="1"`);
+  });
+
+  it("断不出两半的短句只画主句（不硬拆、不重复）", () => {
+    const short = ["全区纳管出报表", "口径写进系统里", "异常自动派单"];
+    const svg = renderPptPage(list(short), { index: 0, total: 1, scenarioName: SCENARIO });
+    for (let i = 1; i <= short.length; i += 1) {
+      expect(svg).toContain(`id="item-${i}-text"`);
+      expect(svg).not.toContain(`id="item-${i}-note"`);
+    }
+    expect(checkPptDeck([svg]).map((x) => x.code)).not.toContain("文本相交");
+  });
+});
+
 describe("renderPptDeck / writePptSvgs", () => {
   it("每页一个文件，按 01_page.svg 起编号（没有封面页）", () => {
     const pages = renderPptDeck(sampleDeck(), { scenarioName: SCENARIO });

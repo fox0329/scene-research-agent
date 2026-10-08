@@ -1,12 +1,16 @@
 /**
- * @scene/server — 导出 PPT（变更表 #141）
+ * @scene/server — 导出 PPT（变更表 #141 立、#142 升：信息量与排版）
  *
  * 用户点一次「导出PPT文档」，全自动跑完四步，不需要任何交互：
  *   1. **取正文**：当前项目该口径的交付物正文（`solution` / `construction` 各自可导）；
- *   2. **模型产大纲**（一次调用 + 解析失败重试一次）：严格 JSON、5–10 页、无封面尾页、
- *      问题 → 方案 → 价值——口径见 `docs/PPT输出要求.md` 与 `ppt-prompt.ts`；
- *   3. **确定性渲染**：`@scene/infra` 按五种布局画 SVG（绝不让模型写 SVG）；
+ *   2. **模型产大纲**（一次调用 + 不合要求时重试一次）：严格 JSON、5–10 页、无封面尾页、
+ *      问题 → 方案 → 价值、每页写满——口径见 `docs/PPT输出要求.md` 与 `ppt-prompt.ts`；
+ *   3. **确定性渲染**：`@scene/infra` 按七种布局画 SVG（绝不让模型写 SVG）；
  *   4. **转档**：调用户本机的 ppt-master 技能（`PPT_MASTER_DIR` 可配）导出 pptx，落到用户选的目录。
+ *
+ * 重试的三种触发（只重试一次）：① 解析不出来；② 页数少于下限；③ **有页面内容太少（空页）**——
+ * ③ 是 #142 真跑暴露的问题：模型声明了 `layout` 却不给对应字段，降级后就是一页只有两三条的空清单。
+ * 重试仍偏少则**保留、不阻断**，只在 `notice` 里点名第几页。
  *
  * 与导出 Word 同一条纪律（`docx-export.ts`）：**不阻断**——技能缺失 / python3 不可用 /
  * 大纲不合法 / 子进程失败，一律只回一条 `notice` + 不产文件，绝不抛 500、绝不覆盖已有文件
@@ -122,39 +126,95 @@ async function buildOutline(args: {
   if (first.error) return { outline: null, error: first.error, notes: [] };
 
   let parsed = parsePptOutline(first.text);
+  // 诊断（变更表 #142 收尾）：模型偶发返回非 JSON，失败时把长度与开头记进服务端日志，
+  // 方便定位"到底是返空、返了说明、还是 JSON 被截断"，不把原文写进用户可见的 notice
+  if (parsed.outline === null) {
+    console.warn(
+      `[ppt] 大纲首次解析失败：返回 ${first.text.length} 字｜开头 ${JSON.stringify(first.text.trim().slice(0, 120))}｜原因 ${parsed.error ?? "-"}`,
+    );
+  }
   const reason = retryReason(parsed, first.text.trim().length);
   if (reason !== null) {
     push({ type: "progress", message: `PPT：${reason}，重试一次…` });
     const again = await streamPrompt({
       dshClient,
       session,
-      ...buildPptRetryPrompt(kind, scenario.name),
+      ...buildPptRetryPrompt(kind, scenario.name, reason),
       label: "PPT 大纲（重试）",
       keepaliveMs,
       push,
     });
     if (again.error) {
-      return { outline: null, error: `首次输出不合法（${reason}），重试调用失败（${again.error}）`, notes: [] };
+      // 重试连调用都失败：首次本来就不可用才算失败；首次只是内容偏少时保留首次（有总比没有好）
+      if (parsed.outline === null) {
+        return { outline: null, error: `首次输出不合法（${reason}），重试调用失败（${again.error}）`, notes: [] };
+      }
+    } else {
+      parsed = pickBetter(parsed, parsePptOutline(again.text));
+      if (parsed.outline === null) {
+        return { outline: null, error: `模型未返回合规 JSON（${parsed.error ?? "首次与重试都不合规"}）`, notes: [] };
+      }
     }
-    parsed = parsePptOutline(again.text);
-    if (parsed.error) return { outline: null, error: `模型未返回合规 JSON（${parsed.error}）`, notes: [] };
   }
-  return { outline: parsed.outline, notes: [...parsed.notes] };
+  return { outline: parsed.outline, notes: [...parsed.notes, ...thinNotes(parsed)] };
+}
+
+/**
+ * 页面内容偏少的判定线
+ *
+ * 领域层的"有效短句"**不数** 6 条固定骨架文本（小节标签 / 标题 / 副题 / 结论带 / 页码 / 页脚），
+ * 而质量门禁的 `PPT_LIMITS.minSentencesPerPage`（12）把骨架也算进去了 —— 所以这里取 8，
+ * 比门禁更严一档：真跑暴露过"一页只有 2 条短句"的空页，等渲染完再发现就晚了。
+ */
+const THIN_PAGE_MIN = 8;
+
+/** 有效短句数不足的页（页码从 1 开始；来源是领域层的 `pageSentences`） */
+function thinPages(parsed: PptOutlineParse): { page: number; count: number }[] {
+  return parsed.pageSentences
+    .map((count, i) => ({ page: i + 1, count }))
+    .filter((x) => x.count < THIN_PAGE_MIN);
+}
+
+/**
+ * 重试用哪一份
+ *
+ * 首次**解析不出来**时当然用重试的；首次只是**内容偏少**时不能无条件换掉——
+ * 重试可能更差（甚至不是 JSON），那就保留首次。比法：先比空页数，再比页数。
+ */
+function pickBetter(first: PptOutlineParse, again: PptOutlineParse): PptOutlineParse {
+  if (again.outline === null) return first;
+  if (first.outline === null) return again;
+  const thinDiff = thinPages(again).length - thinPages(first).length;
+  if (thinDiff !== 0) return thinDiff < 0 ? again : first;
+  return again.outline.pages.length >= first.outline.pages.length ? again : first;
 }
 
 /**
  * 要不要重试（只重试一次）
  *
- * 两种情形值得重试：**根本解析不出来**，和**页数少于 5 页下限**——用户口径是 5–10 页，
- * 少页多半是模型偷懒，重发一次格式要求比直接出一份 4 页的 PPT 更接近用户要的规模。
- * 页数只是略多/略少（>10 截尾）不重试：那种情况确定性层已经能处理好，省一次模型调用。
+ * 三种情形值得重试：**根本解析不出来**、**页数少于 5 页下限**、**有页面内容太少**（空页）。
+ * 用户口径是 5–10 页且每页要写满，少页/空页多半是模型偷懒，重发一次比直接出一份稀薄的 PPT 更接近用户要的。
+ * 页数只是略多（>10 截尾）不重试：确定性层已经能处理好，省一次模型调用。
  */
 function retryReason(parsed: PptOutlineParse, chars: number): string | null {
   if (parsed.error) return `首次输出 ${chars} 字且不是合规大纲`;
   if ((parsed.outline?.pages.length ?? 0) < PPT_LIMITS.minPages) {
     return `首次只排了 ${parsed.outline?.pages.length ?? 0} 页（少于 ${PPT_LIMITS.minPages} 页下限）`;
   }
+  const thin = thinPages(parsed);
+  if (thin.length > 0) {
+    const where = thin.slice(0, 3).map((p) => `第 ${p.page} 页只有 ${p.count} 条`).join("、");
+    return `${where}（每页请写到 ${PPT_LIMITS.minSentencesPerPage} 条以上）`;
+  }
   return null;
+}
+
+/** 重试后仍偏少的页：不阻断，只在 notice 里点名（用户知道哪一页需要自己补） */
+function thinNotes(parsed: PptOutlineParse): string[] {
+  const thin = thinPages(parsed);
+  if (thin.length === 0) return [];
+  const where = thin.slice(0, 4).map((p) => `第 ${p.page} 页只有 ${p.count} 条`).join("、");
+  return [`${where}，内容偏少（每页建议 ${PPT_LIMITS.minSentencesPerPage} 条以上）`];
 }
 
 interface RenderOutcome {

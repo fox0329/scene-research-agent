@@ -61,6 +61,13 @@ export interface PptOutlineParse {
   outline: PptOutline | null;
   /** 采纳的页数 */
   pages: number;
+  /**
+   * 每页的**有效短句**数（与 `outline.pages` 同序、同长度）
+   *
+   * 只数内容短句，不数 6 条固定骨架文本（小节标签 / 标题 / 副题 / 结论带 / 页码 / 页脚）。
+   * 调用方据此判断"这一页是不是空页"——内容偏少时重试一次（见 `apps/server/src/ppt-export.ts`）。
+   */
+  pageSentences: number[];
   /** 丢掉的非法页数（非对象 / 没标题 / 内容为空 / 命中禁用词 / 超页数上限） */
   dropped: number;
   /** 被截断的字段数（超字数上限或超条目上限） */
@@ -71,6 +78,40 @@ export interface PptOutlineParse {
   notes: string[];
   /** 整体失败原因（没有 JSON / 不是 JSON / 没有 pages / 全被丢光） */
   error?: string;
+}
+
+/**
+ * 一页的**有效短句**数（内容短句，口径与渲染一致）
+ *
+ * 块 / 栏 = `head` + `note` + 每行一条；阶段 = `head` + `note`；层 = `head` + 每个组件；
+ * 卡片 = `value` + `label`；表格 = 表头格 + 每个数据格；要点清单 = 每行一条。
+ * 固定骨架（小节标签 / 标题 / 副题 / 结论带 / 页码 / 页脚）不算——它们由渲染层生成，恒在。
+ */
+export function pptPageSentences(page: PptPage): number {
+  switch (page.layout) {
+    case "网格要点":
+      return page.blocks.reduce(
+        (n, b) => n + (b.head === "" ? 0 : 1) + (b.note === "" ? 0 : 1) + b.lines.length,
+        0,
+      );
+    case "双栏对比":
+      return page.columns.reduce(
+        (n, c) => n + (c.head === "" ? 0 : 1) + (c.note === "" ? 0 : 1) + c.lines.length,
+        0,
+      );
+    case "流程阶段":
+      return page.stages.reduce((n, s) => n + (s.head === "" ? 0 : 1) + (s.note === "" ? 0 : 1), 0);
+    case "分层架构":
+      return page.layers.reduce((n, l) => n + (l.head === "" ? 0 : 1) + l.items.length, 0);
+    case "数据卡片":
+      return page.cards.length * 2;
+    case "表格":
+      return page.table === null
+        ? 0
+        : page.table.head.length + page.table.rows.reduce((n, row) => n + row.length, 0);
+    default:
+      return page.bullets?.length ?? 0;
+  }
 }
 
 /** 归一化 + 截断一段文本（压空白、去首尾；不切断代理对） */
@@ -599,7 +640,7 @@ function chunkToBlocks(
 
 /** 整体失败值（调用方据此重试一次 / 提示"未导出 PPT"） */
 function fail(error: string, notes: string[] = []): PptOutlineParse {
-  return { outline: null, pages: 0, dropped: 0, trimmed: 0, scrubbed: 0, notes, error };
+  return { outline: null, pages: 0, pageSentences: [], dropped: 0, trimmed: 0, scrubbed: 0, notes, error };
 }
 
 /**
@@ -621,6 +662,7 @@ export function parsePptOutline(raw: string): PptOutlineParse {
 
   const notes: string[] = [];
   const pages: PptPage[] = [];
+  const pageSentences: number[] = [];
   let dropped = 0;
   let trimmed = 0;
   let scrubbed = 0;
@@ -638,6 +680,7 @@ export function parsePptOutline(raw: string): PptOutlineParse {
       continue;
     }
     pages.push(r.page);
+    pageSentences.push(pptPageSentences(r.page));
   }
   if (list.length > PPT_LIMITS.maxPages) {
     notes.push(`模型给了 ${list.length} 页，超出 ${PPT_LIMITS.maxPages} 页上限，已截掉尾部页面`);
@@ -648,5 +691,5 @@ export function parsePptOutline(raw: string): PptOutlineParse {
       `只有 ${pages.length} 页，少于 ${PPT_LIMITS.minPages} 页下限（无法凭空造页，按现有页数导出）`,
     );
   }
-  return { outline: { pages }, pages: pages.length, dropped, trimmed, scrubbed, notes };
+  return { outline: { pages }, pages: pages.length, pageSentences, dropped, trimmed, scrubbed, notes };
 }

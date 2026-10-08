@@ -3,12 +3,12 @@
  *
  * 覆盖全部判定分支：合法 / 页数越界 clamp / 非法页丢弃 / 缺布局与旧布局名 /
  * 各字段超限截断（且不许把页删空）/ 布局回落（网格不足 3 块 → 要点清单）/ 禁用词 /
- * 旧字段兼容（subtitle ← takeaway、blocks ← bullets）。
+ * 旧字段兼容（subtitle ← takeaway、blocks ← bullets）/ 每页有效短句数（空页判定依据）。
  */
 
 import { describe, it, expect } from "vitest";
 import { PPT_LIMITS } from "@scene/contract";
-import { hasPptBanned, parsePptOutline, pptBannedHit } from "./ppt-outline.js";
+import { hasPptBanned, parsePptOutline, pptBannedHit, pptPageSentences } from "./ppt-outline.js";
 
 /** 一页合规的网格要点页（默认布局，字段最全） */
 function page(over: Record<string, unknown> = {}): Record<string, unknown> {
@@ -507,6 +507,87 @@ describe("parsePptOutline — 禁用词（占位 / 决策建议 / 内部痕迹�
     expect(hasPptBanned("表4-1 能力底账")).toBe(true);
     expect(pptBannedHit("出处：某某白皮书")).toBe("出处：");
     expect(pptBannedHit("统一纳管、实时可见")).toBeNull();
+  });
+});
+
+describe("parsePptOutline — 每页有效短句数（pageSentences，空页判定依据）", () => {
+  it("与页同序同长；网格要点 = 块头 + 小注 + 每行", () => {
+    const r = parsePptOutline(JSON.stringify({ pages: [page(), page({ title: "第二页" })] }));
+    expect(r.pageSentences).toHaveLength(r.pages);
+    expect(r.pageSentences).toEqual([20, 20]);
+    expect(pptPageSentences(r.outline!.pages[0]!)).toBe(20);
+  });
+
+  it("六种布局各自的数法（阶段 head+note / 层 head+组件 / 卡片 value+label / 表格 表头+格 / 清单 每行 / 双栏 head+note+行）", () => {
+    const raw = JSON.stringify({
+      pages: [
+        page({
+          layout: "流程阶段",
+          blocks: [],
+          stages: [
+            { head: "样板层", note: "先装齐" },
+            { head: "验证", note: "比对两周" },
+            { head: "复制", note: "分批上线" },
+            { head: "全区", note: "纳管出表" },
+          ],
+        }),
+        page({
+          layout: "分层架构",
+          blocks: [],
+          layers: [
+            { head: "应用层", items: ["看板", "工单"] },
+            { head: "平台层", items: ["纳管", "规则"] },
+            { head: "感知层", items: ["终端", "探头"] },
+          ],
+        }),
+        page({
+          layout: "数据卡片",
+          blocks: [],
+          cards: [
+            { value: "12 个", label: "楼层" },
+            { value: "480 台", label: "设备" },
+            { value: "2 天", label: "对账" },
+          ],
+        }),
+        page({
+          layout: "表格",
+          blocks: [],
+          table: { head: ["阶段", "做什么"], rows: [["样板层", "装齐"], ["验证", "比对"]] },
+        }),
+        page({ layout: "要点清单", blocks: [], bullets: ["甲", "乙", "丙"] }),
+        page({
+          layout: "双栏对比",
+          blocks: [],
+          columns: [
+            { head: "今天", note: "纸质", lines: ["甲", "乙", "丙"] },
+            { head: "建成后", note: "扫码", lines: ["丁", "戊", "己"] },
+          ],
+        }),
+      ],
+    });
+    const r = parsePptOutline(raw);
+    expect(r.pageSentences).toEqual([8, 9, 6, 6, 3, 10]);
+  });
+
+  it("表格声明了却没给表 → 降级后按兜底清单数（真跑的空页就是这么来的）", () => {
+    const raw = JSON.stringify({
+      pages: [
+        page({
+          layout: "表格",
+          blocks: [],
+          table: null,
+          bullets: ["协议未收录的私有协议需另行适配", "老设备不支持远程升级"],
+        }),
+      ],
+    });
+    const r = parsePptOutline(raw);
+    expect(r.outline!.pages[0]!.layout).toBe("要点清单");
+    expect(r.pageSentences).toEqual([2]);
+  });
+
+  it("整体失败时是空数组（调用方不必判空）", () => {
+    expect(parsePptOutline("这里没有 JSON").pageSentences).toEqual([]);
+    expect(parsePptOutline('{"pages":[]}').pageSentences).toEqual([]);
   });
 });
 

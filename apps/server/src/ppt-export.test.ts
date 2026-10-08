@@ -61,7 +61,7 @@ function seed(db: DbInstance, name = "PPT 场景"): { scenarioId: string; scenar
   return { scenarioId: scenario.id, scenario };
 }
 
-/** 一份合规的 6 页大纲 JSON（七种布局轮着来，每页都写满） */
+/** 一份合规的 6 页大纲 JSON（六种布局轮着来；每页有效短句都 ≥8，不触发"内容偏少"重试） */
 function outlineJson(pages = 6): string {
   const layouts = ["网格要点", "双栏对比", "流程阶段", "分层架构", "数据卡片", "表格"] as const;
   const page = (i: number): PptPage => ({
@@ -83,6 +83,7 @@ function outlineJson(pages = 6): string {
       { head: "样板层", note: "一个楼层先装齐" },
       { head: "验证", note: "两周比对纸质记录" },
       { head: "复制", note: "按楼层分批上线" },
+      { head: "全区", note: "全区纳管出报表" },
     ],
     layers: [
       { head: "应用层", items: ["巡检看板", "异常工单"] },
@@ -93,6 +94,7 @@ function outlineJson(pages = 6): string {
       { value: "12 个", label: "纳管楼层" },
       { value: "480 台", label: "纳管设备" },
       { value: "2 天", label: "对账周期" },
+      { value: "1 张表", label: "统一口径" },
     ],
     table: {
       head: ["阶段", "做什么", "谁负责"],
@@ -105,6 +107,27 @@ function outlineJson(pages = 6): string {
     highlight: `第${i + 1}页的结论带`,
   });
   return JSON.stringify({ pages: Array.from({ length: pages }, (_, i) => page(i)) });
+}
+
+/**
+ * 一份"第 5 页是空页"的大纲 —— 真跑抓到的情形：
+ * 第 5 页声明 `layout: "表格"` 却不给 `table`，降级成兜底清单后只剩 2 条短句。
+ */
+function thinOutlineJson(pages = 6): string {
+  const deck = JSON.parse(outlineJson(pages)) as { pages: PptPage[] };
+  const at = Math.min(4, deck.pages.length - 1);
+  deck.pages[at] = {
+    ...deck.pages[at]!,
+    layout: "表格",
+    blocks: [],
+    columns: [],
+    stages: [],
+    layers: [],
+    cards: [],
+    table: null,
+    bullets: ["协议未收录的私有协议需另行适配", "老设备不支持远程升级"],
+  };
+  return JSON.stringify(deck);
 }
 
 /** DSH 桩：按调用次序依次吐出给定的返回文本 */
@@ -259,6 +282,29 @@ describe("exportReportPptx", () => {
     const thin = await runExport(h, { dshClient: mockDsh([outlineJson(3), outlineJson(4)]) });
     expect(thin.files.length + thin.unchanged.length).toBe(1);
     expect(thin.notice ?? "").toContain("少于 5 页");
+  });
+
+  it("某页只有 2 条短句（空页）→ 重试一次；重试达标则采纳，不打扰用户", async () => {
+    const result = await runExport(h, { dshClient: mockDsh([thinOutlineJson(6), outlineJson(6)]) });
+    expect(result.files).toHaveLength(1);
+    const text = messages(h.events);
+    expect(text).toContain("第 5 页只有 2 条"); // 重试提示点名到页
+    expect(text).toContain("重试一次");
+    expect(text).toContain("大纲 6 页，正在渲染第 1 页"); // 采纳的是重试那一份
+    expect(result.notice ?? "").not.toContain("内容偏少");
+  });
+
+  it("重试后那页还是只有 2 条 → 保留、不阻断，notice 点名第几页内容偏少", async () => {
+    const result = await runExport(h, { dshClient: mockDsh([thinOutlineJson(6), thinOutlineJson(6)]) });
+    expect(result.files.length + result.unchanged.length).toBe(1); // 不因为空页就不产文件
+    expect(result.notice ?? "").toContain("第 5 页只有 2 条");
+    expect(result.notice ?? "").toContain("内容偏少");
+  });
+
+  it("首次只是有空页、重试反而吐垃圾 → 保留首次（不因重试丢文件）", async () => {
+    const result = await runExport(h, { dshClient: mockDsh([thinOutlineJson(6), "我这次啥也不给"]) });
+    expect(result.files.length + result.unchanged.length).toBe(1);
+    expect(result.notice ?? "").toContain("内容偏少");
   });
 
   it("模型报错 → notice，不产文件", async () => {

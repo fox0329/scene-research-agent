@@ -83,6 +83,32 @@ describe("checkPptDeck — 真渲染的页过闸", () => {
   });
 });
 
+describe("checkPptDeck — 兜底要点清单也不许是白页（#142 收尾）", () => {
+  const list = (bullets: string[]): PptPage => ({ ...realPage(), layout: "要点清单", bullets });
+  const render = (p: PptPage): string =>
+    renderPptDeck({ pages: [p] }, { scenarioName: "智慧会议室" })[0]!.svg;
+
+  it("5 条要点：形状数 ≥22、门禁 0 问题（加密后每条三件）", () => {
+    const svg = render(
+      list([
+        "巡检靠纸质表单，一天一交",
+        "数据事后补录，口径对不上",
+        "异常靠电话上报，常常漏掉",
+        "台账分散在各班组手里",
+        "月底对账要翻两天单据",
+      ]),
+    );
+    expect(countSvgShapes(svg)).toBeGreaterThanOrEqual(PPT_QUALITY.minShapes);
+    expect(checkPptDeck([svg])).toEqual([]);
+  });
+
+  it("真跑那种只剩 2 条的空页 → 门禁仍然抓得住「页面太空」", () => {
+    const svg = render(list(["协议未收录的私有协议需另行适配", "老设备不支持远程升级"]));
+    expect(countSvgShapes(svg)).toBeLessThan(PPT_QUALITY.minShapes);
+    expect(checkPptDeck([svg]).map((i) => i.code)).toContain("页面太空");
+  });
+});
+
 describe("checkPptDeck — 页面太空", () => {
   it("形状数少于下限 → 记「页面太空」", () => {
     const svg = pageSvg(text(100, 200, 20, "只有一句话"));
