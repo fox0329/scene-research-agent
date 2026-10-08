@@ -24,16 +24,21 @@ export async function streamPrompt(args: {
     const iterator = dshClient
       .prompt(session, { system, user, outputContract: {} })
       [Symbol.asyncIterator]();
+    let pending = iterator.next();
     for (;;) {
       // 心跳：模型思考期间没有正文，超过一个心跳就报一次"仍在写"，否则界面看着像卡死
+      // ⚠️ 这里必须复用同一个 next() 承诺：心跳赢得竞速时**不能**把已发出的 next() 丢掉——
+      // 异步生成器不会把已取走的值还回来，重发 next() 会永久丢失那一块正文（实测吞掉的就是开头
+      // 那几个字符，报告"第一段从半句开始"与 PPT 大纲"不是合规 JSON"都源于此，变更表 #143）
       const step = await Promise.race([
-        iterator.next(),
+        pending,
         new Promise<"tick">((resolve) => setTimeout(() => resolve("tick"), keepaliveMs)),
       ]);
       if (step === "tick") {
         push({ type: "progress", message: `${label}：模型仍在撰写（已写 ${text.length} 字）…` });
         continue;
       }
+      pending = iterator.next();
       if (step.done) break;
       const event = step.value;
       if (event.type === "text") {
