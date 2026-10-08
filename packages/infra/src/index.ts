@@ -77,21 +77,26 @@ export type { ChapterDigest, DigestOptions, SafeWriteResult } from "./md-export.
 export {};export * from "./source-index.js";
 export { reportMarkdownToDocx, type DocxOptions } from "./docx-report.js";
 
-/** PPT 页面渲染（变更表 #141 立、#142 升：白底 + 七种高密度布局；#144 升：图标 + 颜色层次 + 字内强调） */
+/** PPT 页面渲染（#141 立、#142 升：白底 + 七种高密度布局；#144 升：图标 + 颜色层次 + 字内强调；#145 升：去装饰 + 最小字号 16 + 版面均衡） */
 export {
   PPT_CANVAS,
   PPT_COLORS,
   PPT_BAR_COLORS,
   PPT_FONT,
   PPT_FONT_MONO,
+  PPT_GRID,
+  PPT_LEADING_PUNCT,
+  PPT_MIN_ORPHAN_CHARS,
   PPT_TONE_PROBLEM,
   PPT_TONE_VALUE,
   PPT_LAYOUT_RENDERERS,
   escXml,
   estimateTextWidth,
+  hasLeadingPunct,
   pptBarColor,
   pptEmphasisOf,
   pptToneOf,
+  stripLeadingPunct,
   wrapText,
   renderPptPage,
   renderPptDeck,
@@ -99,9 +104,12 @@ export {
 } from "./ppt-svg.js";
 export type { PptEmphasis, PptRenderContext, PptSvgPage } from "./ppt-svg.js";
 
-/** PPT 质量门禁（#142 立、#144 升：密度 / 骨架 / 出界 / 压字 / 信息量 / 图标 / 颜色 / 强调） */
+/** PPT 质量门禁（#142 立、#144 升、#145 升：密度 / 骨架 / 出界 / 压字 / 信息量 / 图标 / 颜色 / 强调 / 字号 / 网格 / 留白 / 行首标点 / 孤字行） */
 export {
+  PPT_CONTENT_ISSUES,
+  PPT_MIN_QUALITY,
   PPT_QUALITY,
+  PPT_RENDER_ISSUES,
   PPT_SEMANTIC_COLORS,
   checkPptDeck,
   countSvgColors,
@@ -109,6 +117,11 @@ export {
   countSvgIcons,
   countSvgShapes,
   countSvgTexts,
+  findLeadingPunctLines,
+  findOrphanLines,
+  isPptContentIssue,
+  isPptRenderIssue,
+  svgShapeBoxes,
   svgTextRects,
 } from "./ppt-quality.js";
-export type { PptQualityCode, PptQualityIssue, PptTextRect } from "./ppt-quality.js";
+export type { PptQualityCode, PptQualityIssue, PptShapeBox, PptTextRect } from "./ppt-quality.js";

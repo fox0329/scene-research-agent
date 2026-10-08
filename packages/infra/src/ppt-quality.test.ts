@@ -1,9 +1,11 @@
 /**
- * @scene/infra — PPT 质量门禁测试（变更表 #142 立、#144 升）
+ * @scene/infra — PPT 质量门禁测试（变更表 #142 立、#144 升、#145 升）
  *
  * `checkPptDeck` 是确定性的"页面体检"：形状数（页面太空）、小节标签与结论带、
  * 文本出界（8px 安全边）、文本压字（4px 阈值）、文字条数（信息量），
- * #144 追加图标数（图标不足）、颜色数（颜色层次不足）、强调处数（重点不突出）。
+ * #144 追加图标数（图标不足）、颜色数（颜色层次不足）、强调处数（重点不突出），
+ * #145 追加字号（字号过小）、内容安全边（超出安全边）、网格对齐（未对齐网格）、
+ * 留白（留白不均）、行首禁则（行首标点）、孤字行（孤字行）——`PPT_MIN_QUALITY` 是最低要求。
  * 这里既测真渲染的页过闸，也测每一类问题**抓得住**（用最小人造 SVG 定位判据）。
  */
 
@@ -11,15 +13,24 @@ import { describe, it, expect } from "vitest";
 import { PPT_LIMITS, type PptPage } from "@scene/contract";
 import { estimateTextWidth, renderPptDeck } from "./ppt-svg.js";
 import {
+  PPT_CONTENT_ISSUES,
+  PPT_MIN_QUALITY,
   PPT_QUALITY,
+  PPT_RENDER_ISSUES,
   checkPptDeck,
   countSvgColors,
   countSvgEmphasis,
   countSvgIcons,
   countSvgShapes,
   countSvgTexts,
+  findLeadingPunctLines,
+  findOrphanLines,
+  isPptContentIssue,
+  isPptRenderIssue,
+  svgShapeBoxes,
   svgTextRects,
 } from "./ppt-quality.js";
+import { PPT_MIN_FONT } from "@scene/contract";
 
 const FONT = 'Arial, &quot;Microsoft YaHei&quot;, sans-serif';
 
@@ -37,7 +48,7 @@ function pageSvg(content: string, opts: { kicker?: boolean; highlight?: boolean 
   const kicker =
     opts.kicker === false
       ? ""
-      : `<g id="kicker">${rect(80, 36, 120, 30, "#E3F2FD")}${text(96, 56, 15, "项目硬规则")}</g>`;
+      : `<g id="kicker">${rect(80, 36, 120, 30, "#E3F2FD")}${text(96, 56, 16, "项目硬规则")}</g>`;
   const band =
     opts.highlight === false
       ? ""
@@ -46,10 +57,10 @@ function pageSvg(content: string, opts: { kicker?: boolean; highlight?: boolean 
     `<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720">`,
     rect(0, 0, 1280, 720),
     kicker,
-    `<g id="hd">${text(80, 88, 34, "一页标题")}${text(1200, 56, 15, "第 1 页 / 共 7 页", "end")}</g>`,
+    `<g id="hd">${text(80, 88, 34, "一页标题")}<g id="page-no">${text(1200, 56, 15, "第 1 页 / 共 7 页", "end")}</g></g>`,
     `<g id="body">${content}</g>`,
     band,
-    `<g id="footer">${text(80, 700, 13, "场景通 · 智慧会议室")}</g>`,
+    `<g id="footer">${text(80, 700, 15, "场景通 · 智慧会议室")}</g>`,
     `</svg>`,
   ].join("");
 }
@@ -151,7 +162,7 @@ function fullPageSvg(content = "", opts: { bold?: boolean } = {}): string {
 function monoSvg(content: string): string {
   return [
     `<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720">`,
-    `<g id="kicker">${rect(80, 36, 120, 30)}${text(96, 56, 15, "单色页")}</g>`,
+    `<g id="kicker">${rect(80, 36, 120, 30)}${text(96, 56, 16, "单色页")}</g>`,
     `<g id="highlight">${rect(80, 634, 1120, 50)}${text(110, 666, 19, "结论带")}</g>`,
     content,
     `</svg>`,
@@ -342,5 +353,225 @@ describe("svgTextRects — tspan 感知（#144）", () => {
       `<text x="100" y="200" font-family="${FONT}" font-size="16" fill="#37474F">有字<tspan font-size="20" fill="#FF9800">   </tspan></text>`,
     );
     expect(svgTextRects(svg).filter((r) => r.text === "有字")).toHaveLength(1);
+  });
+});
+
+describe("checkPptDeck — 最低要求（变更表 #145：PPT_MIN_QUALITY 是用户定调的下限）", () => {
+  it("门禁阈值与最低要求同源（内容 16 / 元信息 15 / 安全边 40 / 网格 2 / 留白 120 / 孤字 3）", () => {
+    expect(PPT_QUALITY.minFontSize).toBe(PPT_MIN_FONT);
+    expect(PPT_MIN_FONT).toBe(16);
+    expect(PPT_QUALITY.minMetaFontSize).toBe(15);
+    expect(PPT_QUALITY.minContentMargin).toBe(40);
+    expect(PPT_QUALITY.gridTolerance).toBe(2);
+    expect(PPT_QUALITY.maxBottomGap).toBe(120);
+    expect(PPT_QUALITY.minOrphanChars).toBe(3);
+    expect(PPT_MIN_QUALITY.note).toContain("最低要求");
+  });
+
+  it("问题分成「内容类（该重试）」与「渲染类（该修渲染层）」，两类不重叠、覆盖全部判据", () => {
+    for (const code of PPT_CONTENT_ISSUES) expect(isPptContentIssue(code)).toBe(true);
+    for (const code of PPT_CONTENT_ISSUES) expect(isPptRenderIssue(code)).toBe(false);
+    for (const code of PPT_RENDER_ISSUES) expect(isPptRenderIssue(code)).toBe(true);
+    for (const code of PPT_RENDER_ISSUES) expect(isPptContentIssue(code)).toBe(false);
+    // 三个内容类问题就是用户点名的那三个
+    expect([...PPT_CONTENT_ISSUES]).toEqual(["信息量不足", "图标不足", "重点不突出"]);
+  });
+});
+
+describe("checkPptDeck — 字号过小（#145：内容 ≥16、页脚页码 ≥15）", () => {
+  it("正例：16px 正文 + 15px 页脚页码不报", () => {
+    const svg = pageSvg(text(100, 300, PPT_MIN_FONT, "十六号正文"));
+    expect(checkPptDeck([svg]).some((i) => i.code === "字号过小")).toBe(false);
+  });
+
+  it("反例：15px 的正文被记「字号过小」并点名文字", () => {
+    const svg = pageSvg(text(100, 300, 15, "十五号正文"));
+    const issues = checkPptDeck([svg]).filter((i) => i.code === "字号过小");
+    expect(issues).toHaveLength(1);
+    expect(issues[0]!.detail).toContain("十五号正文");
+    expect(issues[0]!.detail).toContain(String(PPT_MIN_FONT));
+  });
+
+  it("反例：页脚 14px（低于元信息下限 15）也记；13px 的页码同理", () => {
+    const svg = pageSvg(text(100, 300, 16, "正文")).replace(
+      /<g id="footer">.*?<\/g>/,
+      `<g id="footer">${text(80, 700, 14, "场景通")}</g>`,
+    );
+    const issues = checkPptDeck([svg]).filter((i) => i.code === "字号过小");
+    expect(issues).toHaveLength(1);
+    expect(issues[0]!.detail).toContain("页脚/页码");
+  });
+
+  it("15px 的页码在 <g id=\"page-no\"> 里是元信息，不算过小（内容 15px 才算）", () => {
+    const svg = pageSvg(text(100, 300, 16, "正文"));
+    expect(svg).toContain(`<g id="page-no">`);
+    expect(checkPptDeck([svg]).some((i) => i.code === "字号过小")).toBe(false);
+  });
+});
+
+describe("checkPptDeck — 超出安全边（#145：内容元素距边 ≥40）", () => {
+  it("正例：内容区里的元素留够 40px 不报", () => {
+    const svg = pageSvg(rect(80, 170, 1120, 450, "#E3F2FD"));
+    expect(checkPptDeck([svg]).some((i) => i.code === "超出安全边")).toBe(false);
+  });
+
+  it("反例：内容元素贴到画布边（不足 40px）→ 记「超出安全边」", () => {
+    const svg = pageSvg(rect(20, 170, 400, 200, "#E3F2FD"));
+    const issues = checkPptDeck([svg]).filter((i) => i.code === "超出安全边");
+    expect(issues).toHaveLength(1);
+    expect(issues[0]!.detail).toContain(String(PPT_QUALITY.minContentMargin));
+  });
+
+  it("骨架（结论带贴到 y=684）不算内容：越界判据只管内容区", () => {
+    // 结论带在 <g id="highlight"> 里，离底边 36px——比 40px 还近，但不该被判
+    expect(checkPptDeck([fullPageSvg()]).some((i) => i.code === "超出安全边")).toBe(false);
+  });
+});
+
+describe("checkPptDeck — 未对齐网格（#145：同层级元素落版式网格，偏差 ≤2px）", () => {
+  it("正例：块 550×216 落在 x=80/650、y=170/400 不报", () => {
+    const good =
+      `<g id="block-1">${rect(80, 170, 550, 216)}</g>` + `<g id="block-2">${rect(650, 170, 550, 216)}</g>`;
+    expect(checkPptDeck([pageSvg(good)]).some((i) => i.code === "未对齐网格")).toBe(false);
+  });
+
+  it("反例：块宽偏了 8px → 记「未对齐网格」并给出网格值", () => {
+    const bad = `<g id="block-1">${rect(80, 170, 542, 216)}</g>`;
+    const issues = checkPptDeck([pageSvg(bad)]).filter((i) => i.code === "未对齐网格");
+    expect(issues).toHaveLength(1);
+    expect(issues[0]!.detail).toContain("block-1");
+    expect(issues[0]!.detail).toContain("550");
+  });
+
+  it("反例：卡片不等宽 / 不等距也记（等分件必须同宽同距，起点在内容区左缘）", () => {
+    const bad =
+      `<g id="card-1">${rect(80, 245, 350, 300)}</g>` +
+      `<g id="card-2">${rect(455, 245, 360, 300)}</g>` +
+      `<g id="card-3">${rect(840, 245, 360, 300)}</g>`;
+    const codes = checkPptDeck([pageSvg(bad)]).filter((i) => i.code === "未对齐网格");
+    expect(codes.length).toBeGreaterThan(0);
+  });
+
+  it("2px 以内算对齐（阈值同源 gridTolerance）", () => {
+    const near = `<g id="block-1">${rect(81, 171, 549, 215)}</g>`;
+    expect(checkPptDeck([pageSvg(near)]).some((i) => i.code === "未对齐网格")).toBe(false);
+  });
+});
+
+describe("checkPptDeck — 留白不均（#145：内容区底部空白 ≤120px）", () => {
+  it("正例：内容铺到内容区底部不报", () => {
+    const svg = pageSvg(rect(80, 170, 1120, 450, "#E3F2FD"));
+    expect(checkPptDeck([svg]).some((i) => i.code === "留白不均")).toBe(false);
+  });
+
+  it("反例：内容挤在上半页（底部空 300px）→ 记「留白不均」", () => {
+    const svg = pageSvg(rect(80, 170, 1120, 150, "#E3F2FD"));
+    const issues = checkPptDeck([svg]).filter((i) => i.code === "留白不均");
+    expect(issues).toHaveLength(1);
+    expect(issues[0]!.detail).toContain(String(PPT_QUALITY.maxBottomGap));
+  });
+
+  it("留白刚好卡在下限（空 120px）不报，121px 就报", () => {
+    const ok = pageSvg(rect(80, 170, 1120, 330, "#E3F2FD")); // 底 500，空 120
+    expect(checkPptDeck([ok]).some((i) => i.code === "留白不均")).toBe(false);
+    const bad = pageSvg(rect(80, 170, 1120, 329, "#E3F2FD")); // 底 499，空 121
+    expect(checkPptDeck([bad]).some((i) => i.code === "留白不均")).toBe(true);
+  });
+});
+
+describe("checkPptDeck — 行首标点（#145：中文行首禁则）", () => {
+  it("正例：行首是字，标点都在行内", () => {
+    const svg = pageSvg(text(100, 300, 16, "巡检靠纸质表单，一天一交"));
+    expect(findLeadingPunctLines(svg)).toEqual([]);
+  });
+
+  it("反例：行首是逗号 / 句号 / 右括号都记", () => {
+    const svg = pageSvg(text(100, 300, 16, "，一天一交") + text(100, 340, 16, "。补录口径对不上") + text(100, 380, 16, "）都要留痕"));
+    const lines = findLeadingPunctLines(svg);
+    expect(lines).toHaveLength(3);
+    expect(checkPptDeck([svg]).filter((i) => i.code === "行首标点")).toHaveLength(3);
+  });
+
+  it("缩进空格后仍是标点开头也算（trim 后判）", () => {
+    const svg = pageSvg(text(100, 300, 16, "　、半角空格在前"));
+    expect(findLeadingPunctLines(svg)).toHaveLength(1);
+  });
+});
+
+describe("checkPptDeck — 孤字行（#145：换行后末行 <3 字）", () => {
+  it("正例：同一段两行，末行 4 个字不报", () => {
+    const svg = pageSvg(
+      `<g id="block-1-line-1-text">` +
+        text(100, 300, 16, "巡检靠纸质表单") +
+        text(100, 330, 16, "一天一交留痕") +
+        `</g>`,
+    );
+    expect(findOrphanLines(svg)).toEqual([]);
+  });
+
+  it("反例：同一段两行末行只有 2 个字 → 记「孤字行」", () => {
+    const svg = pageSvg(
+      `<g id="block-1-line-1-text">` +
+        text(100, 300, 16, "巡检靠纸质表单一天一交") +
+        text(100, 330, 16, "留痕") +
+        `</g>`,
+    );
+    const lines = findOrphanLines(svg);
+    expect(lines).toEqual(["留痕"]);
+    expect(checkPptDeck([svg]).filter((i) => i.code === "孤字行")).toHaveLength(1);
+  });
+
+  it("单行文字不算换行段（旁边另起一段近处的字也不算）", () => {
+    const svg = pageSvg(
+      `<g id="block-1-line-1-text">${text(100, 300, 16, "短")}</g>` +
+        `<g id="block-2-line-1-text">${text(100, 330, 16, "短")}</g>`,
+    );
+    expect(findOrphanLines(svg)).toEqual([]);
+  });
+
+  it("以省略号收尾的行是压缩痕迹，不算孤字行", () => {
+    const svg = pageSvg(
+      `<g id="item-1-main-text">` +
+        text(100, 300, 20, "巡检靠纸质表单") +
+        text(100, 326, 20, "一…") +
+        `</g>`,
+    );
+    expect(findOrphanLines(svg)).toEqual([]);
+  });
+
+  it("行距 / 字号 / x 对不上就不算同一段（避免误判相邻的两段文字）", () => {
+    const far = pageSvg(
+      `<g id="block-1-line-1-text">` + text(100, 300, 16, "巡检靠纸质表单一天一交") + text(100, 420, 16, "留") + `</g>`,
+    );
+    expect(findOrphanLines(far)).toEqual([]);
+    const other = pageSvg(
+      `<g id="block-1-line-1-text">` + text(100, 300, 16, "巡检靠纸质表单一天一交") + text(300, 330, 16, "留") + `</g>`,
+    );
+    expect(findOrphanLines(other)).toEqual([]);
+  });
+});
+
+describe("svgShapeBoxes — 图形元素的外框（网格 / 安全边 / 留白判据的输入）", () => {
+  it("rect / line / circle / polygon 都能抠出来（含组路径）", () => {
+    const svg = [
+      `<g id="body">`,
+      `<g id="layer-1">${rect(80, 260, 1120, 80)}</g>`,
+      `<line x1="80" y1="400" x2="1200" y2="400" stroke="#D6E7F8"/>`,
+      `<circle cx="100" cy="400" r="6" fill="#0D47A1"/>`,
+      `<polygon points="10,10 30,10 20,30" fill="#0D47A1"/>`,
+      `</g>`,
+    ].join("");
+    const boxes = svgShapeBoxes(svg);
+    expect(boxes).toHaveLength(4);
+    const layer = boxes.find((b) => b.group === "layer-1")!;
+    expect([layer.left, layer.top, layer.right, layer.bottom]).toEqual([80, 260, 1200, 340]);
+    expect(layer.path).toEqual(["body", "layer-1"]);
+    expect(boxes.find((b) => b.kind === "line")!.top).toBe(400);
+    expect(boxes.find((b) => b.kind === "circle")!.left).toBe(94);
+    expect(boxes.find((b) => b.kind === "polygon")!.bottom).toBe(30);
+  });
+
+  it("<path> 不算（fix-rounded 转出来的圆角矩形不是坐标可读的图形）", () => {
+    expect(svgShapeBoxes(`<path d="M0 0h10v10z" fill="#E3F2FD"/>`)).toEqual([]);
   });
 });

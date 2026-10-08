@@ -1,13 +1,21 @@
 /**
- * @scene/infra — PPT 页面渲染（变更表 #141 立、#142 升、#144 升：图标 + 颜色层次 + 字内强调）
+ * @scene/infra — PPT 页面渲染（变更表 #141 立、#142 升、#144 升、#145 升：视觉微调 + 最小字号 + 版面均衡）
  *
  * 把 `@scene/domain` 校验过的大纲**确定性地**画成 1280×720 的 SVG。
  * 模型只产内容，**绝不让模型写 SVG**（渲染进不了判定路径，也让版式对每一页都一致）。
  *
- * 版式口径（变更表 #144，照用户那份高分稿的用量对标，底色仍是纯白）：
- *  - 统一骨架：页顶 8px 渐变主色带 → 小节标签胶囊（左侧 22×22 图标）→ 36px 大标题 + 80×6 橙短横
+ * 版式口径（变更表 #144 立、#145 微调，照用户那份高分稿的用量对标，底色仍是纯白）：
+ *  - 统一骨架（#145 去掉两处装饰）：小节标签胶囊（左侧 22×22 图标）→ 36px 大标题
  *    → 18px 副题 + 右侧技术标签 → 内容区（y=170..620）→ 底部结论带（#E3F2FD + 6px 橙条 + `bulb` 图标）
- *    → 右上 #E3F2FD 页码胶囊 → 左下页脚；
+ *    → 右上 #E3F2FD 页码胶囊 → 左下页脚。**页顶不再有 8px 渐变主色带、标题下不再有橙色短横**
+ *    （用户定调：「每页PPT最上面的蓝色窄条可以去掉」「每页标题下面的短橙色横线可以去掉」）；
+ *  - **最小字号 16px**（#145，用户定调「最小字体可以调大一点」）：内容类文字一律 ≥ `PPT_MIN_FONT`，
+ *    页脚与页码 15px；字号上调后**换行与容量同步重算**——块行距仍 30、栏行距 32、
+ *    表格行高按行数摊开（`tableRowH`）、清单行高按条数摊开（`listRowH`）。
+ *    放不下就压成一行加省略号，**不出界、不压字、不裁字**（硬约束不变）；
+ *  - **版面均衡**（#145）：内容区里 3 块的页面也要铺开——流程阶段 / 数据卡片 / 表格 / 要点清单
+ *    一律**竖直居中**并尽量摊开（底部空白 ≤ `PPT_QUALITY.maxBottomGap`），
+ *    换行按「行首禁则 + 孤字行避免」二次均衡（`wrapText`）。
  *  - **图标**：一律内联 `data-icon="tabler-outline/<名字>"` 占位（**渲染层不读技能目录**，
  *    保持渲染确定性）；由导出层在转档前调技能自带的 `finalize_svg.py --only embed-icons fix-rounded`
  *    换成真实图标。每页图标数 ≥4：页图标 + 块/栏/阶段/层/卡片/清单条 + 结论带 `bulb`。
@@ -33,6 +41,7 @@ import {
   PPT_DEFAULT_ICON,
   PPT_ICON_LIB,
   PPT_LIMITS,
+  PPT_MIN_FONT,
   normalizePptIcon,
   type PptBlock,
   type PptCard,
@@ -141,40 +150,34 @@ const CONTENT_W = PPT_CANVAS.width - PAD * 2;
 /** 页码右缘 */
 const RIGHT = PAD + CONTENT_W;
 
-/** 页顶 8px 通栏渐变主色带（每页一个；`<linearGradient>` 走 ppt-master 的 gradFill） */
-const TOP_BAND = { h: 8, id: "pptTopBand" } as const;
-
-/** 页眉：小节标签胶囊（含 22×22 图标）/ 大标题 + 橙短横 / 副题 */
+/** 页眉：小节标签胶囊（含 22×22 图标）/ 大标题 / 副题 */
 const HEAD = {
   kickerY: 36,
   kickerH: 30,
   kickerIcon: 22,
   kickerIconX: 92,
   kickerTextX: 122,
-  kickerSize: 15,
+  /** 小节标签字（内容类，≥ PPT_MIN_FONT） */
+  kickerSize: PPT_MIN_FONT,
   titleX: PAD,
   // 口径是 88；36px 中文的字面上缘≈基线−31，压在胶囊底（66）上，故下移到 98（留 1px）
   titleY: 98,
   titleSize: 36,
   titleMaxW: 900,
-  /** 标题下的橙色圆角短横 */
-  titleBarY: 106,
-  titleBarW: 80,
-  titleBarH: 6,
   subtitleX: PAD,
   subtitleY: 132,
   subtitleSize: 18,
 } as const;
 
-/** 右上页码胶囊（#E3F2FD 底） */
-const PAGE_NO = { h: 24, rx: 12, padX: 12, size: 15, y: 42 } as const;
+/** 右上页码胶囊（#E3F2FD 底；页码属元信息，允许比内容低一档） */
+const PAGE_NO = { h: 24, rx: 12, padX: 12, size: PPT_LIMITS.minMetaFontSize, y: 42 } as const;
 
-/** 技术/能力标签（贴右、与副题同一行） */
+/** 技术/能力标签（贴右、与副题同一行；标签是内容类文字，≥ PPT_MIN_FONT） */
 const CHIP = {
   y: 113,
   h: 26,
   rx: 13,
-  size: 15,
+  size: PPT_MIN_FONT,
   padX: 12,
   gap: 8,
   /** 保副题至少这么宽，不然从右往左丢标签 */
@@ -205,11 +208,16 @@ const BAND = {
 /** 每页结论带左侧固定挂 `bulb`（一页一定至少有一个"结论"图标） */
 const BAND_ICON = "bulb";
 
-/** 左下页脚 */
-const FOOT = { x: PAD, y: 700, size: 13 } as const;
+/** 左下页脚（元信息，允许比内容低一档） */
+const FOOT = { x: PAD, y: 700, size: PPT_LIMITS.minMetaFontSize } as const;
 
 /** 内容区（各布局都排在这条带里） */
 const BODY = { top: 170, bottom: 620, h: 450 } as const;
+
+/** 内容区里竖直居中（#145：块少的页面也要摊开，不许全挤在上半页） */
+function centerInBody(h: number): number {
+  return BODY.top + Math.floor((BODY.h - h) / 2);
+}
 
 /** 网格要点：2×2，块 550×216；卡头横条 34（装得下 28×28 图标，口径 26） */
 const GRID = { w: 550, h: 216, xs: [PAD, PAD + 570], ys: [170, 400], headH: 34 } as const;
@@ -217,26 +225,71 @@ const GRID = { w: 550, h: 216, xs: [PAD, PAD + 570], ys: [170, 400], headH: 34 }
 /** 双栏对比：左右各 550×450，栏头 52 */
 const COLS = { w: 550, h: 450, xs: [PAD, PAD + 570], y: 170, headH: 52, iconSize: 26 } as const;
 
-/** 流程阶段：等分横排 + 右向箭头 */
-const STAGE = { y: 200, h: 270, gap: 28, iconSize: 26 } as const;
+/** 流程阶段：等分横排 + 右向箭头（竖直居中：y=260） */
+const STAGE = { h: 270, gap: 28, iconSize: 26 } as const;
+const STAGE_Y = centerInBody(STAGE.h);
 
-/** 分层架构：横条 72 高，自上而下堆叠 */
+/** 分层架构：横条 72 高，自上而下堆叠（层数少时整组居中） */
 const LAYER = { x: PAD, w: CONTENT_W, h: 72, gap: 20, iconSize: 26 } as const;
 
-/** 数据卡片：等分，300 高 */
-const CARD = { y: 200, h: 300, gap: 24, iconSize: 28 } as const;
+/** 数据卡片：等分，300 高（竖直居中：y=245） */
+const CARD = { h: 300, gap: 24, iconSize: 28 } as const;
+const CARD_Y = centerInBody(CARD.h);
 
-/** 表格：表头 52、行 56，表头格左侧 14×14 图标 */
-const TABLE = { headH: 52, rowH: 56, iconSize: 14, iconGap: 22 } as const;
+/**
+ * 表格：表头 52；行高按行数摊开（#145）
+ *
+ * 字号从 15 提到 16 后，一行 16px 文字的高度 ≈18px、两行 ≈42px，故下限仍是 56；
+ * 行数少时把行高拉长并整表居中（3 行以上封顶 120、1–2 行封顶 176），
+ * 让短表也铺开在内容区里（不留大片下坠空白）——判据见 `PPT_QUALITY.maxBottomGap`。
+ */
+const TABLE = {
+  headH: 52,
+  rowH: 56,
+  /** 3 行以上的表：行高最多拉到 120（内容多时回到 56–66，不硬撑） */
+  maxRowH: 120,
+  /** 1–2 行的短表：允许拉到 176 并把整表居中，免得只有半页内容还全挤在上半页 */
+  maxShortRowH: 176,
+  cellSize: PPT_MIN_FONT,
+  cellLineH: 24,
+  headSize: PPT_MIN_FONT,
+  iconSize: 14,
+  iconGap: 22,
+} as const;
 
-/** 要点清单：一行 64 高 + 12 间距；图标 22×22 + 44×44 序号底衬 */
-const LIST = { rowH: 64, gap: 12, iconSize: 22 } as const;
+/** 要点清单：一行 64 高 + 12 间距（条数少时拉高并整组居中，封顶 120） */
+const LIST = { rowH: 64, maxRowH: 120, gap: 12, iconSize: 22 } as const;
 
 /** 内容行：方块 6×6、行距 30（网格）/ 32（双栏） */
 const ROW_DOT = { size: 6, gap: 18 } as const;
 
 /** 列间 / 行间细分隔线 */
 const RULE = { y1: BODY.top + 4, y2: BODY.bottom - 4, xMid: PAD + GRID.w + 10 } as const;
+
+/**
+ * 版面网格（质量门禁按它判「未对齐网格」，`packages/infra/src/ppt-quality.ts`）
+ *
+ * 同层级元素（块 / 栏 / 层 / 清单条 / 表格行）的 x 与宽度必须落在这些值上，偏差 >2px 就算没对齐；
+ * 卡片与阶段是等分件，判据是"同页等宽 + 等距"。**这里是唯一事实源**：改版式只改上面那些常量。
+ */
+export const PPT_GRID = {
+  /** 内容区左缘与右缘（x 与 x+width） */
+  x: PAD,
+  w: CONTENT_W,
+  /** 内容带（竖直判据的上下界） */
+  bodyTop: BODY.top,
+  bodyBottom: BODY.bottom,
+  /** 网格要点：块 550×216，落位 x=80/650、y=170/400 */
+  block: { w: GRID.w, h: GRID.h, xs: GRID.xs, ys: GRID.ys },
+  /** 双栏对比：栏 550×450，落位 x=80/650 */
+  col: { w: COLS.w, h: COLS.h, xs: COLS.xs },
+  /** 分层架构 / 要点清单 / 表格行：整幅内容宽 */
+  layer: { x: LAYER.x, w: LAYER.w },
+  list: { x: PAD, w: CONTENT_W },
+  /** 卡片 / 阶段：等分件（h 与间距固定） */
+  card: { h: CARD.h, gap: CARD.gap },
+  stage: { h: STAGE.h, gap: STAGE.gap },
+} as const;
 
 // ─── 字内强调（变更表 #144） ───────────────────────────────
 
@@ -347,9 +400,94 @@ function shrinkToFit(text: string, fontSize: number, maxWidth: number): string {
   return chars.join("");
 }
 
-/** 按像素宽换行（最多 maxLines 行，排不下就以省略号收尾） */
+// ─── 断行二次均衡（变更表 #145：行首禁则 + 孤字行） ─────────
+
+/**
+ * 行首禁则字符（中文排版：这些标点不许出现在一行开头）
+ *
+ * 与《解决方案输出要求》的排版口径一致：起首出现这些标点，读者会以为上一行没排完。
+ */
+export const PPT_LEADING_PUNCT = "，。、；：！？）》」";
+
+/** 这一行是不是以禁则标点开头 */
+export function hasLeadingPunct(line: string): boolean {
+  return line !== "" && PPT_LEADING_PUNCT.includes(line[0]!);
+}
+
+/** 行首禁则：**起首的**标点是排版噪声（模型偶发），渲染层确定性甩掉——只丢标点，不动其余文字 */
+export function stripLeadingPunct(text: string): string {
+  let out = text;
+  while (out !== "" && hasLeadingPunct(out)) out = out.slice(1);
+  return out;
+}
+
+/** 一行的可见字数（末尾省略号是"压缩痕迹"，不算字） */
+function visibleChars(line: string): number {
+  return Array.from(line).filter((ch) => ch !== "…").length;
+}
+
+/** 换行后最后一行最少几个字（避免孤字行；质量门禁同源） */
+export const PPT_MIN_ORPHAN_CHARS = 3;
+
+/** 从上一行末尾匀一个字符到下一行行首（上一行至少留 2 个字，否则不动） */
+function shiftDown(lines: string[], i: number, fontSize: number, maxWidth: number): boolean {
+  const prev = Array.from(lines[i - 1]!);
+  if (prev.length <= 2) return false;
+  const moved = prev[prev.length - 1]!;
+  const next = moved + lines[i]!;
+  // **溢出优先于均衡**：匀下来的字会让下一行出界就不匀（硬约束不让步）
+  if (estimateTextWidth(next, fontSize) > maxWidth) return false;
+  prev.pop();
+  lines[i - 1] = prev.join("");
+  lines[i] = next;
+  return true;
+}
+
+/**
+ * 断行后的二次均衡（确定性、只挪字符、不删字）
+ *
+ * ① **行首禁则**：某一行以禁则标点开头 → 把上一行末字挪下来（最多挪 8 次，挪不动就作罢）；
+ * ② **孤字行**：末行不足 3 个字 → 从上一行末尾匀字下来（可能把标点匀下来，故再跑一遍 ①）。
+ */
+function balanceLines(lines: string[], fontSize: number, maxWidth: number): string[] {
+  for (let i = 1; i < lines.length; i += 1) {
+    for (let g = 0; g < 8 && hasLeadingPunct(lines[i]!); g += 1) {
+      if (!shiftDown(lines, i, fontSize, maxWidth)) break;
+    }
+  }
+  const last = lines.length - 1;
+  if (last >= 1) {
+    for (let g = 0; g < 8 && visibleChars(lines[last]!) < PPT_MIN_ORPHAN_CHARS; g += 1) {
+      if (!shiftDown(lines, last, fontSize, maxWidth)) break;
+    }
+    for (let g = 0; g < 8 && hasLeadingPunct(lines[last]!); g += 1) {
+      if (!shiftDown(lines, last, fontSize, maxWidth)) break;
+    }
+  }
+  return lines;
+}
+
+/**
+ * 断点落在禁则标点上时，从上一行挪几个字下来，让新行不以标点开头
+ *
+ * 挪下来的那个字**自己也可能**是标点（`……确认），老设备…` 里的 `）`），所以一直往前挪到挪下来的
+ * 那个字不是标点为止（上一行至少留 1 个字；实在挪不动就交给最后那道 `stripLeadingPunct` 兜底）。
+ */
+function rebreakOnPunct(prev: string[], ch: string): { head: string; tail: string } | null {
+  let keep = prev.length - 1;
+  while (keep > 1 && hasLeadingPunct(prev[keep]!)) keep -= 1;
+  return { head: prev.slice(0, keep).join(""), tail: prev.slice(keep).join("") + ch };
+}
+
+/**
+ * 按像素宽换行（最多 maxLines 行，排不下就以省略号收尾）
+ *
+ * 与 #142 的差别有两处：① 断点落在禁则标点上时**当场把上一行末字一起挪下来**（新行不以标点开头，
+ * 宽度也仍在容器内）；② 排完做一次二次均衡（孤字行，见 `balanceLines`），最后再甩一遍行首标点
+ * （只可能出现在"容器只装得下 1–2 个字"的极端窄格子里，那时挪无可挪）。
+ */
 export function wrapText(text: string, fontSize: number, maxWidth: number, maxLines: number): string[] {
-  const chars = Array.from(text);
+  const chars = Array.from(stripLeadingPunct(text));
   const lines: string[] = [];
   let current = "";
   let consumed = 0;
@@ -357,19 +495,33 @@ export function wrapText(text: string, fontSize: number, maxWidth: number, maxLi
     if (lines.length >= maxLines) break;
     const next = current + ch;
     if (current !== "" && estimateTextWidth(next, fontSize) > maxWidth) {
-      lines.push(current);
-      current = ch;
+      const prev = Array.from(current);
+      const fixed = hasLeadingPunct(ch) && prev.length > 1 ? rebreakOnPunct(prev, ch) : null;
+      if (fixed !== null) {
+        lines.push(fixed.head);
+        current = fixed.tail;
+      } else {
+        lines.push(current);
+        current = ch;
+      }
     } else {
       current = next;
     }
     consumed += 1;
   }
-  if (lines.length < maxLines && current !== "") lines.push(current);
-  if (consumed < chars.length && lines.length > 0) {
+  let leftover = false;
+  if (current !== "") {
+    if (lines.length < maxLines) lines.push(current);
+    else leftover = true; // 排到行数上限还有没排进去的字，必须用省略号交代，不许无声丢字
+  }
+  if (lines.length > 1) balanceLines(lines, fontSize, maxWidth);
+  if (lines.length > 0 && (consumed < chars.length || leftover)) {
     const last = lines.length - 1;
     lines[last] = shrinkToFit(`${lines[last]}…`, fontSize, maxWidth);
   }
-  return lines.length === 0 ? [""] : lines;
+  // 最后一道保险：挪无可挪的窄格子里仍可能留下行首标点，此时只丢那个标点（排版噪声，不是内容）
+  const cleaned = lines.map(stripLeadingPunct).filter((l) => l !== "" || lines.length === 1);
+  return cleaned.length === 0 ? [""] : cleaned;
 }
 
 // ─── SVG 片段 ──────────────────────────────────────────────
@@ -386,10 +538,12 @@ interface TextOpts {
 
 /** 一个 `<text>`（不写 dominant-baseline：PPT 导出对不齐；空串不产元素） */
 function textEl(o: TextOpts): string {
-  if (o.text === "") return "";
+  // 行首禁则：起首的标点甩掉（模型偶发；只丢标点，不动其余文字）
+  const text = stripLeadingPunct(o.text);
+  if (text === "") return "";
   const weight = o.weight ? ' font-weight="bold"' : "";
   const anchor = o.anchor ? ` text-anchor="${o.anchor}"` : "";
-  return `<text x="${o.x}" y="${o.y}" font-family="${FONT_ATTR}" font-size="${o.size}" fill="${o.fill}"${weight}${anchor}>${escXml(o.text)}</text>`;
+  return `<text x="${o.x}" y="${o.y}" font-family="${FONT_ATTR}" font-size="${o.size}" fill="${o.fill}"${weight}${anchor}>${escXml(text)}</text>`;
 }
 
 interface RichTextOpts {
@@ -405,9 +559,13 @@ interface RichTextOpts {
 /** 把 runs 拼成 `<text>` 的内容（与基准样式相同的 run 直接写文字，不同的写成 `<tspan>`） */
 function runsContent(o: RichTextOpts): string {
   const baseBold = o.weight === true;
+  let leading = true;
   return o.runs
     .map((run) => {
-      const text = escXml(run.text);
+      // 行首禁则：整行的第一个非空 run 起首是标点就甩掉（只丢标点，不动其余文字）
+      const raw = leading ? stripLeadingPunct(run.text) : run.text;
+      if (raw !== "") leading = false;
+      const text = escXml(raw);
       if (text === "") return "";
       const size = run.size ?? o.size;
       const fill = run.fill ?? o.fill;
@@ -628,18 +786,7 @@ function contentLines(
 
 // ─── 统一骨架 ──────────────────────────────────────────────
 
-/** 页顶 8px 通栏渐变主色带（`<linearGradient>` 走 ppt-master 的 gradFill） */
-function topBandEl(): string {
-  return [
-    `<defs><linearGradient id="${TOP_BAND.id}" x1="0" y1="0" x2="1" y2="0">`,
-    `<stop offset="0" stop-color="${PPT_COLORS.primary}"/>`,
-    `<stop offset="1" stop-color="${PPT_COLORS.primaryAlt}"/>`,
-    `</linearGradient></defs>`,
-    rect({ x: 0, y: 0, w: PPT_CANVAS.width, h: TOP_BAND.h, fill: `url(#${TOP_BAND.id})`, rx: 0 }),
-  ].join("");
-}
-
-/** 小节标签：左上浅蓝胶囊（左侧 22×22 图标 + 15px 粗字，宽度按字数算） */
+/** 小节标签：左上浅蓝胶囊（左侧 22×22 图标 + 16px 粗字，宽度按字数算） */
 function kickerEl(text: string, icon: string): string {
   const w = HEAD.kickerTextX - PAD + estimateTextWidth(text, HEAD.kickerSize) + 14;
   return [
@@ -705,7 +852,13 @@ function chipsEl(chips: readonly string[]): { svg: string; subtitleMaxW: number 
   return { svg: parts.join(""), subtitleMaxW: CONTENT_W - total - CHIP.minGap };
 }
 
-/** 页眉：36px 大标题 + 80×6 橙短横 + 右上页码胶囊 */
+/**
+ * 页眉：36px 大标题 + 右上页码胶囊
+ *
+ * #145 去掉了标题下的 80×6 橙短横（用户定调「每页标题下面的短橙色横线可以去掉」）——
+ * 标题与副题之间不再有视觉锚点，靠字号与颜色分层。
+ * 页码单独成组（`<g id="page-no">`）：它是元信息文字（15px），质量门禁按组判「字号过小」的例外。
+ */
 function titleEl(page: PptPage, index: number, total: number): string {
   const title = wrapText(page.title, HEAD.titleSize, HEAD.titleMaxW, 1)[0]!;
   const pageText = `第 ${index + 1} 页 / 共 ${total} 页`;
@@ -720,14 +873,7 @@ function titleEl(page: PptPage, index: number, total: number): string {
       text: title,
       weight: true,
     }),
-    rect({
-      x: HEAD.titleX,
-      y: HEAD.titleBarY,
-      w: HEAD.titleBarW,
-      h: HEAD.titleBarH,
-      fill: PPT_COLORS.orange,
-      rx: HEAD.titleBarH / 2,
-    }),
+    `<g id="page-no">`,
     rect({
       x: RIGHT - noW,
       y: PAGE_NO.y,
@@ -744,6 +890,7 @@ function titleEl(page: PptPage, index: number, total: number): string {
       text: pageText,
       anchor: "end",
     }),
+    `</g>`,
     `</g>`,
   ].join("");
 }
@@ -840,7 +987,7 @@ function blockEl(block: PptBlock, i: number, x: number, y: number): string {
   const textX = x + 50;
   const maxW = w - 50 - 18;
   const top = block.note === "" ? y + 76 : y + 88;
-  const placed = placeLines(block.lines, { top, bottom: y + h - 10, rowH: 30, size: 16, maxW });
+  const placed = placeLines(block.lines, { top, bottom: y + h - 10, rowH: 30, size: PPT_MIN_FONT, maxW });
   return [
     `<g id="block-${i + 1}">`,
     rect({ x, y, w, h, fill: PPT_COLORS.subtle, stroke: PPT_COLORS.border, strokeWidth: 1.5, rx: 10 }),
@@ -852,8 +999,14 @@ function blockEl(block: PptBlock, i: number, x: number, y: number): string {
       iconUse({ icon: block.icon, x: x + 12, y: y + 3, size: 28, fill: PPT_COLORS.primary }),
     ),
     textEl({ x: textX, y: y + 24, size: 20, fill: PPT_COLORS.primary, text: block.head, weight: true }),
-    textEl({ x: textX, y: y + 52, size: 15, fill: PPT_COLORS.muted, text: block.note }),
-    contentLines(`block-${i + 1}-line`, placed, { x: textX, size: 16, fill: PPT_COLORS.text, rowH: 30 }),
+    textEl({
+      x: textX,
+      y: y + 52,
+      size: PPT_MIN_FONT,
+      fill: PPT_COLORS.muted,
+      text: wrapText(block.note, PPT_MIN_FONT, maxW, 1)[0]!,
+    }),
+    contentLines(`block-${i + 1}-line`, placed, { x: textX, size: PPT_MIN_FONT, fill: PPT_COLORS.text, rowH: 30 }),
     `</g>`,
   ].join("");
 }
@@ -884,7 +1037,7 @@ function columnEl(col: PptColumn, i: number, x: number): string {
     top: col.note === "" ? y + 84 : y + 104,
     bottom: y + h - 16,
     rowH: 32,
-    size: 16,
+    size: PPT_MIN_FONT,
     maxW: w - 58 - 18,
   });
   return [
@@ -903,8 +1056,14 @@ function columnEl(col: PptColumn, i: number, x: number): string {
       }),
     ),
     textEl({ x: textX, y: y + 34, size: 20, fill: PPT_COLORS.onPrimary, text: col.head, weight: true }),
-    textEl({ x: textX, y: y + 76, size: 15, fill: PPT_COLORS.muted, text: col.note }),
-    contentLines(`col-${i + 1}-line`, placed, { x: textX, size: 16, fill: PPT_COLORS.text, rowH: 32 }),
+    textEl({
+      x: textX,
+      y: y + 76,
+      size: PPT_MIN_FONT,
+      fill: PPT_COLORS.muted,
+      text: wrapText(col.note, PPT_MIN_FONT, w - 58 - 18, 1)[0]!,
+    }),
+    contentLines(`col-${i + 1}-line`, placed, { x: textX, size: PPT_MIN_FONT, fill: PPT_COLORS.text, rowH: 32 }),
     `</g>`,
   ].join("");
 }
@@ -927,12 +1086,13 @@ function renderColumns(page: PptPage): string {
 
 /** 一个阶段（顶部图标 + 序号圆点 + 阶段名 + 说明，右侧接箭头） */
 function stageEl(stage: PptStage, i: number, n: number, x: number, w: number): string {
-  const y = STAGE.y;
+  // #145：整排竖直居中（3–5 个阶段都不许缩在内容区上半页）
+  const y = STAGE_Y;
   const h = STAGE.h;
   const cx = x + w / 2;
   const maxW = w - 32;
   const heads = wrapText(stage.head, 18, maxW, 2);
-  const notes = wrapText(stage.note, 15, maxW, 2);
+  const notes = wrapText(stage.note, PPT_MIN_FONT, maxW, 2);
   const noteY = y + 124 + (heads.length - 1) * 24 + 30;
   return [
     `<g id="stage-${i + 1}">`,
@@ -973,7 +1133,7 @@ function stageEl(stage: PptStage, i: number, n: number, x: number, w: number): s
       id: `stage-${i + 1}-note`,
       x: cx,
       y: noteY,
-      size: 15,
+      size: PPT_MIN_FONT,
       fill: PPT_COLORS.muted,
       lines: notes,
       lineHeight: 22,
@@ -1001,15 +1161,15 @@ function layerEl(layer: PptLayer, i: number, y: number): string {
   const parts: string[] = [];
   let x = headX + headW + 16;
   for (const [j, item] of layer.items.slice(0, PPT_LIMITS.layers.maxItems).entries()) {
-    const w = estimateTextWidth(item, 15) + 24;
+    const w = estimateTextWidth(item, PPT_MIN_FONT) + 24;
     if (x + w > LAYER.x + LAYER.w - 16) break; // 放不下就从右往左少画一个（内容不丢，只是不上这一页的这层）
     parts.push(
       `<g id="layer-${i + 1}-item-${j + 1}">`,
       rect({ x, y: y + 22, w, h: 28, fill: PPT_COLORS.lightBlue, rx: 14 }),
       textEl({
         x: x + 12,
-        y: y + 22 + 14 + 15 * 0.35,
-        size: 15,
+        y: y + 22 + 14 + PPT_MIN_FONT * 0.35,
+        size: PPT_MIN_FONT,
         fill: PPT_COLORS.primaryAlt,
         text: item,
       }),
@@ -1056,7 +1216,8 @@ function renderLayers(page: PptPage): string {
 
 /** 一张数据卡片（顶部主色条 + 28×28 图标 + 大数值 + 橙色下划线 + 说明） */
 function cardEl(card: PptCard, i: number, x: number, w: number): string {
-  const y = CARD.y;
+  // #145：卡片组竖直居中（3 张也不许缩在上半页）
+  const y = CARD_Y;
   const h = CARD.h;
   const values = wrapText(card.value, 34, w - 48, 2);
   const labels = wrapText(card.label, 16, w - 40, 2);
@@ -1091,7 +1252,7 @@ function cardEl(card: PptCard, i: number, x: number, w: number): string {
       id: `card-${i + 1}-label`,
       x: cx,
       y: y + 230,
-      size: 16,
+      size: PPT_MIN_FONT,
       fill: PPT_COLORS.muted,
       lines: labels,
       lineHeight: 24,
@@ -1117,7 +1278,7 @@ function columnWidths(table: PptTable): number[] {
     const cells = table.rows.map((r) => r[i] ?? "");
     const widest = Math.max(
       estimateTextWidth(h, 16),
-      ...cells.map((c) => estimateTextWidth(c, 15)),
+      ...cells.map((c) => estimateTextWidth(c, PPT_MIN_FONT)),
       40,
     );
     return Math.max(widest + 32 + TABLE.iconGap, 96);
@@ -1131,34 +1292,59 @@ function columnWidths(table: PptTable): number[] {
 /**
  * 一个表格单元格：最多两行、垂直居中，只做**数字强调**（格子里是短标签，不做行首关键词）
  *
- * 数字比正文宽，换行前先把多出来的宽度扣掉，保证加粗放大后仍在列宽以内。
+ * 数字比正文宽，换行前先把多出来的宽度扣掉，保证加粗放大后仍在列宽以内（#145：字号 15→16）。
  */
-function cellEl(text: string, row: number, col: number, x: number, rowY: number, maxW: number): string {
+function cellEl(
+  text: string,
+  row: number,
+  col: number,
+  x: number,
+  rowY: number,
+  rowH: number,
+  maxW: number,
+): string {
   const emph: PptEmphasis = { prefix: "", number: pptEmphasisOf(text).number };
+  const size = TABLE.cellSize;
   const extra =
     emph.number === null
       ? 0
-      : Math.max(0, estimateTextWidth(emph.number, EMPH_NUMBER_SIZE) - estimateTextWidth(emph.number, 15));
-  const lines = wrapText(text, 15, Math.max(40, maxW - extra), 2);
+      : Math.max(0, estimateTextWidth(emph.number, EMPH_NUMBER_SIZE) - estimateTextWidth(emph.number, size));
+  const lines = wrapText(text, size, Math.max(40, maxW - extra), 2);
   const state = { prefix: false, number: false };
-  const first = rowY + TABLE.rowH / 2 + 15 * 0.35 - (lines.length - 1) * 11;
+  // 两行 16px（行距 24）竖直居中：上下各留 ≥7px，行间不压字
+  const first = rowY + rowH / 2 + size * 0.35 - ((lines.length - 1) * TABLE.cellLineH) / 2;
   const texts = lines
     .map((line, j) =>
       richTextEl({
         x,
-        y: first + j * 22,
-        size: 15,
+        y: first + j * TABLE.cellLineH,
+        size,
         fill: PPT_COLORS.text,
-        runs: lineRuns(line, { size: 15, fill: PPT_COLORS.text, emph, state }),
+        runs: lineRuns(line, { size, fill: PPT_COLORS.text, emph, state }),
       }),
     )
     .join("");
   return `<g id="cell-${row}-${col}"><g id="cell-${row}-${col}-text">${texts}</g></g>`;
 }
 
-/** 表格：主色表头（每列一个小图标）+ 奇数行浅蓝 / 偶数行白 + 行间细线 */
+/**
+ * 表格行高（变更表 #145）：按行数把内容区摊开——行少就拉高（封顶 280）、行多就回到下限
+ *
+ * 16px 的字两行（行距 24）连字面约 42px，故下限 56 装得下两行；行数少时把行高拉长并**整表居中**，
+ * 免得 2–3 行的短表缩在内容区上半页（正是版面判据「留白不均」要抓的那类排版）。
+ */
+function tableRowH(rows: number): number {
+  const fit = Math.floor((BODY.h - TABLE.headH) / Math.max(1, rows));
+  const cap = rows >= 3 ? TABLE.maxRowH : TABLE.maxShortRowH;
+  return Math.max(TABLE.rowH, Math.min(cap, fit));
+}
+
+/** 表格：主色表头（每列一个小图标）+ 奇数行浅蓝 / 偶数行白 + 行间细线（#145：按行数摊开并居中） */
 function renderTable(table: PptTable): string {
   if (table === null) return "";
+  const rows = table.rows.slice(0, PPT_LIMITS.table.maxRows);
+  const rowH = tableRowH(rows.length);
+  const top = centerInBody(TABLE.headH + rows.length * rowH);
   const widths = columnWidths(table);
   const xs: number[] = [];
   let acc = PAD;
@@ -1173,7 +1359,7 @@ function renderTable(table: PptTable): string {
         iconUse({
           icon: table.icons?.[i] ?? PPT_DEFAULT_ICON,
           x: xs[i]! + 14,
-          y: BODY.top + (TABLE.headH - TABLE.iconSize) / 2,
+          y: top + (TABLE.headH - TABLE.iconSize) / 2,
           size: TABLE.iconSize,
           fill: PPT_COLORS.onPrimary,
         }),
@@ -1182,26 +1368,26 @@ function renderTable(table: PptTable): string {
         icon,
         textEl({
           x: xs[i]! + 14 + TABLE.iconSize + 8,
-          y: BODY.top + TABLE.headH / 2 + 16 * 0.35,
-          size: 16,
+          y: top + TABLE.headH / 2 + TABLE.headSize * 0.35,
+          size: TABLE.headSize,
           fill: PPT_COLORS.onPrimary,
-          text: wrapText(h, 16, widths[i]! - 36 - 12, 1)[0]!,
+          text: wrapText(h, TABLE.headSize, widths[i]! - 36 - 12, 1)[0]!,
           weight: true,
         }),
       ].join("");
     })
     .join("");
-  const rows = table.rows
+  const rowEls = rows
     .map((row, r) => {
-      const y = BODY.top + TABLE.headH + r * TABLE.rowH;
+      const y = top + TABLE.headH + r * rowH;
       const fill = r % 2 === 0 ? PPT_COLORS.subtle : PPT_COLORS.card;
       const cells = row
-        .map((cell, i) => cellEl(cell, r + 1, i + 1, xs[i]! + 16, y, widths[i]! - 32))
+        .map((cell, i) => cellEl(cell, r + 1, i + 1, xs[i]! + 16, y, rowH, widths[i]! - 32))
         .join("");
       return [
         `<g id="row-${r + 1}">`,
-        rect({ x: PAD, y, w: CONTENT_W, h: TABLE.rowH, fill, rx: 0 }),
-        line({ x1: PAD, y1: y + TABLE.rowH, x2: RIGHT, y2: y + TABLE.rowH, stroke: PPT_COLORS.divider }),
+        rect({ x: PAD, y, w: CONTENT_W, h: rowH, fill, rx: 0 }),
+        line({ x1: PAD, y1: y + rowH, x2: RIGHT, y2: y + rowH, stroke: PPT_COLORS.divider }),
         cells,
         `</g>`,
       ].join("");
@@ -1209,14 +1395,14 @@ function renderTable(table: PptTable): string {
     .join("");
   return [
     `<g id="table">`,
-    rect({ x: PAD, y: BODY.top, w: CONTENT_W, h: TABLE.headH, fill: PPT_COLORS.primary, rx: 0 }),
+    rect({ x: PAD, y: top, w: CONTENT_W, h: TABLE.headH, fill: PPT_COLORS.primary, rx: 0 }),
     headCells,
-    rows,
+    rowEls,
     rect({
       x: PAD,
-      y: BODY.top,
+      y: top,
       w: CONTENT_W,
-      h: TABLE.headH + table.rows.length * TABLE.rowH,
+      h: TABLE.headH + rows.length * rowH,
       fill: "none",
       stroke: PPT_COLORS.border,
       rx: 0,
@@ -1224,7 +1410,6 @@ function renderTable(table: PptTable): string {
     `</g>`,
   ].join("");
 }
-
 /** 要点清单的行（没有 bullets 时把其它布局的内容摊平兜底） */
 function checklistLines(page: PptPage): string[] {
   const bullets = bulletsOf(page);
@@ -1259,10 +1444,22 @@ function splitItem(text: string): { head: string; note: string } {
 }
 
 /**
+ * 要点清单的行高（变更表 #145）：条数少就拉高（封顶 120），条数多就回到 64
+ *
+ * 3 条的页面在 #144 里是三条 64px 挤在内容区上半页（下面 200 多 px 空白，排版判据要报"留白不均"）；
+ * 现在按条数摊开，配合整组竖直居中，3 条也铺满内容区。
+ */
+function listRowH(n: number): number {
+  const gap = LIST.gap;
+  const fit = Math.floor((BODY.h - gap * (n - 1)) / Math.max(1, n));
+  return Math.max(LIST.rowH, Math.min(LIST.maxRowH, fit));
+}
+
+/**
  * 要点清单（兜底布局）：22×22 图标 + 44×44 序号底衬 + 一行大字 + 次要说明行 + 条间细线
  *
  * 这是兜底版式，但**兜底也不许是一张白页**：每条给足四件（图标 / 序号底衬 / 20px 主句 /
- * 15px 次要说明），条与条之间加一条 1px `#D6E7F8` 分隔线——5 条时形状数也过质量门禁的密度线。
+ * 16px 次要说明），条与条之间加一条 1px `#D6E7F8` 分隔线——5 条时形状数也过质量门禁的密度线。
  * 主句做字内强调（行首关键词 + 数字），图标取页图标（同页同款符号，就是"这一页"的记号）。
  */
 function renderChecklist(page: PptPage): string {
@@ -1270,13 +1467,14 @@ function renderChecklist(page: PptPage): string {
   const n = items.length;
   if (n === 0) return "";
   const gap = LIST.gap;
-  const rowH = Math.min(LIST.rowH, Math.floor((BODY.h - gap * (n - 1)) / n));
+  const rowH = listRowH(n);
+  const top = centerInBody(n * rowH + (n - 1) * gap);
   const textX = PAD + 118;
   const maxW = CONTENT_W - 118 - 24;
   const icon = page.icon ?? PPT_DEFAULT_ICON;
   return items
     .map((item, i) => {
-      const y = BODY.top + i * (rowH + gap);
+      const y = top + i * (rowH + gap);
       const boxY = y + (rowH - 44) / 2;
       const mid = y + rowH / 2;
       const mainTop = item.note === "" ? mid + 20 * 0.35 : mid - 6;
@@ -1326,10 +1524,10 @@ function renderChecklist(page: PptPage): string {
               id: `item-${i + 1}-note`,
               x: textX,
               y: mid + 22,
-              size: 15,
+              size: PPT_MIN_FONT,
               fill: PPT_COLORS.muted,
-              lines: wrapText(item.note, 15, maxW, 1),
-              lineHeight: 22,
+              lines: wrapText(item.note, PPT_MIN_FONT, maxW, 1),
+              lineHeight: 24,
             }),
         i < n - 1
           ? line({
@@ -1375,7 +1573,6 @@ export function renderPptPage(page: PptPage, ctx: PptRenderContext): string {
   return [
     `<svg xmlns="http://www.w3.org/2000/svg" version="1.1" width="${PPT_CANVAS.width}" height="${PPT_CANVAS.height}" viewBox="0 0 ${PPT_CANVAS.width} ${PPT_CANVAS.height}">`,
     rect({ x: 0, y: 0, w: PPT_CANVAS.width, h: PPT_CANVAS.height, fill: PPT_COLORS.bg, rx: 0 }),
-    topBandEl(),
     kickerEl(page.kicker ?? "", icon),
     titleEl(page, ctx.index, ctx.total),
     subtitleEl(subtitle, chips.subtitleMaxW),

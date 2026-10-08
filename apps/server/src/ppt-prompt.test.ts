@@ -123,7 +123,9 @@ describe("重试提示 —— 点名到页", () => {
   it("把上一次卡在哪、要改什么逐字写进 system 与 user", () => {
     expect(retry.system).toContain(reason);
     expect(retry.user).toContain(reason);
-    expect(retry.system).toContain("这次必须改掉的两件事");
+    expect(retry.system).toContain("这次必须改掉的三件事");
+    // #145：版面检查的内容类问题（图标不足 / 重点不突出）也要能在这一次重试里被修掉
+    expect(retry.system).toContain("每处内容都要有图标、每页都要有重点");
     expect(retry.system).toContain(`每一页都写到 ${PPT_LIMITS.minSentencesPerPage} 条以上有效短句`);
     expect(retry.system).toContain("不要再交一页只有两三条的空页");
     expect(retry.system).toContain("版式与字段必须成套"); // 重试也带上成套规则

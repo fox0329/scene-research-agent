@@ -1,11 +1,13 @@
 /**
- * @scene/server — 导出 PPT 测试（变更表 #141 立、#144 升）
+ * @scene/server — 导出 PPT 测试（变更表 #141 立、#144 升、#145 升：生成后必做版面检查）
  *
  * **不真跑用户的技能**（慢，还依赖本机装的依赖）：用 `PPT_MASTER_DIR` 指到一个 fixture 目录，
  * 里面放假的 `scripts/finalize_svg.py`（图标收尾）与 `scripts/svg_to_pptx.py`（转档）——
  * 两者只把命令行与看到的东西记进 `PPT_FAKE_LOG`（一行一条 JSON），转档器再写一个占位 pptx。
  * 由此验证：**两步的先后次序与参数逐字固定**（#144）、命令行参数正确、产物落到目标目录、
- * 临时目录被清理、进度阶段齐、finalize 失败/缺脚本都只 warn 不阻断、失败只回 notice。
+ * 临时目录被清理、进度阶段齐、finalize 失败/缺脚本都只 warn 不阻断、失败只回 notice；
+ * #145 追加：**渲染完必跑 `checkPptDeck`**——内容类问题点名后重试一次，仍不达标（或渲染类
+ * 问题）**拒绝写出文件、用户原有文件一个字节都不动**。
  */
 
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
@@ -202,14 +204,15 @@ function thinOutlineJson(pages = 6): string {
   return JSON.stringify(deck);
 }
 
-/** DSH 桩：按调用次序依次吐出给定的返回文本 */
-function mockDsh(texts: string[]): DshClient {
+/** DSH 桩：按调用次序依次吐出给定的返回文本（`counter` 用来断言"到底调了几次模型"） */
+function mockDsh(texts: string[], counter?: { calls: number }): DshClient {
   let call = 0;
   return {
     createSession: async () => ({ sessionId: "s" }),
     prompt: () => {
       const text = texts[Math.min(call, texts.length - 1)]!;
       call += 1;
+      if (counter) counter.calls = call;
       return (async function* () {
         yield { type: "text", text };
         yield { type: "done" };
@@ -322,11 +325,15 @@ describe("exportReportPptx", () => {
     const text = messages(h.events);
     expect(text).toContain("PPT：正在梳理大纲…");
     expect(text).toContain("PPT：大纲 6 页，正在渲染第 3 页…");
+    expect(text).toContain("PPT：正在做版面检查…");
+    expect(text).toContain("PPT：版面检查通过（6 页）");
     expect(text).toContain("PPT：正在转成 PPTX…");
     expect(text).toContain("PPT：已导出");
     // 每页一条，不逐帧刷屏
     expect(text.match(/正在渲染第 /g)).toHaveLength(6);
     expect(h.events.every((e) => e.type === "progress")).toBe(true);
+    // 版面检查在转档之前（检查不过就不该去转档）
+    expect(text.indexOf("版面检查通过")).toBeLessThan(text.indexOf("正在转成 PPTX"));
   });
 
   it("大纲不合法 → 重试一次；仍不合法 → notice，不产文件", async () => {
@@ -366,17 +373,58 @@ describe("exportReportPptx", () => {
     expect(result.notice ?? "").not.toContain("内容偏少");
   });
 
-  it("重试后那页还是只有 2 条 → 保留、不阻断，notice 点名第几页内容偏少", async () => {
-    const result = await runExport(h, { dshClient: mockDsh([thinOutlineJson(6), thinOutlineJson(6)]) });
-    expect(result.files.length + result.unchanged.length).toBe(1); // 不因为空页就不产文件
-    expect(result.notice ?? "").toContain("第 5 页只有 2 条");
-    expect(result.notice ?? "").toContain("内容偏少");
+  it("重试后那页还是只有 2 条 → 版面检查不过，拒绝写出并点名第 5 页（#145）", async () => {
+    const calls = { calls: 0 };
+    const result = await runExport(h, {
+      dshClient: mockDsh([thinOutlineJson(6), thinOutlineJson(6)], calls),
+    });
+    expect(result.files).toEqual([]);
+    expect(result.unchanged).toEqual([]);
+    expect(result.notice).toContain("版面检查未通过");
+    expect(result.notice).toContain("第 5 页");
+    expect(result.notice).toContain("信息量不足");
+    expect(result.notice).toContain("最低要求：内容字号 ≥16px"); // 引用 PPT_MIN_QUALITY，冻结这一档
+    expect(result.notice).toContain("保留原有文件不动");
+    expect(readdirSync(h.dir)).toEqual([]); // 一个字节都没写出去
+    // 内容类问题只再要一次模型（首次 + 空页重试 + 版面重试 = 3 次），不许无限重试
+    expect(calls.calls).toBe(3);
   });
 
-  it("首次只是有空页、重试反而吐垃圾 → 保留首次（不因重试丢文件）", async () => {
-    const result = await runExport(h, { dshClient: mockDsh([thinOutlineJson(6), "我这次啥也不给"]) });
-    expect(result.files.length + result.unchanged.length).toBe(1);
-    expect(result.notice ?? "").toContain("内容偏少");
+  it("首次有空页、重试反而吐垃圾 → 版面检查仍不过，一样拒绝写出（不留半成品）", async () => {
+    const calls = { calls: 0 };
+    const result = await runExport(h, {
+      dshClient: mockDsh([thinOutlineJson(6), "我这次啥也不给"], calls),
+    });
+    expect(result.files).toEqual([]);
+    expect(result.unchanged).toEqual([]);
+    expect(result.notice).toContain("版面检查未通过");
+    expect(result.notice).toContain("第 5 页");
+    expect(readLog(h.log)).toEqual([]); // 连转档都没跑
+  });
+
+  it("版面检查不过时**不动用户已有的文件**（原有文件保留、也没写半个新的）", async () => {
+    const { scenario, kind } = { scenario: h.scenario, kind: "construction" as const };
+    const existing = join(h.dir, pptFileName(scenario.name, kind));
+    writeFileSync(existing, "上一版正常导出的内容", "utf8");
+
+    const result = await runExport(h, { dshClient: mockDsh([thinOutlineJson(6), thinOutlineJson(6)]) });
+    expect(result.files).toEqual([]);
+    expect(result.notice).toContain("保留原有文件不动");
+    expect(readFileSync(existing, "utf8")).toBe("上一版正常导出的内容");
+    expect(readdirSync(h.dir)).toEqual([pptFileName(scenario.name, kind)]);
+  });
+
+  it("内容类问题点名后重试一次成功 → 采纳重试的大纲，导出并报「版面检查通过」（#145）", async () => {
+    const result = await runExport(h, {
+      dshClient: mockDsh([thinOutlineJson(6), thinOutlineJson(6), outlineJson(6)]),
+    });
+    expect(result.files).toHaveLength(1);
+    const text = messages(h.events);
+    expect(text).toContain("PPT：正在做版面检查…");
+    expect(text).toContain("第 5 页信息量不足"); // 点名到页 + 具体问题
+    expect(text).toContain("重试一次");
+    expect(text).toContain("PPT：版面检查通过（6 页）");
+    expect(result.notice ?? "").not.toContain("版面检查未通过");
   });
 
   it("模型报错 → notice，不产文件", async () => {
@@ -468,6 +516,41 @@ describe("exportReportPptx", () => {
       expect(readdirSync(bad.dir)).toEqual([]);
     } finally {
       bad.cleanup();
+    }
+  });
+
+  it("渲染类问题：不重试模型，拒绝写出并把缺陷打进日志（bug 信号）（#145）", async () => {
+    // 渲染层已经把版面修到达标了，能走到这里说明是我们的 bug——用注入的方式验证这条链路：
+    // 不许拿模型重试去掩盖渲染缺陷，只许拒绝写出 + 日志点名
+    vi.resetModules();
+    vi.doMock("@scene/infra", async (importOriginal) => {
+      const actual = await importOriginal<typeof import("@scene/infra")>();
+      return { ...actual, checkPptDeck: () => [{ page: 2, code: "未对齐网格", detail: "注入的渲染缺陷" }] };
+    });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    try {
+      const { exportReportPptx: patched } = await import("./ppt-export.js");
+      const calls = { calls: 0 };
+      const result = await patched({
+        db: h.db,
+        scenario: h.scenario,
+        kind: "construction",
+        dir: h.dir,
+        dshClient: mockDsh([outlineJson(6)], calls),
+        push: h.push,
+        skillDir: h.skill,
+      });
+      expect(result.files).toEqual([]);
+      expect(result.notice).toContain("版面检查未通过");
+      expect(result.notice).toContain("第 2 页未对齐网格：注入的渲染缺陷");
+      expect(result.notice).toContain("保留原有文件不动");
+      expect(calls.calls).toBe(1); // 渲染类问题一次模型都不多调
+      expect(warn.mock.calls.map((c) => String(c[0])).join("｜")).toContain("版面检查未过（渲染类）");
+      expect(readLog(h.log)).toEqual([]); // 没走到转档
+    } finally {
+      warn.mockRestore();
+      vi.doUnmock("@scene/infra");
+      vi.resetModules();
     }
   });
 

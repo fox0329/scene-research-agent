@@ -1,12 +1,13 @@
 /**
- * @scene/infra — PPT 页面渲染测试（变更表 #141 立、#142 升、#144 升）
+ * @scene/infra — PPT 页面渲染测试（变更表 #141 立、#142 升、#144 升、#145 升）
  *
- * 一份 7 页示例大纲（七种布局各一页）逐项断言：白底、统一骨架（页顶渐变主色带 / 小节标签胶囊 +
- * 图标 / 36px 大标题 + 橙短横 / 副题 / 结论带 + `bulb` / 页码胶囊 / 页脚）、每页形状数 ≥22、
+ * 一份 7 页示例大纲（七种布局各一页）逐项断言：白底、统一骨架（小节标签胶囊 + 图标 /
+ * 36px 大标题 / 副题 / 结论带 + `bulb` / 页码胶囊 / 页脚）、每页形状数 ≥22、
  * 文字条数 ≥12、0 越界、0 压字、XML 转义、`dominant-baseline`/`<foreignObject>`/网络字体一个都没有、
  * 落盘文件名；#144 追加：图标占位（名字都在 `PPT_ICONS` 白名单内、每页 ≥4）、颜色层次（每页 ≥6 色、
- * 卡底填充 / 轮换强调竖条 / 渐变主色带 / 细分隔线）、字内强调（行首关键词 `<tspan>`、数字 `<tspan>`、
- * 语气色）与「每页强调 ≥3 处」。
+ * 卡底填充 / 轮换强调竖条 / 细分隔线）、字内强调（行首关键词 `<tspan>`、数字 `<tspan>`、语气色）
+ * 与「每页强调 ≥3 处」；#145 追加：**去掉页顶通栏主色带与标题下橙短横**、内容文字一律 ≥ `PPT_MIN_FONT`
+ * （只有页脚与页码按 15px 的元信息下限）、断行的行首禁则与孤字行规避、版面集中（网格 / 留白）。
  */
 
 import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
@@ -18,6 +19,7 @@ import {
   PPT_ICON_LIB,
   PPT_ICONS,
   PPT_LIMITS,
+  PPT_MIN_FONT,
   type PptBlock,
   type PptOutline,
   type PptPage,
@@ -32,8 +34,11 @@ import {
   pptBarColor,
   pptEmphasisOf,
   pptToneOf,
+  PPT_MIN_ORPHAN_CHARS,
   renderPptDeck,
   renderPptPage,
+  hasLeadingPunct,
+  stripLeadingPunct,
   wrapText,
   writePptSvgs,
 } from "./ppt-svg.js";
@@ -394,6 +399,38 @@ describe("renderPptPage — 质量门禁（密度 / 出界 / 压字 / 信息量�
     expect(checkPptDeck(svgs)).toEqual([]);
   });
 
+  it("#145 版面判据全过：字号 / 安全边 / 网格 / 留白 / 行首标点 / 孤字行", () => {
+    const codes = ["字号过小", "超出安全边", "未对齐网格", "留白不均", "行首标点", "孤字行"];
+    for (const [i, svg] of svgs.entries()) {
+      const found = checkPptDeck([svg])
+        .filter((x) => codes.includes(x.code))
+        .map((x) => `${x.code}：${x.detail}`);
+      expect(found, `第 ${i + 1} 页（${deck.pages[i]!.layout}）${found.join("｜")}`).toEqual([]);
+    }
+  });
+
+  it("内容文字一律 ≥16px，只有页脚与页码按 15px 的元信息下限", () => {
+    for (const [i, svg] of svgs.entries()) {
+      for (const r of svgTextRects(svg)) {
+        const meta = r.path.includes("footer") || r.path.includes("page-no");
+        const min = meta ? PPT_QUALITY.minMetaFontSize : PPT_MIN_FONT;
+        expect(r.size, `第 ${i + 1} 页「${r.text}」只有 ${r.size}px`).toBeGreaterThanOrEqual(min);
+      }
+      // 页脚与页码确实存在（别用"没有小字号"糊弄过去）
+      expect(svg).toContain('<g id="footer">');
+      expect(svg).toContain('<g id="page-no">');
+    }
+  });
+
+  it("#145 去装饰：全篇没有页顶通栏色带、没有标题下橙短横", () => {
+    for (const svg of svgs) {
+      expect(svg).not.toContain("pptTopBand");
+      expect(svg).not.toContain("<linearGradient");
+      expect(svg).not.toContain('width="1280" height="8"');
+      expect(svg).not.toMatch(/<rect x="80" y="10[0-9]" width="80" height="6"/);
+    }
+  });
+
   it("文本矩形都在画布内（含超长内容）", () => {
     const long = page({
       layout: "网格要点",
@@ -474,7 +511,7 @@ describe("renderPptPage — 要点清单加密", () => {
     expect(checkPptDeck([svg])).toEqual([]);
   });
 
-  it("每条三件：44×44 序号底衬 + 20px 主句 + 15px 次要说明", () => {
+  it("每条三件：44×44 序号底衬 + 20px 主句 + 16px 次要说明", () => {
     const svg = renderPptPage(list(five), { index: 0, total: 1, scenarioName: SCENARIO });
     for (let i = 1; i <= five.length; i += 1) {
       expect(svg).toContain(`id="item-${i}"`);
@@ -484,7 +521,9 @@ describe("renderPptPage — 要点清单加密", () => {
     expect(svg).toContain('id="item-1-note"');
     expect(svg).toContain("巡检靠纸质表单");
     expect(svg).toContain("一天一交");
-    expect(svg).toContain('font-size="15"');
+    // 次要说明行是内容文字，必须 ≥ 最低字号 16
+    expect(svg).toContain('id="item-1-note"');
+    expect(svg).toContain(`font-size="${PPT_MIN_FONT}"`);
     // 序号底衬 44×44
     expect(svg).toContain('width="44" height="44"');
   });
@@ -563,6 +602,89 @@ describe("wrapText / estimateTextWidth", () => {
   });
 });
 
+describe("wrapText — #145 断行规则（行首禁则 + 孤字行规避）", () => {
+  // 20px 字号、宽 100px = 一行 5 个字
+  const W = 100;
+
+  it("断点落在标点上：把上一行末字挪下来，新行不以标点开头", () => {
+    const lines = wrapText("一二三四五，六七八九十", 20, W, 2);
+    expect(hasLeadingPunct(Array.from(lines[1]!)[0]!)).toBe(false);
+    expect(lines.join("")).toContain("五，");
+  });
+
+  it("末行只剩 1–2 个字就往前挪，挪到 ≥3 个字为止", () => {
+    const lines = wrapText("一二三四五六", 20, W, 2);
+    expect(lines).toEqual(["一二三", "四五六"]);
+    for (const line of lines) {
+      expect(Array.from(line).length).toBeGreaterThanOrEqual(PPT_MIN_ORPHAN_CHARS);
+      expect(estimateTextWidth(line, 20)).toBeLessThanOrEqual(W);
+    }
+  });
+
+  it("挪不动（首行只剩 2 个字）就不挪，宁可有孤字行也不溢出", () => {
+    const lines = wrapText("一二三四五", 20, W, 2);
+    expect(lines).toEqual(["一二三四五"]);
+    for (const line of lines) expect(estimateTextWidth(line, 20)).toBeLessThanOrEqual(W);
+  });
+
+  it("多行都不许以标点开头，且每行都在容器内", () => {
+    const text = "协议未收录的私有协议，需另行适配（现场确认），老设备不支持远程升级";
+    for (const maxLines of [1, 2, 3, 4]) {
+      for (const width of [80, 120, 200, 320]) {
+        for (const line of wrapText(text, 16, width, maxLines)) {
+          expect(hasLeadingPunct(Array.from(line)[0] ?? "")).toBe(false);
+          expect(estimateTextWidth(line, 16)).toBeLessThanOrEqual(width);
+        }
+      }
+    }
+  });
+
+  it("排到行数上限还有剩字：末行必须用省略号交代，不许无声丢字", () => {
+    const lines = wrapText("一二三四五六七八九十百", 20, W, 2);
+    expect(lines).toHaveLength(2);
+    expect(lines[1]!.endsWith("…")).toBe(true);
+  });
+
+  it("首字就是标点：先去掉行首标点再排（源文本脏也不出违规行）", () => {
+    expect(stripLeadingPunct("，。、一句正文")).toBe("一句正文");
+    expect(hasLeadingPunct("，一句")).toBe(true);
+    expect(hasLeadingPunct("）一句")).toBe(true); // 收尾标点不许起行，开头的「（」可以
+    expect(hasLeadingPunct("一句，正文")).toBe(false);
+    expect(wrapText("，一二三四五六七八", 20, W, 2)).toEqual(["一二三四五", "六七八"]);
+  });
+
+  it("放得下就一行、不加省略号、不做均衡（短句不许被拆）", () => {
+    expect(wrapText("短短一句", 20, W, 2)).toEqual(["短短一句"]);
+  });
+});
+
+
+describe("wrapText — #145 属性检查（任意宽度 / 行数下都不出界、不以标点开头）", () => {
+  const TEXTS = [
+    "协议未收录的私有协议，需另行适配（现场确认），老设备不支持远程升级",
+    "，一二三四五六七八九十，一二三四五六七八九十",
+    "巡检靠纸质表单一天一交；数据事后补录，口径对不上。异常靠电话上报，常常漏",
+    "一二三四五，六七八九十、十一二三四五六七八九：真的很难排好",
+  ];
+
+  it("每一种组合下：行数 ≤ 上限、每行都在容器内、行首没有禁则标点", () => {
+    for (const text of TEXTS) {
+      for (let size = 14; size <= 22; size += 4) {
+        for (let w = 48; w <= 320; w += 13) {
+          for (let maxLines = 1; maxLines <= 3; maxLines += 1) {
+            const lines = wrapText(text, size, w, maxLines);
+            const ctx = `「${text}」size=${size} w=${w} maxLines=${maxLines}`;
+            expect(lines.length, ctx).toBeLessThanOrEqual(maxLines);
+            for (const line of lines) {
+              expect(estimateTextWidth(line, size), `出界 ${ctx}：「${line}」`).toBeLessThanOrEqual(w + 0.001);
+              expect(hasLeadingPunct(line), `行首标点 ${ctx}：「${line}」`).toBe(false);
+            }
+          }
+        }
+      }
+    }
+  });
+});
 
 describe("renderPptPage — 图标（#144：用足 ppt-master 的图标库）", () => {
   const deck = sampleDeck();
@@ -638,14 +760,19 @@ describe("renderPptPage — 颜色层次（#144：色阶 + 语义色）", () => 
     }
   });
 
-  it("页顶 8px 通栏渐变主色带 + 右上页码做成 #E3F2FD 胶囊", () => {
+  it("页顶不再有通栏主色带（#145 用户要求去掉），只剩右上角的页码胶囊", () => {
     const svg = svgs[0]!;
-    expect(svg).toContain('<linearGradient id="pptTopBand" x1="0" y1="0" x2="1" y2="0">');
-    expect(svg).toContain(`<stop offset="0" stop-color="${PPT_COLORS.primary}"/>`);
-    expect(svg).toContain(`<stop offset="1" stop-color="${PPT_COLORS.primaryAlt}"/>`);
-    expect(svg).toContain('fill="url(#pptTopBand)"');
-    expect(svg).toContain('width="1280" height="8"');
+    expect(svg).not.toContain("pptTopBand");
+    expect(svg).not.toContain("<linearGradient");
+    expect(svg).not.toContain('width="1280" height="8"');
     expect(svg).toContain(`height="24" rx="12" fill="${PPT_COLORS.lightBlue}"`);
+  });
+
+  it("页码在 <g id=\"page-no\"> 里（元信息文字，15px 走字号例外）", () => {
+    for (const svg of svgs) {
+      expect(svg).toContain('<g id="page-no">');
+      expect(svg).toContain(`font-size="${PPT_QUALITY.minMetaFontSize}"`);
+    }
   });
 
   it("块卡：卡底 #F7FAFE + 卡头 #E3F2FD 横条（34 高）+ 左侧 5px 强调竖条按块轮换四色", () => {
@@ -742,9 +869,10 @@ describe("renderPptPage — 字内强调（#144：重点要突出）", () => {
     expect(long).not.toContain("<tspan");
   });
 
-  it("标题下 80×6 圆角橙短横（每页都有）", () => {
+  it("标题下不再有橙色短横（#145 用户要求去掉），标题直接接副题", () => {
     const svg = renderPptPage(page(), ctx);
-    expect(svg).toContain('<rect x="80" y="106" width="80" height="6" rx="3" fill="#FF9800"/>');
+    expect(svg).not.toContain('<rect x="80" y="106" width="80" height="6" rx="3" fill="#FF9800"/>');
+    expect(svg).not.toContain("width=\"80\" height=\"6\"");
   });
 
   it("每页强调 ≥3 处（字内强调段 + 16px 以上粗体重点字）", () => {

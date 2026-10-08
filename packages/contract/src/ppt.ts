@@ -122,6 +122,16 @@ export type PptIcon = (typeof PPT_ICONS)[number];
 export const PPT_DEFAULT_ICON: PptIcon = "presentation";
 
 /**
+ * 内容文字的最小字号（变更表 #145，用户定调「最小字体可以调大一点」）
+ *
+ * 渲染层里所有**内容类**文字——正文行、小注、表格格、能力标签、层与阶段说明、清单次要说明、
+ * 卡片说明——一律 ≥ 这个值；页脚与页码这类元信息文字允许低一档，但也不低于
+ * `PPT_LIMITS.minMetaFontSize`。质量门禁按它判「字号过小」（`packages/infra/src/ppt-quality.ts`）：
+ * **这是最低要求，不是建议**——改小它等于降低交付标准。
+ */
+export const PPT_MIN_FONT = 16;
+
+/**
  * 图标名归一（防错名字，确定性层与渲染层**共用这一处**）
  *
  * 容错两种写法：带库前缀的 `tabler-outline/cloud` 与裸名字 `cloud`；
@@ -285,4 +295,8 @@ export const PPT_LIMITS = {
   chips: { max: 5, chars: 10 },
   /** 内容量硬要求：每页至少 12 条有效短句（进提示词，也是质量门禁的判据） */
   minSentencesPerPage: 12,
+  /** 内容文字最小字号（= `PPT_MIN_FONT`；渲染层与质量门禁同源） */
+  minFontSize: PPT_MIN_FONT,
+  /** 页脚 / 页码这类元信息文字的最小字号（内容一律 ≥ `minFontSize`） */
+  minMetaFontSize: 15,
 } as const;
