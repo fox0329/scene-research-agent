@@ -9,21 +9,23 @@
  * 逐行搬要点仍是罗列，归纳只能靠模型读完数据后重写）。本文件因此变成三层：
  *  1. **原料与兜底**：`reportChapterDigest()` 把每章的数据按小节整理成确定性的要点版
  *     —— 同一个函数既是喂给模型的输入材料，也是模型没写成/没通过校验时该章的兜底；
- *  2. **装配**：`buildReportMarkdown()` 拼头部 + 六章（模型正文优先、逐章兜底）+ 附录；
- *  3. **口径**：章节顺序、内外侧重、附录与来源索引仍由契约与代码决定，模型只写正文。
+ *  2. **装配**：`buildReportMarkdown()` 拼头部 + 该口径的全部章节（模型正文优先、逐章兜底）；
+ *  3. **口径**：章节顺序与章名由契约决定（`reportChapters(kind)`），模型只写正文。
+ *
+ * 交付物口径（变更表 #137）：`kind` 决定这一份是**哪份交付物**——
+ *  `solution` = <场景>解决方案（现状 / 场景与问题 / 方案 / 价值 / 下一步），
+ *  `construction` = <场景>建设工作方案（建设背景与必要性 … 监管协同展望）。
+ *  章名、章节数、每章的素材块全部由契约 `REPORT_CHAPTERS[kind]` 给出，本文件不维护第二份。
  *
  * 章节结构：
- *  - 章节由契约 `REPORT_CHAPTERS` 统一给出（同一套六章），内外之别只体现在
- *    **取哪些块、取哪些列**（内部含利润池 / 上游格局 / 竞品 / 替代方案 / 坑 / 风险，
- *    对外只留客户视角的列）；
+ *  - 章标题**不带序号**（Markdown 里也不手写「一、」）：Word 交付物由模板多级列表
+ *    自动编号（1 / 1.1 / 1.1.1），增删章节自动重排；
  *  - 每章先一句**由数据算出来的导语**，再按小节给「一行一条结论」的要点（数值/对比类
- *    用表格）——不是把表 dump 出来，也不再出现「阶段 N 总结 / 一、信息摘要」这种流水账；
- *  - 「六、总结」由代码按数据汇总：事实、边界（不做什么）、风险与不确定、待补齐
- *    （对外版改为价值结论、验证与推进安排、需要贵方确认的信息）。
+ *    用表格）——不是把表 dump 出来，也不再出现「阶段 N 总结 / 一、信息摘要」这种流水账。
  *
  * 两条铁律：
  *  1. **不给决策建议**——只陈述信息、判定与缺口；
- *  2. **对外材料不含内部信息**——不出现来源、证据级、内部论据与财务口径。
+ *  2. **交付物不含内部信息**——不出现来源、证据级、内部论据与财务口径。
  *
  * 输出纯 Markdown 字符串，不写文件。
  */
@@ -33,6 +35,7 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync,
 import { basename, dirname, join } from "node:path";
 
 import {
+  REPORT_KIND_LABEL,
   reportChapterHeading,
   reportChapters,
   middleColumns,
@@ -40,6 +43,7 @@ import {
   type DeliverableInput,
   type ReportBlock,
   type ReportChapter,
+  type ReportKind,
   type StageData,
 } from "@scene/contract";
 
@@ -162,32 +166,33 @@ export function reportDateOf(markdown: string, fallback: string): string {
   return cover?.[1] ?? fallback;
 }
 
-/** 报告类型名（标题与文件名共用） */
-export function reportTypeName(): string {
-  return "解决方案";
+/** 报告类型名（标题与文件名共用）——直接从契约取，不在本文件维护第二份文案 */
+export function reportTypeName(kind: ReportKind): string {
+  return REPORT_KIND_LABEL[kind];
 }
 
 /**
- * 交付物文件名：**场景名称 + 解决方案**（变更表 #136）
+ * 交付物文件名：**场景名称 + 报告类型名**（变更表 #136/#137）
  *
  * 用户定调（2026-10-07）：「交付物不再分内部调研版和外部汇报版，直接用外部汇报版
- * 生成一个版本，就叫 XXX解决方案」——所以是 `智慧会议室解决方案.md`，不带日期。
+ * 生成一个版本，就叫 XXX解决方案」——所以是 `智慧会议室解决方案.md`；
+ * 变更表 #137 再加一份 `智慧会议室建设工作方案.md`。两份都不带日期。
  */
-export function exportFileName(scenarioName: string): string {
+export function exportFileName(scenarioName: string, kind: ReportKind): string {
   const safe = scenarioName.replace(/[/\\:*?"<>|]/g, "_").trim();
-  return `${safe}${reportTypeName()}.md`;
+  return `${safe}${reportTypeName(kind)}.md`;
 }
 
 // ─── 主入口 ────────────────────────────────────────────────
 
 /**
- * 生成交付物（内部调研报告 + 对外汇报材料）
+ * 生成交付物（按口径装配一份纯 Markdown）
  *
- * @param data 交付物输入（场景 + 阶段数据；阶段总结不再进正文）
- * @returns 两份纯 Markdown
+ * @param data 交付物输入（场景 + 阶段数据；阶段总结不进正文）
+ * @param kind 交付物口径（`solution` / `construction`，变更表 #137）
  */
-export async function exportDeliverables(data: DeliverableInput): Promise<string> {
-  return buildReportMarkdown(data);
+export async function exportDeliverables(data: DeliverableInput, kind: ReportKind): Promise<string> {
+  return buildReportMarkdown(data, kind);
 }
 
 // ─── 取数小工具 ────────────────────────────────────────────
@@ -361,6 +366,8 @@ export interface ChapterDigest {
  * 同时供两处使用：① 作为模型撰写正文时的输入材料（分章给数据，模型不用自己找表）；
  * ② 模型漏写某章或该章没过确定性校验时，用它顶上。两处同源，报告不会出现"模型写的
  * 章与要点版口径不一致"。
+ *
+ * @param kind 交付物口径——章节按 `reportChapters(kind)` 走，两份交付物的章节各归各的
  */
 export interface DigestOptions {
   /**
@@ -373,10 +380,11 @@ export interface DigestOptions {
 }
 
 export function reportChapterDigest(
+  kind: ReportKind,
   stageData: readonly StageData[],
   opts: DigestOptions = {},
 ): ChapterDigest[] {
-  return reportChapters().map((chapter) => {
+  return reportChapters(kind).map((chapter) => {
     const blocks = chapter.blocks;
     const parts: string[] = [];
     const lead = chapterLead(chapter, stageData);
@@ -397,37 +405,38 @@ export function reportChapterDigest(
     }
     return {
       key: chapter.key,
-      title: reportChapterHeading(chapter.key),
+      title: reportChapterHeading(kind, chapter.key),
       markdown: parts.join("\n").trim(),
     };
   });
 }
 
 /** 组装一份报告（模型正文优先，逐章兜底） */
-export function buildReportMarkdown(data: DeliverableInput): string {
-  const digests = new Map(reportChapterDigest(data.stageData).map((d) => [d.key, d]));
+export function buildReportMarkdown(data: DeliverableInput, kind: ReportKind): string {
+  const digests = new Map(reportChapterDigest(kind, data.stageData).map((d) => [d.key, d]));
   // 空串（模型这一章没写出来）等同没写：回落该章的要点版 digest。
   // 不这么判会掉进「`""` 不是 nullish」的坑——缺章最后渲染成「（本节内容待补）」而不是兜底正文。
   const model = new Map(
     (data.chapters ?? []).map((c) => [c.key, c.markdown.trim()] as const).filter(([, md]) => md !== ""),
   );
-  return buildReport(data, (key) => model.get(key) ?? digests.get(key)?.markdown ?? "");
+  return buildReport(data, kind, (key) => model.get(key) ?? digests.get(key)?.markdown ?? "");
 }
 
 /**
  * 组装一份报告
  *
+ * @param kind 交付物口径：决定一级标题的报告类型名与正文有哪几章
  * @param bodyOf 每章正文的来源（模型正文 → 该章兜底），由 `buildReportMarkdown` 注入
  */
-function buildReport(data: DeliverableInput, bodyOf: (key: string) => string): string {
+function buildReport(data: DeliverableInput, kind: ReportKind, bodyOf: (key: string) => string): string {
   const { scenario } = data;
 
   // 封面只有一行报告名（变更表 #134，用户定稿逐字要求）：
   // 场景名与日期都在标题里，再写「场景 / 生成日期」两行引用块是重复（精要优先：一个事实只说一次）
-  const sections: string[] = [`# ${scenario.name}${reportTypeName()}`];
+  const sections: string[] = [`# ${scenario.name}${reportTypeName(kind)}`];
 
-  for (const chapter of reportChapters()) {
-    const body: string[] = [`## ${reportChapterHeading(chapter.key)}`, ""];
+  for (const chapter of reportChapters(kind)) {
+    const body: string[] = [`## ${reportChapterHeading(kind, chapter.key)}`, ""];
     const text = stripEchoedTitle(bodyOf(chapter.key).trim(), chapter.label);
     body.push(text || "（本节内容待补）");
     sections.push(body.join("\n").trimEnd());

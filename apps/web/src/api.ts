@@ -331,6 +331,30 @@ export interface FollowEvent {
   [key: string]: unknown;
 }
 
+// ─── 交付物（变更表 #137：解决方案 + 建设工作方案，两份并列） ──
+
+/**
+ * 交付物口径
+ *
+ * 与契约 `ReportKind` 一致：决定中栏看的是哪一份、保存写哪个 kind、导出写出哪个文件名。
+ */
+export type DeliverableKind = "solution" | "construction";
+
+/** 一份交付物的正文与产出情况 */
+export interface ApiDeliverableReport {
+  markdown: string;
+  /** 去掉空白后的字数（界面说规模用） */
+  chars: number;
+  /** true = 模型撰写的正式版；false = 确定性要点版（界面要提示并引导生成） */
+  generated: boolean;
+  generated_at: string | null;
+}
+
+/** 两份交付物：一次取回，中栏切份不再发请求 */
+export interface ApiDeliverables {
+  reports: Record<DeliverableKind, ApiDeliverableReport>;
+}
+
 // ─── 请求基座 ──────────────────────────────────────────────
 
 export class ApiError extends Error {
@@ -506,28 +530,29 @@ export const api = {
       `/projects/${encodeURIComponent(id)}/stages/${stage}/decide`,
       { method: "POST", body: { action } },
     ),
-  /** 交付物正文（装配但不落盘）：中栏直接显示这一份解决方案 */
+  /**
+   * 两份交付物正文（装配但不落盘）：中栏按当前这一份显示
+   *
+   * 变更表 #137：交付物是两份——`solution`「<场景>解决方案」+ `construction`
+   * 「<场景>建设工作方案」，两份一起取回，切份不再发请求。
+   */
   getDeliverables: (id: string) =>
-    req<{
-      solution_report: string;
-      /** true = 模型撰写的正式版；false = 确定性要点版（界面要提示并引导生成） */
-      generated: boolean;
-      generated_at: string | null;
-      solution_chars: number;
-    }>(`/projects/${encodeURIComponent(id)}/deliverables`),
+    req<ApiDeliverables>(`/projects/${encodeURIComponent(id)}/deliverables`),
+  /** 导出两份 Markdown（写盘内容 = 界面所见），回显写出的文件路径 */
   exportDeliverables: (id: string) =>
-    req<{ path: string; notice?: string }>(`/projects/${encodeURIComponent(id)}/deliverables/export`, {
-      method: "POST",
-    }),
-  /** 保存中栏编辑后的报告正文（变更表 #135） */
-  saveDeliverable: (id: string, markdown: string) =>
+    req<{ files: string[]; notice?: string }>(
+      `/projects/${encodeURIComponent(id)}/deliverables/export`,
+      { method: "POST" },
+    ),
+  /** 保存中栏编辑后的正文（变更表 #135）：按份保存，A 的正文不会写到 B */
+  saveDeliverable: (id: string, kind: DeliverableKind, markdown: string) =>
     req<{ path: string; written: boolean; overwritten: boolean; notice?: string }>(
-      `/projects/${encodeURIComponent(id)}/deliverables/solution`,
+      `/projects/${encodeURIComponent(id)}/deliverables/${kind}`,
       { method: "PUT", body: { markdown } },
     ),
-  /** 弹系统对话框选导出文件夹（变更表 #133）；取消会抛错，调用方回退到手填路径 */
+  /** 弹系统对话框选导出文件夹（变更表 #133）；取消会抛错或回 `dir: null`，调用方回退到手填路径 */
   pickExportFolder: (id: string) =>
-    req<{ dir: string }>(`/projects/${encodeURIComponent(id)}/deliverables/pick-folder`, {
+    req<{ dir: string | null }>(`/projects/${encodeURIComponent(id)}/deliverables/pick-folder`, {
       method: "POST",
     }),
   /** 按模版把报告写成 Word 落到指定文件夹 */

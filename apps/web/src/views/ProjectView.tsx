@@ -97,7 +97,7 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
   const current = flow?.steps.find((s) => s.id === flow.currentStep);
   const stepStage = (flowStep(step).stage ?? DELIVERY_STAGE) as InfoStageId;
 
-  /* 流程轴第二行：当前正在看的那一步的输出物（交付物步 = 一份解决方案） */
+  /* 流程轴第二行：当前正在看的那一步的输出物（交付物步 = 解决方案 + 建设工作方案两份） */
   const railOutputs = useMemo<StepOutput[]>(
     () => stepOutputsOf(step, flowStep(step).tables, FLOW_TOTAL),
     [step],
@@ -127,11 +127,11 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
     },
     [step],
   );
-  /** 交付物面板回报此刻显示的报告 */
+  /** 交付物面板回报此刻看的是哪一份（solution / construction）→ 流程轴第二行据此高亮 */
   const handlePanelReportChange = useCallback((key: string) => {
     setShownOutput((prev) => (prev?.step === FLOW_TOTAL && prev.key === key ? prev : { step: FLOW_TOTAL, key }));
   }, []);
-  /** 交给某个中栏面板的一次性选择：只传属于它这一步的 */
+  /** 交给某个中栏面板的一次性选择：只传属于它这一步的（交付物步的 code 是那一份的 kind） */
   const pickForStep = pick && pick.step === step ? pick : undefined;
 
   /** 资料失效横幅（联真）：上游表改动后提示受影响阶段 */
@@ -308,7 +308,7 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
     setDemoAnchor(rows.map((r) => ({ ...r })));
   }, []);
 
-  /** 交付物导出（T5.6）：真实链路落服务端 exports/，toast 回显路径 */
+  /** 交付物导出（T5.6）：真实链路落服务端 exports/，toast 回显写出的两份文件 */
   const [exporting, setExporting] = useState(false);
   const handleExport = useCallback(async () => {
     if (!live) {
@@ -319,7 +319,8 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
     setExporting(true);
     try {
       const r = await api.exportDeliverables(project.id);
-      showToast(`已导出：${r.path}`);
+      const head = `已导出：${r.files.join("、")}`;
+      showToast(r.notice ? `${head}；${r.notice}` : head);
     } catch (err: unknown) {
       showToast(`导出失败：${err instanceof Error ? err.message : String(err)}`);
     } finally {

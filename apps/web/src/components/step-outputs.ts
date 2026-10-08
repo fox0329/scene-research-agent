@@ -9,13 +9,15 @@
  * 于是「输出物 = 这一步行里要产出的东西」：
  *  - 分析步：流程定义 `flowStep(n).tables` 里的表；**多子块表的每块各占一项**
  *    （与中栏 v1.26 的口径一致：架构块 / 接口块各自成"表"，列结构本来就不同）
- *  - 交付物步：不是表，而是一份「<场景>解决方案」（变更表 #136）
+ *  - 交付物步：不是表，而是**两份**客户端可读的正式交付物——「<场景>解决方案」
+ *    与「<场景>建设工作方案」（变更表 #136 / #137）
  *
  * 为什么抽出来：流程轴第二行与中栏面板必须**指同一批东西**，靠一个函数保证，
  * 而不是两处各写一套（写歪了就会出现"轴上点了 A、中栏显示 B"）。
  */
 
-import { blockLabel, tableDef } from "@scene/contract";
+import { REPORT_KIND_LABEL, blockLabel, tableDef } from "@scene/contract";
+import type { DeliverableKind } from "../api";
 import { tableBlocks } from "./SchemaTable";
 
 /** 流程轴第二行 / 中栏共用的输出物口径 */
@@ -30,14 +32,26 @@ export interface StepOutput {
   block: string | null;
 }
 
-/** 交付物这一步的输出物：一份解决方案（不是表） */
-export const DELIVERY_OUTPUTS: readonly StepOutput[] = [
-  { key: "solution", label: "解决方案", code: null, block: null },
+/** 交付物这一步的输出物：`key` 直接是交付物口径（solution / construction） */
+export interface DeliveryOutput extends StepOutput {
+  key: DeliverableKind;
+}
+
+/**
+ * 交付物这一步的输出物：**两份**（变更表 #137）
+ *
+ * 名字取自契约 `REPORT_KIND_LABEL`——它同时是报告的一级标题与文件名前缀，
+ * 这里写死就会与导出出来的文件名对不上。
+ */
+export const DELIVERY_OUTPUTS: readonly DeliveryOutput[] = [
+  { key: "solution", label: REPORT_KIND_LABEL.solution, code: null, block: null },
+  { key: "construction", label: REPORT_KIND_LABEL.construction, code: null, block: null },
 ];
 
-/** 报告输出物的说明（流程轴 hover 与中栏 chip 共用） */
+/** 两份交付物的说明（流程轴 hover 与中栏 chip 共用）：各一句话说清这份讲什么 */
 export const DELIVERY_OUTPUT_HINT: Record<string, string> = {
-  solution: "现状 / 场景与问题 / 方案 / 价值 / 下一步——客户端可读的一份方案",
+  solution: "现状 / 场景与问题 / 方案 / 价值 / 下一步——给客户看的「怎么解决」",
+  construction: "建设背景 / 目标 / 内容 / 路径 / 安排 / 保障——给客户看的「怎么建」",
 };
 
 /** 表集 → 输出物清单（多子块表按块拆项，与中栏 v1.26 口径一致） */

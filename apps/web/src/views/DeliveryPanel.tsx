@@ -2,12 +2,14 @@
  * @scene/web — 最后一步「交付物」面板
  *
  * 交付物步：**正文由模型撰写**（变更表 #112，用户定调「要的是总结，不是罗列」）——模型
- * 读完全部表格后按五章（现状 / 场景与问题 / 方案 / 价值 / 下一步）写出归纳正文，服务端
- * 再用确定性校验把关（章节齐、不给建议、不带内部痕迹），没写成或没过校验的章节自动用
- * 要点版兜底。
+ * 读完全部表格后按各口径的章节骨架写出归纳正文，服务端再用确定性校验把关（章节齐、不给
+ * 建议、不带内部痕迹），没写成或没过校验的章节自动用要点版兜底。
  *
  * 变更表 #136（用户定调）：「交付物不再分内部调研版和外部汇报版，直接用外部汇报版生成
- * 一个版本，就叫 XXX解决方案」——面板只剩这一份，不再有口径切换。
+ * 一个版本，就叫 XXX解决方案」。
+ * 变更表 #137：交付物是**两份并列**——「<场景>解决方案」与「<场景>建设工作方案」。
+ * 中栏一次只显示一份：看哪份由流程轴第二行的 chip 决定（`tab`），编辑与保存都只作用于
+ * 当前这一份（切份即丢弃未保存的草稿，绝不把 A 的草稿写到 B）。
  *
  * 中栏显示报告正文；还没生成正式版时显示确定性要点版，并在正文上方提示"当前是要点版"。
  * 「装配原料清单」与导出路径按 G-R9 归右栏。
@@ -15,7 +17,14 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { FLOW_TOTAL, flowStep } from "@scene/contract";
-import { api, generateDeliverablesStream, reconnectDeliverablesStream, type ApiFlowStatus } from "../api";
+import {
+  api,
+  generateDeliverablesStream,
+  reconnectDeliverablesStream,
+  type ApiDeliverables,
+  type ApiFlowStatus,
+  type DeliverableKind,
+} from "../api";
 import { useStageAnalysis } from "../hooks/useStageAnalysis";
 import { renderMarkdown } from "../components/StageRightPanel";
 import { DELIVERY_OUTPUTS, DELIVERY_OUTPUT_HINT } from "../components/step-outputs";
@@ -30,20 +39,33 @@ export interface DeliveryPanelProps {
   onStageSnapshot?: (snap: StageSnapshot | null) => void;
   /** 导出完成（刷新项目列表：场景可能已标记完成） */
   onExported?: () => void;
-  /** 流程轴第二行点了某个报告：`id` 变化时套用 */
+  /** 流程轴第二行点了某个交付物 chip：`id` 变化时切到 `code` 那一份 */
   pick?: { id: number; code: string | null };
-  /** 回报此刻显示的报告 → 流程轴第二行据此高亮 */
+  /** 回报此刻看的是哪一份 → 流程轴第二行据此高亮 */
   onReportChange?: (key: string) => void;
 }
 
-/** 交付物的名字与说明与流程轴第二行共用一个来源（见 step-outputs） */
-const REPORT = DELIVERY_OUTPUTS[0]!;
-const REPORT_HINT = DELIVERY_OUTPUT_HINT[REPORT.key] ?? REPORT.label;
+/** 默认打开的那一份 */
+const DEFAULT_TAB: DeliverableKind = "solution";
 
-/** 右栏：装配原料 + 导出结果（中栏只放报告正文，说明性内容归右栏） */
+/** 交付物的名字与说明与流程轴第二行共用一个来源（见 step-outputs） */
+function deliveryLabel(key: DeliverableKind): string {
+  return DELIVERY_OUTPUTS.find((o) => o.key === key)?.label ?? key;
+}
+
+function deliveryHint(key: DeliverableKind): string {
+  return DELIVERY_OUTPUT_HINT[key] ?? deliveryLabel(key);
+}
+
+/** 流程轴 chip 的 key → 交付物口径；不是这两份（如表号）就不该切这里的份 */
+function asDeliverableKind(code: string | null | undefined): DeliverableKind | null {
+  return code === "solution" || code === "construction" ? code : null;
+}
+
+/** 右栏：装配原料 + 两份是什么 + 导出结果（中栏只放正文，说明性内容归右栏） */
 function deliveryNote(
   flow: ApiFlowStatus,
-  paths: { path: string } | null,
+  paths: { files: string[] } | null,
   docxPaths: string[] = [],
 ): string {
   const lines = [
@@ -62,21 +84,24 @@ function deliveryNote(
   }
   lines.push(
     "",
-    "## 报告是什么",
-    `- ${REPORT.label}：${REPORT_HINT}`,
+    "## 两份交付物",
+    `- ${deliveryLabel("solution")}：${deliveryHint("solution")}`,
+    `- ${deliveryLabel("construction")}：${deliveryHint("construction")}`,
     "",
     "## 生成前提",
     "- 场景锚（表1-1）以**用户确认过的版本**为准；标「推断」的行不会被写进交付物",
     "",
     "## 导出",
   );
-  if (paths) {
-    lines.push(`- Markdown：\`${paths.path}\``);
-  }
-  if (docxPaths.length > 0) {
-    for (const p of docxPaths) lines.push(`- Word：\`${p}\``);
-  } else if (!paths) {
-    lines.push("- 还没导出。点中栏右上「导出到文件」选一个文件夹，写出 Word。");
+  const md = paths?.files ?? [];
+  for (const p of md) lines.push(`- Markdown：\`${p}\``);
+  for (const p of docxPaths) lines.push(`- Word：\`${p}\``);
+  // 还没导出过：导出会写出哪几个文件，只说文件名规则（路径要等用户选完文件夹才知道）
+  if (md.length === 0 && docxPaths.length === 0) {
+    lines.push(
+      `- Markdown：一次写两份，文件名是「{场景}${deliveryLabel("solution")}.md」与「{场景}${deliveryLabel("construction")}.md」`,
+      "- Word：同样两份（.docx），文件名规则同上",
+    );
   }
   lines.push("", "> 交付物只陈述信息与缺口，不含建议或判断——判断由使用者自己做。");
   return lines.join("\n");
@@ -93,19 +118,21 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
 }) => {
   const { showToast } = useToast();
   const step = flowStep(FLOW_TOTAL);
-  const [report, setReport] = useState<string | null>(null);
+  /** 当前在看哪一份（变更表 #137）：两份都是正式交付物，中栏一次只显示一份 */
+  const [tab, setTab] = useState<DeliverableKind>(DEFAULT_TAB);
+  /** 两份一起取回：切份只换显示，不再发请求 */
+  const [reports, setReports] = useState<ApiDeliverables["reports"] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  /** true = 模型撰写的正式版；false = 确定性要点版（提示引导生成） */
-  const [generated, setGenerated] = useState(false);
-  const [paths, setPaths] = useState<{ path: string } | null>(null);
+  /** 已导出的 Markdown 文件（右栏展示） */
+  const [mdPaths, setMdPaths] = useState<{ files: string[] } | null>(null);
   /** 已导出的 Word 文件（右栏展示） */
   const [docxPaths, setDocxPaths] = useState<string[]>([]);
   const [busyWord, setBusyWord] = useState(false);
   /** 弹不出系统对话框时，回退到让用户手填路径（null = 不显示） */
   const [manualDir, setManualDir] = useState<string | null>(null);
-  /** 正在编辑的草稿（变更表 #135）：保存后清空，取消即丢弃 */
+  /** 正在编辑的草稿（变更表 #135）：保存后清空，切份或取消即丢弃 */
   const [draft, setDraft] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -115,8 +142,7 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
     setError(null);
     try {
       const r = await api.getDeliverables(projectId);
-      setReport(r.solution_report);
-      setGenerated(r.generated);
+      setReports(r.reports);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -128,9 +154,34 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
     void loadReports();
   }, [loadReports]);
 
+  const current = reports?.[tab] ?? null;
+  /** true = 模型撰写的正式版；false = 确定性要点版（提示引导生成） */
+  const generated = current?.generated ?? false;
+  const body = current?.markdown ?? "";
+  const label = deliveryLabel(tab);
+
+  /**
+   * 流程轴第二行点了哪份 chip 就切到哪份
+   *
+   * **切份即丢弃未保存的草稿**：草稿属于上一份，留着会被下一次保存写到另一份上去。
+   * 点的是当前这一份则不动草稿（那不算切换）。
+   */
+  useEffect(() => {
+    const next = asDeliverableKind(pick?.code);
+    if (next === null || next === tab) return;
+    setDraft(null);
+    setTab(next);
+  }, [pick, tab]);
+
+  /* 回报此刻看的是哪一份：流程轴第二行据此高亮 */
+  useEffect(() => {
+    onReportChange?.(tab);
+  }, [onReportChange, tab]);
+
   /**
    * 报告生成 = 一次长跑（几分钟），复用「本步分析」的运行态：
    * 进度行、时长、断线续连、收尾对账全都一样，只把开流方式换成报告生成。
+   * 一趟生成**两份**，所以不分当前看的是哪份。
    */
   const gen = useStageAnalysis({
     projectId: projectId ?? "",
@@ -151,14 +202,11 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
       showToast("演示模式：报告生成仅在实时数据模式可用");
       return;
     }
-    showToast("开始生成报告：模型会读完前面所有表格，按五章写出归纳正文（约几分钟）");
+    showToast(
+      `开始生成两份交付物：模型会读完前面所有表格，一次写出「${deliveryLabel("solution")}」与「${deliveryLabel("construction")}」（约几分钟）`,
+    );
     gen.start();
   }, [live, projectId, showToast, gen]);
-
-  /* 回报此刻显示的交付物：流程轴第二行据此高亮（只有一份，恒定它） */
-  useEffect(() => {
-    onReportChange?.(REPORT.key);
-  }, [onReportChange]);
 
   const handleExport = useCallback(async () => {
     if (!live || !projectId) {
@@ -169,8 +217,9 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
     setBusy(true);
     try {
       const r = await api.exportDeliverables(projectId);
-      setPaths(r);
-      showToast(`已导出：${r.path}`);
+      setMdPaths({ files: r.files });
+      const head = `已导出 Markdown：${r.files.join("、")}`;
+      showToast(r.notice ? `${head}；${r.notice}` : head);
       onExported?.();
     } catch (err: unknown) {
       showToast(`导出失败：${err instanceof Error ? err.message : String(err)}`);
@@ -179,13 +228,14 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
     }
   }, [live, projectId, busy, showToast, onExported]);
 
-  /** 保存中栏改过的正文 → 写回应用（服务端先读后写留档） */
+  /** 保存中栏改过的正文 → 写回**当前这一份**（服务端先读后写留档） */
   const handleSave = useCallback(async () => {
     if (!projectId || draft === null) return;
     setSaving(true);
     try {
-      const r = await api.saveDeliverable(projectId, draft);
-      showToast(r.notice ? `已保存（${r.notice}）` : "已保存");
+      const r = await api.saveDeliverable(projectId, tab, draft);
+      const head = `已保存「${label}」`;
+      showToast(r.notice ? `${head}；${r.notice}` : head);
       setDraft(null);
       await loadReports();
     } catch (err: unknown) {
@@ -193,9 +243,9 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
     } finally {
       setSaving(false);
     }
-  }, [projectId, draft, showToast, loadReports]);
+  }, [projectId, tab, label, draft, showToast, loadReports]);
 
-  /** 选文件夹（弹系统对话框）→ 把报告按模版写成 Word */
+  /** 选文件夹（弹系统对话框）→ 把两份报告按模版写成 Word */
   const exportWordInto = useCallback(
     async (dir: string) => {
       if (!projectId) return;
@@ -204,7 +254,11 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
         const r = await api.exportDocx(projectId, dir);
         const all = [...r.files, ...r.unchanged];
         setDocxPaths(all);
-        const head = r.files.length > 0 ? `Word 已导出到 ${dir}` : `Word 已是最新（未改动）：${dir}`;
+        // 一次两份：toast 回显写出的文件路径（全都没改动时说清是"已是最新"）
+        const head =
+          r.files.length > 0
+            ? `Word 已导出：${all.join("、")}`
+            : `Word 已是最新（未改动）：${all.join("、")}`;
         showToast(r.notice ? `${head}；${r.notice}` : head);
         onExported?.();
       } catch (err: unknown) {
@@ -244,7 +298,7 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
       title: `第 ${FLOW_TOTAL}/${FLOW_TOTAL} 步 · ${step.title}`,
       rows: [],
       completeness: null,
-      summary: deliveryNote(flow, paths, docxPaths),
+      summary: deliveryNote(flow, mdPaths, docxPaths),
       summaryLoading: false,
       activeTable: null,
       supplements: [],
@@ -252,7 +306,7 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
       onRefreshSummary: () => void loadReports(),
       onSupplementChange: () => undefined,
     }),
-    [flow, paths, docxPaths, step.title, loadReports],
+    [flow, mdPaths, docxPaths, step.title, loadReports],
   );
 
   useEffect(() => {
@@ -260,11 +314,9 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
     return () => onStageSnapshot?.(null);
   }, [snapshot, onStageSnapshot]);
 
-  const body = report ?? "";
-
   return (
     <div className="pnl">
-      {/* 动作行保留；两份报告的选择在流程轴第二行（用户定调 2026-10-06：输出物挂到阶段名下面） */}
+      {/* 动作行保留；两份交付物的选择在流程轴第二行（用户定调 2026-10-06：输出物挂到阶段名下面） */}
       <div className="pnl-h">
         <div className="pnl-actions">
           <button
@@ -343,9 +395,10 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
       <div className="pnl-b">
         {!live ? (
           <p className="brief-hint">
-            演示模式：交付物由服务端按「章节 ← 表映射」装配，联真模式下这里直接显示报告正文。
+            演示模式：两份交付物（解决方案 / 建设工作方案）由服务端按「章节 ← 表映射」装配，
+            联真模式下这里直接显示报告正文。
           </p>
-        ) : loading && report === null ? (
+        ) : loading && reports === null ? (
           <div className="loading-strip" role="status" aria-label="装配中" />
         ) : error ? (
           <div className="empty-state">
@@ -368,15 +421,14 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
             ) : null}
             {!generated && !gen.running ? (
               <p className="brief-hint">
-                当前是「要点版」（系统按章节 ← 表映射直接搬的数据要点，只是一份提纲）。
-                点右上「生成报告」，模型会读完全部表格后按五章写出归纳正文：
-                现状 / 场景与问题 / 方案 / 价值 / 下一步。
+                当前是「{label}」的「要点版」（系统按章节 ← 表映射直接搬的数据要点，只是一份提纲）。
+                点右上「生成报告」，模型会读完全部表格后一次写出两份交付物的归纳正文。
               </p>
             ) : null}
             {draft !== null ? (
               <textarea
                 className="report-editor"
-                aria-label="报告正文（Markdown）"
+                aria-label={`${label}正文（Markdown）`}
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
               />

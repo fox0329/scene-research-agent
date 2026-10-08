@@ -25,9 +25,11 @@ import type {
 import {
   ANCHOR_TABLE_CODE,
   FLOW_LAST_STEP,
+  REPORT_KINDS,
   flowStepLabel,
   flowStepOfTable,
   type InfoStageId,
+  type ReportKind,
 } from "@scene/contract";
 import { alignmentWithBrief, anchorFixedRows, buildFlowStatus, type InfoRow } from "@scene/domain";
 import type { DbInstance } from "@scene/infra";
@@ -46,7 +48,7 @@ import {
 import type { ProviderModelEntry } from "@scene/infra";
 import type { SseHub } from "./sse-hub.js";
 import { createDeliverableReportCommand } from "./deliverable-report.js";
-import { getReport, saveReportFile, writeReportFiles } from "./report-service.js";
+import { getReports, saveReportFile, writeReportFiles } from "./report-service.js";
 import { exportReportDocx } from "./docx-export.js";
 import { assertExportDir, pickFolder } from "./folder-picker.js";
 import { createConverseCommand, type ChatImportOutcome } from "./converse.js";
@@ -313,25 +315,20 @@ export function registerUiRoutes(app: FastifyInstance, deps: UiRoutesDeps): void
     await streamEvents(hub, runId, request, reply, lastEventId);
   });
 
-  // ── 交付物：模型撰写报告 + 双口径导出（变更表 #112） ────────
+  // ── 交付物：模型撰写报告 + 两份交付物导出（变更表 #112 / #137） ────────
   /**
    * 取两份报告正文（不落盘）
    *
-   * 正式版（模型撰写的五章方案）已生成就返回正式版，否则返回确定性要点版并标
+   * 每份各自：正式版（模型撰写的方案）已生成就返回正式版，否则返回确定性要点版并标
    * `generated: false`——界面据此提示"当前是要点版，点生成报告出正式版"。
    */
   app.get("/api/v1/projects/:id/deliverables", async (request, reply) => {
     const { id } = request.params as { id: string };
     const scenario = db.scenarioRepo.getById(id);
     if (!scenario) return notFound(reply, `场景 ${id} 不存在`);
-    const view = getReport(db, scenario);
-    return {
-      // 变更表 #136：交付物只有一份「<场景>解决方案」
-      solution_report: view.markdown,
-      generated: view.generated,
-      generated_at: view.generated_at,
-      solution_chars: view.markdown.replace(/\s/g, "").length,
-    };
+    // 变更表 #137：两份交付物——「<场景>解决方案」与「<场景>建设工作方案」，各带
+    // markdown / chars / generated / generated_at
+    return { reports: getReports(db, scenario) };
   });
 
   /**
@@ -343,10 +340,16 @@ export function registerUiRoutes(app: FastifyInstance, deps: UiRoutesDeps): void
   app.post("/api/v1/projects/:id/deliverables/generate", async (request, reply) => {
     const { id } = request.params as { id: string };
     if (!db.scenarioRepo.getById(id)) return notFound(reply, `场景 ${id} 不存在`);
+    // body.kind 可选：只重跑其中一份（不给就是两份都跑）；给了非法值按两份处理
+    const body = (request.body ?? {}) as { kind?: unknown };
+    const kinds =
+      typeof body.kind === "string" && (REPORT_KINDS as readonly string[]).includes(body.kind)
+        ? ([body.kind] as readonly ReportKind[])
+        : undefined;
     const cmd = createDeliverableReportCommand({ db, dshClient });
     const runId = `${id}:deliverables#${++reportSeq}`;
     reportRuns.set(id, runId);
-    const gen = await cmd.execute({ scenarioId: id });
+    const gen = await cmd.execute({ scenarioId: id, kinds });
     hub.start(runId, gen);
     await streamEvents(hub, runId, request, reply);
   });
@@ -360,7 +363,11 @@ export function registerUiRoutes(app: FastifyInstance, deps: UiRoutesDeps): void
     await streamEvents(hub, runId, request, reply, lastEventId);
   });
 
-  /** 导出交付物到 exports/（写盘内容 = 界面所见） */
+  /**
+   * 导出两份 Markdown 到 exports/（写盘内容 = 界面所见）
+   *
+   * 变更表 #137：`<场景>解决方案.md` + `<场景>建设工作方案.md`
+   */
   app.post("/api/v1/projects/:id/deliverables/export", async (request, reply) => {
     const { id } = request.params as { id: string };
     const scenario = db.scenarioRepo.getById(id);
@@ -368,13 +375,15 @@ export function registerUiRoutes(app: FastifyInstance, deps: UiRoutesDeps): void
     return writeReportFiles(db, scenario);
   });
 
-  /** 保存中栏改过的报告正文（变更表 #135）：写回数据/deliverables，先读后写留档 */
+  /** 保存中栏改过的报告正文（变更表 #135 / #137）：写回数据/deliverables，先读后写留档 */
   app.put("/api/v1/projects/:id/deliverables/:kind", async (request, reply) => {
     const { id, kind } = request.params as { id: string; kind: string };
     const scenario = db.scenarioRepo.getById(id);
     if (!scenario) return notFound(reply, `场景 ${id} 不存在`);
-    if (kind !== "solution") {
-      return reply.code(400).send({ error: `报告类型只能是 solution，收到 ${kind}` });
+    if (!(REPORT_KINDS as readonly string[]).includes(kind)) {
+      return reply
+        .code(400)
+        .send({ error: `报告类型只能是 ${REPORT_KINDS.join("、")}，收到 ${kind}` });
     }
     const body = (request.body ?? {}) as { markdown?: unknown };
     if (typeof body.markdown !== "string") {
@@ -386,7 +395,7 @@ export function registerUiRoutes(app: FastifyInstance, deps: UiRoutesDeps): void
     if (body.markdown.length > 200_000) {
       return reply.code(400).send({ error: "正文过长（超过 20 万字），拒绝保存" });
     }
-    return saveReportFile(scenario, body.markdown);
+    return saveReportFile(scenario, kind as ReportKind, body.markdown);
   });
 
   /** 弹系统对话框让用户选导出文件夹（变更表 #133）；取消返回 409，界面回退到手填路径 */
@@ -399,7 +408,11 @@ export function registerUiRoutes(app: FastifyInstance, deps: UiRoutesDeps): void
     return { dir: picked.dir };
   });
 
-  /** 导出 Word（按《Word 输出格式规范》生成 docx）到用户选的文件夹（变更表 #133） */
+  /**
+   * 导出 Word（按《Word 输出格式规范》生成 docx）到用户选的文件夹（变更表 #133 / #137）
+   *
+   * 两份交付物同一个版式：`<场景>解决方案.docx` + `<场景>建设工作方案.docx`
+   */
   app.post("/api/v1/projects/:id/deliverables/export-docx", async (request, reply) => {
     const { id } = request.params as { id: string };
     const scenario = db.scenarioRepo.getById(id);

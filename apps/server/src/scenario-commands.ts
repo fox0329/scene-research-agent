@@ -8,14 +8,14 @@
  *
  * 命令清单（新增能力在此登记，同步更新 converse 提示词的操作手册）：
  * - advance_stage：跑指定（或当前）阶段分析
- * - export_deliverables：导出双口径交付物
+ * - export_deliverables：导出两份交付物（解决方案 + 建设工作方案）
  * - dedupe_products：产品去重（同型号合并）
  * - clarify_scenario：发起场景澄清
  */
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { DshClient, Scenario } from "@scene/contract";
+import { REPORT_KINDS, type DshClient, type Scenario } from "@scene/contract";
 import type { DbInstance } from "@scene/infra";
 import { exportDeliverables, exportFileName } from "@scene/infra";
 import { collectStageSummaries } from "./stage-summary-service.js";
@@ -130,17 +130,24 @@ export async function executeAppCommand(
 
     case "export_deliverables": {
       const stageRows = db.stageDataRepo.list({ where: "scenario_id = ?", params: [scenario.id] });
-      // 变更表 #136：交付物只有一份「<场景>解决方案」，章节 ← 表映射装配
-      const markdown = await exportDeliverables({
-        scenario,
-        stageSummaries: collectStageSummaries(db, scenario),
-        stageData: stageRows,
-      });
+      // 变更表 #137：两份交付物（解决方案 + 建设工作方案），章节 ← 表映射各自装配
       const outDir = process.env["EXPORT_DIR"] ?? join(process.cwd(), "exports");
       mkdirSync(outDir, { recursive: true });
-      const path = join(outDir, exportFileName(scenario.name));
-      writeFileSync(path, markdown, "utf-8");
-      return `【执行结果】交付物已导出：${path}`;
+      const paths: string[] = [];
+      for (const kind of REPORT_KINDS) {
+        const markdown = await exportDeliverables(
+          {
+            scenario,
+            stageSummaries: collectStageSummaries(db, scenario),
+            stageData: stageRows,
+          },
+          kind,
+        );
+        const path = join(outDir, exportFileName(scenario.name, kind));
+        writeFileSync(path, markdown, "utf-8");
+        paths.push(path);
+      }
+      return `【执行结果】交付物已导出两份：${paths.join("；")}`;
     }
 
     case "dedupe_products": {

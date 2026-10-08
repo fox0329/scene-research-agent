@@ -370,13 +370,15 @@ export function getStageOutputContract(
   const all = tablesOfStage(stage as InfoStage);
   const tables = allowedTables ? all.filter((t) => allowedTables.includes(t.code)) : all;
   if (tables.length === 0) {
-    // 阶段 6（交付物）：不填表，产出一份《<场景>解决方案》（变更表 #136 起不再分双口径）
+    // 阶段 6（交付物）：不填表，产出**两份**客户可读的交付物——「<场景>解决方案」与
+    // 「<场景>建设工作方案」（变更表 #137；#136 曾收敛成一份，本次再加第二份）
     return {
       type: "object",
       properties: {
         solution_report: { type: "string", description: "解决方案（Markdown）" },
+        construction_report: { type: "string", description: "建设工作方案（Markdown）" },
       },
-      required: ["solution_report"],
+      required: ["solution_report", "construction_report"],
     };
   }
 

@@ -1433,15 +1433,31 @@ export function registryIssues(): readonly string[] {
 // ─── 交付物：章节 ← 表映射 ──────────────────────────────────
 //
 // 交付物只有一份：**客户端可读的「<场景>解决方案」**（变更表 #136）。
-// 用户定调（2026-10-07）：「交付物不再分内部调研版和外部汇报版，直接用外部汇报版
-// 生成一个版本，就叫 XXX解决方案」——于是内部口径的章节（主要风险点）、价值段落
-// 与能力边界、术语表全部退场，只剩这一份。
+// 用户定调（2026-10-07 / 变更表 #136）：「交付物不再分内部调研版和外部汇报版，直接用
+// 外部汇报版生成一个版本，就叫 XXX解决方案」——内部口径的章节（主要风险点）、价值
+// 段落与能力边界、术语表全部退场。
+//
+// 变更表 #137（2026-10-08）：交付物**再加一份「<场景>建设工作方案」**（参照客户给的两份
+// 建设工作方案定稿），与「<场景>解决方案」并列——两份都是客户端可读的正式交付物，
+// 章节骨架完全不同，所以章节定义按口径分开（`REPORT_CHAPTERS[kind]`）。
 //
 // 报告 = 素材（本章块里的表）+ 构件（报告自己长出来的设计原则、架构分层、主辅职责、
 // 编号连接关系、选型、价值表、实施要点与下一步）。素材是证据，构件才是报告的价值。
 
-/** 交付物口径：只有「解决方案」这一份（变更表 #136） */
-export type ReportKind = "solution";
+/** 交付物口径（变更表 #137：解决方案 + 建设工作方案，两份都是客户可读的正式交付物） */
+export const REPORT_KINDS = ["solution", "construction"] as const;
+
+export type ReportKind = (typeof REPORT_KINDS)[number];
+
+/**
+ * 报告类型名——拼在场景名后面，就是文件名与一级标题
+ *
+ * 例：`智慧会议室` → `智慧会议室解决方案` / `智慧会议室建设工作方案`。
+ */
+export const REPORT_KIND_LABEL: Record<ReportKind, string> = {
+  solution: "解决方案",
+  construction: "建设工作方案",
+};
 
 export interface DeliverableSection {
   key: string;
@@ -1508,7 +1524,9 @@ export interface ReportChapter {
   blocks: readonly ReportBlock[];
 }
 
-export const REPORT_CHAPTERS: readonly ReportChapter[] = [
+export const REPORT_CHAPTERS: Record<ReportKind, readonly ReportChapter[]> = {
+  /* ── <场景>解决方案：给客户看的方案，讲清现状 / 问题 / 方案 / 价值 / 下一步 ── */
+  solution: [
   {
     key: "status",
     label: "现状",
@@ -1580,19 +1598,124 @@ export const REPORT_CHAPTERS: readonly ReportChapter[] = [
       { code: "表6-4", heading: "试点与验收", cols: ["kind", "content"] },
     ],
   },
-];
+  ],
 
-/** 全部章节（按顺序） */
-export function reportChapters(): readonly ReportChapter[] {
-  return REPORT_CHAPTERS;
+  /* ── <场景>建设工作方案：给客户的"怎么建"——为什么建 / 建成什么样 / 建什么 /
+       怎么建 / 什么时候谁做什么 / 怎么保障 / 与监管怎么协同（变更表 #137） ── */
+  construction: [
+    {
+      key: "background",
+      label: "建设背景与必要性",
+      /* 客户定稿：章下直接写，不套 `###` 小节标题 */
+      sections: [
+        { title: "现场现状", keywords: ["现状", "现场", "今天"], noHeading: true },
+        { title: "主要痛点", keywords: ["痛点", "问题", "卡在"], noHeading: true },
+        { title: "监管与政策要求", keywords: ["监管", "政策", "合规", "要求"], noHeading: true },
+        { title: "不建设的代价", keywords: ["代价", "不建", "风险"], noHeading: true },
+      ],
+      blocks: [
+        { code: "表1-1", heading: "场景锚（在讲哪个场景）" },
+        { code: "表1-2", heading: "业务环节与现在的做法", cols: ["link", "owner_now", "current_tool", "pain"] },
+        { code: "表3-8", heading: "今天还没被满足的需求", cols: ["gap", "who_hurts", "pain_level", "current_alternative"] },
+        { code: "表3-9", heading: "行业与监管趋势", cols: ["trend", "impact"] },
+      ],
+    },
+    {
+      key: "goals",
+      label: "建设目标与思路",
+      sections: [
+        { title: "总体目标", keywords: ["总体目标", "总目标"] },
+        { title: "分项目标", keywords: ["分项目标", "子目标", "具体目标"] },
+        { title: "总体建设思路", keywords: ["思路", "路径选择", "总体考虑"] },
+      ],
+      blocks: [
+        { code: "表3-8", heading: "要解决的需求（目标要对得上）", cols: ["gap", "who_hurts", "pain_level"] },
+        { code: "表6-1", heading: "收益 → 指标 → 基线与预期", as: "table", cols: ["benefit", "metric", "baseline", "expected"] },
+        { code: "表4-5", heading: "我方能力自评（哪些能自己扛）", as: "table", cols: ["dimension", "weight", "score"] },
+      ],
+    },
+    {
+      key: "content",
+      label: "建设内容",
+      sections: [
+        { title: "总体架构", keywords: ["架构", "总体架构", "层次"], artifacts: ["table"] },
+        { title: "核心功能", keywords: ["核心功能", "功能", "能力"], artifacts: ["table"] },
+        { title: "状态研判与分级管控", keywords: ["研判", "分级", "管控", "预警"] },
+      ],
+      blocks: [
+        { code: "表5-1", heading: "方案架构与接口", cols: ["layer", "components", "interface", "integration", "boundary"] },
+        { code: "表4-2", heading: "我方在哪些环节参与、以什么角色", cols: ["link", "can_touch", "our_role"] },
+        { code: "表4-3", heading: "需求-能力对照", cols: ["gap_ref", "match", "our_product", "boundary_note"] },
+        { code: "表2-3", heading: "系统怎么连（分层架构）", cols: ["layer", "components", "interface"] },
+        { code: "表6-1", heading: "收益 → 指标 → 基线与预期", as: "table", cols: ["benefit", "metric", "baseline", "expected"] },
+      ],
+    },
+    {
+      key: "path",
+      label: "建设路径",
+      sections: [
+        { title: "数据采集", keywords: ["数据采集", "采集", "数据来源"] },
+        { title: "新增感知设备", keywords: ["新增", "设备", "感知设备", "清单"], artifacts: ["table"] },
+        { title: "成本评估", keywords: ["成本", "投资", "费用", "预算"], artifacts: ["table"] },
+      ],
+      blocks: [
+        { code: "表5-1", heading: "方案架构与接口（采集点位落在哪一层）", cols: ["layer", "components", "interface"] },
+        { code: "表5-3", heading: "实施安排", cols: ["item", "content", "window"] },
+        { code: "表5-4", heading: "交付与运维", cols: ["item", "content", "sla"] },
+        { code: "表4-2", heading: "我方在哪些环节参与、以什么角色", cols: ["link", "can_touch", "our_role"] },
+      ],
+    },
+    {
+      key: "schedule",
+      label: "工作安排",
+      /* 客户定稿：第 5 章章下直接就是那张里程碑计划表，不套 `###` 小节 */
+      sections: [
+        { title: "阶段与时间安排", keywords: ["阶段", "时间", "计划", "安排", "进度"], artifacts: ["table"], noHeading: true },
+      ],
+      blocks: [
+        { code: "表5-3", heading: "实施安排（阶段与时间窗口）", cols: ["item", "content", "window"] },
+        { code: "表6-4", heading: "试点与验收", cols: ["kind", "content"] },
+        { code: "表5-4", heading: "交付与运维", cols: ["item", "content", "sla"] },
+      ],
+    },
+    {
+      key: "safeguards",
+      label: "保障措施",
+      sections: [
+        { title: "组织保障", keywords: ["组织", "团队", "分工"] },
+        { title: "制度保障", keywords: ["制度", "流程", "规范"] },
+        { title: "资金保障", keywords: ["资金", "预算", "投入"] },
+        { title: "人才保障", keywords: ["人才", "培训", "能力建设"] },
+      ],
+      blocks: [
+        { code: "表4-5", heading: "我方能力自评（哪些要借外力）", as: "table", cols: ["dimension", "weight", "score"] },
+        { code: "表5-4", heading: "交付与运维", cols: ["item", "content", "sla"] },
+      ],
+    },
+    {
+      key: "outlook",
+      label: "监管协同展望",
+      /* 章下直接写 1–2 段（参照件如此），不再套一个与章同名的小节 */
+      sections: [],
+      blocks: [
+        { code: "表3-9", heading: "行业与监管趋势", cols: ["trend", "impact"] },
+        { code: "表6-4", heading: "试点与验收", cols: ["kind", "content"] },
+      ],
+    },
+  ],
+};
+
+/** 某一口径的全部章节（按顺序） */
+export function reportChapters(kind: ReportKind): readonly ReportChapter[] {
+  return REPORT_CHAPTERS[kind];
 }
 
 /** 章节名（不含序号）：Markdown 里就写这个名字，编号交给 Word 自动生成 */
-export function reportChapterHeading(key: string): string {
-  return REPORT_CHAPTERS.find((c) => c.key === key)?.label ?? "";
+export function reportChapterHeading(kind: ReportKind, key: string): string {
+  return reportChapters(kind).find((c) => c.key === key)?.label ?? "";
 }
 
-/** 全部章节名（按顺序）——校验据此判断"缺章" */
-export function reportChapterHeadings(): readonly string[] {
-  return REPORT_CHAPTERS.map((c) => c.label);
+/** 某一口径的全部章节名（按顺序）——校验据此判断"缺章" */
+export function reportChapterHeadings(kind: ReportKind): readonly string[] {
+  return reportChapters(kind).map((c) => c.label);
 }

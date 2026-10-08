@@ -1126,18 +1126,41 @@ describe("上传入库路由", () => {
 // ─── 交付物导出 ────────────────────────────────────────────
 
 describe("交付物导出", () => {
-  it("POST export 写出「<场景>解决方案.md」一份（变更表 #136 取消双口径）", async () => {
+  it("POST export 写出两份 md：<场景>解决方案.md + <场景>建设工作方案.md（变更表 #137）", async () => {
     const h = makeHarness();
     const { scenarioId } = seedScenario(h.db, "导出场景");
-    const res = await h.app.inject({
-      method: "POST",
-      url: `/api/v1/projects/${scenarioId}/deliverables/export`,
-    });
-    expect(res.statusCode).toBe(200);
-    const { path } = res.json() as { path: string };
-    expect(existsSync(path)).toBe(true);
-    expect(path.endsWith("导出场景解决方案.md")).toBe(true);
-    expect(readFileSync(path, "utf-8")).toContain("导出场景");
+    const dir = mkdtempSync(join(tmpdir(), "scene-deliverable-export-"));
+    process.env.DELIVERABLE_DIR = dir;
+    try {
+      const res = await h.app.inject({
+        method: "POST",
+        url: `/api/v1/projects/${scenarioId}/deliverables/export`,
+      });
+      expect(res.statusCode).toBe(200);
+      const { files } = res.json() as { files: string[] };
+      // 两份都是客户端可读的正式交付物，各按自己的章节骨架装配
+      expect(files).toHaveLength(2);
+      for (const f of files) expect(existsSync(f), f).toBe(true);
+      expect(files[0]!.endsWith("导出场景解决方案.md")).toBe(true);
+      expect(files[1]!.endsWith("导出场景建设工作方案.md")).toBe(true);
+      expect(readFileSync(files[0]!, "utf-8")).toContain("## 现状");
+      expect(readFileSync(files[1]!, "utf-8")).toContain("## 建设背景与必要性");
+      expect(readFileSync(files[1]!, "utf-8")).not.toContain("## 现状");
+
+      // 再导一次：两份都还在，文件名不变（导出幂等）
+      const again = await h.app.inject({
+        method: "POST",
+        url: `/api/v1/projects/${scenarioId}/deliverables/export`,
+      });
+      expect(again.statusCode).toBe(200);
+      const second = again.json() as { files: string[] };
+      expect(second.files).toHaveLength(2);
+      expect(second.files[0]!.endsWith("导出场景解决方案.md")).toBe(true);
+      expect(second.files[1]!.endsWith("导出场景建设工作方案.md")).toBe(true);
+    } finally {
+      delete process.env.DELIVERABLE_DIR;
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it("场景不存在 → 404", async () => {
@@ -1149,7 +1172,7 @@ describe("交付物导出", () => {
     expect(res.statusCode).toBe(404);
   });
 
-  it("POST export-docx 把解决方案按模版写成 Word 到指定文件夹（变更表 #133 / #136）", async () => {
+  it("POST export-docx 把两份交付物按同一版式写成 Word（变更表 #133 / #137）", async () => {
     const h = makeHarness();
     const { scenarioId } = seedScenario(h.db, "Word 场景");
     const dir = mkdtempSync(join(homedir(), ".scene-docx-test-"));
@@ -1161,8 +1184,8 @@ describe("交付物导出", () => {
       });
       expect(res.statusCode).toBe(200);
       const { files } = res.json() as { files: string[] };
-      // 只有一份「<场景>解决方案.docx」——不再有内部调研报告 / 对外汇报材料
-      expect(files.length).toBe(1);
+      // 两份：解决方案 + 建设工作方案（同一个渲染器、同一套 Word 模板）
+      expect(files).toHaveLength(2);
       for (const f of files) {
         expect(f.startsWith(dir)).toBe(true);
         expect(f.endsWith(".docx")).toBe(true);
@@ -1170,10 +1193,11 @@ describe("交付物导出", () => {
         expect(head, f).toBe("PK"); // zip 魔数
       }
       expect(files[0]!.endsWith("Word 场景解决方案.docx")).toBe(true);
+      expect(files[1]!.endsWith("Word 场景建设工作方案.docx")).toBe(true);
       expect(files.some((f) => f.includes("内部调研报告"))).toBe(false);
       expect(files.some((f) => f.includes("对外汇报材料"))).toBe(false);
 
-      // 再导一次：同一份报告字节一致 → 一个字节都不该动（变更表 #131 的先读后写）
+      // 再导一次：两份报告字节一致 → 一个字节都不该动（变更表 #131 的先读后写）
       const again = await h.app.inject({
         method: "POST",
         url: `/api/v1/projects/${scenarioId}/deliverables/export-docx`,
@@ -1182,14 +1206,15 @@ describe("交付物导出", () => {
       expect(again.statusCode).toBe(200);
       const second = again.json() as { files: string[]; unchanged: string[] };
       expect(second.files).toEqual([]);
-      expect(second.unchanged.length).toBe(1);
+      expect(second.unchanged.length).toBe(2);
       expect(second.unchanged[0]!.endsWith("Word 场景解决方案.docx")).toBe(true);
+      expect(second.unchanged[1]!.endsWith("Word 场景建设工作方案.docx")).toBe(true);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
   });
 
-  it("PUT deliverables/:kind 保存中栏改过的正文（变更表 #135，kind 只认 solution）", async () => {
+  it("PUT deliverables/solution 保存中栏改过的正文（变更表 #135）", async () => {
     const h = makeHarness();
     const { scenarioId } = seedScenario(h.db, "保存场景");
     const dir = mkdtempSync(join(homedir(), ".scene-save-test-"));
@@ -1220,88 +1245,116 @@ describe("交付物导出", () => {
         method: "GET",
         url: `/api/v1/projects/${scenarioId}/deliverables`,
       });
-      expect(view.json().solution_report).toContain("手改的正文");
-
-      // 参数校验：旧的双口径 kind（internal / external）已取消 → 400
-      for (const legacy of ["internal", "external"]) {
-        const oldKind = await h.app.inject({
-          method: "PUT",
-          url: `/api/v1/projects/${scenarioId}/deliverables/${legacy}`,
-          payload: { markdown: "x" },
-        });
-        expect(oldKind.statusCode, legacy).toBe(400);
-        expect(oldKind.json().error).toContain("solution");
-      }
-      const badKind = await h.app.inject({
-        method: "PUT",
-        url: `/api/v1/projects/${scenarioId}/deliverables/whatever`,
-        payload: { markdown: "x" },
-      });
-      expect(badKind.statusCode).toBe(400);
-      const empty = await h.app.inject({
-        method: "PUT",
-        url: `/api/v1/projects/${scenarioId}/deliverables/solution`,
-        payload: { markdown: "   " },
-      });
-      expect(empty.statusCode).toBe(400);
-      const missing = await h.app.inject({
-        method: "PUT",
-        url: `/api/v1/projects/${scenarioId}/deliverables/solution`,
-        payload: {},
-      });
-      expect(missing.statusCode).toBe(400);
+      const reports = (view.json() as { reports: Record<string, { markdown: string }> }).reports;
+      expect(reports["solution"]!.markdown).toContain("手改的正文");
     } finally {
       delete process.env.DELIVERABLE_DIR;
       rmSync(dir, { recursive: true, force: true });
     }
   });
 
-  it("POST export-docx 只导一份；目录非法或缺失 → 400", async () => {
+  it("PUT deliverables/construction 保存成功，且两份互不串（变更表 #137 新增）", async () => {
     const h = makeHarness();
-    const { scenarioId } = seedScenario(h.db, "Word 场景");
-    const dir = mkdtempSync(join(homedir(), ".scene-docx-test-"));
+    const { scenarioId } = seedScenario(h.db, "互不串场景");
+    const dir = mkdtempSync(join(homedir(), ".scene-save-kind-test-"));
+    process.env.DELIVERABLE_DIR = dir;
     try {
-      const one = await h.app.inject({
-        method: "POST",
-        url: `/api/v1/projects/${scenarioId}/deliverables/export-docx`,
-        payload: { dir },
+      const saved = await h.app.inject({
+        method: "PUT",
+        url: `/api/v1/projects/${scenarioId}/deliverables/construction`,
+        payload: { markdown: "# 互不串场景建设工作方案\n\n## 建设路径\n\n手改的建设路径正文\n" },
       });
-      expect(one.statusCode).toBe(200);
-      const oneBody = one.json() as { files: string[] };
-      expect(oneBody.files.length).toBe(1);
-      expect(oneBody.files[0]!.endsWith("Word 场景解决方案.docx")).toBe(true);
+      expect(saved.statusCode).toBe(200);
+      const body = saved.json() as { path: string; written: boolean; overwritten: boolean };
+      expect(body.written).toBe(true);
+      expect(body.overwritten).toBe(false);
+      // 落盘是 <id>.construction.md，不碰 <id>.solution.md
+      expect(body.path).toBe(join(dir, `${scenarioId}.construction.md`));
+      expect(readFileSync(body.path, "utf8")).toContain("手改的建设路径正文");
+      expect(existsSync(join(dir, `${scenarioId}.solution.md`))).toBe(false);
 
-      // 旧客户端的 kind 参数已取消：传了也仍然只导这一份，且内容没变就不重复写盘
-      const legacyKind = await h.app.inject({
-        method: "POST",
-        url: `/api/v1/projects/${scenarioId}/deliverables/export-docx`,
-        payload: { dir, kind: "external" },
+      const view = await h.app.inject({
+        method: "GET",
+        url: `/api/v1/projects/${scenarioId}/deliverables`,
       });
-      expect(legacyKind.statusCode).toBe(200);
-      const legacyBody = legacyKind.json() as { files: string[]; unchanged: string[] };
-      expect(legacyBody.files).toEqual([]);
-      expect(legacyBody.unchanged.length).toBe(1);
-
-      const outside = await h.app.inject({
-        method: "POST",
-        url: `/api/v1/projects/${scenarioId}/deliverables/export-docx`,
-        payload: { dir: "/etc" },
-      });
-      expect(outside.statusCode).toBe(400);
-      expect(outside.json().error).toContain("主目录");
-
-      const missing = await h.app.inject({
-        method: "POST",
-        url: `/api/v1/projects/${scenarioId}/deliverables/export-docx`,
-        payload: {},
-      });
-      expect(missing.statusCode).toBe(400);
+      const reports = (
+        view.json() as {
+          reports: Record<
+            string,
+            { markdown: string; chars: number; generated: boolean; generated_at: string | null }
+          >;
+        }
+      ).reports;
+      // 建设工作方案：读到刚保存的正文
+      expect(reports["construction"]!.markdown).toContain("手改的建设路径正文");
+      expect(reports["construction"]!.generated).toBe(true);
+      expect(reports["construction"]!.generated_at).toBeTruthy();
+      expect(reports["construction"]!.chars).toBeGreaterThan(0);
+      // 解决方案不受影响：还是要点版，且不含建设工作方案的正文
+      expect(reports["solution"]!.generated).toBe(false);
+      expect(reports["solution"]!.markdown).toContain("## 现状");
+      expect(reports["solution"]!.markdown).not.toContain("手改的建设路径正文");
     } finally {
+      delete process.env.DELIVERABLE_DIR;
       rmSync(dir, { recursive: true, force: true });
     }
   });
 
-  it("GET /deliverables：中栏取解决方案正文（装配但不落盘）", async () => {
+  it("PUT deliverables/:kind 只认 REPORT_KINDS：internal / external / whatever → 400", async () => {
+    const h = makeHarness();
+    const { scenarioId } = seedScenario(h.db, "非法口径场景");
+    for (const bad of ["internal", "external", "whatever"]) {
+      const res = await h.app.inject({
+        method: "PUT",
+        url: `/api/v1/projects/${scenarioId}/deliverables/${bad}`,
+        payload: { markdown: "x" },
+      });
+      expect(res.statusCode, bad).toBe(400);
+      expect(res.json().error).toContain("solution、construction");
+      expect(res.json().error).toContain(bad);
+    }
+  });
+
+  it("PUT deliverables/:kind 正文校验：缺 markdown / 空 / 超 20 万字 → 400", async () => {
+    const h = makeHarness();
+    const { scenarioId } = seedScenario(h.db, "正文校验场景");
+    const cases: { payload: { markdown?: string }; label: string }[] = [
+      { payload: {}, label: "缺 markdown" },
+      { payload: { markdown: "   " }, label: "空正文" },
+      { payload: { markdown: "x".repeat(200_001) }, label: "超 20 万字" },
+    ];
+    for (const kind of ["solution", "construction"]) {
+      for (const c of cases) {
+        const res = await h.app.inject({
+          method: "PUT",
+          url: `/api/v1/projects/${scenarioId}/deliverables/${kind}`,
+          payload: c.payload,
+        });
+        expect(res.statusCode, `${kind}:${c.label}`).toBe(400);
+      }
+    }
+  });
+
+  it("POST export-docx 目录非法或缺失 → 400", async () => {
+    const h = makeHarness();
+    const { scenarioId } = seedScenario(h.db, "Word 场景");
+    const outside = await h.app.inject({
+      method: "POST",
+      url: `/api/v1/projects/${scenarioId}/deliverables/export-docx`,
+      payload: { dir: "/etc" },
+    });
+    expect(outside.statusCode).toBe(400);
+    expect(outside.json().error).toContain("主目录");
+
+    const missing = await h.app.inject({
+      method: "POST",
+      url: `/api/v1/projects/${scenarioId}/deliverables/export-docx`,
+      payload: {},
+    });
+    expect(missing.statusCode).toBe(400);
+  });
+
+  it("GET /deliverables：中栏取两份正文（装配但不落盘）", async () => {
     const h = makeHarness();
     const { scenarioId } = seedScenario(h.db, "取正文场景");
     const outDir = process.env.EXPORT_DIR!;
@@ -1312,85 +1365,99 @@ describe("交付物导出", () => {
       url: `/api/v1/projects/${scenarioId}/deliverables`,
     });
     expect(res.statusCode).toBe(200);
-    const body = res.json() as {
-      solution_report: string;
-      generated: boolean;
-      generated_at: string | null;
-      solution_chars: number;
+    const { reports } = res.json() as {
+      reports: Record<
+        string,
+        { markdown: string; chars: number; generated: boolean; generated_at: string | null }
+      >;
     };
-    // 变更表 #136：只有一份「<场景>解决方案」
-    expect(body.solution_report).toContain("解决方案");
-    expect(body.solution_report).toContain("取正文场景");
+    // 变更表 #137：两份——解决方案 + 建设工作方案
+    expect(Object.keys(reports).sort()).toEqual(["construction", "solution"]);
+    expect(reports["solution"]!.markdown).toContain("解决方案");
+    expect(reports["solution"]!.markdown).toContain("取正文场景");
     // 章标题不带手写序号（五章：现状 / 场景与问题 / 方案 / 价值 / 下一步）
-    expect(body.solution_report).toContain("## 现状");
-    expect(body.solution_report).not.toContain("## 一、现状");
-    // 要点版没有"生成时间"（正式版才有）——见下一条用例
-    expect(body.generated).toBe(false);
-    expect(body.generated_at).toBeNull();
-    expect(body.solution_chars).toBeGreaterThan(0);
+    expect(reports["solution"]!.markdown).toContain("## 现状");
+    expect(reports["solution"]!.markdown).not.toContain("## 一、现状");
+    // 建设工作方案按自己的章节骨架装配（不是解决方案的复制）
+    expect(reports["construction"]!.markdown).toContain("建设工作方案");
+    expect(reports["construction"]!.markdown).toContain("## 建设背景与必要性");
+    expect(reports["construction"]!.markdown).not.toContain("## 一、");
+    for (const kind of ["solution", "construction"]) {
+      // 要点版没有"生成时间"（正式版才有）——见下一条用例
+      expect(reports[kind]!.generated, kind).toBe(false);
+      expect(reports[kind]!.generated_at, kind).toBeNull();
+      expect(reports[kind]!.chars, kind).toBeGreaterThan(0);
+    }
     // 只装配不写盘：目录文件数不变
     expect(readdirSync(outDir).length).toBe(before);
   });
 
-  it("GET /deliverables 未生成正式版时标 generated=false（界面据此提示「当前是要点版」）", async () => {
-    const h = makeHarness();
-    const { scenarioId } = seedScenario(h.db, "要点版场景");
-    const res = await h.app.inject({
-      method: "GET",
-      url: `/api/v1/projects/${scenarioId}/deliverables`,
-    });
-    const body = res.json() as { generated: boolean; generated_at: string | null; solution_chars: number };
-    expect(body.generated).toBe(false);
-    expect(body.generated_at).toBeNull();
-    expect(body.solution_chars).toBeGreaterThan(0);
-  });
-
-  it("生成过正式版后：GET 返回正式版内容，导出写盘的内容与 GET 一致（所见即所得）", async () => {
+  it("生成过正式版后：GET 返回各自正式版内容，导出写盘的内容与 GET 一致（所见即所得）", async () => {
     const h = makeHarness();
     const { scenarioId } = seedScenario(h.db, "正式版场景");
     const dir = mkdtempSync(join(tmpdir(), "scene-deliverable-"));
     process.env.DELIVERABLE_DIR = dir;
+    try {
+      // 直接落两份"模型写的"正文，模拟生成完成（<id>.solution.md / <id>.construction.md）
+      const sampleSolution = "## 现状\n\n解决方案正式版正文。\n\n## 下一步\n\n边界。";
+      const sampleConstruction = "## 建设内容\n\n建设工作方案正式版正文。";
+      writeFileSync(join(dir, `${scenarioId}.solution.md`), sampleSolution, "utf8");
+      writeFileSync(join(dir, `${scenarioId}.construction.md`), sampleConstruction, "utf8");
 
-    // 直接落一份"模型写的"正文，模拟生成完成（单份：<id>.solution.md）
-    const sample = "## 现状\n\n正式版正文。\n\n## 下一步\n\n风险与边界。";
-    writeFileSync(join(dir, `${scenarioId}.solution.md`), sample, "utf8");
+      const res = await h.app.inject({
+        method: "GET",
+        url: `/api/v1/projects/${scenarioId}/deliverables`,
+      });
+      const { reports } = res.json() as {
+        reports: Record<string, { generated: boolean; markdown: string }>;
+      };
+      expect(reports["solution"]!.generated).toBe(true);
+      expect(reports["solution"]!.markdown).toBe(sampleSolution);
+      expect(reports["construction"]!.generated).toBe(true);
+      expect(reports["construction"]!.markdown).toBe(sampleConstruction);
 
-    const res = await h.app.inject({
-      method: "GET",
-      url: `/api/v1/projects/${scenarioId}/deliverables`,
-    });
-    const body = res.json() as { generated: boolean; solution_report: string };
-    expect(body.generated).toBe(true);
-    expect(body.solution_report).toBe(sample);
-
-    const exp = await h.app.inject({
-      method: "POST",
-      url: `/api/v1/projects/${scenarioId}/deliverables/export`,
-    });
-    const { path } = exp.json() as { path: string };
-    expect(path.endsWith("正式版场景解决方案.md")).toBe(true);
-    expect(readFileSync(path, "utf8")).toBe(sample);
-    delete process.env.DELIVERABLE_DIR;
+      const exp = await h.app.inject({
+        method: "POST",
+        url: `/api/v1/projects/${scenarioId}/deliverables/export`,
+      });
+      const { files } = exp.json() as { files: string[] };
+      expect(files).toHaveLength(2);
+      expect(files[0]!.endsWith("正式版场景解决方案.md")).toBe(true);
+      expect(files[1]!.endsWith("正式版场景建设工作方案.md")).toBe(true);
+      expect(readFileSync(files[0]!, "utf8")).toBe(sampleSolution);
+      expect(readFileSync(files[1]!, "utf8")).toBe(sampleConstruction);
+    } finally {
+      delete process.env.DELIVERABLE_DIR;
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
-  it("旧项目的定稿不会消失：#136 之前落的 <id>.external.md 仍被读到（只读兜底）", async () => {
+  it("旧项目的定稿不会消失：#136 之前落的 <id>.external.md 仍被 solution 读到（只读兜底）", async () => {
     const h = makeHarness();
     const { scenarioId } = seedScenario(h.db, "旧文件场景");
     const dir = mkdtempSync(join(tmpdir(), "scene-deliverable-legacy-"));
     process.env.DELIVERABLE_DIR = dir;
+    try {
+      const legacy = "# 旧文件场景 对外汇报材料 2026-10-07\n\n## 现状\n\n改名之前的定稿。";
+      writeFileSync(join(dir, `${scenarioId}.external.md`), legacy, "utf8");
 
-    const legacy = "# 旧文件场景 对外汇报材料 2026-10-07\n\n## 现状\n\n改名之前的定稿。";
-    writeFileSync(join(dir, `${scenarioId}.external.md`), legacy, "utf8");
-
-    const res = await h.app.inject({
-      method: "GET",
-      url: `/api/v1/projects/${scenarioId}/deliverables`,
-    });
-    const body = res.json() as { generated: boolean; solution_report: string };
-    expect(body.generated).toBe(true);
-    expect(body.solution_report).toBe(legacy);
-    // 保存仍写新路径，旧文件不动
-    delete process.env.DELIVERABLE_DIR;
+      const res = await h.app.inject({
+        method: "GET",
+        url: `/api/v1/projects/${scenarioId}/deliverables`,
+      });
+      const { reports } = res.json() as {
+        reports: Record<string, { generated: boolean; markdown: string }>;
+      };
+      expect(reports["solution"]!.generated).toBe(true);
+      expect(reports["solution"]!.markdown).toBe(legacy);
+      // 兜底只对 solution 生效：建设工作方案不受旧文件影响（各写各的新路径）
+      expect(reports["construction"]!.generated).toBe(false);
+      expect(reports["construction"]!.markdown).not.toBe(legacy);
+      expect(existsSync(join(dir, `${scenarioId}.solution.md`))).toBe(false);
+    } finally {
+      delete process.env.DELIVERABLE_DIR;
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it("GET /deliverables：场景不存在 404", async () => {

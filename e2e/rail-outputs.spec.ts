@@ -14,7 +14,8 @@ import { join } from "node:path";
  *
  * 本套件锁住四件事：
  *  ① 第一行仍是 7 个阶段名，第二行是**当前正在看的那一步**的输出物；
- *  ② 点第二行的某一项 → 中栏真的换成它（表 → 那张表的表格；交付物 → 那份报告）；
+ *  ② 点第二行的某一项 → 中栏真的换成它（表 → 那张表的表格；交付物 → 那一份报告，
+ *     交付物步是两份：解决方案 + 建设工作方案，变更表 #137）；
  *  ③ 第二行在中栏滚动容器 `.ws` 外面 → 上下滚表格时它始终可见（用户要解决的正是这个）；
  *  ④ 中栏不再自己再来一行表名（上一版曾在表格上面压一层粘性表头，用户否掉了）。
  */
@@ -125,7 +126,7 @@ test("流程轴：阶段名一行 + 本步输出物一行，点第二行换中�
   await expect(page.locator(".flow-outputs .chip").filter({ hasText: "需求-能力对照" })).toHaveCount(0);
 });
 
-test("交付物这一步：第二行是一份解决方案，中栏就是它的正文（联真）", async ({ page }) => {
+test("交付物这一步：第二行是两份交付物，中栏跟着切换（联真）", async ({ page }) => {
   const name = `E2E 交付物输出物 ${Date.now()}`;
   const projectId = await newProject(page, name);
   await completeSteps(page, projectId, 7);
@@ -135,39 +136,47 @@ test("交付物这一步：第二行是一份解决方案，中栏就是它的�
   await page.locator(".proj-hd", { hasText: name }).click();
   await page.locator(".flow-nodes .flow-node", { hasText: "交付物" }).click();
 
-  // 第二行＝交付物这一步的输出物：一份解决方案（不是表，变更表 #136）
+  // 第二行＝交付物这一步的输出物：两份（解决方案 + 建设工作方案，变更表 #137），不是表
   const outputs = page.locator(".flow-outputs .chip");
-  await expect(outputs).toHaveCount(1);
+  await expect(outputs).toHaveCount(2);
   await expect(outputs.nth(0)).toHaveText("解决方案");
+  await expect(outputs.nth(1)).toHaveText("建设工作方案");
 
-  // 中栏没有检查清单，直接是报告正文
+  // 默认看「解决方案」：中栏是它的正文
   await expect(page.locator(".ws .delivery-steps")).toHaveCount(0);
   // 还没跑模型 → 正文上方说清「当前是要点版」，并给出生成入口（v1.32）
   await expect(page.locator(".ws .brief-hint")).toContainText("要点版");
   await expect(page.locator(".ws .pnl-actions")).toContainText("生成报告");
-  // 变更表 #136：交付物正文是「<场景名>解决方案」，五章、章标题不带手写序号
+  await expect(outputs.filter({ hasText: "解决方案" })).toHaveClass(/active/);
+  // 变更表 #136：解决方案正文是「<场景名>解决方案」，五章、章标题不带手写序号
   await expect(page.locator(".ws .md-body")).toContainText("解决方案");
   for (const h of ["现状", "场景与问题", "方案", "价值", "下一步"]) {
     await expect(page.locator(".ws .md-body")).toContainText(h);
   }
   await expect(page.locator(".ws .md-body")).not.toContainText("主要风险点");
   await expect(page.locator(".ws .md-body")).not.toContainText("附录");
-  await expect(outputs.filter({ hasText: "解决方案" })).toHaveClass(/active/);
+
+  // 变更表 #137：点「建设工作方案」→ 中栏正文换成那一份（construction 章名出现，solution 章名消失）
+  await outputs.filter({ hasText: "建设工作方案" }).click();
+  await expect(outputs.filter({ hasText: "建设工作方案" })).toHaveClass(/active/);
+  await expect(page.locator(".ws .md-body")).toContainText("建设背景与必要性");
+  await expect(page.locator(".ws .md-body")).toContainText("建设内容");
+  await expect(page.locator(".ws .md-body")).not.toContainText("场景与问题");
 
   // 装配原料清单按 G-R9 归右栏「阶段总结」
   await page.locator(".det-tabs .det-tab", { hasText: "阶段总结" }).click();
   await expect(page.locator(".det-body")).toContainText("装配原料");
 
-  // 变更表 #135：中栏可编辑并保存——改完点保存 → 中栏与磁盘都变
+  // 变更表 #135：中栏可编辑并保存——改的是**当前这一份**（建设工作方案）→ 中栏与磁盘都变
   await page.locator(".ws .pnl-actions button", { hasText: "编辑" }).click();
   const editor = page.locator(".ws .report-editor");
   await expect(editor).toBeVisible();
-  await editor.fill("# E2E 改过的报告\n\n## 现状\n\n这段字是 e2e 写进去的。\n");
+  await editor.fill("# E2E 改过的建设工作方案\n\n## 建设内容\n\n这段字是 e2e 写进去的。\n");
   await page.locator(".ws .pnl-actions button", { hasText: "保存" }).click();
   await expect(page.locator(".toast-item").filter({ hasText: "已保存" }).last()).toBeVisible({ timeout: 20_000 });
   await expect(page.locator(".ws .md-body")).toContainText("这段字是 e2e 写进去的");
 
-  // 变更表 #133：「导出到文件」= 选文件夹 → 按模版写 Word。
+  // 变更表 #133：「导出到文件」= 选文件夹 → 按模版写 Word（#137：一次两份）。
   // 系统对话框在 e2e 里没法点，所以拦掉 pick-folder 请求直接给一个临时目录。
   const dir = mkdtempSync(join(homedir(), ".scene-e2e-docx-"));
   try {
@@ -179,9 +188,10 @@ test("交付物这一步：第二行是一份解决方案，中栏就是它的�
       timeout: 30_000,
     });
     const files = readdirSync(dir).filter((f) => f.endsWith(".docx"));
-    expect(files.length, files.join(",")).toBe(1);
+    expect(files.length, files.join(",")).toBe(2);
+    expect(files.some((f) => f.includes("解决方案")), files.join(",")).toBe(true);
+    expect(files.some((f) => f.includes("建设工作方案")), files.join(",")).toBe(true);
     for (const f of files) {
-      expect(f).toMatch(/解决方案/);
       // zip 魔数：真是 docx 而不是空文件
       expect(readFileSync(join(dir, f)).subarray(0, 2).toString("utf8")).toBe("PK");
     }

@@ -257,8 +257,8 @@ export {
   missingChapterArtifacts,
   reportChapterHeadings,
   reportViolationsBrief,
-  REPORT_MAX_CHARS,
-  REPORT_MIN_CHARS,
+  reportMinChars,
+  reportMaxChars,
 } from "./report-gate.js";
 export { proseChars } from "./md-metrics.js";
 export type { ReportGateReport, ReportKind, ReportViolation } from "./report-gate.js";
