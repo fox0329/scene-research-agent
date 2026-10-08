@@ -50,6 +50,8 @@ import type { SseHub } from "./sse-hub.js";
 import { createDeliverableReportCommand } from "./deliverable-report.js";
 import { getReports, saveReportFile, writeReportFiles } from "./report-service.js";
 import { exportReportDocx } from "./docx-export.js";
+import { exportReportPptx } from "./ppt-export.js";
+import { closePptRun, ensurePptRun, pptRunId } from "./ppt-progress.js";
 import { assertExportDir, pickFolder } from "./folder-picker.js";
 import { createConverseCommand, type ChatImportOutcome } from "./converse.js";
 import { requestScenarioClarify } from "./scenario-clarify.js";
@@ -204,6 +206,13 @@ function parseStepQuery(query: unknown): number | undefined {
 }
 
 // ─── 注册入口 ──────────────────────────────────────────────
+
+/** `body.kind` 解析：非法值按"没给"处理（与既有交付物接口同一口径） */
+function reportKindOf(raw: unknown): ReportKind | undefined {
+  return typeof raw === "string" && (REPORT_KINDS as readonly string[]).includes(raw)
+    ? (raw as ReportKind)
+    : undefined;
+}
 
 export function registerUiRoutes(app: FastifyInstance, deps: UiRoutesDeps): void {
   const { db, dshClient, hub } = deps;
@@ -433,6 +442,60 @@ export function registerUiRoutes(app: FastifyInstance, deps: UiRoutesDeps): void
       request.log.error(err);
       return reply.code(500).send({ error: `生成 Word 失败：${err instanceof Error ? err.message : String(err)}` });
     }
+  });
+
+  /**
+   * 导出 PPT（变更表 #141）：点一次就自动产出 `docs/PPT输出要求.md` 口径的中间页 PPT
+   *
+   * body：`{dir, kind?, run?}`——`kind` 默认 `solution`（与既有导出接口同口径解析）；
+   * `run` 是前端给进度通道的 token（同一 token 先订阅 `…/export-pptx/events?run=`）。
+   * 返回与导出 Word 完全同形：`{files, unchanged, notice?}`——失败也只回 notice，不抛 500。
+   */
+  app.post("/api/v1/projects/:id/deliverables/export-pptx", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const scenario = db.scenarioRepo.getById(id);
+    if (!scenario) return notFound(reply, `场景 ${id} 不存在`);
+    const body = (request.body ?? {}) as { dir?: unknown; kind?: unknown; run?: unknown };
+    if (typeof body.dir !== "string" || body.dir.trim() === "") {
+      return reply.code(400).send({ error: "缺少导出目录 dir" });
+    }
+    let dir: string;
+    try {
+      dir = assertExportDir(body.dir);
+    } catch (err: unknown) {
+      return reply.code(400).send({ error: err instanceof Error ? err.message : String(err) });
+    }
+    const kind = reportKindOf(body.kind) ?? "solution";
+    const run = typeof body.run === "string" && body.run.trim() !== "" ? body.run.trim() : null;
+    const channel = run === null ? null : ensurePptRun(hub, run);
+    try {
+      const push =
+        channel === null
+          ? () => undefined
+          : (event: FollowEvent): void => {
+              if (typeof event.message === "string") channel.push(event.message);
+            };
+      return await exportReportPptx({ db, scenario, kind, dir, dshClient, push });
+    } catch (err: unknown) {
+      request.log.error(err);
+      return reply.code(500).send({ error: `导出 PPT 失败：${err instanceof Error ? err.message : String(err)}` });
+    } finally {
+      if (run !== null) closePptRun(run);
+    }
+  });
+
+  /** PPT 导出进度（SSE）：前端先订阅、再 POST；run 未建时先建起来，两边谁先到都行 */
+  app.get("/api/v1/projects/:id/deliverables/export-pptx/events", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    if (!db.scenarioRepo.getById(id)) return notFound(reply, `场景 ${id} 不存在`);
+    const { run } = request.query as { run?: string };
+    if (typeof run !== "string" || run.trim() === "") {
+      return reply.code(400).send({ error: "缺少进度通道 run" });
+    }
+    const token = run.trim();
+    ensurePptRun(hub, token);
+    const lastEventId = (request.headers["last-event-id"] as string | undefined) ?? null;
+    await streamEvents(hub, pptRunId(token), request, reply, lastEventId);
   });
 }
 

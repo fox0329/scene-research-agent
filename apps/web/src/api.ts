@@ -561,6 +561,17 @@ export const api = {
       `/projects/${encodeURIComponent(id)}/deliverables/export-docx`,
       { method: "POST", body: { dir } },
     ),
+  /**
+   * 导出 PPT（变更表 #141）：点一次自动产出 5–10 页中间页 PPT
+   *
+   * `kind` 默认 `solution`（服务端解析）；`run` 是进度通道 token——调用方先订阅
+   * `exportPptProgressStream`，再把同一个 token 放进 body。
+   */
+  exportPptx: (id: string, dir: string, kind: DeliverableKind, run: string) =>
+    req<{ files: string[]; unchanged: string[]; notice?: string }>(
+      `/projects/${encodeURIComponent(id)}/deliverables/export-pptx`,
+      { method: "POST", body: { dir, kind, run } },
+    ),
 
   listConversations: (projectId: string) =>
     req<ApiConversation[]>(`/projects/${encodeURIComponent(projectId)}/conversations`),
@@ -822,6 +833,25 @@ export const reconnectDeliverablesStream = (
     `/projects/${encodeURIComponent(projectId)}/deliverables/events?lastEventId=${encodeURIComponent(lastEventId)}`,
     undefined,
     lastEventIdSink,
+    "GET",
+    signal,
+  );
+
+/**
+ * PPT 导出的阶段进度（变更表 #141）
+ *
+ * 导出本身是普通 POST（要拿 JSON 结果），进度另开一条 SSE：调用方**先订阅、再 POST**，
+ * 两边同一个 `run` token，服务端在导出过程中往这条通道推进度。
+ */
+export const exportPptProgressStream = (
+  projectId: string,
+  run: string,
+  signal?: AbortSignal,
+): AsyncGenerator<FollowEvent> =>
+  sseRequest(
+    `/projects/${encodeURIComponent(projectId)}/deliverables/export-pptx/events?run=${encodeURIComponent(run)}`,
+    undefined,
+    { lastId: null },
     "GET",
     signal,
   );

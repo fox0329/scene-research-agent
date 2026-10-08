@@ -62,8 +62,8 @@ export const STUB_SECTION_CHARS = 30;
 /** 跨章重复句的最短长度（太短的句子（如「实施要点」）重复是正常的） */
 export const DUPLICATE_SENTENCE_MIN_CHARS = 20;
 
-/** 把模型返回里的 JSON 抠出来（允许 ```json 围栏与前后寒暄） */
-function jsonSlice(raw: string): string | null {
+/** 把模型返回里的 JSON 抠出来（允许 ```json 围栏与前后寒暄）；PPT 大纲解析同用 */
+export function jsonSlice(raw: string): string | null {
   const fenced = /```(?:json)?\s*([\s\S]*?)```/i.exec(raw);
   const text = fenced?.[1] ?? raw;
   const start = text.indexOf("{");

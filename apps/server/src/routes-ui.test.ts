@@ -9,7 +9,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import type { DshClient, FollowEvent, StageId } from "@scene/contract";
@@ -17,6 +17,7 @@ import { createDb } from "@scene/infra";
 import type { DbInstance } from "@scene/infra";
 import { createApp } from "./app.js";
 import { createSseHub } from "./sse-hub.js";
+import { pptRunId } from "./ppt-progress.js";
 
 // ─── 工厂 ──────────────────────────────────────────────────
 
@@ -40,6 +41,7 @@ interface Harness {
   app: ReturnType<typeof createApp>;
   db: DbInstance;
   dsh: DshClient;
+  hub: ReturnType<typeof createSseHub>;
   exportDir: string;
 }
 
@@ -53,8 +55,9 @@ function makeHarness(promptEvents?: FollowEvent[]): Harness {
     mkdtempSync(join(tmpdir(), "scene-providers-")),
     "providers.local.json",
   );
-  const app = createApp({ db, dshClient: dsh, hub: createSseHub() });
-  return { app, db, dsh, exportDir };
+  const hub = createSseHub();
+  const app = createApp({ db, dshClient: dsh, hub });
+  return { app, db, dsh, hub, exportDir };
 }
 
 /** 建一条产品线 + 一个场景，返回 id */
@@ -1212,6 +1215,149 @@ describe("交付物导出", () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+
+  // ─── 导出 PPT（变更表 #141） ─────────────────────────────
+
+  /** 假技能：导出器只写占位 pptx（真跑用户技能由人工验收，测试不依赖本机） */
+  function makeFakeSkill(): string {
+    const dir = mkdtempSync(join(tmpdir(), "scene-ppt-skill-"));
+    mkdirSync(join(dir, "scripts"), { recursive: true });
+    writeFileSync(
+      join(dir, "scripts", "svg_to_pptx.py"),
+      [
+        "import pathlib, sys",
+        "args = sys.argv[1:]",
+        "out = args[args.index('-o') + 1]",
+        "pathlib.Path(out).write_bytes(b'PK\\x03\\x04fake')",
+      ].join("\n"),
+      "utf8",
+    );
+    return dir;
+  }
+
+  /** 合规的 6 页大纲（直接当模型的返回文本） */
+  function outlineText(): string {
+    const pages = Array.from({ length: 6 }, (_, i) => ({
+      layout: "要点",
+      title: `第${i + 1}页标题`,
+      takeaway: "一句话要点",
+      bullets: ["要点甲", "要点乙", "要点丙"],
+    }));
+    return JSON.stringify({ pages });
+  }
+
+  /** 重放中枢里某个 run 的全部事件（run 结束后 subscribe 会一次性吐完并收尾） */
+  async function replay(h: Harness, runId: string): Promise<FollowEvent[]> {
+    const out: FollowEvent[] = [];
+    const iterable = h.hub.subscribe(runId);
+    if (!iterable) return out;
+    for await (const event of iterable) out.push(event);
+    return out;
+  }
+
+  it("POST export-pptx 导出 PPT 到目标目录，进度含「大纲」与「PPTX」两个阶段（变更表 #141）", async () => {
+    const h = makeHarness([{ type: "text", text: outlineText() }, { type: "done" }]);
+    const { scenarioId } = seedScenario(h.db, "PPT 场景");
+    const dir = mkdtempSync(join(homedir(), ".scene-ppt-route-"));
+    const skill = makeFakeSkill();
+    process.env.PPT_MASTER_DIR = skill;
+    try {
+      const res = await h.app.inject({
+        method: "POST",
+        url: `/api/v1/projects/${scenarioId}/deliverables/export-pptx`,
+        payload: { dir, kind: "construction", run: "route-run-1" },
+      });
+      expect(res.statusCode).toBe(200);
+      const { files, unchanged } = res.json() as { files: string[]; unchanged: string[] };
+      expect(unchanged).toEqual([]);
+      expect(files).toHaveLength(1);
+      expect(files[0]!.startsWith(dir)).toBe(true);
+      expect(files[0]!.endsWith("PPT 场景建设工作方案.pptx")).toBe(true);
+      expect(readFileSync(files[0]!).subarray(0, 2).toString("utf8")).toBe("PK");
+
+      // 进度：阶段文案齐，且至少含「大纲」「PPTX」两个关键阶段
+      const events = await replay(h, pptRunId("route-run-1"));
+      expect(events.length).toBeGreaterThan(3);
+      expect(events.every((e) => e.type === "progress")).toBe(true);
+      const text = events.map((e) => String(e.message ?? "")).join("｜");
+      expect(text).toContain("正在梳理大纲");
+      expect(text).toContain("正在转成 PPTX");
+      expect(text).toContain("PPT：已导出");
+
+      // 同一 token 也能从 events 端点拿到 SSE 报文（前端就是这么订阅的）
+      const sse = await h.app.inject({
+        method: "GET",
+        url: `/api/v1/projects/${scenarioId}/deliverables/export-pptx/events?run=route-run-1`,
+      });
+      expect(sse.statusCode).toBe(200);
+      expect(sse.headers["content-type"]).toContain("text/event-stream");
+      expect(sse.payload).toContain("PPTX");
+    } finally {
+      delete process.env.PPT_MASTER_DIR;
+      rmSync(dir, { recursive: true, force: true });
+      rmSync(skill, { recursive: true, force: true });
+    }
+  });
+
+  it("POST export-pptx：kind 缺省按 solution；技能缺失只回 notice（不抛 500）", async () => {
+    const h = makeHarness([{ type: "text", text: outlineText() }, { type: "done" }]);
+    const { scenarioId } = seedScenario(h.db, "PPT 默认口径");
+    const dir = mkdtempSync(join(homedir(), ".scene-ppt-route-"));
+    const skill = makeFakeSkill();
+    try {
+      process.env.PPT_MASTER_DIR = skill;
+      const res = await h.app.inject({
+        method: "POST",
+        url: `/api/v1/projects/${scenarioId}/deliverables/export-pptx`,
+        payload: { dir, kind: "不认识的档位" },
+      });
+      expect(res.statusCode).toBe(200);
+      const body = res.json() as { files: string[] };
+      expect(body.files[0]!.endsWith("PPT 默认口径解决方案.pptx")).toBe(true);
+      rmSync(body.files[0]!, { force: true });
+
+      // 技能目录不存在 → 只回一条 notice，不产文件、不抛错
+      process.env.PPT_MASTER_DIR = join(tmpdir(), "no-such-skill-dir");
+      const missing = await h.app.inject({
+        method: "POST",
+        url: `/api/v1/projects/${scenarioId}/deliverables/export-pptx`,
+        payload: { dir },
+      });
+      expect(missing.statusCode).toBe(200);
+      const missBody = missing.json() as { files: string[]; notice?: string };
+      expect(missBody.files).toEqual([]);
+      expect(missBody.notice).toContain("找不到 ppt-master 技能");
+      // 不产文件（`.state/` 是先前那次成功导出的指纹目录，不算产物）
+      expect(readdirSync(dir).filter((f) => f.endsWith(".pptx"))).toEqual([]);
+    } finally {
+      delete process.env.PPT_MASTER_DIR;
+      rmSync(dir, { recursive: true, force: true });
+      rmSync(skill, { recursive: true, force: true });
+    }
+  });
+
+  it("POST export-pptx：缺目录 400、场景不存在 404、进度端缺 run 400", async () => {
+    const h = makeHarness();
+    const { scenarioId } = seedScenario(h.db, "PPT 校验");
+    const noDir = await h.app.inject({
+      method: "POST",
+      url: `/api/v1/projects/${scenarioId}/deliverables/export-pptx`,
+      payload: {},
+    });
+    expect(noDir.statusCode).toBe(400);
+    const noScenario = await h.app.inject({
+      method: "POST",
+      url: "/api/v1/projects/nope/deliverables/export-pptx",
+      payload: { dir: homedir() },
+    });
+    expect(noScenario.statusCode).toBe(404);
+    const noRun = await h.app.inject({
+      method: "GET",
+      url: `/api/v1/projects/${scenarioId}/deliverables/export-pptx/events`,
+    });
+    expect(noRun.statusCode).toBe(400);
+    expect(noRun.json().error).toContain("缺少进度通道 run");
   });
 
   it("PUT deliverables/solution 保存中栏改过的正文（变更表 #135）", async () => {

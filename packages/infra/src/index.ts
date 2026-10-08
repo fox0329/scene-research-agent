@@ -76,3 +76,18 @@ export type { ChapterDigest, DigestOptions, SafeWriteResult } from "./md-export.
 /** 文件存储适配器 — TODO M1 实现 */
 export {};export * from "./source-index.js";
 export { reportMarkdownToDocx, type DocxOptions } from "./docx-report.js";
+
+/** PPT 页面渲染（变更表 #141：确定性 SVG，五种布局） */
+export {
+  PPT_CANVAS,
+  PPT_COLORS,
+  PPT_FONT,
+  PPT_LAYOUT_RENDERERS,
+  escXml,
+  estimateTextWidth,
+  wrapText,
+  renderPptPage,
+  renderPptDeck,
+  writePptSvgs,
+} from "./ppt-svg.js";
+export type { PptRenderContext, PptSvgPage } from "./ppt-svg.js";

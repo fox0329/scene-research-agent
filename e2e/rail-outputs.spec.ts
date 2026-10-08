@@ -188,9 +188,9 @@ test("交付物这一步：两份交付物在中栏顶部切换，流程轴第�
   await expect(page.locator(".flow-outputs")).toHaveCount(0);
   await expect(page.locator(".flow-outputs .chip")).toHaveCount(0);
 
-  // 导出 PPT 只是入口（用户定调「先加个入口」）：点一下给提示，不做真实导出
-  await actions.locator("button", { hasText: "导出PPT文档" }).click();
-  await expect(page.locator(".toast-item").filter({ hasText: "PPT 导出开发中" }).last()).toBeVisible();
+  // 变更表 #141：「导出PPT文档」已是真调用——点一次由服务端跑模型大纲 + 渲染 SVG + 转 pptx。
+  // e2e 不真跑（慢，且依赖模型与本机技能），只拦掉 POST 断言**请求发对了**：URL、method、body。
+  // （进度走另一条 SSE：`…/export-pptx/events?run=`，拦不到也不影响导出结果。）
 
   // 装配原料清单按 G-R9 归右栏「阶段总结」
   await page.locator(".det-tabs .det-tab", { hasText: "阶段总结" }).click();
@@ -224,6 +224,42 @@ test("交付物这一步：两份交付物在中栏顶部切换，流程轴第�
       // zip 魔数：真是 docx 而不是空文件
       expect(readFileSync(join(dir, f)).subarray(0, 2).toString("utf8")).toBe("PK");
     }
+
+    // 变更表 #141：点「导出PPT文档」→ 真发一次导出请求（当前这一份 = 建设工作方案）
+    const pptRequests: {
+      url: string;
+      method: string;
+      body: { dir?: string; kind?: string; run?: string };
+    }[] = [];
+    await page.route("**/deliverables/export-pptx", (route) => {
+      const request = route.request();
+      pptRequests.push({
+        url: request.url(),
+        method: request.method(),
+        body: request.postDataJSON() as { dir?: string; kind?: string; run?: string },
+      });
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          files: [join(dir, "E2E 交付物输出物建设工作方案.pptx")],
+          unchanged: [],
+        }),
+      });
+    });
+    await actions.locator("button", { hasText: "导出PPT文档" }).click();
+    await expect(page.locator(".toast-item").filter({ hasText: "PPT 已导出" }).last()).toBeVisible({
+      timeout: 30_000,
+    });
+    expect(pptRequests).toHaveLength(1);
+    expect(pptRequests[0]!.method).toBe("POST");
+    expect(pptRequests[0]!.url).toContain(
+      `/api/v1/projects/${projectId}/deliverables/export-pptx`,
+    );
+    expect(pptRequests[0]!.body.dir).toBe(dir);
+    expect(pptRequests[0]!.body.kind).toBe("construction");
+    expect(typeof pptRequests[0]!.body.run).toBe("string"); // 进度通道 token
+    expect(pptRequests[0]!.body.run!.startsWith("ppt-")).toBe(true);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

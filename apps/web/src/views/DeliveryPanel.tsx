@@ -23,6 +23,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { FLOW_TOTAL, flowStep } from "@scene/contract";
 import {
   api,
+  exportPptProgressStream,
   generateDeliverablesStream,
   reconnectDeliverablesStream,
   type ApiDeliverables,
@@ -71,6 +72,7 @@ function deliveryNote(
   flow: ApiFlowStatus,
   paths: { files: string[] } | null,
   docxPaths: string[] = [],
+  pptPaths: string[] = [],
 ): string {
   const lines = [
     "## 装配原料",
@@ -100,11 +102,13 @@ function deliveryNote(
   const md = paths?.files ?? [];
   for (const p of md) lines.push(`- Markdown：\`${p}\``);
   for (const p of docxPaths) lines.push(`- Word：\`${p}\``);
+  for (const p of pptPaths) lines.push(`- PPT：\`${p}\``);
   // 还没导出过：导出会写出哪几个文件，只说文件名规则（路径要等用户选完文件夹才知道）
-  if (md.length === 0 && docxPaths.length === 0) {
+  if (md.length === 0 && docxPaths.length === 0 && pptPaths.length === 0) {
     lines.push(
       `- Markdown：一次写两份，文件名是「{场景}${deliveryLabel("solution")}.md」与「{场景}${deliveryLabel("construction")}.md」`,
       "- Word：同样两份（.docx），文件名规则同上",
+      "- PPT：按 B 站蓝色模版排中间页（5–10 页，无封面与尾页，问题→方案→价值），文件名规则同上（.pptx）",
     );
   }
   lines.push("", "> 交付物只陈述信息与缺口，不含建议或判断——判断由使用者自己做。");
@@ -134,6 +138,13 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
   /** 已导出的 Word 文件（右栏展示） */
   const [docxPaths, setDocxPaths] = useState<string[]>([]);
   const [busyWord, setBusyWord] = useState(false);
+  /** 已导出的 PPT 文件（右栏展示；导出失败也不清空——已有产物不该被一次失败抹掉） */
+  const [pptPaths, setPptPaths] = useState<string[]>([]);
+  const [busyPpt, setBusyPpt] = useState(false);
+  /** PPT 导出的当前阶段文案（进度通道推来的，直接顶在按钮上） */
+  const [pptPhase, setPptPhase] = useState<string | null>(null);
+  /** 手动填路径那一行是给哪次导出用的（Word / PPT 共用一套选目录） */
+  const [dirPurpose, setDirPurpose] = useState<"word" | "ppt">("word");
   /** 弹不出系统对话框时，回退到让用户手填路径（null = 不显示） */
   const [manualDir, setManualDir] = useState<string | null>(null);
   /** 正在编辑的草稿（变更表 #135）：保存后清空，切份或取消即丢弃 */
@@ -284,26 +295,91 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
     [projectId, showToast, onExported],
   );
 
-  const handleExportWord = useCallback(async () => {
-    if (!live || !projectId) {
-      showToast("演示模式：交付物导出仅在实时数据模式可用");
-      return;
-    }
-    if (busyWord) return;
-    setBusyWord(true);
-    let dir: string | null = null;
-    try {
-      dir = (await api.pickExportFolder(projectId)).dir;
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
-      showToast(message);
-      // 取消就不打扰；弹不出对话框（非 macOS / 无权限）才回退到手填路径
-      if (!message.includes("取消")) setManualDir((cur) => cur ?? "");
-    } finally {
-      setBusyWord(false);
-    }
-    if (dir) await exportWordInto(dir);
-  }, [live, projectId, busyWord, showToast, exportWordInto]);
+  /**
+   * 把当前这一份交付物排成 PPT（变更表 #141）
+   *
+   * 比 Word 慢（多一次模型调用 + 逐页渲染 + 转档，1–3 分钟），所以**先订阅进度、再发导出**：
+   * 按钮上直接显示阶段文案（正在梳理大纲 / 渲染第 N 页 / 正在转成 PPTX），
+   * 失败或 notice 时原因原样提示、按钮恢复可点，且**不清空已有产物**。
+   */
+  const exportPptInto = useCallback(
+    async (dir: string) => {
+      if (!projectId) return;
+      const run = `ppt-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+      const abort = new AbortController();
+      setBusyPpt(true);
+      setPptPhase(null);
+      const progress = (async () => {
+        try {
+          for await (const event of exportPptProgressStream(projectId, run, abort.signal)) {
+            const message = typeof event.message === "string" ? event.message : "";
+            if (message !== "") setPptPhase(message.replace(/^PPT：/, ""));
+          }
+        } catch {
+          // 进度断了不影响导出本身：结果仍以 POST 的返回为准
+        }
+      })();
+      try {
+        const r = await api.exportPptx(projectId, dir, tab, run);
+        const all = [...r.files, ...r.unchanged];
+        if (all.length > 0) setPptPaths(all);
+        const head =
+          all.length === 0
+            ? "PPT 未导出"
+            : r.files.length > 0
+              ? `PPT 已导出：${all.join("、")}`
+              : `PPT 已是最新（未改动）：${all.join("、")}`;
+        showToast(r.notice ? `${head}；${r.notice}` : head);
+        onExported?.();
+      } catch (err: unknown) {
+        showToast(`导出 PPT 失败：${err instanceof Error ? err.message : String(err)}`);
+      } finally {
+        abort.abort();
+        setBusyPpt(false);
+        setPptPhase(null);
+      }
+      void progress;
+    },
+    [projectId, tab, showToast, onExported],
+  );
+
+  /**
+   * 选文件夹（弹系统对话框）→ 按用途落到 Word / PPT 两条导出链
+   *
+   * 两条链共用同一套「系统对话框 + 弹不出时手填路径」；取消不打扰，弹不出对话框才回退。
+   */
+  const pickDirThen = useCallback(
+    async (purpose: "word" | "ppt") => {
+      if (!live || !projectId) {
+        showToast("演示模式：交付物导出仅在实时数据模式可用");
+        return;
+      }
+      if (busyWord || busyPpt) return;
+      setDirPurpose(purpose);
+      const setBusy = purpose === "ppt" ? setBusyPpt : setBusyWord;
+      setBusy(true);
+      let dir: string | null = null;
+      try {
+        dir = (await api.pickExportFolder(projectId)).dir;
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        showToast(message);
+        // 取消就不打扰；弹不出对话框（非 macOS / 无权限）才回退到手填路径
+        if (!message.includes("取消")) setManualDir((cur) => cur ?? "");
+      } finally {
+        setBusy(false);
+      }
+      if (dir) await (purpose === "ppt" ? exportPptInto(dir) : exportWordInto(dir));
+    },
+    [live, projectId, busyWord, busyPpt, showToast, exportPptInto, exportWordInto],
+  );
+
+  /** 手填路径那一行：按当初点的是哪次导出落到对应的链上 */
+  const exportIntoManualDir = useCallback(() => {
+    const dir = manualDir?.trim() ?? "";
+    if (dir === "") return;
+    void (dirPurpose === "ppt" ? exportPptInto(dir) : exportWordInto(dir));
+  }, [manualDir, dirPurpose, exportPptInto, exportWordInto]);
 
   const snapshot = useMemo<StageSnapshot>(
     () => ({
@@ -312,7 +388,7 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
       title: `第 ${FLOW_TOTAL}/${FLOW_TOTAL} 步 · ${step.title}`,
       rows: [],
       completeness: null,
-      summary: deliveryNote(flow, mdPaths, docxPaths),
+      summary: deliveryNote(flow, mdPaths, docxPaths, pptPaths),
       summaryLoading: false,
       activeTable: null,
       supplements: [],
@@ -320,7 +396,7 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
       onRefreshSummary: () => void loadReports(),
       onSupplementChange: () => undefined,
     }),
-    [flow, mdPaths, docxPaths, step.title, loadReports],
+    [flow, mdPaths, docxPaths, pptPaths, step.title, loadReports],
   );
 
   useEffect(() => {
@@ -333,7 +409,7 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
       {/* 变更表 #140（用户定调）：动作行与两份交付物的 chip 合成**中栏顶部一行**——
           左边是这一份还是那一份（解决方案 / 建设工作方案，原来挂在流程轴第二行），
           右边是本步动作（生成 / 编辑 / 导出 Word / 导出 PPT / 导出 Markdown）。
-          变更表 #141：两组位置对调（chip 靠左、动作靠右） */}
+          变更表 #140 补充：两组位置对调（chip 靠左、动作靠右） */}
       <div className="pnl-h pnl-h--wrap">
         {/* 两份交付物：放行首（用户定调「解决方案 和 工作方案放左边」）。名字取契约
             `REPORT_KIND_LABEL`（与报告标题、导出文件名同源），`active` 高亮当前这一份，
@@ -392,19 +468,20 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
           <button
             className="btn"
             type="button"
-            disabled={busyWord}
-            onClick={() => void handleExportWord()}
+            disabled={busyWord || busyPpt}
+            onClick={() => void pickDirThen("word")}
           >
             {busyWord ? "导出中…" : "导出Word文档"}
           </button>
-          {/* PPT：本轮只放进来的入口，版式定了才接真实导出（用户定调「先加个入口」） */}
+          {/* PPT（变更表 #141）：点一下全自动排中间页（5–10 页、无封面尾页）；等待期显示阶段文案 */}
           <button
             className="btn"
             type="button"
-            title="PPT 导出版式还没定，先把入口放这里"
-            onClick={() => showToast("PPT 导出开发中：版式定了就接上")}
+            disabled={busyPpt || busyWord}
+            title={pptPhase ?? "按 B 站蓝色模版排中间页：5–10 页，不要封面与尾页，突出问题、方案与价值"}
+            onClick={() => void pickDirThen("ppt")}
           >
-            导出PPT文档
+            {busyPpt ? (pptPhase ?? "PPT 导出中…") : "导出PPT文档"}
           </button>
           <button className="btn" type="button" disabled={busy} onClick={() => void handleExport()}>
             {busy ? "导出中…" : "导出 Markdown"}
@@ -423,8 +500,8 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
             <button
               className="btn"
               type="button"
-              disabled={busyWord || manualDir.trim() === ""}
-              onClick={() => void exportWordInto(manualDir.trim())}
+              disabled={busyWord || busyPpt || manualDir.trim() === ""}
+              onClick={exportIntoManualDir}
             >
               导出到该路径
             </button>
