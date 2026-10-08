@@ -28,11 +28,11 @@ describe("stepOutputs（本步输出物口径）", () => {
     expect(() => stepOutputs(["不存在的表"])).toThrow();
   });
 
-  it("交付物步：输出物是两份报告，不是表", () => {
+  it("交付物步：输出物是一份解决方案，不是表（变更表 #136）", () => {
     const list = stepOutputsOf(7, [], 7);
     expect(list.map((o) => o.key)).toEqual(DELIVERY_OUTPUTS.map((o) => o.key));
     expect(list.every((o) => o.code === null)).toBe(true);
-    expect(list.map((o) => o.label)).toEqual(["内部调研版", "对外汇报版"]);
+    expect(list.map((o) => o.label)).toEqual(["解决方案"]);
   });
 
   it("分析步：按流程定义的表集展开，不含报告", () => {

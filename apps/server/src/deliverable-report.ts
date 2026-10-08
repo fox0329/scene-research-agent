@@ -8,14 +8,17 @@
  * 为什么校验在服务端而不只写在提示词里：不给建议、对外不带内部信息是产品铁律，
  * 靠模型自觉迟早会漏（AGENTS.md §三.5 高风险判定必须落确定性层）。
  *
- * 落盘位置：`data/deliverables/<场景 id>.<kind>.md`。不新增数据库表（报告是产物，
+ * 落盘位置：`data/deliverables/<场景 id>.solution.md`。不新增数据库表（报告是产物，
  * 不是业务事实；事实仍在 33 张表里），导出到 `exports/` 由 report-service 负责。
+ *
+ * 变更表 #136（用户定调）：「交付物不再分内部调研版和外部汇报版，直接用外部汇报版
+ * 生成一个版本，就叫 XXX解决方案」——于是生成只跑一趟，落盘也只有一份。
  */
 
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import type { DshClient, FollowEvent, Scenario, SessionHandle, StageData } from "@scene/contract";
-import { reportChaptersOf, tableDef } from "@scene/contract";
+import { reportChapters, tableDef, type ReportKind } from "@scene/contract";
 import type { DbInstance } from "@scene/infra";
 import {
   safeWriteFile,
@@ -35,7 +38,6 @@ import {
   buildCompressPrompt,
   buildReportPrompt,
   chapterProseBudget,
-  type ReportKind,
 } from "./report-prompts.js";
 
 /**
@@ -48,8 +50,19 @@ export function deliverableDir(): string {
   return process.env.DELIVERABLE_DIR ?? join(process.cwd(), "data", "deliverables");
 }
 
-export function deliverableReportPath(scenarioId: string, kind: ReportKind): string {
-  return join(deliverableDir(), `${scenarioId}.${kind}.md`);
+/**
+ * 交付物文件路径
+ *
+ * 历史遗留：`#136` 之前落的是 `<id>.internal.md` / `<id>.external.md`，读取时按
+ * `legacyDeliverableReportPath` 兜底，已有项目的定稿不会因为改名而消失。
+ */
+export function deliverableReportPath(scenarioId: string): string {
+  return join(deliverableDir(), `${scenarioId}.solution.md`);
+}
+
+/** 旧版对外口径的落盘路径（只读兼容，不再写入） */
+export function legacyDeliverableReportPath(scenarioId: string): string {
+  return join(deliverableDir(), `${scenarioId}.external.md`);
 }
 
 /** 报告生成依赖 */
@@ -62,9 +75,8 @@ export interface DeliverableReportDeps {
 
 /** 生成结果（返回给调用方与测试） */
 export interface DeliverableReportResult {
-  internal: string;
-  external: string;
-  /** 两份报告是否都通过确定性校验 */
+  markdown: string;
+  /** 报告是否通过确定性校验 */
   passed: boolean;
   /** 进度诊断：各章是模型写的还是兜底来的 */
   sources: { kind: ReportKind; key: string; from: "模型" | "兜底" }[];
@@ -152,7 +164,6 @@ async function streamPrompt(args: {
  * 上下文），而兜底版是数据要点，风格与其它章不齐。单独补一次既保风格统一，代价也小。
  */
 async function writeOneReport(args: {
-  kind: ReportKind;
   scenario: Scenario;
   stageData: readonly StageData[];
   digest: readonly ChapterDigest[];
@@ -167,8 +178,8 @@ async function writeOneReport(args: {
   violations: ReportViolation[];
   retried: boolean;
 }> {
-  const { kind, scenario, stageData, digest, missingTables, dshClient, keepaliveMs, push } = args;
-  const label = kind === "internal" ? "内部调研报告" : "对外汇报材料";
+  const { scenario, stageData, digest, missingTables, dshClient, keepaliveMs, push } = args;
+  const label = "解决方案";
   const anchor = stageData
     .filter((r) => r.table_code === "表1-1")
     .map((r) => r.row as Record<string, unknown>);
@@ -183,7 +194,6 @@ async function writeOneReport(args: {
 
   for (let attempt = 1; attempt <= 2; attempt++) {
     const prompt = buildReportPrompt(
-      kind,
       { scenarioName: scenario.name, anchor, chapters: digest, missingTables },
       attempt === 1 ? undefined : briefOf(lastViolations, written, digest),
     );
@@ -193,7 +203,7 @@ async function writeOneReport(args: {
     for (const [key, body] of splitReportChapters(r.text)) written.set(key, body);
     if (error) break;
 
-    const gate = checkReport(kind, chapterText(written, digest));
+    const gate = checkReport(chapterText(written, digest));
     lastViolations = gate.violations;
     push({
       type: "progress",
@@ -217,7 +227,7 @@ async function writeOneReport(args: {
     const r = await streamPrompt({
       dshClient,
       session,
-      ...buildChapterPrompt(kind, missing, scenario.name),
+      ...buildChapterPrompt(missing, scenario.name),
       label: `${label}（补写）`,
       keepaliveMs,
       push,
@@ -237,7 +247,7 @@ async function writeOneReport(args: {
     for (const d of digest) {
       const body = written.get(d.key)?.trim();
       if (!body) continue;
-      const budget = chapterProseBudget(kind, d.key);
+      const budget = chapterProseBudget(d.key);
       const current = proseChars(body);
       if (current <= budget) continue;
       push({
@@ -247,7 +257,7 @@ async function writeOneReport(args: {
       const r = await streamPrompt({
         dshClient,
         session,
-        ...buildCompressPrompt({ kind, title: d.title, markdown: body, budget, current }),
+        ...buildCompressPrompt({ title: d.title, markdown: body, budget, current }),
         label: `${label}（压缩·${d.title}）`,
         keepaliveMs,
         push,
@@ -261,8 +271,8 @@ async function writeOneReport(args: {
       // 交付物因此缺构件、判硬伤）。构件变少就作废这次压缩，保留原正文——宁可偏长，不能缺构件。
       const lostArtifact =
         shorter !== undefined &&
-        missingChapterArtifacts(kind, d.key, shorter).length >
-          missingChapterArtifacts(kind, d.key, body).length;
+        missingChapterArtifacts(d.key, shorter).length >
+          missingChapterArtifacts(d.key, body).length;
       // 结构塌陷（原来有多个小节、压完成一个都没有）也作废
       const collapsed =
         shorter !== undefined && headingsOf(body).length >= 1 && headingsOf(shorter).length === 0;
@@ -286,7 +296,7 @@ async function writeOneReport(args: {
   }
 
   const filled = digest.filter((d) => written.get(d.key)?.trim()).length;
-  const gate = checkReport(kind, chapterText(written, digest));
+  const gate = checkReport(chapterText(written, digest));
   if (filled < digest.length || gate.violations.some((v) => v.hard)) {
     push({
       type: "progress",
@@ -295,10 +305,10 @@ async function writeOneReport(args: {
           ? `${label}：${error}（未达标章节改用要点版兜底）`
           : digest.length - filled > 0
             ? `${label}：仍有 ${digest.length - filled} 章没写出来，这些章节改用要点版兜底`
-            : `${label}：六章都写了，但仍有校验硬伤未消除（正文已保留，提示见右栏）`,
+            : `${label}：五章都写了，但仍有校验硬伤未消除（正文已保留，提示见右栏）`,
     });
   }
-  return assemble(written, digest, scenario, stageData, kind, args.today, gate.violations, retried);
+  return assemble(written, digest, scenario, stageData, args.today, gate.violations, retried);
 }
 
 /** 有没有"残句"：短段落却不像一句完整的话（压缩只删不加，但可能把一句话砍成半句） */
@@ -350,7 +360,6 @@ function assemble(
   digest: readonly ChapterDigest[],
   scenario: Scenario,
   stageData: readonly StageData[],
-  kind: ReportKind,
   today: string,
   violations: ReportViolation[],
   retried: boolean,
@@ -361,38 +370,32 @@ function assemble(
   retried: boolean;
 } {
   const sources: DeliverableReportResult["sources"] = digest.map((d) => ({
-    kind,
+    kind: "solution" as ReportKind,
     key: d.key,
     from: written.get(d.key)?.trim() ? "模型" : "兜底",
   }));
   // 逐章：模型写了就用模型的，没写/空的交给 buildReportMarkdown 用要点版兜底
   const chapterData = digest.map((d) => ({ key: d.key, markdown: written.get(d.key) ?? "" }));
-  const markdown = buildReportMarkdown(
-    {
-      scenario,
-      stageSummaries: [],
-      stageData: [...stageData],
-      chapters: chapterData,
-      generatedAt: today,
-    },
-    today,
-    kind,
-  );
+  const markdown = buildReportMarkdown({
+    scenario,
+    stageSummaries: [],
+    stageData: [...stageData],
+    chapters: chapterData,
+    generatedAt: today,
+  });
   return { markdown, sources, violations, retried };
 }
 
 /** 尚无数据的表（按报告实际用到的表算） */
-function missingTablesOf(kind: ReportKind, stageData: readonly StageData[]): string[] {
-  const codes = reportChaptersOf(kind)
-    .flatMap((c) => (kind === "internal" ? c.internal : c.external))
-    .map((b) => b.code);
+function missingTablesOf(stageData: readonly StageData[]): string[] {
+  const codes = reportChapters().flatMap((c) => c.blocks).map((b) => b.code);
   const unique = [...new Set(codes)];
   const have = new Set(stageData.map((r) => String(r.table_code)));
   return unique.filter((code) => !have.has(code)).map((code) => `${code} ${tableDef(code)?.name ?? ""}`);
 }
 
 /**
- * 生成两份报告并落盘
+ * 生成交付物并落盘
  *
  * 用法（SSE 命令）：`execute({ scenarioId })` 是异步生成器，边写边推进度。
  */
@@ -423,15 +426,14 @@ export function createDeliverableReportCommand(deps: DeliverableReportDeps) {
 
     const today = new Date().toISOString().slice(0, 10);
     const result: DeliverableReportResult = {
-      internal: "",
-      external: "",
+      markdown: "",
       passed: true,
       sources: [],
       violations: [],
       retried: false,
     };
 
-    // 撰写是长跑（两份合计几分钟），进度必须边跑边出：事件进队列，主循环统一发出
+    // 撰写是长跑（几分钟），进度必须边跑边出：事件进队列，主循环统一发出
     // （与 advance-stage 同一套泵，续传的 id 才能单调）
     const queue: FollowEvent[] = [];
     let wake: (() => void) | null = null;
@@ -450,32 +452,29 @@ export function createDeliverableReportCommand(deps: DeliverableReportDeps) {
 
     const task = (async (): Promise<void> => {
       try {
-        for (const kind of ["internal", "external"] as const) {
-          // 不再把每张表的全量行塞给模型（#116 用户要精要）：每块最多 MAX_BULLETS 行，
-          // 模型据此归纳；完整清单仍在系统内的表里逐行可查。
-          const digest = reportChapterDigest(kind, stageData);
-          const written = await writeOneReport({
-            kind,
-            scenario,
-            stageData,
-            digest,
-            missingTables: missingTablesOf(kind, stageData),
-            dshClient,
-            keepaliveMs,
-            today,
-            push,
-          });
-          result[kind] = written.markdown;
-          result.sources.push(...written.sources);
-          result.violations.push(...written.violations);
-          result.retried = result.retried || written.retried;
-          if (written.violations.some((v) => v.hard)) result.passed = false;
-          mkdirSync(deliverableDir(), { recursive: true });
-          // 用户会直接在交付物上改字：覆盖前留档，手改永远可恢复（变更表 #127）
-          // 先读后写（变更表 #131）：内容相同不落盘；被手改过则保留用户版本、新版本另存
-          const saved = safeWriteFile(deliverableReportPath(scenario.id, kind), written.markdown);
-          if (saved.notice) console.warn(`[generate] ${saved.notice}`);
-        }
+        // 不再把每张表的全量行塞给模型（#116 用户要精要）：每块最多 MAX_BULLETS 行，
+        // 模型据此归纳；完整清单仍在系统内的表里逐行可查。
+        const digest = reportChapterDigest(stageData);
+        const written = await writeOneReport({
+          scenario,
+          stageData,
+          digest,
+          missingTables: missingTablesOf(stageData),
+          dshClient,
+          keepaliveMs,
+          today,
+          push,
+        });
+        result.markdown = written.markdown;
+        result.sources.push(...written.sources);
+        result.violations.push(...written.violations);
+        result.retried = written.retried;
+        if (written.violations.some((v) => v.hard)) result.passed = false;
+        mkdirSync(deliverableDir(), { recursive: true });
+        // 用户会直接在交付物上改字：覆盖前留档，手改永远可恢复（变更表 #127）
+        // 先读后写（变更表 #131）：内容相同不落盘；被手改过则保留用户版本、新版本另存
+        const saved = safeWriteFile(deliverableReportPath(scenario.id), written.markdown);
+        if (saved.notice) console.warn(`[generate] ${saved.notice}`);
       } catch (err: unknown) {
         failure = err;
       } finally {
@@ -505,15 +504,15 @@ export function createDeliverableReportCommand(deps: DeliverableReportDeps) {
     yield {
       type: "progress",
       message:
-        `已生成：内部 ${result.internal.replace(/\s/g, "").length} 字 / 对外 ${result.external.replace(/\s/g, "").length} 字` +
-        `（下限 ${REPORT_MIN_CHARS.internal}/${REPORT_MIN_CHARS.external} 字）` +
+        `已生成「${scenario.name}解决方案」：正文 ${proseChars(result.markdown)} 字` +
+        `（表格不计，下限 ${REPORT_MIN_CHARS} 字）` +
         (fallback > 0 ? `；${fallback} 章用了要点版兜底` : "") +
         (result.retried ? "；有硬伤已重写" : "") +
         (result.violations.length > 0 ? `；${result.violations.length} 项校验提示` : ""),
     };
     yield {
       type: "done",
-      report: { internal_chars: result.internal.length, external_chars: result.external.length },
+      report: { solution_chars: result.markdown.length },
       sources: result.sources,
       violations: result.violations,
     };

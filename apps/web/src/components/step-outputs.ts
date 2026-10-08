@@ -9,7 +9,7 @@
  * 于是「输出物 = 这一步行里要产出的东西」：
  *  - 分析步：流程定义 `flowStep(n).tables` 里的表；**多子块表的每块各占一项**
  *    （与中栏 v1.26 的口径一致：架构块 / 接口块各自成"表"，列结构本来就不同）
- *  - 交付物步：不是表，而是两份报告（内部调研版 / 对外汇报版）
+ *  - 交付物步：不是表，而是一份「<场景>解决方案」（变更表 #136）
  *
  * 为什么抽出来：流程轴第二行与中栏面板必须**指同一批东西**，靠一个函数保证，
  * 而不是两处各写一套（写歪了就会出现"轴上点了 A、中栏显示 B"）。
@@ -30,16 +30,14 @@ export interface StepOutput {
   block: string | null;
 }
 
-/** 交付物这一步的输出物：两份报告（不是表） */
+/** 交付物这一步的输出物：一份解决方案（不是表） */
 export const DELIVERY_OUTPUTS: readonly StepOutput[] = [
-  { key: "internal", label: "内部调研版", code: null, block: null },
-  { key: "external", label: "对外汇报版", code: null, block: null },
+  { key: "solution", label: "解决方案", code: null, block: null },
 ];
 
 /** 报告输出物的说明（流程轴 hover 与中栏 chip 共用） */
 export const DELIVERY_OUTPUT_HINT: Record<string, string> = {
-  internal: "完整信息 + 来源与证据级 + 信息缺口 + 「不做什么」边界声明",
-  external: "只保留可对外的事实与结论，含未确认标记的内容会被剔除",
+  solution: "现状 / 场景与问题 / 方案 / 价值 / 下一步——客户端可读的一份方案",
 };
 
 /** 表集 → 输出物清单（多子块表按块拆项，与中栏 v1.26 口径一致） */

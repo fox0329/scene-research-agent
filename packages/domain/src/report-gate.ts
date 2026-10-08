@@ -16,8 +16,7 @@
 
 import { proseChars } from "./md-metrics.js";
 import {
-  REPORT_GLOSSARY,
-  reportChaptersOf,
+  reportChapters,
   type ReportArtifact,
   type ReportKind,
   type ReportSection,
@@ -75,11 +74,11 @@ const EXTERNAL_LEAK_PATTERNS: readonly RegExp[] = [
   /ingest-[0-9A-Za-z_-]+/,
 ];
 
-/** 两份报告的最低字数（对应"内部 5–8 页 / 对外 3–5 页"的精要口径，变更表 #116） */
-export const REPORT_MIN_CHARS: Record<ReportKind, number> = { internal: 1800, external: 1200 };
+/** 交付物正文字数下限（变更表 #116；#136 起只有一份「解决方案」，取下限 1200） */
+export const REPORT_MIN_CHARS = 1200;
 
 /** 正文字数上限（超过就是没归纳，用户要精要：变更表 #116） */
-export const REPORT_MAX_CHARS: Record<ReportKind, number> = { internal: 6000, external: 4500 };
+export const REPORT_MAX_CHARS = 4500;
 
 /** 自我说明 / 免责声明这类"澄清文字"（用户要求全部删掉，变更表 #116） */
 const META_PATTERNS: readonly RegExp[] = [
@@ -108,10 +107,7 @@ const CHAPTER_ALIASES: readonly (readonly [string, readonly string[]])[] = [
   ["problems", ["场景与问题", "存在的问题", "问题", "痛点"]],
   ["solution", ["方案", "我们的方案", "解决方案"]],
   ["value", ["价值", "能够提供的价值", "收益"]],
-  // 「主要风险点」是用户定稿的章名（变更表 #128），旧名一并认，避免历史报告被判缺章
-  ["risk", ["主要风险点", "客观与风险", "风险与不确定", "客观与不确定", "风险"]],
   ["next", ["下一步", "实施路径", "后续步骤"]],
-  ["glossary", ["术语表", "术语"]],
 ];
 
 /** 正文标题 → 章 key（认不出返回 null） */
@@ -152,12 +148,8 @@ function markdownTableCount(markdown: string): number {
 const ARTIFACT_LABEL: Record<ReportArtifact, string> = {
   table: "自建表格",
   "numbered-connections": "带编号的连接关系",
-  "value-table": "对外价值表（价值/现在/采用后/怎么核）",
+  "value-table": "价值表（价值/现在/采用后/怎么核）",
   principles: "设计原则",
-  "value-with-metric": "带度量口径的价值条目",
-  boundary: "边界声明",
-  glossary: "术语表",
-  "risk-list": "风险点（至少 3 条）",
 };
 
 /** 每种构件的存在性判据（宁可宽松，只拦"完全没长出来"） */
@@ -188,12 +180,6 @@ const ARTIFACT_CHECKS: Record<ReportArtifact, (md: string, tables: number) => bo
     /[①②③④⑤⑥⑦⑧⑨⑩]/.test(md) || /(?:^|\n)\s*\|\s*\d+\s*\|/.test(md),
   // 「原则一/原则二」编号算；压缩后常写成「### 设计原则」+ 若干条，只要小节下有内容也算
   principles: (md) => /原则\s*[一二三四五1-5]/.test(md) || sectionHasBullets(md, "原则", 2),
-  "value-with-metric": (md) => /(?:指标|口径|度量|怎么测|可度量)/.test(md),
-  boundary: (md) => /(?:不替代|不参与|不承担|不做|不在本方案范围)/.test(md),
-  glossary: (md) => /术语/.test(md),
-  // 风险章只写风险点：至少 3 条（风险 / 不确定 / 前置条件 / 依赖 / 否决 这类），不给数据统计
-  "risk-list": (md) =>
-    (md.match(/(?:^|\n)\s*(?:[-*|]|\*\*)?[^\n]{0,40}(?:风险|不确定|前置条件|依赖|否决|门槛未过)/g) ?? []).length >= 3,
 };
 
 /** 某个小节标题下是否有至少 n 条非空内容（压缩后模型常把编号换成小节 + 条目） */
@@ -209,14 +195,8 @@ function sectionHasBullets(markdown: string, keyword: string, n: number): boolea
   return count >= n;
 }
 
-/** 某口径下的小节（跨口径共用的小节两边都算） */
-function sectionsOf(kind: ReportKind, sections: readonly ReportSection[]): readonly ReportSection[] {
-  return sections.filter((sec) => sec.only === undefined || sec.only === kind);
-}
-
 /** 哪些方案构件完全没长出来（硬伤：报告不能只是素材的复述） */
 function missingArtifacts(
-  kind: ReportKind,
   markdown: string,
   sections: readonly ReportSection[],
   chapterArtifacts: readonly ReportArtifact[] = [],
@@ -224,7 +204,7 @@ function missingArtifacts(
 ): string[] {
   const tables = markdownTableCount(markdown);
   const out: string[] = [];
-  for (const sec of sectionsOf(kind, sections)) {
+  for (const sec of sections) {
     for (const a of sec.artifacts ?? []) {
       if (!ARTIFACT_CHECKS[a](markdown, tables)) {
         out.push(`${ARTIFACT_LABEL[a]}（在「${sec.title}」里）`);
@@ -245,14 +225,10 @@ function missingArtifacts(
  * 压缩是"只删不加"，但模型偶尔会把整节（如「### 设计原则」）压没——那就把构件压丢了。
  * 用它做守恒检查：压缩**不许让构件变少**（缺构件是硬伤，比篇幅偏长严重）。
  */
-export function missingChapterArtifacts(
-  kind: ReportKind,
-  chapterKey: string,
-  markdown: string,
-): string[] {
-  const chapter = reportChaptersOf(kind).find((c) => c.key === chapterKey);
+export function missingChapterArtifacts(chapterKey: string, markdown: string): string[] {
+  const chapter = reportChapters().find((c) => c.key === chapterKey);
   if (!chapter) return [];
-  return missingArtifacts(kind, markdown, chapter.sections, chapter.artifacts, chapter.label);
+  return missingArtifacts(markdown, chapter.sections, chapter.artifacts, chapter.label);
 }
 
 /** 切出某一章的正文（含标题行），用于按章做口吻检查 */
@@ -272,23 +248,22 @@ function sectionWritten(sec: ReportSection, subs: readonly string[]): boolean {
 
 /** 哪些小节没单独成节（只提示：换个说法或并进本章导语都不算缺陷） */
 function missingSections(
-  kind: ReportKind,
   sections: readonly ReportSection[],
   subs: readonly string[],
 ): string[] {
-  return sectionsOf(kind, sections)
+  return sections
     .filter((sec) => !sec.noHeading)
     .filter((sec) => !sectionWritten(sec, subs))
     .map((sec) => `「${sec.title}」`);
 }
 
 /** 一份报告的确定性校验 */
-export function checkReport(kind: ReportKind, markdown: string): ReportGateReport {
+export function checkReport(markdown: string): ReportGateReport {
   const text = markdown.replace(/\s/g, "");
   const chapters = reportChapterHeadings(markdown);
   const subs = subHeadings(markdown);
   const violations: ReportViolation[] = [];
-  const defs = reportChaptersOf(kind);
+  const defs = reportChapters();
 
   const written = new Set(chapters.map(matchChapterKey).filter((k) => k !== null));
   const missing = defs.filter((c) => !written.has(c.key)).map((c) => c.label);
@@ -297,9 +272,7 @@ export function checkReport(kind: ReportKind, markdown: string): ReportGateRepor
   } else {
     // 章节齐了才查小节与构件：缺章时先补章，别一次甩一堆问题给模型
     const sections = defs.flatMap((c) => c.sections);
-    const miss = defs.flatMap((c) =>
-      missingArtifacts(kind, markdown, c.sections, c.artifacts, c.label),
-    );
+    const miss = defs.flatMap((c) => missingArtifacts(markdown, c.sections, c.artifacts, c.label));
     if (miss.length > 0) {
       violations.push({
         kind: "缺少方案构件",
@@ -307,7 +280,7 @@ export function checkReport(kind: ReportKind, markdown: string): ReportGateRepor
         detail: `报告要有自己的方案构件（不是把素材复述一遍），当前缺：${miss.join("、")}`,
       });
     }
-    const missSec = missingSections(kind, sections, subs);
+    const missSec = missingSections(sections, subs);
     if (missSec.length > 0) {
       violations.push({
         kind: "缺小节",
@@ -317,7 +290,7 @@ export function checkReport(kind: ReportKind, markdown: string): ReportGateRepor
     }
   }
 
-  if (kind === "external") {
+  {
     const leaks = EXTERNAL_LEAK_PATTERNS.flatMap((re) => markdown.match(re) ?? []);
     if (leaks.length > 0) {
       violations.push({
@@ -337,17 +310,6 @@ export function checkReport(kind: ReportKind, markdown: string): ReportGateRepor
     });
   }
 
-  if (kind === "internal") {
-    const hasRisk = /风险/.test(markdown);
-    const hasBoundary = /边界|不做什么|不承接|不做/.test(markdown);
-    if (!hasRisk || !hasBoundary) {
-      violations.push({
-        kind: "缺风险或边界",
-        hard: false,
-        detail: `内部版必须写清风险与边界（当前风险=${hasRisk ? "有" : "无"}、边界=${hasBoundary ? "有" : "无"}）`,
-      });
-    }
-  }
 
   // 正文里再用「一、二、」当条目编号，会和章号混在一起（用户实测：把「**二、按预约…**」看成又开了一章）
   const numbered = markdown.match(/^\s*\*\*[一二三四五六七八九十]+、/gm) ?? [];
@@ -390,33 +352,26 @@ export function checkReport(kind: ReportKind, markdown: string): ReportGateRepor
     });
   }
 
-  if (REPORT_GLOSSARY[kind] && !written.has("glossary")) {
-    violations.push({
-      kind: "缺术语表",
-      hard: false,
-      detail: "附录缺术语表：把报告里客户/新人可能不熟的术语逐个解释（只解释通行含义，不自己发明定义）",
-    });
-  }
 
   // 注意：`text` 去掉了所有空白（表格行首的 `|` 信息也没了），篇幅必须按**原始 markdown** 的正文算
   const prose = proseChars(markdown);
-  if (prose > REPORT_MAX_CHARS[kind]) {
+  if (prose > REPORT_MAX_CHARS) {
     violations.push({
       kind: "篇幅超标",
       hard: false,
-      detail: `正文（表格不计）${prose} 字，超过 ${REPORT_MAX_CHARS[kind]} 字上限——把并列事实合并成结论，细节留给表格`,
+      detail: `正文（表格不计）${prose} 字，超过 ${REPORT_MAX_CHARS} 字上限——把并列事实合并成结论，细节留给表格`,
     });
   }
 
-  if (prose < REPORT_MIN_CHARS[kind]) {
+  if (prose < REPORT_MIN_CHARS) {
     violations.push({
       kind: "篇幅不足",
       hard: false,
-      detail: `正文（表格不计）${prose} 字，低于 ${REPORT_MIN_CHARS[kind]} 字下限（可能被截断或写得太简）`,
+      detail: `正文（表格不计）${prose} 字，低于 ${REPORT_MIN_CHARS} 字下限（可能被截断或写得太简）`,
     });
   }
 
-  return { kind, chars: text.length, chapters, violations, ok: violations.every((v) => !v.hard) };
+  return { kind: "solution", chars: text.length, chapters, violations, ok: violations.every((v) => !v.hard) };
 }
 
 /** 给重试用的违规清单（拼进提示词） */

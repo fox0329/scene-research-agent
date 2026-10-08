@@ -130,20 +130,17 @@ export async function executeAppCommand(
 
     case "export_deliverables": {
       const stageRows = db.stageDataRepo.list({ where: "scenario_id = ?", params: [scenario.id] });
-      // v1.4：交付物由阶段总结文档装配（内部报告正文）+ 表数据（对外材料章节 ← 表映射）
-      const result = await exportDeliverables({
+      // 变更表 #136：交付物只有一份「<场景>解决方案」，章节 ← 表映射装配
+      const markdown = await exportDeliverables({
         scenario,
         stageSummaries: collectStageSummaries(db, scenario),
         stageData: stageRows,
       });
       const outDir = process.env["EXPORT_DIR"] ?? join(process.cwd(), "exports");
       mkdirSync(outDir, { recursive: true });
-      const date = new Date().toISOString().slice(0, 10);
-      const internalPath = join(outDir, exportFileName(scenario.name, "internal", date));
-      const externalPath = join(outDir, exportFileName(scenario.name, "external", date));
-      writeFileSync(internalPath, result.internal_report, "utf-8");
-      writeFileSync(externalPath, result.external_report, "utf-8");
-      return `【执行结果】交付物已导出（双口径）：\n内部调研报告 ${internalPath}\n对外汇报材料 ${externalPath}`;
+      const path = join(outDir, exportFileName(scenario.name));
+      writeFileSync(path, markdown, "utf-8");
+      return `【执行结果】交付物已导出：${path}`;
     }
 
     case "dedupe_products": {

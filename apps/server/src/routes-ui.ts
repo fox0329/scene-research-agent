@@ -46,7 +46,7 @@ import {
 import type { ProviderModelEntry } from "@scene/infra";
 import type { SseHub } from "./sse-hub.js";
 import { createDeliverableReportCommand } from "./deliverable-report.js";
-import { getReportPair, saveReportFile, writeReportFiles } from "./report-service.js";
+import { getReport, saveReportFile, writeReportFiles } from "./report-service.js";
 import { exportReportDocx } from "./docx-export.js";
 import { assertExportDir, pickFolder } from "./folder-picker.js";
 import { createConverseCommand, type ChatImportOutcome } from "./converse.js";
@@ -317,26 +317,25 @@ export function registerUiRoutes(app: FastifyInstance, deps: UiRoutesDeps): void
   /**
    * 取两份报告正文（不落盘）
    *
-   * 正式版（模型撰写的六章总结）已生成就返回正式版，否则返回确定性要点版并标
+   * 正式版（模型撰写的五章方案）已生成就返回正式版，否则返回确定性要点版并标
    * `generated: false`——界面据此提示"当前是要点版，点生成报告出正式版"。
    */
   app.get("/api/v1/projects/:id/deliverables", async (request, reply) => {
     const { id } = request.params as { id: string };
     const scenario = db.scenarioRepo.getById(id);
     if (!scenario) return notFound(reply, `场景 ${id} 不存在`);
-    const pair = getReportPair(db, scenario);
+    const view = getReport(db, scenario);
     return {
-      internal_report: pair.internal.markdown,
-      external_report: pair.external.markdown,
-      generated: pair.internal.generated && pair.external.generated,
-      generated_at: pair.internal.generated_at ?? pair.external.generated_at,
-      internal_chars: pair.internal.markdown.replace(/\s/g, "").length,
-      external_chars: pair.external.markdown.replace(/\s/g, "").length,
+      // 变更表 #136：交付物只有一份「<场景>解决方案」
+      solution_report: view.markdown,
+      generated: view.generated,
+      generated_at: view.generated_at,
+      solution_chars: view.markdown.replace(/\s/g, "").length,
     };
   });
 
   /**
-   * 生成两份报告（模型撰写 + 确定性校验，SSE 推进度）
+   * 生成交付物（模型撰写 + 确定性校验，SSE 推进度）
    *
    * 为什么单独一条路由而不是走阶段推进：交付物这一步不产表（33 张表全在前面），
    * 它是"把已有结论读成一份报告"，输入是全部表、输出是两份 Markdown。
@@ -361,7 +360,7 @@ export function registerUiRoutes(app: FastifyInstance, deps: UiRoutesDeps): void
     await streamEvents(hub, runId, request, reply, lastEventId);
   });
 
-  /** 导出两份报告到 exports/（写盘内容 = 界面所见） */
+  /** 导出交付物到 exports/（写盘内容 = 界面所见） */
   app.post("/api/v1/projects/:id/deliverables/export", async (request, reply) => {
     const { id } = request.params as { id: string };
     const scenario = db.scenarioRepo.getById(id);
@@ -374,8 +373,8 @@ export function registerUiRoutes(app: FastifyInstance, deps: UiRoutesDeps): void
     const { id, kind } = request.params as { id: string; kind: string };
     const scenario = db.scenarioRepo.getById(id);
     if (!scenario) return notFound(reply, `场景 ${id} 不存在`);
-    if (kind !== "internal" && kind !== "external") {
-      return reply.code(400).send({ error: `报告类型只能是 internal 或 external，收到 ${kind}` });
+    if (kind !== "solution") {
+      return reply.code(400).send({ error: `报告类型只能是 solution，收到 ${kind}` });
     }
     const body = (request.body ?? {}) as { markdown?: unknown };
     if (typeof body.markdown !== "string") {
@@ -387,7 +386,7 @@ export function registerUiRoutes(app: FastifyInstance, deps: UiRoutesDeps): void
     if (body.markdown.length > 200_000) {
       return reply.code(400).send({ error: "正文过长（超过 20 万字），拒绝保存" });
     }
-    return saveReportFile(scenario, kind, body.markdown);
+    return saveReportFile(scenario, body.markdown);
   });
 
   /** 弹系统对话框让用户选导出文件夹（变更表 #133）；取消返回 409，界面回退到手填路径 */
@@ -405,7 +404,7 @@ export function registerUiRoutes(app: FastifyInstance, deps: UiRoutesDeps): void
     const { id } = request.params as { id: string };
     const scenario = db.scenarioRepo.getById(id);
     if (!scenario) return notFound(reply, `场景 ${id} 不存在`);
-    const body = (request.body ?? {}) as { dir?: unknown; kind?: unknown };
+    const body = (request.body ?? {}) as { dir?: unknown };
     if (typeof body.dir !== "string" || body.dir.trim() === "") {
       return reply.code(400).send({ error: "缺少导出目录 dir" });
     }
@@ -415,12 +414,8 @@ export function registerUiRoutes(app: FastifyInstance, deps: UiRoutesDeps): void
     } catch (err: unknown) {
       return reply.code(400).send({ error: err instanceof Error ? err.message : String(err) });
     }
-    const kinds =
-      body.kind === "internal" || body.kind === "external"
-        ? ([body.kind] as ("internal" | "external")[])
-        : (["internal", "external"] as ("internal" | "external")[]);
     try {
-      return await exportReportDocx(db, scenario, dir, kinds);
+      return await exportReportDocx(db, scenario, dir);
     } catch (err: unknown) {
       request.log.error(err);
       return reply.code(500).send({ error: `生成 Word 失败：${err instanceof Error ? err.message : String(err)}` });

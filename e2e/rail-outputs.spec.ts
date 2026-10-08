@@ -125,7 +125,7 @@ test("流程轴：阶段名一行 + 本步输出物一行，点第二行换中�
   await expect(page.locator(".flow-outputs .chip").filter({ hasText: "需求-能力对照" })).toHaveCount(0);
 });
 
-test("交付物这一步：第二行是两份报告，点哪份中栏显示哪份（联真）", async ({ page }) => {
+test("交付物这一步：第二行是一份解决方案，中栏就是它的正文（联真）", async ({ page }) => {
   const name = `E2E 交付物输出物 ${Date.now()}`;
   const projectId = await newProject(page, name);
   await completeSteps(page, projectId, 7);
@@ -135,31 +135,24 @@ test("交付物这一步：第二行是两份报告，点哪份中栏显示哪�
   await page.locator(".proj-hd", { hasText: name }).click();
   await page.locator(".flow-nodes .flow-node", { hasText: "交付物" }).click();
 
-  // 第二行＝交付物这一步的输出物：两份报告（不是表）
+  // 第二行＝交付物这一步的输出物：一份解决方案（不是表，变更表 #136）
   const outputs = page.locator(".flow-outputs .chip");
-  await expect(outputs).toHaveCount(2);
-  await expect(outputs.nth(0)).toHaveText("内部调研版");
-  await expect(outputs.nth(1)).toHaveText("对外汇报版");
+  await expect(outputs).toHaveCount(1);
+  await expect(outputs.nth(0)).toHaveText("解决方案");
 
   // 中栏没有检查清单，直接是报告正文
   await expect(page.locator(".ws .delivery-steps")).toHaveCount(0);
   // 还没跑模型 → 正文上方说清「当前是要点版」，并给出生成入口（v1.32）
   await expect(page.locator(".ws .brief-hint")).toContainText("要点版");
   await expect(page.locator(".ws .pnl-actions")).toContainText("生成报告");
-  // v1.32：交付物正文是「报告」（模型撰写的六章总结 / 未生成时是要点版）
-  await expect(page.locator(".ws .md-body")).toContainText("内部调研报告");
-  await expect(page.locator(".ws .md-body")).toContainText("主要风险点");
-  await expect(page.locator(".ws .md-body")).toContainText("主要风险点");
-  // v1.40：内部报告到风险章为止，不再有下一步与附录（变更表 #124）
-  await expect(page.locator(".ws .md-body")).not.toContainText("附录");
-  await expect(page.locator(".ws .md-body")).not.toContainText("客观与风险");
-
-  // 点第二行的「对外汇报版」→ 同一位置换成另一份口径（对外版不装附录）
-  await outputs.filter({ hasText: "对外汇报版" }).click();
-  // 变更表 #132：对外一级标题与文件名统一——「<场景名> 对外汇报材料 <日期>」
-  await expect(page.locator(".ws .md-body")).toContainText("对外汇报材料");
+  // 变更表 #136：交付物正文是「<场景名>解决方案」，五章、章标题不带手写序号
+  await expect(page.locator(".ws .md-body")).toContainText("解决方案");
+  for (const h of ["现状", "场景与问题", "方案", "价值", "下一步"]) {
+    await expect(page.locator(".ws .md-body")).toContainText(h);
+  }
   await expect(page.locator(".ws .md-body")).not.toContainText("主要风险点");
-  await expect(outputs.filter({ hasText: "对外汇报版" })).toHaveClass(/active/);
+  await expect(page.locator(".ws .md-body")).not.toContainText("附录");
+  await expect(outputs.filter({ hasText: "解决方案" })).toHaveClass(/active/);
 
   // 装配原料清单按 G-R9 归右栏「阶段总结」
   await page.locator(".det-tabs .det-tab", { hasText: "阶段总结" }).click();
@@ -169,7 +162,7 @@ test("交付物这一步：第二行是两份报告，点哪份中栏显示哪�
   await page.locator(".ws .pnl-actions button", { hasText: "编辑" }).click();
   const editor = page.locator(".ws .report-editor");
   await expect(editor).toBeVisible();
-  await editor.fill("# E2E 改过的报告\n\n## 一、现状\n\n这段字是 e2e 写进去的。\n");
+  await editor.fill("# E2E 改过的报告\n\n## 现状\n\n这段字是 e2e 写进去的。\n");
   await page.locator(".ws .pnl-actions button", { hasText: "保存" }).click();
   await expect(page.locator(".toast-item").filter({ hasText: "已保存" }).last()).toBeVisible({ timeout: 20_000 });
   await expect(page.locator(".ws .md-body")).toContainText("这段字是 e2e 写进去的");
@@ -186,9 +179,9 @@ test("交付物这一步：第二行是两份报告，点哪份中栏显示哪�
       timeout: 30_000,
     });
     const files = readdirSync(dir).filter((f) => f.endsWith(".docx"));
-    expect(files.length, files.join(",")).toBe(2);
+    expect(files.length, files.join(",")).toBe(1);
     for (const f of files) {
-      expect(f).toMatch(/对外汇报材料|内部调研报告/);
+      expect(f).toMatch(/解决方案/);
       // zip 魔数：真是 docx 而不是空文件
       expect(readFileSync(join(dir, f)).subarray(0, 2).toString("utf8")).toBe("PK");
     }

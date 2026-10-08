@@ -429,10 +429,6 @@ export interface DeliverableInput {
 }
 
 /** 导出响应 */
-export interface ExportResult {
-  internal_report: string;
-  external_report: string;
-}
 // ─── 表定义注册表（单一事实源；实现迁移期间与旧常量并存） ──────
 // 依据 04-业务过程重定义.md v1.4 + 05-表格定义总表.md v0.7
 // 旧常量（StageId / STAGE*_TABLES / TableCode / AdviceLevel 等）标记为待迁移，见 06 §十六

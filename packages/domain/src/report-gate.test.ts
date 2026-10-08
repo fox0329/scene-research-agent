@@ -1,10 +1,5 @@
 import { describe, it, expect } from "vitest";
-import {
-  reportChapterHeading,
-  reportChaptersOf,
-  type ReportKind,
-  type ReportSection,
-} from "@scene/contract";
+import { reportChapterHeading, reportChapters, type ReportSection } from "@scene/contract";
 import { checkReport, reportChapterHeadings } from "./report-gate.js";
 
 /** 一节的样板正文：带什么构件就写什么（模拟模型照要求作答） */
@@ -16,7 +11,6 @@ function sectionBody(sec: ReportSection): string {
   }
   if (arts.includes("numbered-connections")) parts.push("① 仪表 → 网关；② 网关 → 平台。");
   if (arts.includes("principles")) parts.push("原则一 不替代原系统；原则二 不参与安全联锁。");
-  if (arts.includes("value-with-metric")) parts.push("价值一 ……度量口径：单次巡检人天。");
   if (arts.includes("value-table"))
     parts.push(
       "| 价值 | 现在 | 采用后 | 怎么核 |\n|---|---|---|---|\n" +
@@ -24,67 +18,48 @@ function sectionBody(sec: ReportSection): string {
         "| 价值二：离场释放 | 占而不用 | 自动释放 | 按月比对预约与实际通电 |\n" +
         "| 价值三：故障改远程 | 靠报修到场 | 远程监控与 OTA | 工单上门次数对比 |",
     );
-  if (arts.includes("boundary")) parts.push("边界：不做安全联锁，不承担 SIS 职责。");
   return parts.join("\n\n");
 }
 
-/** 章节齐全、构件齐全的样板报告 */
-function goodReport(kind: ReportKind, extra = ""): string {
-  const chapters = reportChaptersOf(kind).map((c) => {
+/** 章节齐全、构件齐全的样板报告（只有一份「解决方案」，变更表 #136） */
+function goodReport(extra = ""): string {
+  const chapters = reportChapters().map((c) => {
     const body = c.sections.map((sec) => `### ${sec.title}\n\n${sectionBody(sec)}`).join("\n\n");
-    // 章级构件：内部版风险章直接写风险点；对外版价值章的边界写在章下（不套小节标题）
-    const chArts = c.artifacts ?? [];
-    const chapterBody = [
-      chArts.includes("risk-list")
-        ? [
-            "**现场条件风险。** 点位不成立时只能旁路监测。",
-            "**纳管上限风险。** 封闭协议设备只能保留原厂控制。",
-            "**门槛风险。** 任一方否决即推翻技术路径。",
-          ].join("\n\n")
-        : "",
-      chArts.includes("boundary")
-        ? "**不替代**：不替代客户既有系统。\n\n**不参与**：不参与客户数据治理。\n\n**不承担**：不承担强电施工资质。\n\n**受限条件**：端层认证仅限自研载体。"
-        : "",
-    ]
-      .filter(Boolean)
-      .join("\n\n");
-    return `## ${reportChapterHeading(kind, c.key)}\n\n${[body, chapterBody].filter(Boolean).join("\n\n")}`;
+    return [`## ${reportChapterHeading(c.key)}`, "", body].join("\n");
   });
-  // 术语表只对外（内部报告到风险章为止，变更表 #124）
-  const glossary = kind === "external" ? "## 附录、术语表" : "";
-  const table = glossary
-    ? `${glossary}\n\n| 术语 | 说明 |\n|---|---|\n| 门槛 | 进场的前置条件 |`
-    : "";
-  return [...chapters, table].filter(Boolean).join("\n\n") + extra;
+  return chapters.join("\n\n") + extra;
 }
 
 describe("报告确定性校验（变更表 #112 / #113）", () => {
-  it("章节齐 + 方案构件齐 → 通过（对外 5 章 / 内部 6 章）", () => {
-    const ext = checkReport("external", goodReport("external"));
-    expect(ext.ok).toBe(true);
-    // 对外：5 章 + 术语表；内部：5 章、无附录
-    expect(ext.chapters.length).toBe(reportChaptersOf("external").length + 1);
-    const int = checkReport("internal", goodReport("internal"));
-    expect(int.ok).toBe(true);
-    expect(int.chapters.length).toBe(reportChaptersOf("internal").length);
+  it("章节齐 + 方案构件齐 → 通过（五章：现状 / 场景与问题 / 方案 / 价值 / 下一步）", () => {
+    const r = checkReport(goodReport());
+    expect(r.ok).toBe(true);
+    expect(r.chapters.length).toBe(reportChapters().length);
+    expect(reportChapters().map((c) => c.label)).toEqual([
+      "现状",
+      "场景与问题",
+      "方案",
+      "价值",
+      "下一步",
+    ]);
   });
 
   it("缺章是硬伤（模型漏写一章不能就这么交付）", () => {
-    const text = goodReport("internal").replace("## 四、价值", "## 四、随便写点什么");
-    const r = checkReport("internal", text);
+    const text = goodReport().replace("## 价值", "## 随便写点什么");
+    const r = checkReport(text);
     expect(r.ok).toBe(false);
     expect(r.violations.some((v) => v.kind === "缺章" && v.hard)).toBe(true);
   });
 
   it("章节齐但没长出方案构件（没有自建表 / 没设计原则 / 没边界）→ 硬伤", () => {
     // 只留章节标题与小节名，构件全无
-    const text = reportChaptersOf("external")
+    const text = reportChapters()
       .map((c) => {
         const body = c.sections.map((sec) => `### ${sec.title}\n\n正文。`).join("\n\n");
-        return `## ${reportChapterHeading("external", c.key)}\n\n${body}`;
+        return `## ${reportChapterHeading(c.key)}\n\n${body}`;
       })
       .join("\n\n");
-    const r = checkReport("external", text);
+    const r = checkReport(text);
     expect(r.ok).toBe(false);
     const v = r.violations.find((x) => x.kind === "缺少方案构件");
     expect(v?.hard).toBe(true);
@@ -93,95 +68,76 @@ describe("报告确定性校验（变更表 #112 / #113）", () => {
   });
 
   it("出现决策建议是硬伤（产品只给事实，决定权在用户）", () => {
-    const r = checkReport("internal", goodReport("internal", "\n\n我方建议优先投入试点。"));
+    const r = checkReport(goodReport("\n\n我方建议优先投入试点。"));
     expect(r.ok).toBe(false);
     expect(r.violations.some((v) => v.kind === "出现决策建议")).toBe(true);
   });
 
   it("「下一步（步骤与交付物）」不算决策建议", () => {
-    const r = checkReport("external", goodReport("external", "\n\n下一步：现场勘察 → 单站试点 → 指标对标。"));
+    const r = checkReport(goodReport("\n\n下一步：现场勘察 → 单站试点 → 指标对标。"));
     expect(r.violations.some((v) => v.kind === "出现决策建议")).toBe(false);
   });
 
   it("对外材料出现内部表号 / 来源 / 证据级 → 硬伤", () => {
     for (const leak of ["见 表3-8", "来源：客户台账", "证据级 A", "信息缺口 3 条", "ingest-123-4.pdf"]) {
-      const r = checkReport("external", goodReport("external", `\n\n参考资料 ${leak}`));
+      const r = checkReport(goodReport(`\n\n参考资料 ${leak}`));
       expect(r.ok, leak).toBe(false);
       expect(r.violations.some((v) => v.kind === "对外泄漏内部信息"), leak).toBe(true);
     }
   });
 
   it("「能力缺口」是正当说法，不算对外泄漏（只有信息缺口这类内部口径才算）", () => {
-    const r = checkReport("external", goodReport("external", "\n\n主要缺口在算法与软件，需与伙伴配合。"));
-    expect(r.violations.some((v) => v.kind === "对外泄漏内部信息")).toBe(false);
-  });
-
-  it("同样的内部痕迹放在内部版不算违规（内部版本来就带来源与核实）", () => {
-    const r = checkReport("internal", goodReport("internal", "\n\n见表3-8，来源：客户台账；证据级 A。"));
+    const r = checkReport(goodReport("\n\n主要缺口在算法与软件，需与伙伴配合。"));
     expect(r.violations.some((v) => v.kind === "对外泄漏内部信息")).toBe(false);
   });
 
   it("正文用「一、二、」当条目编号 → 只提示（会和章号混淆）", () => {
-    const r = checkReport(
-      "external",
-      goodReport("external", "\n\n**二、按预约自动就绪、离场自动释放。** 减少占而不用。"),
-    );
+    const r = checkReport(goodReport("\n\n**二、按预约自动就绪、离场自动释放。** 减少占而不用。"));
     const v = r.violations.find((x) => x.kind === "正文用了章号式编号");
     expect(v?.hard).toBe(false);
     // 章标题本身是 `## 二、…`，不算正文编号
     expect(v?.detail).toContain("1 处");
   });
 
-  it("术语表：契约里没有就不再要求（变更表 #131，用户对外定稿已删附录）", () => {
-    const text = goodReport("external").replace("## 附录、术语表", "## 附录、说明");
-    const r = checkReport("external", text);
-    expect(r.violations.find((v) => v.kind === "缺术语表")).toBeUndefined();
-  });
-
   it("篇幅超标只提示（要精要，不要流水账）", () => {
-    const long = goodReport("external") + "\n\n" + "补充废话。".repeat(1000);
-    const v = checkReport("external", long).violations.find((x) => x.kind === "篇幅超标");
+    const long = goodReport() + "\n\n" + "补充废话。".repeat(1000);
+    const v = checkReport(long).violations.find((x) => x.kind === "篇幅超标");
     expect(v?.hard).toBe(false);
     expect(v?.detail).toContain("超过");
   });
 
   it("篇幅按正文字数算：表格再长也不算流水账", () => {
     const rows = Array.from({ length: 400 }, (_, i) => `| 行${i} | 说明${i} |`).join("\n");
-    const md = `${goodReport("external")}\n\n| 序号 | 连接 |\n|---|---|\n${rows}\n`;
-    expect(checkReport("external", md).violations.some((v) => v.kind === "篇幅超标")).toBe(false);
+    const md = `${goodReport()}\n\n| 序号 | 连接 |\n|---|---|\n${rows}\n`;
+    expect(checkReport(md).violations.some((v) => v.kind === "篇幅超标")).toBe(false);
   });
 
   it("原则写成「### 设计原则 + 条目」（没有原则一/二编号）也算构件齐全", () => {
-    const md = goodReport("external").replace(
-      "原则一：只做会场设备侧。",
-      "### 设计原则\n\n- 辅助不替代\n- 能接的接、不能接的明说\n",
-    );
-    const v = checkReport("external", md).violations.find((x) => x.kind === "缺少方案构件");
+    const md = goodReport().replace("原则一 不替代原系统；原则二 不参与安全联锁。", "- 辅助不替代\n- 能接的接、不能接的明说");
+    const v = checkReport(md).violations.find((x) => x.kind === "缺少方案构件");
     expect(v).toBeUndefined();
   });
 
   it("价值章逐条写「待补/未提供」→ 硬伤（那是缺口清单，不是价值）", () => {
-    const bad = goodReport("external").replace(
-      "价值一 ……度量口径：单次巡检人天。",
-      "价值一：省人。度量口径是巡检人天。本客户基线未提供。\n" +
-        "价值二：省电。本客户分项计量未提供。\n价值三：少上门。本客户工单未提供。",
-    );
-    const v = checkReport("external", bad).violations.find((x) => x.kind === "价值写成缺口清单");
+    const bad = goodReport().replace("| 预约时间与就绪时间戳差 |", "| 本客户基线未提供 |")
+      .replace("| 按月比对预约与实际通电 |", "| 本客户基线未提供 |")
+      .replace("| 工单上门次数对比 |", "| 本客户基线未提供 |");
+    const v = checkReport(bad).violations.find((x) => x.kind === "价值写成缺口清单");
     expect(v?.hard).toBe(true);
   });
 
   it("价值章只在章末交代一次基线 → 不算缺口清单", () => {
-    const ok = goodReport("external").replace(
+    const ok = goodReport().replace(
       "价值一 ……度量口径：单次巡检人天。",
       "价值一：采用后现场巡检减少。现在：靠人工巡检。（怎么核：巡检人天）\n" +
         "本客户基线未提供，以上为行业通例量级。",
     );
-    const r = checkReport("external", ok);
+    const r = checkReport(ok);
     expect(r.violations.some((x) => x.kind === "价值写成缺口清单")).toBe(false);
   });
 
   it("篇幅不足只提示，不当硬伤", () => {
-    const v = checkReport("external", goodReport("external")).violations.find(
+    const v = checkReport(goodReport()).violations.find(
       (x) => x.kind === "篇幅不足",
     );
     expect(v?.hard).toBe(false);
@@ -189,5 +145,6 @@ describe("报告确定性校验（变更表 #112 / #113）", () => {
 
   it("章名识别忽略序号与多余空格", () => {
     expect(reportChapterHeadings("## 一、现状 \n### 小节\n## 方案")).toEqual(["现状", "方案"]);
+    expect(reportChapterHeadings("## 现状\n## 场景与问题")).toEqual(["现状", "场景与问题"]);
   });
 });

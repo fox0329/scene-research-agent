@@ -220,9 +220,9 @@ describe("stage-prompts — 输出契约（补契约空壳）", () => {
     expect(c.properties.rows.items.properties.source_type.enum).toEqual(["AI提取", "AI推断"]);
   });
 
-  it("阶段 6（交付物）不要求 rows，而要两份文档", () => {
+  it("阶段 6（交付物）不要求 rows，而要一份解决方案（变更表 #136）", () => {
     const c = getStageOutputContract(6) as { required: string[]; properties: Record<string, unknown> };
-    expect(c.required).toEqual(["internal_report", "external_report"]);
+    expect(c.required).toEqual(["solution_report"]);
     expect(c.properties["rows"]).toBeUndefined();
   });
 });

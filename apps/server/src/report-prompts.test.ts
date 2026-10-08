@@ -1,11 +1,16 @@
 import { describe, it, expect } from "vitest";
-import { reportChapterHeading, reportChaptersOf } from "@scene/contract";
+import { reportChapterHeading, reportChapters } from "@scene/contract";
 import type { ChapterDigest } from "@scene/infra";
-import { buildReportPrompt, chapterProseBudget } from "./report-prompts.js";
+import {
+  buildChapterPrompt,
+  buildCompressPrompt,
+  buildReportPrompt,
+  chapterProseBudget,
+} from "./report-prompts.js";
 
-const digest: ChapterDigest[] = reportChaptersOf("internal").map((c) => ({
+const digest: ChapterDigest[] = reportChapters().map((c) => ({
   key: c.key,
-  title: reportChapterHeading("internal", c.key),
+  title: reportChapterHeading(c.key),
   markdown: `${c.label}的原料要点`,
 }));
 
@@ -16,96 +21,100 @@ const base = {
   missingTables: ["表3-1 利润池"],
 };
 
-describe("报告提示词（变更表 #112）", () => {
-  it("章节名与小节名原样进提示词（模型按这套骨架写）", () => {
-    const { system, user } = buildReportPrompt("internal", base);
-    for (const c of reportChaptersOf("internal")) {
-      expect(`${system}\n${user}`).toContain(reportChapterHeading("internal", c.key));
-      for (const sec of c.sections.filter((x) => x.only === undefined || x.only === "internal"))
-        expect(system).toContain(sec.title);
+describe("报告提示词（变更表 #112 / #136）", () => {
+  it("章节名与小节名原样进提示词，且章名不带序号（序号交给 Word）", () => {
+    const { system } = buildReportPrompt(base);
+    for (const c of reportChapters()) {
+      expect(system).toContain(`## ${reportChapterHeading(c.key)}`);
+      expect(system).not.toContain(`一、${c.label}`);
+      for (const sec of c.sections) expect(system).toContain(sec.title);
     }
   });
 
-  it("要求章名只写一次（不许在正文里再抄一遍）", () => {
-    const { system } = buildReportPrompt("internal", base);
+  it("说明章节号由 Word 自动编号，并要求章名只写一次", () => {
+    const { system } = buildReportPrompt(base);
+    expect(system).toContain("章节号由 Word 文档自动编号");
+    expect(system).toContain("正文与标题都不要自己写序号");
     expect(system).toContain("章名只写一次");
   });
 
-  it("禁止正文用「一、二、」编号（会与章号混淆），并给出替代写法", () => {
-    const { system } = buildReportPrompt("internal", base);
+  it("禁止正文用「一、二、」编号（会与章节层级混淆），并给出替代写法", () => {
+    const { system } = buildReportPrompt(base);
     expect(system).toContain("不许再用「一、二、三、」编号");
     expect(system).toContain("价值一");
   });
 
   it("要求报告长出自己的方案构件，并明说「不是前面内容的总结」", () => {
-    const { user } = buildReportPrompt("external", base);
+    const { system, user } = buildReportPrompt(base);
     expect(user).toContain("方案构件");
     expect(user).toContain("不要写成前面内容的总结");
-    const { system } = buildReportPrompt("external", base);
-    // 对外价值是四列表格（含怎么核），不是内部那种「价值N/度量口径」段落（变更表 #129）
-    for (const word of ["设计原则", "编号", "怎么核", "不替代", "术语"]) {
+    // 价值是四列表格（含怎么核）——内部版那种「价值N/度量口径」段落已随 #136 退场
+    for (const word of ["设计原则", "编号", "怎么核", "| 价值 | 现在 | 采用后 | 怎么核 |"]) {
       expect(system, word).toContain(word);
     }
   });
 
-  it("内部版侧重客观与风险；对外版侧重痛点、方案、价值", () => {
-    const internal = buildReportPrompt("internal", base);
-    expect(internal.system).toContain("客观、风险");
-    expect(internal.system).toContain("不给决策建议");
-    const external = buildReportPrompt("external", base);
-    expect(external.system).toContain("痛点、方案、价值");
-    expect(external.system).toContain("不许出现");
+  it("只有一份口径：读者是客户的业务与 IT 负责人，不再出现两版说法", () => {
+    const all = `${buildReportPrompt(base).system}\n${buildReportPrompt(base).user}`;
+    expect(all).toContain("客户的业务与 IT 负责人");
+    expect(all).toContain("不给决策建议");
+    for (const gone of ["内部版", "对外版", "内部调研报告", "对外汇报材料", "两份"]) {
+      expect(all, gone).not.toContain(gone);
+    }
+  });
+
+  it("已退场的章节与构件不进提示词（无风险章、无术语表、无内部版小节）", () => {
+    const { system } = buildReportPrompt(base);
+    expect(system).not.toContain("主要风险点");
+    expect(system).not.toContain("术语表");
+    // 场景边界/典型问题/价值表在契约里就是「章下直接写」，不再有套小节标题的那一版
+    expect(system).toContain("「场景边界」：**章下直接写，不要单独加 `###` 标题**");
+    expect(system).toContain("「典型问题」：**章下直接写，不要单独加 `###` 标题**");
+    expect(system).toContain("`### 设计原则`");
+    expect(system).toContain("`### 实施要点`");
+    // 价值表后面不再要求写四条边界段落（用户定稿已删，变更表 #131/#136），只剩那句禁令
+    expect(system).not.toContain("表格下面**再写四条边界**");
+    expect(system).toContain("**不要**再写「不替代 / 不参与 / 不承担 / 受限条件」四条边界段落");
   });
 
   it("原料、场景锚、缺口表都带给模型（不让它自己猜表）", () => {
-    const { user } = buildReportPrompt("internal", base);
+    const { user } = buildReportPrompt(base);
     expect(user).toContain("智慧会议室");
     expect(user).toContain("表3-1 利润池");
     expect(user).toContain("现状");
   });
 
-  it("重写时把上一次的违规清单带回去，并要求逐条规避", () => {
-    const { user } = buildReportPrompt("external", base, "- 【对外泄漏内部信息】出现内部痕迹：表3-8");
+  it("重写时把上一版的硬伤清单带回去，并要求逐条规避", () => {
+    const { user } = buildReportPrompt(base, "- 【泄漏内部信息】出现表号：表3-8");
     expect(user).toContain("上一次的问题");
     expect(user).toContain("表3-8");
     expect(user).toContain("不得出现决策建议措辞");
   });
 
-  it("只出现本口径的小节：内部不写门槛与合规/实施要点，对外不写能力边界，且同名小节不重复", () => {
-    const int = buildReportPrompt("internal", base).system;
-    // 不能用「门槛与合规」四个字断言：风险章的六类风险里正当提到它
-    expect(int).not.toContain("行业准入");
-    expect(int).not.toContain("回退路径");
-    expect(int).not.toContain("场景在业务中的位置");
-    // 内部价值是段落式：不给四列表头；「怎么核」四字会作为"不许写"的禁令正当出现
-    expect(int).not.toContain("| 价值 | 现在 | 采用后 | 怎么核 |");
-    expect(int).toContain("现状特征与提升空间");
-    expect(int).toContain("能力边界");
-    expect(int).toContain("价值一");
-    const ext = buildReportPrompt("external", base).system;
-    expect(ext).toContain("门槛与合规");
-    expect(ext).toContain("实施要点");
-    expect(ext).not.toContain("能力边界");
-    expect(ext).toContain("| 价值 | 现在 | 采用后 | 怎么核 |");
-    // 同一内容两份口径写法不同：内部有小节标题，对外是"章下直接写"
-    expect(int).toContain("`### 场景边界`");
-    expect(int).toContain("`### 典型问题`");
-    expect(ext).toContain("「场景边界」：**章下直接写，不要单独加 `###` 标题**");
-    expect(ext).toContain("「典型问题」：**章下直接写，不要单独加 `###` 标题**");
+  it("篇幅只有单一口径（变更表 #136：不再分内部/对外两套数字）", () => {
+    const { system } = buildReportPrompt(base);
+    expect(system).toContain("2500–3200");
+    expect(system).not.toContain("2500–4000");
+    expect(system).not.toContain("内部版每章");
   });
 
-  it("两份的篇幅口径不同，且都按用户定稿实测校准（内部 2500–4000 / 对外 2500–3200）", () => {
-    expect(buildReportPrompt("internal", base).system).toContain("2500–4000");
-    // 变更表 #131：对外定稿正文 2644 字（删掉门槛与合规、边界、附录之后）
-    expect(buildReportPrompt("external", base).system).toContain("2500–3200");
+  it("补写与压缩提示词同样是单一口径", () => {
+    const chapter = buildChapterPrompt(digest.slice(1, 2), "智慧会议室");
+    expect(chapter.user).toContain("只写下面这几节");
+    expect(`${chapter.system}\n${chapter.user}`).not.toContain("术语表");
+    const compress = buildCompressPrompt({ title: "现状", markdown: "正文", budget: 1000, current: 1500 });
+    expect(compress.system).toContain("只删不加");
+    expect(compress.user).toContain("1000 字以内");
+    expect(`${compress.system}\n${compress.user}`).not.toContain("内部版");
+    expect(`${compress.system}\n${compress.user}`).not.toContain("对外");
   });
 
-  it("逐章回炉线不低于用户定稿的实测篇幅（否则一生成就被压改）", () => {
-    // 变更表 #131 对外定稿实测：现状 888 / 问题 169 / 方案 1203 / 价值 9 / 下一步 251
-    expect(chapterProseBudget("external", "status")).toBeGreaterThan(888);
-    expect(chapterProseBudget("external", "solution")).toBeGreaterThan(1203);
-    expect(chapterProseBudget("external", "problems")).toBeGreaterThan(169);
-    expect(chapterProseBudget("external", "value")).toBeGreaterThan(9);
-    expect(chapterProseBudget("external", "next")).toBeGreaterThan(251);
+  it("逐章回炉线就是变更表 #136 定下的一档（不再按 kind 取值）", () => {
+    expect(chapterProseBudget("status")).toBe(1000);
+    expect(chapterProseBudget("problems")).toBe(300);
+    expect(chapterProseBudget("solution")).toBe(1350);
+    expect(chapterProseBudget("value")).toBe(200);
+    expect(chapterProseBudget("next")).toBe(400);
+    expect(chapterProseBudget("不存在的章")).toBe(450);
   });
 });

@@ -370,14 +370,13 @@ export function getStageOutputContract(
   const all = tablesOfStage(stage as InfoStage);
   const tables = allowedTables ? all.filter((t) => allowedTables.includes(t.code)) : all;
   if (tables.length === 0) {
-    // 阶段 6（交付物）：不填表，产出两份文档
+    // 阶段 6（交付物）：不填表，产出一份《<场景>解决方案》（变更表 #136 起不再分双口径）
     return {
       type: "object",
       properties: {
-        internal_report: { type: "string", description: "内部调研报告（Markdown）" },
-        external_report: { type: "string", description: "对外汇报材料（Markdown）" },
+        solution_report: { type: "string", description: "解决方案（Markdown）" },
       },
-      required: ["internal_report", "external_report"],
+      required: ["solution_report"],
     };
   }
 

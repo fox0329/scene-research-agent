@@ -33,14 +33,11 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync,
 import { basename, dirname, join } from "node:path";
 
 import {
-  INTERNAL_APPENDIX_SECTIONS,
-  REPORT_GLOSSARY,
   reportChapterHeading,
-  reportChaptersOf,
+  reportChapters,
   middleColumns,
   tableDef,
   type DeliverableInput,
-  type ExportResult,
   type ReportBlock,
   type ReportChapter,
   type StageData,
@@ -166,27 +163,19 @@ export function reportDateOf(markdown: string, fallback: string): string {
 }
 
 /** 报告类型名（标题与文件名共用） */
-export function reportTypeName(type: "internal" | "external"): string {
-  return type === "internal" ? "内部调研报告" : "对外汇报材料";
+export function reportTypeName(): string {
+  return "解决方案";
 }
 
 /**
- * 交付物文件名：**场景名称 + 报告类型 + 日期**
+ * 交付物文件名：**场景名称 + 解决方案**（变更表 #136）
  *
- * 用户定调（2026-10-07 / 变更表 #126）：`智慧会议室 内部调研报告 2026-10-07.md`。
- *
- * @param scenarioName 场景名
- * @param type 内部或对外
- * @param date 生成日期（YYYY-MM-DD）
+ * 用户定调（2026-10-07）：「交付物不再分内部调研版和外部汇报版，直接用外部汇报版
+ * 生成一个版本，就叫 XXX解决方案」——所以是 `智慧会议室解决方案.md`，不带日期。
  */
-export function exportFileName(
-  scenarioName: string,
-  type: "internal" | "external",
-  date: string,
-): string {
+export function exportFileName(scenarioName: string): string {
   const safe = scenarioName.replace(/[/\\:*?"<>|]/g, "_").trim();
-  const parts = [safe, reportTypeName(type), date].filter((x) => x !== "");
-  return `${parts.join(" ")}.md`;
+  return `${safe}${reportTypeName()}.md`;
 }
 
 // ─── 主入口 ────────────────────────────────────────────────
@@ -197,12 +186,8 @@ export function exportFileName(
  * @param data 交付物输入（场景 + 阶段数据；阶段总结不再进正文）
  * @returns 两份纯 Markdown
  */
-export async function exportDeliverables(data: DeliverableInput): Promise<ExportResult> {
-  const today = data.generatedAt ?? new Date().toISOString().slice(0, 10);
-  return {
-    internal_report: buildReportMarkdown(data, today, "internal"),
-    external_report: buildReportMarkdown(data, today, "external"),
-  };
+export async function exportDeliverables(data: DeliverableInput): Promise<string> {
+  return buildReportMarkdown(data);
 }
 
 // ─── 取数小工具 ────────────────────────────────────────────
@@ -283,11 +268,7 @@ const ROW_TEXT: Record<string, (r: Record<string, unknown>) => string> = {
 };
 
 /** 章节导语：由数据算，不写空话 */
-function chapterLead(
-  chapter: ReportChapter,
-  kind: "internal" | "external",
-  stageData: readonly StageData[],
-): string {
+function chapterLead(chapter: ReportChapter, stageData: readonly StageData[]): string {
   const links = countRows(stageData, "表1-2");
   const elements = countRows(stageData, "表2-2");
   const pains = valuesOf(stageData, "表1-2", "pain").length;
@@ -298,24 +279,20 @@ function chapterLead(
     (r) => r.table_code === "表6-1" && !blank(r.row["baseline"]),
   ).length;
   switch (chapter.key) {
-    case "scene":
-      return "先说清在讲哪个场景、边界划在哪里——后面所有内容都以这个范围为准。";
-    case "understand":
-      return `本场景拆出 ${links} 个业务环节、${elements} 个场景要素；现状做法与系统连接方式如下。`;
+    case "status":
+      return links > 0
+        ? `本场景拆出 ${links} 个业务环节、${elements} 个场景要素；现状做法与系统连接方式如下。`
+        : "";
     case "problems":
       return pains > 0 || gaps > 0
-        ? `现场层面的问题 ${pains} 处；${gaps} 条需求今天还没被满足（谁在痛、痛到什么程度逐条列出）。`
-        : "本节汇总现场做法里暴露的问题与门槛要求。";
+        ? `现场层面的问题 ${pains} 处；${gaps} 条需求今天还没被满足。`
+        : "";
     case "solution":
       return `我方可在 ${participate.length > 0 ? participate.join(" / ") : "待判定"} 的环节参与；下面对照每条需求说明给什么产品、边界在哪。`;
     case "value":
       return benefits > 0
-        ? `${benefits} 条收益对应指标已经写清；其中 ${withBaseline} 条有基线（${benefits - withBaseline} 条基线待补，不构成结论）。`
-        : "本节列出收益与对应指标、验证方式，以及试点与验收口径。";
-    case "summary":
-      return kind === "internal"
-        ? "下面是本次调研的事实汇总、边界声明、风险与待补齐清单。"
-        : "下面是本方案的价值结论、验证安排，以及需要贵方确认的信息。";
+        ? `${benefits} 条收益对应指标已经写清；其中 ${withBaseline} 条有基线。`
+        : "";
     default:
       return "";
   }
@@ -371,25 +348,6 @@ function renderBlock(
   return out.join("\n").trimEnd();
 }
 
-/**
- * 「客观与风险」章的兜底正文（只内部版有）
- *
- * 变更表 #124：用户定调「别列证据，只说风险点」——这里不再摆数据状态与来源统计，
- * 只按"缺什么输入 → 影响什么"给出风险点；真正的风险表述由模型写。
- */
-function renderRisks(stageData: readonly StageData[]): string {
-  const veto = valuesOf(stageData, "表1-3", "veto_holder");
-
-  const out: string[] = ["### 主要风险点", ""];
-  out.push(
-    "- **现场条件可能改变可行边界**：点位、承重、既有设备接口、网络与供电任一项不成立，部分房间只能做状态监测，无法纳入统一控制。",
-    "- **门槛未过之前方案与报价不作数**" + (veto.length > 0 ? `：${veto.join("、")}任一方否决都会推翻当前技术路径或商务结构。` : "。"),
-    "- **交付依赖客户与第三方**：网络、供电、装修收口与既有系统接口分别由客户网络部门、物业与装修总包、原系统厂商负责，任一方延期都会顺延工期。",
-    "- **设备纳管能力有上限**：部分需求只能辅助或外围配合；老旧封闭协议设备与不开放接口的设备只能旁路监测，控制覆盖率随现场设备能力浮动。",
-  );
-  return out.join("\n").trim();
-}
-
 export interface ChapterDigest {
   key: string;
   title: string;
@@ -415,19 +373,15 @@ export interface DigestOptions {
 }
 
 export function reportChapterDigest(
-  kind: "internal" | "external",
   stageData: readonly StageData[],
   opts: DigestOptions = {},
 ): ChapterDigest[] {
-  const isInternal = kind === "internal";
-  return reportChaptersOf(kind).map((chapter) => {
-    const blocks = isInternal ? chapter.internal : chapter.external;
+  return reportChapters().map((chapter) => {
+    const blocks = chapter.blocks;
     const parts: string[] = [];
-    const lead = chapterLead(chapter, kind, stageData);
+    const lead = chapterLead(chapter, stageData);
     if (lead) parts.push(lead, "");
-    if (chapter.key === "risk") {
-      parts.push(renderRisks(stageData));
-    } else {
+    {
       let rendered = 0;
       for (const b of blocks) {
         const md = renderBlock(b, stageData, opts.full === true);
@@ -443,37 +397,21 @@ export function reportChapterDigest(
     }
     return {
       key: chapter.key,
-      title: reportChapterHeading(kind, chapter.key),
+      title: reportChapterHeading(chapter.key),
       markdown: parts.join("\n").trim(),
     };
-  }).concat(
-    REPORT_GLOSSARY[kind]
-      ? [
-          {
-            key: "glossary",
-            title: REPORT_GLOSSARY[kind] as string,
-            /* 素材留空：术语表由模型撰写，写不出来就不出这一节（不许拿提示文字当正文） */
-            markdown: "",
-          },
-        ]
-      : [],
-  );
+  });
 }
 
 /** 组装一份报告（模型正文优先，逐章兜底） */
-export function buildReportMarkdown(
-  data: DeliverableInput,
-  today: string,
-  kind: "internal" | "external",
-): string {
-  const digests = new Map(reportChapterDigest(kind, data.stageData).map((d) => [d.key, d]));
-  const model = new Map((data.chapters ?? []).map((c) => [c.key, c.markdown.trim()]));
-  return buildReport(
-    data,
-    today,
-    kind,
-    (key) => model.get(key) ?? digests.get(key)?.markdown ?? "",
+export function buildReportMarkdown(data: DeliverableInput): string {
+  const digests = new Map(reportChapterDigest(data.stageData).map((d) => [d.key, d]));
+  // 空串（模型这一章没写出来）等同没写：回落该章的要点版 digest。
+  // 不这么判会掉进「`""` 不是 nullish」的坑——缺章最后渲染成「（本节内容待补）」而不是兜底正文。
+  const model = new Map(
+    (data.chapters ?? []).map((c) => [c.key, c.markdown.trim()] as const).filter(([, md]) => md !== ""),
   );
+  return buildReport(data, (key) => model.get(key) ?? digests.get(key)?.markdown ?? "");
 }
 
 /**
@@ -481,35 +419,18 @@ export function buildReportMarkdown(
  *
  * @param bodyOf 每章正文的来源（模型正文 → 该章兜底），由 `buildReportMarkdown` 注入
  */
-function buildReport(
-  data: DeliverableInput,
-  today: string,
-  kind: "internal" | "external",
-  bodyOf: (key: string) => string,
-): string {
-  const { scenario, stageData } = data;
+function buildReport(data: DeliverableInput, bodyOf: (key: string) => string): string {
+  const { scenario } = data;
 
   // 封面只有一行报告名（变更表 #134，用户定稿逐字要求）：
   // 场景名与日期都在标题里，再写「场景 / 生成日期」两行引用块是重复（精要优先：一个事实只说一次）
-  const head = [`# ${scenario.name} ${reportTypeName(kind)} ${today}`];
+  const sections: string[] = [`# ${scenario.name}${reportTypeName()}`];
 
-  const sections: string[] = [head.join("\n")];
-
-  for (const chapter of reportChaptersOf(kind)) {
-    const body: string[] = [`## ${reportChapterHeading(kind, chapter.key)}`, ""];
+  for (const chapter of reportChapters()) {
+    const body: string[] = [`## ${reportChapterHeading(chapter.key)}`, ""];
     const text = stripEchoedTitle(bodyOf(chapter.key).trim(), chapter.label);
     body.push(text || "（本节内容待补）");
     sections.push(body.join("\n").trimEnd());
-  }
-
-  for (const sec of INTERNAL_APPENDIX_SECTIONS) {
-    if (sec.key === "coverage") sections.push(renderCoverage(sec.title, stageData));
-  }
-  // 术语表：契约里有才装配（变更表 #131 起两份都没有），模型没写就不出现这一节，不造假
-  const glossary = REPORT_GLOSSARY[kind];
-  const glossaryBody = glossary ? bodyOf("glossary").trim() : "";
-  if (glossary && glossaryBody) {
-    sections.push([`## ${glossary}`, "", glossaryBody].join("\n"));
   }
 
   return sections.join("\n\n---\n\n");
@@ -538,41 +459,4 @@ export function stripEchoedTitle(body: string, label: string): string {
   if (normTitle(lines[i]!) !== normTitle(label)) return body;
   lines.splice(i, 1);
   return lines.join("\n").trim();
-}
-
-/**
- * 附录 A：来源与覆盖（逐表给行数、有来源行数、主要来源）
- *
- * 原先分成「来源索引」「信息覆盖概览」两张（各自都有 36 行 × 若干来源），内容重叠且占版面；
- * 用户要精要（变更表 #119）→ 合成一张表：来源只列前两条 + 「等 N 处」。
- */
-function renderCoverage(title: string, stageData: readonly StageData[]): string {
-  const byTable = new Map<string, { rows: number; sourced: number; sources: Map<string, number> }>();
-  for (const r of stageData) {
-    const cur = byTable.get(r.table_code) ?? { rows: 0, sourced: 0, sources: new Map<string, number>() };
-    cur.rows += 1;
-    const src = String(r.source ?? "").trim();
-    if (src !== "") {
-      cur.sourced += 1;
-      cur.sources.set(src, (cur.sources.get(src) ?? 0) + 1);
-    }
-    byTable.set(r.table_code, cur);
-  }
-  const lines: string[] = [`## ${title}`, ""];
-  lines.push("| 表号 | 表名 | 行数 | 有来源 | 主要来源 |", "|---|---|---|---|---|");
-  if (byTable.size === 0) {
-    lines.push("| — | — | 0 | 0 | — |");
-    return lines.join("\n");
-  }
-  for (const [code, v] of byTable) {
-    const top = [...v.sources.entries()].sort((a, b) => b[1] - a[1]);
-    const shown = top.slice(0, 2).map(([src, n]) => `${cell(src)}（${n} 条）`);
-    const more = top.length > 2 ? ` 等 ${top.length} 处` : "";
-    lines.push(
-      `| ${code} | ${tableDef(code)?.name ?? ""} | ${v.rows} | ${v.sourced} | ${
-        shown.length > 0 ? shown.join("、") + more : "—"
-      } |`,
-    );
-  }
-  return lines.join("\n");
 }

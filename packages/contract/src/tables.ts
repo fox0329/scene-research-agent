@@ -1430,13 +1430,18 @@ export function registryIssues(): readonly string[] {
 
 
 // ─── 交付物：章节 ← 表映射 ──────────────────────────────────
+// ─── 交付物：章节 ← 表映射 ──────────────────────────────────
 //
-// 交付物不再是 8 个手写章节（旧 md-export 里满是"结论：建议通过"这类判断），
-// 而是：**内部报告 = 阶段总结装配**，**对外材料 = 指定表的中栏列渲染**。
-// 对外材料只渲染中栏列 → 天然不含来源 / 证据级 / 权威性（元信息在右栏补充）。
+// 交付物只有一份：**客户端可读的「<场景>解决方案」**（变更表 #136）。
+// 用户定调（2026-10-07）：「交付物不再分内部调研版和外部汇报版，直接用外部汇报版
+// 生成一个版本，就叫 XXX解决方案」——于是内部口径的章节（主要风险点）、价值段落
+// 与能力边界、术语表全部退场，只剩这一份。
+//
+// 报告 = 素材（本章块里的表）+ 构件（报告自己长出来的设计原则、架构分层、主辅职责、
+// 编号连接关系、选型、价值表、实施要点与下一步）。素材是证据，构件才是报告的价值。
 
-/** 报告口径（内部调研报告 / 对外汇报材料） */
-export type ReportKind = "internal" | "external";
+/** 交付物口径：只有「解决方案」这一份（变更表 #136） */
+export type ReportKind = "solution";
 
 export interface DeliverableSection {
   key: string;
@@ -1449,22 +1454,14 @@ export interface DeliverableSection {
 
 /** 章节里必须自建的小节，以及这一小节要产出的「方案构件」 */
 export type ReportArtifact =
-  /** 风险点清单（内部版第五章：章下直接写，不套小节） */
-  | "risk-list"
   /** 自建表格（层次/职责/选型/步骤这类，素材表里没有现成结构） */
   | "table"
   /** 带编号的连接关系（① ② ③…），与接口表一一对应 */
   | "numbered-connections"
   /** 我方设计原则（原则一/原则二…） */
   | "principles"
-  /** 价值条目段落式（内部版：价值N / 现在 / 采用后） */
-  | "value-with-metric"
-  /** 对外价值表（价值 / 现在 / 采用后 / 怎么核 四列） */
-  | "value-table"
-  /** 边界声明：明确「不做什么」 */
-  | "boundary"
-  /** 术语表（术语 + 说明） */
-  | "glossary";
+  /** 价值表（价值 / 现在 / 采用后 / 怎么核 四列） */
+  | "value-table";
 
 export interface ReportSection {
   /** 小节名（`###` 级） */
@@ -1478,8 +1475,6 @@ export interface ReportSection {
   keywords?: readonly string[];
   /** 这一小节必须自建的构件（校验据此把关，不来自任何表） */
   artifacts?: readonly ReportArtifact[];
-  /** 只在这份口径里出现的小节（缺省 = 两份都有） */
-  only?: ReportKind;
   /** 章下直接写、不套 `###` 小节标题（校验不要求它单独成节） */
   noHeading?: boolean;
 }
@@ -1498,71 +1493,31 @@ export interface ReportBlock {
 /**
  * 报告章节
  *
- * 用户定调（2026-10-06，变更表 #112）：「交付物的内容质量太差了吧，首先应该是报告，
- * 不是记录……都是场景定义、认识、存在的问题，我们的方案，能够提供的价值、总结。
- * 只是内部侧重客观、风险，外部侧重痛点、方案、价值。」
- *
- * 用户随即给出参照件（`城市门站调压站-智能化提升方案.docx`）并纠偏（变更表 #113）：
- * 「不要把报告做成前面内容的总结，而是形成自己的价值」——参照件的价值不在章节名，
- * 而在**报告自己长出了方案构件**：设计原则、总体架构分层、主/辅职责对照、编号连接
- * 关系、端侧选配「或」关系、实施要点、每条带度量口径的核心价值、能力边界、
- * 下一步（步骤/内容/交付物）、术语表。这些**没有一张来自调研表**。
- *
- * 于是本章节模型定义为：`internal`/`external` 块只提供**素材**（模型据此撰写），
- * `sections` 声明这一章必须写出的 `###` 小节与必须自建的构件——素材是证据，
- * 构件才是报告自己的价值。
- *
- * 标题里的序号由 `reportChapterHeading()` 按口径动态生成（内外章数不同：内部多一章
- * 「客观与风险」），所以这里只给名字，不写序号。
+ * 章标题**不带序号**：Word 交付物里由模板的多级列表自动编号（1 / 1.1 / 1.1.1），
+ * 在 Word 里增删章节编号会自动重排（变更表 #136）；Markdown 正文里也不手写「一、」。
  */
 export interface ReportChapter {
   key: string;
   /** 章节名（不含序号） */
   label: string;
-  /** 只在这份口径里出现的章节（缺省 = 两份都有） */
-  only?: ReportKind;
   /** 必须写出的小节（`###` 级）与自建构件 */
   sections: readonly ReportSection[];
-  /** 整章级构件（章下不设小节时用，例如「五、主要风险点」直接写 N 条风险） */
+  /** 整章级构件（章下不设小节时用） */
   artifacts?: readonly ReportArtifact[];
-  /** 内部版素材 */
-  internal: readonly ReportBlock[];
-  /** 对外版素材 */
-  external: readonly ReportBlock[];
+  /** 本章素材（模型据此撰写，不直接搬进报告） */
+  blocks: readonly ReportBlock[];
 }
 
 export const REPORT_CHAPTERS: readonly ReportChapter[] = [
   {
     key: "status",
     label: "现状",
-    /* 变更表 #126：定稿版现状章 = 章首导语（场景在业务里的位置）+ 体系表 + 「现状特征与提升空间」，
-       前两段不设小节标题，所以契约里只登记一个小节 */
     sections: [
-      /* 变更表 #129：对外版这两个小节有小节标题；内部版这两段并进章首导语，不设标题 */
-      {
-        title: "场景在业务中的位置",
-        keywords: ["位置", "定位", "在业务中"],
-        only: "external",
-      },
-      {
-        title: "既有体系构成",
-        keywords: ["体系构成", "构成", "阶段归纳", "分层"],
-        only: "external",
-      },
-      {
-        title: "现状特征与提升空间",
-        keywords: ["特征", "提升空间", "症结", "现状"],
-        artifacts: ["table"],
-      },
+      { title: "场景在业务中的位置", keywords: ["位置", "定位", "在业务中"] },
+      { title: "既有体系构成", keywords: ["体系", "现有", "构成"] },
+      { title: "现状特征与提升空间", keywords: ["现状", "提升", "空间"], artifacts: ["table"] },
     ],
-    internal: [
-      { code: "表1-1", heading: "场景锚（在讲哪个场景）" },
-      { code: "表1-2", heading: "业务环节与现在的做法", cols: ["link", "owner_now", "current_tool", "current_flow"] },
-      { code: "表2-3", heading: "系统怎么连（分层架构）", cols: ["layer", "components", "interface"] },
-      { code: "表2-7", heading: "现在怎么交付与运维", cols: ["item", "status"] },
-      { code: "表3-9", heading: "行业趋势", cols: ["trend", "driver", "impact", "window"] },
-    ],
-    external: [
+    blocks: [
       { code: "表1-1", heading: "场景锚（在讲哪个场景）" },
       { code: "表1-2", heading: "业务环节与现在的做法", cols: ["link", "owner_now", "current_tool"] },
       { code: "表2-3", heading: "系统怎么连（分层架构）", cols: ["layer", "components", "interface"] },
@@ -1573,22 +1528,12 @@ export const REPORT_CHAPTERS: readonly ReportChapter[] = [
   {
     key: "problems",
     label: "场景与问题",
-    /* 变更表 #127：内部版只保留「场景边界 + 典型问题」；#131：对外版也删掉「门槛与合规」（用户定稿），两版都是章下直接写 */
+    /* 用户定稿：章下直接写「场景边界」与「典型问题」两段，不套小节标题（变更表 #129/#131） */
     sections: [
-      /* 变更表 #129：内部版这两节有小节标题；对外版直接写在章下（用户定稿如此） */
-      { title: "场景边界", keywords: ["边界"], only: "internal" },
-      { title: "典型问题", keywords: ["问题", "痛点"], only: "internal" },
-      { title: "场景边界", keywords: ["边界"], only: "external", noHeading: true },
-      { title: "典型问题", keywords: ["问题", "痛点"], only: "external", noHeading: true },
+      { title: "场景边界", keywords: ["边界"], noHeading: true },
+      { title: "典型问题", keywords: ["问题", "痛点"], noHeading: true },
     ],
-    internal: [
-      { code: "表1-2", heading: "各环节现在的问题", cols: ["link", "pain"] },
-      { code: "表3-8", heading: "没被满足的需求（内部排序与验证）", cols: ["rank", "gap", "who_hurts", "pain_level", "current_alternative", "cross_validation"] },
-      { code: "表3-4", heading: "竞争对手位势（内部）", cols: ["dimension", "competitor_a", "competitor_b", "competitor_c"] },
-      { code: "表3-6", heading: "替代方案，客户为什么会选它（内部）", cols: ["alternative", "customer_gets", "unit_cost", "chosen_when"] },
-      { code: "表3-7", heading: "同行踩过的坑（内部复盘）", cols: ["pitfall", "consequence", "avoid_in_design"] },
-    ],
-    external: [
+    blocks: [
       { code: "表1-2", heading: "各环节现在的问题", cols: ["link", "pain"] },
       { code: "表3-8", heading: "今天还没被满足的需求", cols: ["gap", "who_hurts", "pain_level", "current_alternative"] },
     ],
@@ -1602,17 +1547,9 @@ export const REPORT_CHAPTERS: readonly ReportChapter[] = [
       { title: "主辅职责对照", keywords: ["职责", "主辅"], artifacts: ["table"] },
       { title: "连接关系与接口", keywords: ["连接", "接口"], artifacts: ["numbered-connections"] },
       { title: "选型与配置", keywords: ["选型", "配置", "组成", "清单"], artifacts: ["table"] },
-      /* 变更表 #129：对外版保留「实施要点」（推进窗口 + 回退路径），内部版不写 */
-      { title: "实施要点", keywords: ["实施", "要点", "部署"], only: "external" },
+      { title: "实施要点", keywords: ["实施", "要点", "部署"] },
     ],
-    internal: [
-      { code: "表4-2", heading: "我方在哪些环节参与、以什么角色", cols: ["link", "can_touch", "our_role", "role_reason"] },
-      { code: "表4-3", heading: "需求-能力对照（含边界与风险）", cols: ["gap_ref", "match", "our_product", "ability_basis", "boundary_note", "risk"] },
-      { code: "表5-1", heading: "方案架构与接口", cols: ["layer", "components", "interface", "integration", "boundary", "interface_name", "type", "protocol"] },
-      { code: "表5-3", heading: "实施安排", cols: ["item", "content", "window", "man_days", "rollback"] },
-      { code: "表5-4", heading: "交付与运维", cols: ["item", "content", "sla"] },
-    ],
-    external: [
+    blocks: [
       { code: "表4-2", heading: "我方在哪些环节参与、以什么角色", cols: ["link", "can_touch", "our_role"] },
       { code: "表4-3", heading: "需求-能力对照", cols: ["gap_ref", "match", "our_product", "boundary_note"] },
       { code: "表5-1", heading: "方案架构与接口", cols: ["layer", "components", "interface", "integration", "boundary", "interface_name", "type", "protocol"] },
@@ -1623,52 +1560,21 @@ export const REPORT_CHAPTERS: readonly ReportChapter[] = [
   {
     key: "value",
     label: "价值",
-    /* 变更表 #129：内部版段落式（价值N / 现在 / 采用后，不写怎么核）；对外版四列表格（含怎么核） */
+    /* 用户定稿：章下直接写一张四列价值表（价值 / 现在 / 采用后 / 怎么核），无小节标题 */
     sections: [
-      { title: "核心价值", keywords: ["价值", "收益"], artifacts: ["value-with-metric"], only: "internal" },
-      {
-        title: "核心价值",
-        keywords: ["价值", "收益"],
-        artifacts: ["value-table"],
-        only: "external",
-        noHeading: true,
-      },
-      /* 变更表 #131：边界只在内部版（对外定稿已删掉四条边界段落） */
-      { title: "能力边界", keywords: ["边界", "不做"], only: "internal", artifacts: ["boundary"] },
+      { title: "核心价值", keywords: ["价值", "收益"], artifacts: ["value-table"], noHeading: true },
     ],
-    internal: [
-      { code: "表6-1", heading: "收益 → 指标 → 基线与预期", as: "table", cols: ["benefit", "metric", "baseline", "expected", "how_to_measure"] },
-      { code: "表4-5", heading: "竞争力自评", as: "table", cols: ["dimension", "weight", "score", "basis"] },
-      { code: "表6-4", heading: "试点与验收", cols: ["kind", "content"] },
-    ],
-    external: [
+    blocks: [
       { code: "表6-1", heading: "收益 → 指标 → 基线与预期", as: "table", cols: ["benefit", "metric", "baseline", "expected", "how_to_measure"] },
       { code: "表4-5", heading: "能力与竞争力自评", as: "table", cols: ["dimension", "weight", "score"] },
       { code: "表6-4", heading: "试点与验收", cols: ["kind", "content"] },
     ],
   },
   {
-    key: "risk",
-    /* 用户定稿（变更表 #128）：章名就叫「主要风险点」，章下直接写风险点，不再套一层小节 */
-    label: "主要风险点",
-    only: "internal",
-    sections: [],
-    artifacts: ["risk-list"],
-    internal: [],
-    external: [],
-  },
-  {
     key: "next",
     label: "下一步",
-    /* 内部版不写"下一步"（变更表 #124：用户要求内部报告到风险章为止） */
-    only: "external",
     sections: [{ title: "步骤与交付物", keywords: ["步骤", "交付物", "计划", "安排"], artifacts: ["table"] }],
-    internal: [
-      { code: "表5-3", heading: "实施安排", cols: ["item", "content", "window", "man_days", "rollback"] },
-      { code: "表5-4", heading: "交付与运维", cols: ["item", "content", "sla"] },
-      { code: "表6-4", heading: "试点与验收", cols: ["kind", "content"] },
-    ],
-    external: [
+    blocks: [
       { code: "表5-3", heading: "实施安排", cols: ["item", "content", "window"] },
       { code: "表5-4", heading: "交付与运维", cols: ["item", "content", "sla"] },
       { code: "表6-4", heading: "试点与验收", cols: ["kind", "content"] },
@@ -1676,38 +1582,17 @@ export const REPORT_CHAPTERS: readonly ReportChapter[] = [
   },
 ];
 
-/** 中文序号（章标题用） */
-const CN_NUMERALS = ["一", "二", "三", "四", "五", "六", "七", "八", "九", "十"] as const;
-
-/** 某一口径下的章节（内部多一章「客观与风险」） */
-export function reportChaptersOf(kind: ReportKind): readonly ReportChapter[] {
-  return REPORT_CHAPTERS.filter((c) => c.only === undefined || c.only === kind);
+/** 全部章节（按顺序） */
+export function reportChapters(): readonly ReportChapter[] {
+  return REPORT_CHAPTERS;
 }
 
-/** 章节标题（含序号）——序号按该口径下的位置生成，不写死在定义里 */
-export function reportChapterHeading(kind: ReportKind, key: string): string {
-  const list = reportChaptersOf(kind);
-  const i = list.findIndex((c) => c.key === key);
-  return i < 0 ? "" : `${CN_NUMERALS[i] ?? String(i + 1)}、${list[i]!.label}`;
+/** 章节名（不含序号）：Markdown 里就写这个名字，编号交给 Word 自动生成 */
+export function reportChapterHeading(key: string): string {
+  return REPORT_CHAPTERS.find((c) => c.key === key)?.label ?? "";
 }
 
-/** 全部章节标题（按口径顺序） */
-export function reportChapterHeadings(kind: ReportKind): readonly string[] {
-  return reportChaptersOf(kind).map((c) => reportChapterHeading(kind, c.key));
+/** 全部章节名（按顺序）——校验据此判断"缺章" */
+export function reportChapterHeadings(): readonly string[] {
+  return REPORT_CHAPTERS.map((c) => c.label);
 }
-
-/**
- * 术语表：**两份都没有**（变更表 #131——用户对外定稿删掉了「附录、术语表」，
- * 内部版本来就到风险章为止）。留成空表是为了让校验/装配/提示词都走同一处判断，
- * 将来要加回哪一份，只改这里。
- */
-export const REPORT_GLOSSARY: Partial<Record<ReportKind, string>> = {};
-
-/**
- * 内部调研报告：附录部分
- *
- * 变更表 #124：用户要求内部报告到「五、客观与风险」为止，附录（来源与覆盖、术语表）一并去掉——
- * 逐条出处仍在系统内的表里可查，不必在交付物里再列一遍。
- */
-export const INTERNAL_APPENDIX_SECTIONS: readonly DeliverableSection[] = [];
-

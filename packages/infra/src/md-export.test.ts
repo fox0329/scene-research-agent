@@ -18,7 +18,6 @@ import {
   backupBeforeOverwrite,
   exportDeliverables,
   exportFileName,
-  reportDateOf,
   safeWriteFile,
 } from "./md-export.js";
 import type { DeliverableInput, StageData } from "@scene/contract";
@@ -119,154 +118,145 @@ function makeInput(): DeliverableInput {
 }
 
 describe("exportFileName", () => {
-  it("文件名 = 场景名称 + 报告类型 + 日期", () => {
-    expect(exportFileName("智慧会议室", "internal", "2026-10-07")).toBe(
-      "智慧会议室 内部调研报告 2026-10-07.md",
-    );
-    expect(exportFileName("智慧会议室", "external", "2026-10-07")).toBe(
-      "智慧会议室 对外汇报材料 2026-10-07.md",
-    );
+  it("文件名 = 场景名称 + 解决方案（不带日期，变更表 #136）", () => {
+    expect(exportFileName("智慧会议室")).toBe("智慧会议室解决方案.md");
   });
 
   it("场景名里的路径字符替换成下划线", () => {
-    expect(exportFileName("A/B:C", "internal", "2026-10-07")).toBe(
-      "A_B_C 内部调研报告 2026-10-07.md",
-    );
+    expect(exportFileName("A/B:C")).toBe("A_B_C解决方案.md");
   });
 });
 
-describe("exportDeliverables — 内部调研报告", () => {
-  it("封面只有一行报告名（变更表 #134 起不再写场景行 / 日期行），澄清/免责文字一律不出现", async () => {
-    const { internal_report } = await exportDeliverables(makeInput());
-    expect(internal_report).toMatch(/^# 智慧水务 内部调研报告 2026-09-25$/m);
+describe("exportDeliverables — <场景>解决方案（变更表 #136）", () => {
+  it("封面只有一行报告名（不带日期，变更表 #134/#136），澄清/免责文字一律不出现", async () => {
+    const report = await exportDeliverables(makeInput());
+    expect(report).toMatch(/^# 智慧水务解决方案$/m);
     // 封面除了报告名什么都不留：场景行、日期行、场景锚副标题都不许再出现
-    expect(internal_report).not.toContain("> **场景**");
-    expect(internal_report).not.toContain("**生成日期**");
-    expect(internal_report).not.toContain("制水到输配 ｜ 市政水务集团");
-    expect(internal_report).not.toContain("怎么读");
-    expect(internal_report).not.toContain("不给决策建议");
-    expect(internal_report).not.toContain("内部版侧重");
+    expect(report).not.toContain("> **场景**");
+    expect(report).not.toContain("**生成日期**");
+    expect(report).not.toContain("制水到输配 ｜ 市政水务集团");
+    expect(report).not.toContain("怎么读");
+    expect(report).not.toContain("不给决策建议");
+    expect(report).not.toContain("内部版侧重");
     // 每章导语（口径说明）也不再有
-    expect(internal_report).not.toContain("先讲清场景在业务链条里的位置");
-    // 日期改从标题里取 → 导出文件名不变（导出文件名 = 场景 + 类型 + 报告自己的日期）
-    expect(reportDateOf(internal_report, "兜底")).toBe("2026-09-25");
+    expect(report).not.toContain("先讲清场景在业务链条里的位置");
+    // 报告名里不再有日期（变更表 #136），文件名也不带日期
   });
 
   it("正文按新骨架成章（不再是「阶段 N 总结」的拼接）", async () => {
-    const { internal_report } = await exportDeliverables(makeInput());
+    const report = await exportDeliverables(makeInput());
     for (const title of [
-      "## 一、现状",
-      "## 二、场景与问题",
-      "## 三、方案",
-      "## 四、价值",
-      "## 五、主要风险点",
+      "## 现状",
+      "## 场景与问题",
+      "## 方案",
+      "## 价值",
+      "## 下一步",
     ]) {
-      expect(internal_report, title).toContain(title);
+      expect(report, title).toContain(title);
     }
     // 用户定调 v1.32：「首先应该是报告，不是记录」——阶段总结标题不该再出现
-    expect(internal_report).not.toContain("第 0 部分");
-    expect(internal_report).not.toContain("信息摘要");
-    expect(internal_report).not.toContain("上下游衔接");
+    expect(report).not.toContain("第 0 部分");
+    expect(report).not.toContain("信息摘要");
+    expect(report).not.toContain("上下游衔接");
   });
 
   it("模型写了正文就用模型的（逐章替换）", async () => {
     const input = makeInput();
-    const { internal_report } = await exportDeliverables({
+    const report = await exportDeliverables({
       ...input,
       chapters: [
         { key: "problems", markdown: "模型归纳：问题集中在三处。" },
         { key: "value", markdown: "模型归纳：价值集中在两处。" },
       ],
     });
-    expect(internal_report).toContain("模型归纳：问题集中在三处。");
-    expect(internal_report).toContain("模型归纳：价值集中在两处。");
+    expect(report).toContain("模型归纳：问题集中在三处。");
+    expect(report).toContain("模型归纳：价值集中在两处。");
     // 没给模型的章仍用要点版兜底（章节齐全）
-    expect(internal_report).toContain("## 一、现状");
-    expect(internal_report).not.toContain("附录"); // 内部不再出附录（#124）
+    expect(report).toContain("## 现状");
+    expect(report).not.toContain("附录");
   });
 
-  it("内部版只有五章（到「主要风险点」）且不出附录", async () => {
-    const { internal_report } = await exportDeliverables(makeInput());
-    const h2 = internal_report.match(/^## .*$/gm) ?? [];
+  it("正文恰好五章（不再有内部版的「主要风险点」章）", async () => {
+    const report = await exportDeliverables(makeInput());
+    const h2 = report.match(/^## .*$/gm) ?? [];
     expect(h2.map((h) => h.replace(/^## /, ""))).toEqual([
-      "一、现状",
-      "二、场景与问题",
-      "三、方案",
-      "四、价值",
-      "五、主要风险点",
+      "现状",
+      "场景与问题",
+      "方案",
+      "价值",
+      "下一步",
     ]);
-    expect(internal_report).not.toContain("附录");
-    expect(internal_report).not.toContain("来源索引");
+    expect(report).not.toContain("附录");
+    expect(report).not.toContain("来源索引");
   });
 
-  it("风险章兜底只说风险点，不列数据统计", async () => {
-    const { internal_report } = await exportDeliverables(makeInput());
-    expect(internal_report).toContain("## 五、主要风险点");
-    expect(internal_report).toContain("现场条件可能改变可行边界");
-    expect(internal_report).not.toContain("条：有来源");
-    expect(internal_report).not.toContain("数据状态");
-    expect(internal_report).not.toContain("客观与风险");
+  it("只写结论：不列数据统计、不出「客观与风险」", async () => {
+    const report = await exportDeliverables(makeInput());
+    expect(report).toContain("## 下一步");
+    expect(report).not.toContain("条：有来源");
+    expect(report).not.toContain("数据状态");
+    expect(report).not.toContain("客观与风险");
   });
 
   it("无阶段总结也照样出报告（正文不再依赖阶段总结）", async () => {
-    const { internal_report } = await exportDeliverables({ ...makeInput(), stageSummaries: [] });
-    expect(internal_report).toContain("## 五、主要风险点");
-    expect(internal_report).not.toContain("附录"); // 内部不再出附录（#124）
+    const report = await exportDeliverables({ ...makeInput(), stageSummaries: [] });
+    expect(report).toContain("## 下一步");
+    expect(report).not.toContain("附录");
   });
 });
 
-describe("exportDeliverables — 对外汇报材料", () => {
+describe("exportDeliverables — 只渲染中栏（对外口径）", () => {
   it("含客户视角章节且不含结论性建议", async () => {
-    const { external_report } = await exportDeliverables(makeInput());
+    const report = await exportDeliverables(makeInput());
     // 变更表 #132：一级标题与文件名统一
-    expect(external_report).toMatch(/^# 智慧水务 对外汇报材料 \d{4}-\d{2}-\d{2}$/m);
-    // 与内部版同一套骨架，对外少一章「主要风险点」（变更表 #113/#128）
-    for (const t of ["一、现状", "二、场景与问题", "三、方案", "四、价值", "五、下一步"]) {
-      expect(external_report, t).toContain(t);
+    expect(report).toMatch(/^# 智慧水务解决方案$/m);
+    // 只有这一份骨架：现状 / 场景与问题 / 方案 / 价值 / 下一步（变更表 #136）
+    for (const t of ["## 现状", "## 场景与问题", "## 方案", "## 价值", "## 下一步"]) {
+      expect(report, t).toContain(t);
     }
-    expect(external_report).not.toContain("主要风险点");
-    expect(external_report).not.toContain("不含结论性建议");
-    expect(external_report).not.toContain("以试点实测为准");
+    expect(report).not.toContain("主要风险点");
+    expect(report).not.toContain("不含结论性建议");
+    expect(report).not.toContain("以试点实测为准");
   });
 
   it("只渲染中栏列：不出现来源、证据级、权威性", async () => {
-    const { external_report } = await exportDeliverables(makeInput());
-    expect(external_report).not.toContain("《白皮书》p.3");
-    expect(external_report).not.toContain("证据等级");
-    expect(external_report).not.toContain("来源权威性");
+    const report = await exportDeliverables(makeInput());
+    expect(report).not.toContain("《白皮书》p.3");
+    expect(report).not.toContain("证据等级");
+    expect(report).not.toContain("来源权威性");
     // 表6-1 的 evidence_level 是中栏列已改为右栏，故导出里不应出现其取值
-    expect(external_report).not.toContain("| 证据级 |");
+    expect(report).not.toContain("| 证据级 |");
   });
 
   it("不渲染竞品身份表与利润池表", async () => {
-    const { external_report } = await exportDeliverables(makeInput());
-    expect(external_report).not.toContain("海康");
-    expect(external_report).not.toContain("大华");
-    expect(external_report).not.toContain("表3-1");
-    expect(external_report).not.toContain("表3-4");
-    expect(external_report).not.toContain("利润池");
+    const report = await exportDeliverables(makeInput());
+    expect(report).not.toContain("海康");
+    expect(report).not.toContain("大华");
+    expect(report).not.toContain("表3-1");
+    expect(report).not.toContain("表3-4");
+    expect(report).not.toContain("利润池");
   });
 
   it("对外版正文里不写内部表号（只写结论）", async () => {
-    const { external_report } = await exportDeliverables(makeInput());
-    expect(external_report).toMatch(/现状/);
-    expect(external_report).not.toMatch(/表\d+-\d+ （|表\d+-\d+$/m);
+    const report = await exportDeliverables(makeInput());
+    expect(report).toMatch(/现状/);
+    expect(report).not.toMatch(/表\d+-\d+ （|表\d+-\d+$/m);
   });
 
   it("本节无数据时给出待补充提示", async () => {
     const input = makeInput();
-    const { external_report } = await exportDeliverables({
+    const report = await exportDeliverables({
       ...input,
       stageData: input.stageData.filter((r) => r.table_code !== "表6-1"),
     });
     // 缺表的章给出「本节信息待补充：表号」，而不是静默留空
-    expect(external_report).toContain("本节信息待补充");
+    expect(report).toContain("本节信息待补充");
   });
 });
 
 describe("exportDeliverables — 不给决策建议（核心约束）", () => {
-  it("两份文档都不含建议档位与结论性措辞", async () => {
-    const { internal_report, external_report } = await exportDeliverables(makeInput());
+  it("报告不含建议档位与结论性措辞", async () => {
+    const report = await exportDeliverables(makeInput());
     const forbidden = [
       "建议通过",
       "建议有条件通过",
@@ -279,15 +269,14 @@ describe("exportDeliverables — 不给决策建议（核心约束）", () => {
       "红线",
     ];
     for (const bad of forbidden) {
-      expect(internal_report, `内部报告含「${bad}」`).not.toContain(bad);
-      expect(external_report, `对外材料含「${bad}」`).not.toContain(bad);
+      expect(report, `报告含「${bad}」`).not.toContain(bad);
     }
   });
 });
 
 describe("exportDeliverables — 空数据", () => {
-  it("无任何阶段数据也能生成两份文档骨架", async () => {
-    const { internal_report, external_report } = await exportDeliverables({
+  it("无任何阶段数据也能生成报告骨架", async () => {
+    const report = await exportDeliverables({
       scenario: {
         id: "s2",
         name: "空场景",
@@ -301,22 +290,33 @@ describe("exportDeliverables — 空数据", () => {
       stageData: [],
       generatedAt: "2026-09-25",
     });
-    expect(internal_report).toContain("# 空场景 内部调研报告 ");
-    expect(internal_report).toContain("## 五、主要风险点");
-    expect(external_report).toMatch(/^# 空场景 对外汇报材料 \d{4}-\d{2}-\d{2}$/m);
-    expect(external_report).toContain("本节信息待补充");
+    expect(report).toContain("# 空场景解决方案");
+    expect(report).toContain("## 下一步");
+    expect(report).toMatch(/^# 空场景解决方案$/m);
+    expect(report).toContain("本节信息待补充");
+  });
+
+  it("模型这一章给了空串 → 回落该章要点版，而不是「（本节内容待补）」", async () => {
+    const input = makeInput();
+    const report = await exportDeliverables({
+      ...input,
+      chapters: [{ key: "problems", markdown: "   " }],
+    });
+    expect(report).not.toContain("（本节内容待补）");
+    // 要点版里问题章的兜底正文来自表1-2（这一章不再是空的）
+    const seg = report.split("## 场景与问题")[1] ?? "";
+    expect(seg.trim().split("---")[0]!.trim().length).toBeGreaterThan(0);
   });
 
   it("模型把章名当正文抄了一遍 → 装配时去掉重复那一行，正文不动", async () => {
     const input = makeInput();
-    input.chapters = [
-      { key: "status", markdown: "一、现状\n\n本场景处在办公空间与协同软件的交叉点。" },
-    ];
-    const { internal_report } = await exportDeliverables(input);
-    expect(internal_report).toContain("## 一、现状");
-    expect(internal_report).not.toMatch(/## 一、现状\n\n> [^\n]+\n\n一、现状/);
-    expect(internal_report.match(/一、现状/g)?.length).toBe(1);
-    expect(internal_report).toContain("本场景处在办公空间与协同软件的交叉点。");
+    input.chapters = [{ key: "status", markdown: "现状\n\n本场景处在办公空间与协同软件的交叉点。" }];
+    const report = await exportDeliverables(input);
+    expect(report).toContain("## 现状");
+    expect(report).not.toMatch(/## 现状\n\n> [^\n]+\n\n现状/);
+    expect(report.match(/^## 现状$/gm)?.length).toBe(1);
+    expect(report).not.toMatch(/^现状$/m); // 抄来的那一行被装配时去掉
+    expect(report).toContain("本场景处在办公空间与协同软件的交叉点。");
   });
 
 });

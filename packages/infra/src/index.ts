@@ -70,7 +70,6 @@ export {
   exportFileName,
   buildReportMarkdown,
   reportChapterDigest,
-  reportDateOf,
 } from "./md-export.js";
 export type { ChapterDigest, DigestOptions, SafeWriteResult } from "./md-export.js";
 

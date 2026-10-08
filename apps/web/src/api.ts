@@ -506,27 +506,23 @@ export const api = {
       `/projects/${encodeURIComponent(id)}/stages/${stage}/decide`,
       { method: "POST", body: { action } },
     ),
-  /** 交付物双口径导出（契约 §三：返回服务端 md 文件路径） */
-  /** 交付物正文（装配但不落盘）：中栏直接显示两份报告 */
+  /** 交付物正文（装配但不落盘）：中栏直接显示这一份解决方案 */
   getDeliverables: (id: string) =>
     req<{
-      internal_report: string;
-      external_report: string;
+      solution_report: string;
       /** true = 模型撰写的正式版；false = 确定性要点版（界面要提示并引导生成） */
       generated: boolean;
       generated_at: string | null;
-      internal_chars: number;
-      external_chars: number;
+      solution_chars: number;
     }>(`/projects/${encodeURIComponent(id)}/deliverables`),
   exportDeliverables: (id: string) =>
-    req<{ internal_path: string; external_path: string }>(
-      `/projects/${encodeURIComponent(id)}/deliverables/export`,
-      { method: "POST" },
-    ),
+    req<{ path: string; notice?: string }>(`/projects/${encodeURIComponent(id)}/deliverables/export`, {
+      method: "POST",
+    }),
   /** 保存中栏编辑后的报告正文（变更表 #135） */
-  saveDeliverable: (id: string, kind: "internal" | "external", markdown: string) =>
+  saveDeliverable: (id: string, markdown: string) =>
     req<{ path: string; written: boolean; overwritten: boolean; notice?: string }>(
-      `/projects/${encodeURIComponent(id)}/deliverables/${kind}`,
+      `/projects/${encodeURIComponent(id)}/deliverables/solution`,
       { method: "PUT", body: { markdown } },
     ),
   /** 弹系统对话框选导出文件夹（变更表 #133）；取消会抛错，调用方回退到手填路径 */
@@ -535,10 +531,10 @@ export const api = {
       method: "POST",
     }),
   /** 按模版把报告写成 Word 落到指定文件夹 */
-  exportDocx: (id: string, dir: string, kind?: "internal" | "external") =>
+  exportDocx: (id: string, dir: string) =>
     req<{ files: string[]; unchanged: string[]; notice?: string }>(
       `/projects/${encodeURIComponent(id)}/deliverables/export-docx`,
-      { method: "POST", body: { dir, kind } },
+      { method: "POST", body: { dir } },
     ),
 
   listConversations: (projectId: string) =>

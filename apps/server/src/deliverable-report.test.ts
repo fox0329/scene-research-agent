@@ -1,72 +1,52 @@
 /**
- * @scene/server — 交付物报告生成测试（变更表 #112）
+ * @scene/server — 交付物报告生成测试（变更表 #112 / #136）
  *
  * 真 SQLite（:memory:）+ mock dshClient：覆盖「模型撰写 → 确定性校验 → 逐章兜底 → 落盘」
- * 全链路，以及三条铁律（六章齐全 / 不给决策建议 / 对外不带内部信息）在模型不听话时的行为。
+ * 全链路，以及三条铁律（五章齐全 / 不给决策建议 / 不带内部信息痕迹）在模型不听话时的行为。
+ *
+ * 变更表 #136 起交付物只有一份《<场景>解决方案》（落盘 `<场景 id>.solution.md`），
+ * 不再有「内部调研报告 / 对外汇报材料」两份口径，也没有「主要风险点」章与附录/术语表。
  */
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, readFileSync, existsSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { reportChapterHeading, reportChaptersOf } from "@scene/contract";
+import { reportChapterHeading, reportChapters } from "@scene/contract";
 import type { DshClient, FollowEvent } from "@scene/contract";
 import { createDb } from "@scene/infra";
 import type { DbInstance } from "@scene/infra";
 import { createDeliverableReportCommand, splitReportChapters } from "./deliverable-report.js";
-import { getReport, getReportPair } from "./report-service.js";
+import { getReport } from "./report-service.js";
 
 /** 章节 + 方案构件都齐的"好"报告（模拟模型照要求作答） */
-function goodReport(kind: "internal" | "external"): string {
-  const chapters = reportChaptersOf(kind).map((c) => {
-    const body = c.sections
-      .map((sec) => {
-        const arts = sec.artifacts ?? [];
-        const lines = [`### ${sec.title}`, "", `${sec.title}的归纳正文。`];
-        if (arts.includes("table")) {
-          lines.push("", "| 层次 | 组成 | 作用 |", "|---|---|---|", "| 主链 | PLC | 控制闭环 |");
-        }
-        if (arts.includes("numbered-connections")) lines.push("", "① 仪表 → 网关；② 网关 → 平台。");
-        if (arts.includes("principles")) lines.push("", "原则一 不替代原系统；原则二 不参与联锁。");
-        if (arts.includes("value-with-metric")) lines.push("", "价值一 ……度量口径：单次巡检人天。");
-        if (arts.includes("boundary")) lines.push("", "边界：不替代原系统，不做安全联锁。");
-        if (arts.includes("value-table"))
-          lines.push(
-            "",
-            "| 价值 | 现在 | 采用后 | 怎么核 |",
-            "|---|---|---|---|",
-            "| 价值一：会前不再逐台开机 | 提前 5–10 分钟接线（行业 3~10 分钟） | 碰一碰拉起，秒级就绪 | 预约开始时间与设备就绪时间戳差 |",
-            "| 价值二：离场自动释放 | 占而不用与找不到房并存 | 自动释放、超时回收 | 按月比对预约与实际通电时段 |",
-            "| 价值三：故障改远程 | 靠报修与到场 | 远程监控与 OTA | 工单上门次数与修复时长同期对比 |",
-          );
-        return lines.join("\n");
-      })
-      .join("\n\n");
-    // 章级构件（如「五、主要风险点」章下不设小节，直接写风险点）
-    const chapterArts = c.artifacts ?? [];
-    const chapterBody = [
-      chapterArts.includes("risk-list")
-        ? [
-            "**现场条件风险。** 点位与承重不成立时只能旁路监测。应对：勘测逐间出条件清单。",
-            "**纳管上限风险。** 封闭协议设备只能保留原厂控制。应对：把纳管清单写进设计输入。",
-            "**门槛风险。** 任一方否决即推翻技术路径。应对：设计阶段同步准备材料。",
-          ].join("\n\n")
-        : "",
-      chapterArts.includes("boundary")
-        ? "**不替代**：不替代客户既有系统。\n\n**不参与**：不参与客户数据治理。\n\n**不承担**：不承担强电施工资质。\n\n**受限条件**：端层认证仅限自研载体。"
-        : "",
-    ]
-      .filter(Boolean)
-      .join("\n\n");
-    const merged = [body, chapterBody].filter(Boolean).join("\n\n");
-    return `## ${reportChapterHeading(kind, c.key)}\n\n${merged}`;
-  });
-  // 术语表只对外（变更表 #124）
-  const glossary = kind === "external" ? "## 附录、术语表" : "";
-  return (
-    chapters.join("\n\n") +
-    (glossary ? `\n\n${glossary}\n\n| 术语 | 说明 |\n|---|---|\n| 门槛 | 进场前置条件 |` : "")
-  );
+function goodReport(): string {
+  return reportChapters()
+    .map((c) => {
+      const body = c.sections
+        .map((sec) => {
+          const arts = sec.artifacts ?? [];
+          const lines = [`### ${sec.title}`, "", `${sec.title}的归纳正文。`];
+          if (arts.includes("table")) {
+            lines.push("", "| 层次 | 组成 | 作用 |", "|---|---|---|", "| 主链 | PLC | 控制闭环 |");
+          }
+          if (arts.includes("numbered-connections")) lines.push("", "① 仪表 → 网关；② 网关 → 平台。");
+          if (arts.includes("principles")) lines.push("", "原则一 不替代原系统；原则二 不参与联锁。");
+          if (arts.includes("value-table"))
+            lines.push(
+              "",
+              "| 价值 | 现在 | 采用后 | 怎么核 |",
+              "|---|---|---|---|",
+              "| 价值一：会前不再逐台开机 | 提前 5–10 分钟接线（行业 3~10 分钟） | 碰一碰拉起，秒级就绪 | 预约开始时间与设备就绪时间戳差 |",
+              "| 价值二：离场自动释放 | 占而不用与找不到房并存 | 自动释放、超时回收 | 按月比对预约与实际通电时段 |",
+              "| 价值三：故障改远程 | 靠报修与到场 | 远程监控与 OTA | 工单上门次数与修复时长同期对比 |",
+            );
+          return lines.join("\n");
+        })
+        .join("\n\n");
+      return `## ${reportChapterHeading(c.key)}\n\n${body}`;
+    })
+    .join("\n\n");
 }
 
 /** 让 mock 逐次返回不同文本（用于验证"重写一次"） */
@@ -88,7 +68,7 @@ function dshOf(responses: string[]): { client: DshClient; calls: string[] } {
   return { client, calls };
 }
 
-/** 按提示词内容决定返回什么（两份报告并发写，按调用顺序编号不可靠） */
+/** 按提示词内容决定返回什么（整篇撰写与压缩回炉靠提示词区分） */
 function dshByPrompt(
   pick: (input: { system: string; user: string }) => string,
 ): { client: DshClient; calls: string[] } {
@@ -161,118 +141,130 @@ afterEach(() => {
 });
 
 describe("交付物报告生成（模型撰写 + 确定性校验）", () => {
-  it("模型写好六章 → 落盘两份，全部来自模型，done 事件带字数", async () => {
-    const { client } = dshOf([goodReport("internal"), goodReport("external")]);
+  it("模型写好五章 → 落盘一份，全部来自模型，done 事件带字数", async () => {
+    const { client } = dshOf([goodReport()]);
     const events = await run(h.db, client, h.scenarioId);
 
     const done = events.find((e) => e.type === "done")!;
     expect(done).toBeDefined();
     const sources = done["sources"] as { kind: string; from: string }[];
-    expect(sources.filter((s) => s.kind === "internal").every((s) => s.from === "模型")).toBe(true);
+    expect(sources).toHaveLength(5);
+    expect(sources.every((s) => s.kind === "solution" && s.from === "模型")).toBe(true);
+    const report = done["report"] as { solution_chars: number };
+    expect(report.solution_chars).toBeGreaterThan(0);
+    // 变更表 #136：不再有 internal_chars / external_chars 两个字数
+    expect(report).not.toHaveProperty("internal_chars");
+    expect(report).not.toHaveProperty("external_chars");
 
-    expect(existsSync(join(h.dir, `${h.scenarioId}.internal.md`))).toBe(true);
-    expect(existsSync(join(h.dir, `${h.scenarioId}.external.md`))).toBe(true);
-    const internal = readFileSync(join(h.dir, `${h.scenarioId}.internal.md`), "utf8");
-    expect(internal).toContain("## 一、现状");
-    expect(internal).toContain("## 五、主要风险点");
-    expect(internal).not.toContain("## 六、下一步");
-    // 内部版到风险章为止，不出附录（变更表 #124）
-    expect(internal).not.toContain("附录");
+    const path = join(h.dir, `${h.scenarioId}.solution.md`);
+    expect(existsSync(path)).toBe(true);
+    // 两份口径的旧文件不再落盘
+    expect(existsSync(join(h.dir, `${h.scenarioId}.internal.md`))).toBe(false);
+    expect(existsSync(join(h.dir, `${h.scenarioId}.external.md`))).toBe(false);
+
+    const saved = readFileSync(path, "utf8");
+    expect(saved).toContain("## 现状");
+    expect(saved).toContain("## 方案");
+    expect(saved).toContain("## 价值");
+    expect(saved).toContain("## 下一步");
+    // 章标题不带手写序号（编号交给 Word 自动编号）
+    expect(saved).not.toContain("## 一、");
+    // 内部口径的章与附录都已退场（变更表 #136）
+    expect(saved).not.toContain("主要风险点");
+    expect(saved).not.toContain("附录");
+    expect(saved).not.toContain("术语表");
   });
 
   it("正文超预算的章回炉压短（模型只删不加），压短后的正文进交付物", async () => {
-    // 现状章第一节的正文灌水到超预算（预算 550 字）
+    // 现状章第一节的正文灌水到超预算（预算 1000 字）
     const filler = "现状特征与提升空间";
-    const fat = goodReport("internal").replace(
+    const fat = goodReport().replace(
       `${filler}的归纳正文。`,
       `${filler}的归纳正文。`.repeat(80),
     );
-    const squeezed = goodReport("internal").replace(`${filler}的归纳正文。`, "压短后的现状结论。");
-    const { client, calls } = dshOf([fat, squeezed, goodReport("external")]);
+    const squeezed = goodReport().replace(`${filler}的归纳正文。`, "压短后的现状结论。");
+    const { client, calls } = dshOf([fat, squeezed]);
     await run(h.db, client, h.scenarioId);
 
-    const internal = readFileSync(join(h.dir, `${h.scenarioId}.internal.md`), "utf8");
-    expect(internal).toContain("压短后的现状结论。");
+    const saved = readFileSync(join(h.dir, `${h.scenarioId}.solution.md`), "utf8");
+    expect(saved).toContain("压短后的现状结论。");
     expect(calls.some((p) => p.includes("压到"))).toBe(true);
   });
 
   it("压缩把方案构件压没 → 作废这次压缩，保留原正文（缺构件比偏长更糟）", async () => {
     const filler = "现状特征与提升空间";
-    const fat = goodReport("internal").replace(
+    const fat = goodReport().replace(
       `${filler}的归纳正文。`,
       `${filler}的归纳正文。`.repeat(80),
     );
     // 压缩结果更短，但整章的小节结构被压平（原本 3 个小节，压完一个标题都没有）→ 不能采用
-    const lost = "## 一、现状\n\n只留一句话，小节标题被压没了。";
-    const { client } = dshByPrompt(({ system, user }) => {
-      if (user.includes("压到")) return lost;
-      return system.includes("对外汇报材料") ? goodReport("external") : fat;
-    });
+    const lost = "## 现状\n\n只留一句话，小节标题被压没了。";
+    const { client } = dshByPrompt(({ user }) => (user.includes("压到") ? lost : fat));
     await run(h.db, client, h.scenarioId);
-    const internal = readFileSync(join(h.dir, `${h.scenarioId}.internal.md`), "utf8");
-    expect(internal).toContain(`${filler}的归纳正文。`.repeat(80));
-    expect(internal).not.toContain("小节标题被压没了");
+    const saved = readFileSync(join(h.dir, `${h.scenarioId}.solution.md`), "utf8");
+    expect(saved).toContain(`${filler}的归纳正文。`.repeat(80));
+    expect(saved).not.toContain("小节标题被压没了");
   });
 
   it("压缩只删叙述、结构与构件都在 → 采用压缩结果", async () => {
     const filler = "现状特征与提升空间";
-    const fat = goodReport("internal").replace(
+    const fat = goodReport().replace(
       `${filler}的归纳正文。`,
       `${filler}的归纳正文。`.repeat(80),
     );
     // 同一章、小节标题与构件都保留，只是把灌水的叙述压成一句话
     const tight = fat.replace(`${filler}的归纳正文。`.repeat(80), "压短后的现状结论。");
-    const { client } = dshByPrompt(({ system, user }) => {
-      if (user.includes("压到")) return tight;
-      return system.includes("对外汇报材料") ? goodReport("external") : fat;
-    });
+    const { client } = dshByPrompt(({ user }) => (user.includes("压到") ? tight : fat));
     await run(h.db, client, h.scenarioId);
-    const internal = readFileSync(join(h.dir, `${h.scenarioId}.internal.md`), "utf8");
-    expect(internal).toContain("压短后的现状结论。");
+    const saved = readFileSync(join(h.dir, `${h.scenarioId}.solution.md`), "utf8");
+    expect(saved).toContain("压短后的现状结论。");
   });
 
-  it("对外版不装内部附录，也不出现内部表号", async () => {
-    const { client } = dshOf([goodReport("internal"), goodReport("external")]);
+  it("交付物不装内部附录，也不出现内部表号与内部口径的章", async () => {
+    const { client } = dshOf([goodReport()]);
     await run(h.db, client, h.scenarioId);
-    const external = readFileSync(join(h.dir, `${h.scenarioId}.external.md`), "utf8");
-    // 内部附录不再存在；对外术语表由模型写，写了才出现
-    expect(external).not.toContain("来源索引");
-    expect(external).not.toContain("信息覆盖概览");
-    expect(external).not.toMatch(/表\d+-\d+/);
+    const saved = readFileSync(join(h.dir, `${h.scenarioId}.solution.md`), "utf8");
+    // 内部附录、术语表、主要风险点章都已不存在（变更表 #136）
+    expect(saved).not.toContain("来源索引");
+    expect(saved).not.toContain("信息覆盖概览");
+    expect(saved).not.toContain("附录");
+    expect(saved).not.toContain("术语表");
+    expect(saved).not.toContain("主要风险点");
+    expect(saved).not.toMatch(/表\d+-\d+/);
   });
 
   it("模型漏章 + 写决策建议 → 重写一次；仍不达标则该章用要点版兜底", async () => {
-    const bad = "## 一、现状\n\n我方建议优先投入到试点。";
+    const bad = "## 现状\n\n我方建议优先投入到试点。";
     const { client, calls } = dshOf([bad, bad]);
     const events = await run(h.db, client, h.scenarioId);
 
-    // 每份报告：整篇写 2 次（重写）+ 缺章补写 1 次 = 3 次，两份共 6 次
-    expect(calls.length).toBe(6);
+    // 单份报告：整篇写 2 次（重写）+ 缺章补写 1 次 = 3 次
+    expect(calls.length).toBe(3);
     expect(calls.some((c) => c.includes("只写下面这几节"))).toBe(true);
     expect(calls[1]).toContain("上一次的问题");
 
     const done = events.find((e) => e.type === "done")!;
     expect((done["violations"] as { hard: boolean }[]).some((v) => v.hard)).toBe(true);
-    const internal = readFileSync(join(h.dir, `${h.scenarioId}.internal.md`), "utf8");
+    const saved = readFileSync(join(h.dir, `${h.scenarioId}.solution.md`), "utf8");
     // 缺的章由确定性要点版补上：章节齐全
-    for (const c of reportChaptersOf("internal")) {
-      expect(internal).toContain(reportChapterHeading("internal", c.key));
+    for (const c of reportChapters()) {
+      expect(saved).toContain(`## ${reportChapterHeading(c.key)}`);
     }
   });
 
-  it("对外材料泄漏内部信息 → 硬伤，触发重写；重写合格即通过", async () => {
-    const leaking = goodReport("external").replace(
-      "## 二、场景与问题",
-      "## 二、场景与问题\n\n见 表3-8，来源：客户台账。",
+  it("交付物泄漏内部信息 → 硬伤，触发重写；重写合格即通过", async () => {
+    const leaking = goodReport().replace(
+      "## 场景与问题",
+      "## 场景与问题\n\n见 表3-8，来源：客户台账。",
     );
-    const { client, calls } = dshOf([goodReport("internal"), leaking, goodReport("external")]);
+    const { client, calls } = dshOf([leaking, goodReport()]);
     const events = await run(h.db, client, h.scenarioId);
-    // 内部 1 次；对外 2 次（泄漏被拦下重写一次，重写版是干净的六章）
-    expect(calls.length).toBe(3);
+    // 泄漏被拦下重写一次，重写版是干净的五章
+    expect(calls.length).toBe(2);
     const done = events.find((e) => e.type === "done")!;
     expect((done["violations"] as { hard: boolean }[]).filter((v) => v.hard)).toEqual([]);
-    const external = readFileSync(join(h.dir, `${h.scenarioId}.external.md`), "utf8");
-    expect(external).not.toMatch(/表\d+-\d+/);
+    const saved = readFileSync(join(h.dir, `${h.scenarioId}.solution.md`), "utf8");
+    expect(saved).not.toMatch(/表\d+-\d+/);
   });
 
   it("还没有任何表格数据 → 直接报错，不去调用模型", async () => {
@@ -284,7 +276,7 @@ describe("交付物报告生成（模型撰写 + 确定性校验）", () => {
       status: "进行中",
       current_stage: 6,
     });
-    const { client, calls } = dshOf([goodReport("internal")]);
+    const { client, calls } = dshOf([goodReport()]);
     const events = await run(empty, client, sc.id);
     expect(events[0]!.type).toBe("error");
     expect(calls.length).toBe(0);
@@ -295,16 +287,20 @@ describe("报告服务：正式版优先，没有则要点版", () => {
   it("未生成时返回要点版（generated=false），生成后返回正式版", async () => {
     const db = h.db;
     const scenario = db.scenarioRepo.getById(h.scenarioId)!;
-    const before = getReport(db, scenario, "internal");
+    const before = getReport(db, scenario);
+    expect(before.kind).toBe("solution");
     expect(before.generated).toBe(false);
-    expect(before.markdown).toContain("## 一、现状");
+    expect(before.markdown).toContain("## 现状");
+    // 要点版只有数据要点，没有模型写的价值表
+    expect(before.markdown).not.toContain("价值一：会前不再逐台开机");
 
-    const { client } = dshOf([goodReport("internal"), goodReport("external")]);
+    const { client } = dshOf([goodReport()]);
     await run(db, client, h.scenarioId);
-    const after = getReportPair(db, scenario);
-    expect(after.internal.generated).toBe(true);
-    expect(after.external.generated).toBe(true);
-    expect(after.internal.generated_at).toBeTruthy();
+    const after = getReport(db, scenario);
+    expect(after.generated).toBe(true);
+    expect(after.generated_at).toBeTruthy();
+    // 读到的是模型撰写的正式版（`<id>.solution.md`），不是即时推导的要点版
+    expect(after.markdown).toContain("价值一：会前不再逐台开机");
   });
 });
 

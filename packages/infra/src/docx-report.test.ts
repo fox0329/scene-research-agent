@@ -3,9 +3,10 @@
  *
  * 覆盖：
  * - 必需 OOXML 部件齐全（少一个 Word 就打不开）
- * - 封面（48 半磅标题）、TOC 域、Heading1/2 大纲样式、标题不挂自动编号
+ * - 封面（48 半磅标题）、TOC 域、Heading1/2 大纲样式
+ * - 章节自动编号（word/numbering.xml 多级列表 + Heading1/2/3 挂 numPr）与手写章号剥离
  * - A4 页面与 3.2cm 左边距
- * - Markdown 表格 → Word 表格（分隔行丢弃、首行 tblHeader）
+ * - Markdown 表格 → Word 表格（分隔行丢弃、首行 tblHeader、表后补空段落）
  * - settings.updateFields（打开即刷新目录与页码域）
  * - 文本 XML 转义
  * - 真实报告（exports/ 下的定稿）转出的部件、表数量与章标题齐全
@@ -48,6 +49,7 @@ const REQUIRED_PARTS = [
   "_rels/.rels",
   "word/document.xml",
   "word/styles.xml",
+  "word/numbering.xml",
   "word/settings.xml",
   "word/_rels/document.xml.rels",
   "word/footer1.xml",
@@ -86,6 +88,19 @@ function countTag(xml: string, tag: string): number {
 
 function paragraphsWithStyle(xml: string, styleId: string): string[] {
   return paragraphsOf(xml).filter((para) => para.includes(`<w:pStyle w:val="${styleId}"/>`));
+}
+
+/** styles.xml 里某个 `<w:style>` 的切片（样式不嵌套，取到下一个 `</w:style>` 即可） */
+function styleXmlOf(stylesXml: string, styleId: string): string {
+  const start = stylesXml.indexOf(`w:styleId="${styleId}"`);
+  if (start === -1) return "";
+  const end = stylesXml.indexOf("</w:style>", start);
+  return stylesXml.slice(start, end);
+}
+
+/** `</w:tbl>` 后面紧跟空段落的次数 */
+function countTableBlankLine(xml: string): number {
+  return (xml.match(/<\/w:tbl><w:p\/>/g) ?? []).length;
 }
 
 /** 连续 `|` 行的组数 = Markdown 里的表格张数 */
@@ -145,10 +160,10 @@ describe("reportMarkdownToDocx — 基本形态", () => {
     expect(doc).toContain('w:fldCharType="end"');
     expect(doc).toContain('<w:br w:type="page"/>');
 
-    expect(paragraphsWithStyle(doc, "Heading1").map(textOf)).toContain("一、现状");
+    expect(paragraphsWithStyle(doc, "Heading1").map(textOf)).toContain("现状");
     expect(paragraphsWithStyle(doc, "Heading2").map(textOf)).toContain("场景在业务中的位置");
 
-    // 标题自带「一、现状」，不许再挂自动编号
+    // 编号挂在 styles.xml 的 Heading 样式上（numPr），document.xml 里不重复写
     expect(doc).not.toContain("<w:numPr>");
     expect(parts["word/styles.xml"]).toContain('w:outlineLvl w:val="0"');
     expect(parts["word/styles.xml"]).toContain('w:line="578"');
@@ -189,6 +204,134 @@ describe("reportMarkdownToDocx — 基本形态", () => {
     expect(doc).toContain('<w:b/><w:sz w:val="21"/><w:szCs w:val="21"/>');
     const headerRow = doc.slice(doc.indexOf("<w:tr>"), doc.indexOf("</w:tr>"));
     expect(headerRow).toContain('w:jc w:val="center"');
+  });
+
+  it("每个表格后面紧跟一个空段落（表格是最后一个块时也补）", async () => {
+    const markdown = `# 表格空行测试
+
+## 一、现状
+
+| 序号 | 名称 |
+| --- | --- |
+| 1 | A |
+
+紧跟表格的正文段
+
+| 序号 | 名称 |
+| --- | --- |
+| 1 | B |
+`;
+    const parts = await partsOf(await reportMarkdownToDocx(markdown));
+    const doc = parts["word/document.xml"] ?? "";
+    expect(countTag(doc, "w:tbl")).toBe(2);
+    // 每个 `</w:tbl>` 后面正好一个空段落
+    expect(countTableBlankLine(doc)).toBe(2);
+    // 表格 → 空段落 → 正文段：正文不贴着表格
+    expect(doc).toContain("</w:tbl><w:p/><w:p>");
+    // Markdown 里表格后的空行本身不产生段落，不许再叠一个空段
+    expect(doc).not.toContain("</w:tbl><w:p/><w:p/>");
+    // 末尾的表格也补空段落，body 仍以 sectPr 收尾
+    expect(doc).toMatch(/<\/w:tbl><w:p\/><w:sectPr>/);
+  });
+
+  it("章节编号走 Word 多级列表：numbering.xml 是 1 / 1.1 / 1.1.1，Heading1/2/3 挂 numId=1", async () => {
+    const parts = await partsOf(await reportMarkdownToDocx(SAMPLE));
+    const numbering = parts["word/numbering.xml"] ?? "";
+    expect(numbering).toContain('w:numFmt w:val="decimal"');
+    expect(numbering).toContain('<w:lvlText w:val="%1"/>');
+    expect(numbering).toContain('<w:lvlText w:val="%1.%2"/>');
+    expect(numbering).toContain('<w:lvlText w:val="%1.%2.%3"/>');
+    expect(numbering).toContain('<w:multiLevelType w:val="multilevel"/>');
+    expect(numbering).toContain('<w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num>');
+    expect((numbering.match(/<w:start w:val="1"\/>/g) ?? []).length).toBe(3);
+    expect((numbering.match(/w:ind w:left="0" w:hanging="0"/g) ?? []).length).toBe(3);
+
+    const styles = parts["word/styles.xml"] ?? "";
+    const levels: ReadonlyArray<[string, number]> = [
+      ["Heading1", 0],
+      ["Heading2", 1],
+      ["Heading3", 2],
+    ];
+    for (const [styleId, ilvl] of levels) {
+      const style = styleXmlOf(styles, styleId);
+      expect(style).not.toBe("");
+      expect(style).toContain(`<w:numPr><w:ilvl w:val="${ilvl}"/><w:numId w:val="1"/></w:numPr>`);
+    }
+    // Heading4 不挂编号
+    expect(styleXmlOf(styles, "Heading4")).not.toContain("<w:numId");
+
+    // 部件接得上：Content_Types 声明 + document.xml.rels 关系（Word 才能读到）
+    expect(parts["[Content_Types].xml"]).toContain('PartName="/word/numbering.xml"');
+    const rels = parts["word/_rels/document.xml.rels"] ?? "";
+    expect(rels).toContain("http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering");
+    expect(rels).toContain('Target="numbering.xml"');
+  });
+
+  it("标题行首的手写章号剥掉，改由 Word 自动编号", async () => {
+    const markdown = `# 1.2 智慧会议室 解决方案
+
+## 一、现状
+
+### 3.2 场景边界
+
+## （二）方案
+
+#### 十一、深层要点
+
+## 四、
+`;
+    const parts = await partsOf(await reportMarkdownToDocx(markdown));
+    const doc = parts["word/document.xml"] ?? "";
+    expect(paragraphsWithStyle(doc, "Heading1").map(textOf)).toEqual(["现状", "方案", "四、"]);
+    expect(paragraphsWithStyle(doc, "Heading2").map(textOf)).toEqual(["场景边界"]);
+    expect(paragraphsWithStyle(doc, "Heading3").map(textOf)).toEqual(["深层要点"]);
+    // 封面 `#` 标题不剥：报告名里可能有别的数字
+    expect(doc).toContain('<w:t xml:space="preserve">1.2 智慧会议室 解决方案</w:t>');
+  });
+
+  it("阿拉伯与括号式章号的各写法都能剥掉", async () => {
+    const markdown = `# 编号写法
+
+## 1. 甲
+
+## 1.1 乙
+
+## 1.1.1 丙
+
+## 1、丁
+
+## 1.1、 戊
+
+## (1) 己
+
+### 7.2 庚
+`;
+    const parts = await partsOf(await reportMarkdownToDocx(markdown));
+    const doc = parts["word/document.xml"] ?? "";
+    expect(paragraphsWithStyle(doc, "Heading1").map(textOf)).toEqual(["甲", "乙", "丙", "丁", "戊", "己"]);
+    expect(paragraphsWithStyle(doc, "Heading2").map(textOf)).toEqual(["庚"]);
+  });
+
+  it("只剥行首编号：没有编号分隔符的数字开头不动", async () => {
+    const markdown = `# 数字测试
+
+## 2026 年规划
+
+## 10 个要点
+
+## 一般来说
+
+## 十一五期间的存量
+`;
+    const parts = await partsOf(await reportMarkdownToDocx(markdown));
+    const doc = parts["word/document.xml"] ?? "";
+    // `2026`/`10` 后面没有 `.`/`、`，「一般来说」「十一五」不是章号 → 原样保留
+    expect(paragraphsWithStyle(doc, "Heading1").map(textOf)).toEqual([
+      "2026 年规划",
+      "10 个要点",
+      "一般来说",
+      "十一五期间的存量",
+    ]);
   });
 
   it("settings.xml 打开文档时自动刷新目录与页码域，页脚用 PAGE/NUMPAGES", async () => {
@@ -238,12 +381,16 @@ describe("reportMarkdownToDocx — 真实报告（exports/ 定稿）", () => {
     for (const part of [...REQUIRED_PARTS, "word/header1.xml"]) {
       expect(names).toContain(part);
     }
+    // 章节自动编号部件必须在包里
+    expect(names).toContain("word/numbering.xml");
 
     const doc = parts["word/document.xml"] ?? "";
     const markdownTables = countMarkdownTables(markdown);
     expect(markdownTables).toBe(6);
     expect(countTag(doc, "w:tbl")).toBeGreaterThanOrEqual(6);
     expect(countTag(doc, "w:tbl")).toBe(markdownTables);
+    // 每张表后面都跟了一个空段落
+    expect(countTableBlankLine(doc)).toBe(markdownTables);
 
     const chapters = markdown
       .split("\n")
@@ -252,9 +399,17 @@ describe("reportMarkdownToDocx — 真实报告（exports/ 定稿）", () => {
     expect(chapters.length).toBeGreaterThanOrEqual(5);
     const h1Texts = paragraphsWithStyle(doc, "Heading1").map(textOf);
     const docText = textOf(doc);
-    for (const chapter of chapters) {
-      expect(docText).toContain(chapter);
-      expect(h1Texts).toContain(chapter);
+    // 章标题里的手写章号（「一、」「二、」…）已剥掉，交给 Word 自动编号
+    expect(h1Texts.length).toBe(chapters.length);
+    for (const text of h1Texts) {
+      expect(text).not.toMatch(/^[一二三四五六七八九十]{1,3}[、.．]/);
+      expect(text).not.toMatch(/^\d+(?:\.\d+)*[.、]\s/);
+    }
+    for (const [index, chapter] of chapters.entries()) {
+      const stripped = chapter.replace(/^[一二三四五六七八九十]{1,3}[、.．]\s*/, "").trim();
+      expect(stripped).not.toBe("");
+      expect(docText).toContain(stripped);
+      expect(h1Texts[index]).toBe(stripped);
     }
     // `---` 分章线只丢弃，不进正文（表格分隔行也一并丢弃）
     expect(doc).not.toContain("---");

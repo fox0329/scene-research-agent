@@ -13,12 +13,14 @@
  *  - `##`→Heading1、`###`→Heading2、`####`→Heading3、`#####`/`######`→Heading4，
  *    后续若再出现 `#` 也按 Heading1（报告里只应有一个 `#`）；
  *  - `---`（分隔线）忽略，不生成内容也不分页；
- *  - 连续的 `| … |` 行 = 表格，`| --- |` 分隔行丢弃，首行 = 表头；
+ *  - 连续的 `| … |` 行 = 表格，`| --- |` 分隔行丢弃，首行 = 表头；每个表格后紧跟一个空段落；
  *  - `- ` / `* ` 行 = 项目符号段落；其余非空行 = 正文段落；
  *  - 行内 `**x**` → 加粗 run。
  *
- * 标题**不挂** Word 多级列表编号：报告标题自带「一、现状 / ### 小节名」，自动编号会双重编号；
- * 只设 outlineLvl，目录（TOC 域）照样能抓。
+ * 标题挂 Word 多级列表编号（`word/numbering.xml`，numId=1，Heading1/2/3 → ilvl 0/1/2，
+ * 阿拉伯数字 1 / 1.1 / 1.1.1，规范 §2.1）：章节增删由 Word 自动重排。
+ * 因此 `##` 及更深的标题文字里**已有的章号要先剥掉**（「一、现状」→「现状」），
+ * 否则会和自动编号叠成「1 一、现状」；封面 `#` 标题不剥——报告名里可能有别的数字。
  *
  * @module docx-report
  */
@@ -53,6 +55,14 @@ const FONT_CN_COVER = "黑体";
 /** 封面上标题之前空几行（用户定稿：「在第一页往下空3行显示」） */
 const COVER_BLANK_LINES = 3;
 
+/** 空段落：封面留白、表格后留白共用 */
+const EMPTY_PARAGRAPH_XML = "<w:p/>";
+
+/** 多级列表 numId（规范 §2.1：章节编号走 numId=1） */
+const NUMBERING_NUM_ID = "1";
+/** 三级章节编号格式：Heading1 → %1、Heading2 → %1.%2、Heading3 → %1.%2.%3 */
+const NUMBERING_LEVEL_TEXTS: ReadonlyArray<string> = ["%1", "%1.%2", "%1.%2.%3"];
+
 /** A4 = 210×297mm，1cm = 567 twip */
 const PAGE_WIDTH = 11906;
 const PAGE_HEIGHT = 16838;
@@ -70,6 +80,7 @@ const TOC_PLACEHOLDER = "右键更新域以生成目录";
 const CONTENT_TYPE_OVERRIDES: ReadonlyArray<[string, string]> = [
   ["/word/document.xml", "application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"],
   ["/word/styles.xml", "application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"],
+  ["/word/numbering.xml", "application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml"],
   ["/word/settings.xml", "application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml"],
   ["/docProps/core.xml", "application/vnd.openxmlformats-package.core-properties+xml"],
   ["/docProps/app.xml", "application/vnd.openxmlformats-officedocument.extended-properties+xml"],
@@ -240,9 +251,23 @@ function paragraphStyleXml(spec: ParagraphStyleSpec): string {
   return `<w:style ${attrs}>${children.join("")}</w:style>`;
 }
 
-/** 标题样式：只给字号/行距/大纲级别，不挂 numPr（避免双重编号） */
-function headingStyleXml(id: string, name: string, outlineLevel: number, half: number, spacing: string): string {
-  const pPr = spacing + NO_INDENT + `<w:outlineLvl w:val="${outlineLevel}"/>`;
+/**
+ * 标题样式：字号/行距/大纲级别 + 章节自动编号（numLevel 给出 ilvl，Heading4 不挂）。
+ * `w:pPr` 子元素顺序是 schema 固定的：numPr → spacing → ind → outlineLvl。
+ */
+function headingStyleXml(
+  id: string,
+  name: string,
+  outlineLevel: number,
+  half: number,
+  spacing: string,
+  numLevel?: number,
+): string {
+  const numPr =
+    numLevel === undefined
+      ? ""
+      : `<w:numPr><w:ilvl w:val="${numLevel}"/><w:numId w:val="${NUMBERING_NUM_ID}"/></w:numPr>`;
+  const pPr = numPr + spacing + NO_INDENT + `<w:outlineLvl w:val="${outlineLevel}"/>`;
   const rPr = `${rFontsXml(FONT_CN_BODY)}<w:b/><w:sz w:val="${half}"/><w:szCs w:val="${half}"/>`;
   return paragraphStyleXml({ id, name, pPr, rPr });
 }
@@ -270,9 +295,9 @@ function stylesXml(): string {
   });
   const h1Spacing = '<w:spacing w:before="340" w:after="330" w:line="578" w:lineRule="exact"/>';
   const headings = [
-    headingStyleXml("Heading1", "heading 1", 0, 32, h1Spacing),
-    headingStyleXml("Heading2", "heading 2", 1, 30, LINE_ONE_HALF),
-    headingStyleXml("Heading3", "heading 3", 2, 30, LINE_ONE_HALF),
+    headingStyleXml("Heading1", "heading 1", 0, 32, h1Spacing, 0),
+    headingStyleXml("Heading2", "heading 2", 1, 30, LINE_ONE_HALF, 1),
+    headingStyleXml("Heading3", "heading 3", 2, 30, LINE_ONE_HALF, 2),
     headingStyleXml("Heading4", "heading 4", 3, 28, LINE_ONE_HALF),
   ].join("");
   return `${XML_DECL}
@@ -282,6 +307,29 @@ function stylesXml(): string {
 function settingsXml(): string {
   return `${XML_DECL}
 <w:settings xmlns:w="${W_NS}"><w:zoom w:percent="100"/><w:defaultTabStop w:val="420"/><w:updateFields w:val="true"/><w:compat><w:compatSetting w:name="compatibilityMode" w:uri="http://schemas.microsoft.com/office/word" w:val="15"/></w:compat></w:settings>`;
+}
+
+// ─── 多级列表（章节自动编号）─────────────────────────────────
+
+/** 一级 lvl；`w:lvl` 子元素顺序固定：start → numFmt → lvlText → lvlJc → pPr */
+function numberingLevelXml(level: number, levelText: string): string {
+  return (
+    `<w:lvl w:ilvl="${level}"><w:start w:val="1"/><w:numFmt w:val="decimal"/>` +
+    `<w:lvlText w:val="${levelText}"/><w:lvlJc w:val="left"/>` +
+    '<w:pPr><w:ind w:left="0" w:hanging="0"/></w:pPr></w:lvl>'
+  );
+}
+
+/**
+ * `word/numbering.xml`：一条三级多级列表（numId=1），格式 1 / 1.1 / 1.1.1（规范 §2.1）。
+ * Heading1/2/3 的样式里挂 numPr 指到这条列表，增删章节时 Word 自动重排编号。
+ */
+function numberingXml(): string {
+  const levels = NUMBERING_LEVEL_TEXTS.map((text, level) => numberingLevelXml(level, text)).join("");
+  const abstractNum = `<w:abstractNum w:abstractNumId="0"><w:multiLevelType w:val="multilevel"/>${levels}</w:abstractNum>`;
+  const num = `<w:num w:numId="${NUMBERING_NUM_ID}"><w:abstractNumId w:val="0"/></w:num>`;
+  return `${XML_DECL}
+<w:numbering xmlns:w="${W_NS}">${abstractNum}${num}</w:numbering>`;
 }
 
 // ─── Markdown → 块 ──────────────────────────────────────────
@@ -320,6 +368,47 @@ function matchHeading(line: string): HeadingMatch | null {
 /** `##`→Heading1、`###`→Heading2、`####`→Heading3、`#####`/`######`→Heading4；`#` 夹到 Heading1 */
 function headingStyleId(level: number): string {
   return `Heading${Math.min(Math.max(level - 1, 1), 4)}`;
+}
+
+/** 中文数字（含「十一」这类组合） */
+const CN_NUMERAL = "一二三四五六七八九十百零〇";
+
+/**
+ * 标题行首的章号写法（报告里出现过的手写编号都要认出）：
+ * `一、` `十一、` / `一.` `一．` / `1、` `1.1、` / `1.` `1.1` `1.1.1` / `（一）` `(1)`。
+ *
+ * 阿拉伯编号分两条：
+ *  - 「数字 + 顿号」不强制跟空白——顿号在中文里只当编号分隔符（`1、现状` 也要剥）；
+ *  - 「数字 + 点」必须跟空白（`1. 现状`），多级点分只认 `1.1` / `1.1.1` 这种「点后还有数字」的写法，
+ *    这样「2026 年规划」「10 个要点」原样保留（`1.5 倍增长` 与小节号 `1.5` 无法区分，按规范一律剥）。
+ */
+const HEADING_NUMBER_PATTERNS: ReadonlyArray<RegExp> = [
+  new RegExp(`^[${CN_NUMERAL}]{1,3}、\\s*`),
+  new RegExp(`^[${CN_NUMERAL}]{1,3}[.．]\\s*`),
+  /^\d+(?:\.\d+)*、\s*/,
+  /^\d+(?:\.\d+)*\.\s+/,
+  /^\d+(?:\.\d+)+\s+/,
+  new RegExp(`^[（(][${CN_NUMERAL}0-9]{1,4}[）)]\\s*`),
+];
+
+/**
+ * 剥掉标题文字里已有的章号（「一、现状」→「现状」）。
+ * 编号已交给 Word 多级列表自动生成，不剥就会叠成「1 一、现状」。
+ * 剥完为空说明整行只剩编号，保留原文——宁可编号重复也不要空标题。
+ */
+function stripHeadingNumber(text: string): string {
+  const trimmed = text.trim();
+  for (const pattern of HEADING_NUMBER_PATTERNS) {
+    if (!pattern.test(trimmed)) continue;
+    const stripped = trimmed.replace(pattern, "").trim();
+    if (stripped !== "") return stripped;
+  }
+  return trimmed;
+}
+
+/** 标题：`#`（封面后的第一个）保持原文，`##` 及更深剥掉手写章号 */
+function headingTextOf(heading: HeadingMatch): string {
+  return heading.level === 1 ? heading.text : stripHeadingNumber(heading.text);
 }
 
 function headingParagraphXml(level: number, text: string): string {
@@ -390,7 +479,10 @@ function renderBlocks(lines: string[], start: number): string {
     }
     if (isTableRow(line)) {
       const { rows, next } = collectTable(lines, index);
-      out.push(tableXml(rows));
+      const table = tableXml(rows);
+      // 表格后紧跟一个空段落：正文不会贴着表格（且 Word 要求表格不能是 body 的最后一个元素）。
+      // Markdown 里表格后的空行本来就不产生段落，所以这里不会出现两个连续空段。
+      if (table !== "") out.push(table + EMPTY_PARAGRAPH_XML);
       index = next;
       continue;
     }
@@ -401,7 +493,7 @@ function renderBlocks(lines: string[], start: number): string {
     }
     const heading = matchHeading(line);
     if (heading !== null) {
-      out.push(headingParagraphXml(heading.level, heading.text));
+      out.push(headingParagraphXml(heading.level, headingTextOf(heading)));
       index += 1;
       continue;
     }
@@ -430,7 +522,7 @@ function takeCover(lines: string[]): { xml: string; title: string; start: number
   index += 1;
   while (index < lines.length && isBlank(lines[index] ?? "")) index += 1;
   while (index < lines.length && isQuote(lines[index] ?? "")) index += 1;
-  const blanks = "<w:p/>".repeat(COVER_BLANK_LINES);
+  const blanks = EMPTY_PARAGRAPH_XML.repeat(COVER_BLANK_LINES);
   return { xml: blanks + coverTitleXml(heading.text), title: heading.text, start: index };
 }
 
@@ -478,6 +570,7 @@ function documentRelsXml(hasHeader: boolean): string {
   const docRels = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
   const items = [
     `<Relationship Id="rIdStyles" Type="${docRels}/styles" Target="styles.xml"/>`,
+    `<Relationship Id="rIdNumbering" Type="${docRels}/numbering" Target="numbering.xml"/>`,
     `<Relationship Id="rIdSettings" Type="${docRels}/settings" Target="settings.xml"/>`,
   ];
   if (hasHeader) items.push(`<Relationship Id="rIdHeader" Type="${docRels}/header" Target="header1.xml"/>`);
@@ -534,6 +627,7 @@ export async function reportMarkdownToDocx(markdown: string, opts: DocxOptions =
   add("_rels/.rels", rootRelsXml());
   add("word/document.xml", documentXml(body, hasHeader));
   add("word/styles.xml", stylesXml());
+  add("word/numbering.xml", numberingXml());
   add("word/settings.xml", settingsXml());
   add("word/_rels/document.xml.rels", documentRelsXml(hasHeader));
   add("word/_rels/footer1.xml.rels", emptyRelsXml());

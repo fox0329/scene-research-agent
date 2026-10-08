@@ -97,7 +97,7 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
   const current = flow?.steps.find((s) => s.id === flow.currentStep);
   const stepStage = (flowStep(step).stage ?? DELIVERY_STAGE) as InfoStageId;
 
-  /* 流程轴第二行：当前正在看的那一步的输出物（交付物步 = 两份报告） */
+  /* 流程轴第二行：当前正在看的那一步的输出物（交付物步 = 一份解决方案） */
   const railOutputs = useMemo<StepOutput[]>(
     () => stepOutputsOf(step, flowStep(step).tables, FLOW_TOTAL),
     [step],
@@ -308,7 +308,7 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
     setDemoAnchor(rows.map((r) => ({ ...r })));
   }, []);
 
-  /** 交付物双口径导出（T5.6）：真实链路落服务端 exports/，toast 回显路径 */
+  /** 交付物导出（T5.6）：真实链路落服务端 exports/，toast 回显路径 */
   const [exporting, setExporting] = useState(false);
   const handleExport = useCallback(async () => {
     if (!live) {
@@ -319,7 +319,7 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
     setExporting(true);
     try {
       const r = await api.exportDeliverables(project.id);
-      showToast(`双口径导出完成：内部版 ${r.internal_path}；客户版 ${r.external_path}`);
+      showToast(`已导出：${r.path}`);
     } catch (err: unknown) {
       showToast(`导出失败：${err instanceof Error ? err.message : String(err)}`);
     } finally {
