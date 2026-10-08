@@ -21,7 +21,8 @@ describe("报告提示词（变更表 #112）", () => {
     const { system, user } = buildReportPrompt("internal", base);
     for (const c of reportChaptersOf("internal")) {
       expect(`${system}\n${user}`).toContain(reportChapterHeading("internal", c.key));
-      for (const sec of c.sections) expect(system).toContain(sec.title);
+      for (const sec of c.sections.filter((x) => x.only === undefined || x.only === "internal"))
+        expect(system).toContain(sec.title);
     }
   });
 
@@ -41,7 +42,8 @@ describe("报告提示词（变更表 #112）", () => {
     expect(user).toContain("方案构件");
     expect(user).toContain("不要写成前面内容的总结");
     const { system } = buildReportPrompt("external", base);
-    for (const word of ["设计原则", "编号", "度量口径", "不做什么", "术语"]) {
+    // 对外价值是四列表格（含怎么核），不是内部那种「价值N/度量口径」段落（变更表 #129）
+    for (const word of ["设计原则", "编号", "怎么核", "不替代", "术语"]) {
       expect(system, word).toContain(word);
     }
   });
@@ -67,6 +69,29 @@ describe("报告提示词（变更表 #112）", () => {
     expect(user).toContain("上一次的问题");
     expect(user).toContain("表3-8");
     expect(user).toContain("不得出现决策建议措辞");
+  });
+
+  it("只出现本口径的小节：内部不写门槛与合规/实施要点，对外不写能力边界，且同名小节不重复", () => {
+    const int = buildReportPrompt("internal", base).system;
+    // 不能用「门槛与合规」四个字断言：风险章的六类风险里正当提到它
+    expect(int).not.toContain("行业准入");
+    expect(int).not.toContain("回退路径");
+    expect(int).not.toContain("场景在业务中的位置");
+    // 内部价值是段落式：不给四列表头；「怎么核」四字会作为"不许写"的禁令正当出现
+    expect(int).not.toContain("| 价值 | 现在 | 采用后 | 怎么核 |");
+    expect(int).toContain("现状特征与提升空间");
+    expect(int).toContain("能力边界");
+    expect(int).toContain("价值一");
+    const ext = buildReportPrompt("external", base).system;
+    expect(ext).toContain("门槛与合规");
+    expect(ext).toContain("实施要点");
+    expect(ext).not.toContain("能力边界");
+    expect(ext).toContain("| 价值 | 现在 | 采用后 | 怎么核 |");
+    // 同一内容两份口径写法不同：内部有小节标题，对外是"章下直接写"
+    expect(int).toContain("`### 场景边界`");
+    expect(int).toContain("`### 典型问题`");
+    expect(ext).toContain("「场景边界」：**章下直接写，不要单独加 `###` 标题**");
+    expect(ext).toContain("「典型问题」：**章下直接写，不要单独加 `###` 标题**");
   });
 
   it("两份的篇幅口径不同，且都按用户定稿实测校准（内部 2500–4000 / 对外 3000–3600）", () => {

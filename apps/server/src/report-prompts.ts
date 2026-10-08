@@ -111,13 +111,18 @@ const ARTIFACT_HINT: Record<ReportArtifact, string> = {
     "「怎么核」写取值口径（取哪个系统的什么时间戳 / 读表 / 工单口径），一句话说清、不展开。表格下面**再写四条边界**：" +
     "**不替代**、**不参与**、**不承担**、**受限条件**（每条一段，**不套 `###` 小节标题**）",
   boundary: "明确写出「不做什么」（不替代什么、不参与什么、不承担什么）",
-  glossary: "术语 + 说明两列",
+  glossary: "术语 + 说明两列；**报告里出现过的缩写、协议、标准、系统名都要逐个解释**（只解释通行含义，不自己发明定义）",
   "risk-list":
     "「主要风险点」**只写落地方与交付侧的风险点**（3–8 条），每条按「风险 → 触发条件 → 影响 → 我们怎么应对/需要什么前置」说清，" +
     "范围限定在这几类：现场条件能否满足、设备能不能纳管、门槛与合规会不会被否决、交付依赖哪些第三方、施工与演示窗口、验收口径以谁为准。" +
     "**不写**「客户数据/基线还没拿到」「结论只是假设」「我们产品选型或上市时间」这类内部口径与自我限制；" +
     "**不列证据、不写来源与数据统计、不出现表号**（这些留在系统内，不进交付物）",
 };
+
+/** 本口径下要写的小节（契约里的小节可标 only，且同一名字可能在两份口径各有一版） */
+function sectionsForKind(kind: ReportKind, sections: readonly ReportSection[]): readonly ReportSection[] {
+  return sections.filter((sec) => sec.only === undefined || sec.only === kind);
+}
 
 /** 一节要写什么：小节名 + 该自建的构件 */
 function renderSection(sec: ReportSection): string {
@@ -149,7 +154,10 @@ const CHAPTER_LAYOUT: Partial<Record<ReportKind, Partial<Record<string, string>>
     problems:
       "本章版式：`## 二、场景与问题` 章下**先写一句场景边界**（管什么、不管什么，只对接不替换），**不套小节标题**；" +
       "紧接**一段问题归纳**（不设小节标题）：分几类、哪些属于接入与可见性、哪些属于数据与内容、哪些属于效率与投资保护，最后一句点出根因；" +
-      "然后才写 `### 门槛与合规`（技术 / 行业准入 / 经济三行，每行一句话说清门槛是什么、谁把关、量级多少，经济行带造价与商务量级并括注「行业通例量级」）。",
+      "然后才写 `### 门槛与合规`，**三行**（技术 / 行业准入 / 经济），每行一句话说清门槛是什么、量级多少、行业一般怎么过（素材里有否决方就写一句「谁把关」，没有就不写）——" +
+      "素材里的五类门槛要并成三行：认证类并进技术行，生态锁定不写在这里、并进价值章「受限条件」。" +
+      "经济行写行业通例的商务门槛（单间造价量级、集采常见门槛、保证金与质保比例、回款账期、分销与集成毛利区间）并括注「行业通例量级」，" +
+      "**不写我方的报价、成本与利润推演**。",
     solution:
       "本章版式：设计原则 → 总体架构表 → 主辅职责对照表 → 连接关系与接口（①②③…，与接口表一一对应）→ 选型与配置表（需求 \| 选型 \| 边界与前置条件）→ `### 实施要点`" +
       "（第一段按时间窗口说清推进主线与两条**订货前必须定的前置项**；第二段逐条给回退路径，原则是「不让现场停摆」）。",
@@ -166,7 +174,7 @@ const CHAPTER_LAYOUT: Partial<Record<ReportKind, Partial<Record<string, string>>
 function outputFormat(kind: ReportKind): string {
   const lines = reportChaptersOf(kind).flatMap((c) => [
     `- \`## ${reportChapterHeading(kind, c.key)}\``,
-    ...c.sections.map(renderSection),
+    ...sectionsForKind(kind, c.sections).map(renderSection),
     ...(CHAPTER_LAYOUT[kind]?.[c.key] ? [`  - ${CHAPTER_LAYOUT[kind]?.[c.key]}`] : []),
   ]);
   // 术语表只对外（内部报告到风险章为止，变更表 #124）
@@ -281,7 +289,8 @@ export function buildCompressPrompt(args: {
 
 /** 某一章在小节上的要求（术语表这类附录章没有小节） */
 function reportSectionsOf(kind: ReportKind, key: string): readonly ReportSection[] {
-  return reportChaptersOf(kind).find((c) => c.key === key)?.sections ?? [];
+  const chapter = reportChaptersOf(kind).find((c) => c.key === key);
+  return sectionsForKind(kind, chapter?.sections ?? []);
 }
 
 /** 每章原料：章名 + 该章的数据块（模型据此归纳） */

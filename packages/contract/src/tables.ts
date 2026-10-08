@@ -1592,7 +1592,11 @@ export const REPORT_CHAPTERS: readonly ReportChapter[] = [
     external: [
       { code: "表1-2", heading: "各环节现在的问题", cols: ["link", "pain"] },
       { code: "表3-8", heading: "今天还没被满足的需求", cols: ["gap", "who_hurts", "pain_level", "current_alternative"] },
-      { code: "表1-3", heading: "门槛与合规要求", cols: ["barrier_type", "barrier_name", "criteria"] },
+      {
+        code: "表1-3",
+        heading: "门槛与合规要求",
+        cols: ["barrier_type", "barrier_name", "criteria", "veto_holder", "industry_practice"],
+      },
     ],
   },
   {
