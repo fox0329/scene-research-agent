@@ -28,7 +28,8 @@
  * 输出纯 Markdown 字符串，不写文件。
  */
 
-import { copyFileSync, existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 
 import {
@@ -66,6 +67,78 @@ export function backupBeforeOverwrite(path: string): string | null {
     .reverse();
   for (const old of kept.slice(10)) rmSync(join(dir, old), { force: true });
   return target;
+}
+
+
+// ─── 先读后写（交付物写入保护，变更表 #131） ────────────────
+
+/**
+ * 写文件前**必须先读**：确认当前状态，再决定要不要改。
+ *
+ * 三种情形：
+ *  1. 文件不存在 → 写，并记指纹；
+ *  2. 内容与"应用上次写出的内容"**逐字节相同** → 什么都不做（连 mtime 都不动）；
+ *  3. 内容不同：
+ *     - 与应用上次写出的指纹一致（只是应用自己写过、这次内容变了）→ 留档后覆盖；
+ *     - 指纹不一致（**文件被手改过**）→ **不动用户的文件**，新内容另存为
+ *       `<名字> (应用版 YYYYMMDD-HHMMSS).md`，并给出提示。
+ *
+ * 用户手改过的交付物，任何一次生成/导出都不可能再静默覆盖它。
+ */
+export interface SafeWriteResult {
+  /** 内容实际落在哪个文件里（被手改时是另存名） */
+  path: string;
+  /** 有没有真的写盘（内容相同则不写） */
+  written: boolean;
+  /** 是否覆盖了原文件 */
+  overwritten: boolean;
+  /** 需要告诉用户的话（被手改时） */
+  notice?: string;
+}
+
+/** 应用上次写出的内容指纹存放在同目录 `.state/`，不污染交付物目录 */
+function fingerprintPath(path: string): string {
+  return join(dirname(path), ".state", `${basename(path)}.sha256`);
+}
+
+function sha256(text: string): string {
+  return createHash("sha256").update(text, "utf8").digest("hex");
+}
+
+export function safeWriteFile(path: string, content: string): SafeWriteResult {
+  const fp = fingerprintPath(path);
+  const next = sha256(content);
+  if (!existsSync(path)) {
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, content, "utf8");
+    recordFingerprint(fp, next);
+    return { path, written: true, overwritten: false };
+  }
+  const current = sha256(readFileSync(path, "utf8"));
+  if (current === next) return { path, written: false, overwritten: false }; // 一模一样：不碰文件
+  const recorded = existsSync(fp) ? readFileSync(fp, "utf8").trim() : "";
+  if (recorded === current) {
+    backupBeforeOverwrite(path);
+    writeFileSync(path, content, "utf8");
+    recordFingerprint(fp, next);
+    return { path, written: true, overwritten: true };
+  }
+  // 被手改过：保住用户的版本，新内容另存
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+  const alt = join(dirname(path), `${basename(path, ".md")} (应用版 ${stamp}).md`);
+  writeFileSync(alt, content, "utf8");
+  recordFingerprint(fingerprintPath(alt), next);
+  return {
+    path: alt,
+    written: true,
+    overwritten: false,
+    notice: `${basename(path)} 被手改过，已保留你的版本；新版本另存为 ${alt}`,
+  };
+}
+
+function recordFingerprint(fp: string, value: string): void {
+  mkdirSync(dirname(fp), { recursive: true });
+  writeFileSync(fp, `${value}\n`, "utf8");
 }
 
 // ─── 命名规则（00b §11.5） ──────────────────────────────────
@@ -367,16 +440,16 @@ export function reportChapterDigest(
       markdown: parts.join("\n").trim(),
     };
   }).concat(
-    isInternal
-      ? []
-      : [
+    REPORT_GLOSSARY[kind]
+      ? [
           {
             key: "glossary",
-            title: REPORT_GLOSSARY.external,
+            title: REPORT_GLOSSARY[kind] as string,
             /* 素材留空：术语表由模型撰写，写不出来就不出这一节（不许拿提示文字当正文） */
             markdown: "",
           },
-        ],
+        ]
+      : [],
   );
 }
 
@@ -438,10 +511,11 @@ function buildReport(
   for (const sec of INTERNAL_APPENDIX_SECTIONS) {
     if (sec.key === "coverage") sections.push(renderCoverage(sec.title, stageData));
   }
-  // 术语表只对外，由模型撰写（认不出的术语不硬编）；模型没写就不出现这一节，不造假
-  const glossary = bodyOf("glossary").trim();
-  if (glossary) {
-    sections.push([`## ${REPORT_GLOSSARY.external}`, "", glossary].join("\n"));
+  // 术语表：契约里有才装配（变更表 #131 起两份都没有），模型没写就不出现这一节，不造假
+  const glossary = REPORT_GLOSSARY[kind];
+  const glossaryBody = glossary ? bodyOf("glossary").trim() : "";
+  if (glossary && glossaryBody) {
+    sections.push([`## ${glossary}`, "", glossaryBody].join("\n"));
   }
 
   return sections.join("\n\n---\n\n");

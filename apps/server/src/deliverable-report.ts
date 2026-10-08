@@ -12,13 +12,13 @@
  * 不是业务事实；事实仍在 33 张表里），导出到 `exports/` 由 report-service 负责。
  */
 
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import type { DshClient, FollowEvent, Scenario, SessionHandle, StageData } from "@scene/contract";
 import { reportChaptersOf, tableDef } from "@scene/contract";
 import type { DbInstance } from "@scene/infra";
 import {
-  backupBeforeOverwrite,
+  safeWriteFile,
   buildReportMarkdown,
   reportChapterDigest,
   type ChapterDigest,
@@ -472,8 +472,9 @@ export function createDeliverableReportCommand(deps: DeliverableReportDeps) {
           if (written.violations.some((v) => v.hard)) result.passed = false;
           mkdirSync(deliverableDir(), { recursive: true });
           // 用户会直接在交付物上改字：覆盖前留档，手改永远可恢复（变更表 #127）
-          backupBeforeOverwrite(deliverableReportPath(scenario.id, kind));
-          writeFileSync(deliverableReportPath(scenario.id, kind), written.markdown, "utf8");
+          // 先读后写（变更表 #131）：内容相同不落盘；被手改过则保留用户版本、新版本另存
+          const saved = safeWriteFile(deliverableReportPath(scenario.id, kind), written.markdown);
+          if (saved.notice) console.warn(`[generate] ${saved.notice}`);
         }
       } catch (err: unknown) {
         failure = err;

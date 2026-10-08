@@ -9,16 +9,12 @@
  * - 空数据降级、文件命名规则
  */
 
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { describe, it, expect } from "vitest";
-import {
-  backupBeforeOverwrite,
-  exportDeliverables,
-  exportFileName,
-} from "./md-export.js";
+import { backupBeforeOverwrite, exportDeliverables, exportFileName, safeWriteFile } from "./md-export.js";
 import type { DeliverableInput, StageData } from "@scene/contract";
 
 // ─── 测试数据构造 ────────────────────────────────────────────
@@ -332,5 +328,49 @@ describe("backupBeforeOverwrite", () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("先读后写：交付物写入保护（变更表 #131）", () => {
+  it("文件不存在时正常写出", () => {
+    const dir = mkdtempSync(join(tmpdir(), "safewrite-"));
+    const path = join(dir, "报告.md");
+    const r = safeWriteFile(path, "第一版");
+    expect(r.written).toBe(true);
+    expect(r.overwritten).toBe(false);
+    expect(readFileSync(path, "utf8")).toBe("第一版");
+  });
+
+  it("内容与上次写出的一模一样时，不写盘、不动文件", () => {
+    const dir = mkdtempSync(join(tmpdir(), "safewrite-"));
+    const path = join(dir, "报告.md");
+    safeWriteFile(path, "同一份内容");
+    const before = statSync(path).mtimeMs;
+    const r = safeWriteFile(path, "同一份内容");
+    expect(r.written).toBe(false);
+    expect(statSync(path).mtimeMs).toBe(before);
+  });
+
+  it("应用自己写过、这次内容变了：留档后覆盖", () => {
+    const dir = mkdtempSync(join(tmpdir(), "safewrite-"));
+    const path = join(dir, "报告.md");
+    safeWriteFile(path, "第一版");
+    const r = safeWriteFile(path, "第二版");
+    expect(r.overwritten).toBe(true);
+    expect(readFileSync(path, "utf8")).toBe("第二版");
+    expect(readdirSync(join(dir, ".history")).length).toBe(1);
+  });
+
+  it("文件被手改过：不覆盖用户的文件，新版本另存", () => {
+    const dir = mkdtempSync(join(tmpdir(), "safewrite-"));
+    const path = join(dir, "报告.md");
+    safeWriteFile(path, "应用写的");
+    writeFileSync(path, "用户手改的", "utf8"); // 模拟用户手工编辑
+    const r = safeWriteFile(path, "应用新生成的");
+    expect(r.overwritten).toBe(false);
+    expect(r.path).not.toBe(path);
+    expect(readFileSync(path, "utf8")).toBe("用户手改的"); // 用户版本原样保留
+    expect(readFileSync(r.path, "utf8")).toBe("应用新生成的");
+    expect(r.notice).toContain("被手改过");
   });
 });

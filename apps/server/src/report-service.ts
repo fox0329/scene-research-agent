@@ -10,12 +10,12 @@
  * 不覆盖历史导出"与"导出即所见"两件事都成立（导出前先取同一份内容）。
  */
 
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import type { Scenario } from "@scene/contract";
 import type { DbInstance } from "@scene/infra";
 import {
-  backupBeforeOverwrite,
+  safeWriteFile,
   buildReportMarkdown,
   exportFileName,
   reportDateOf,
@@ -87,7 +87,7 @@ export function getReportPair(
 export function writeReportFiles(
   db: DbInstance,
   scenario: Scenario,
-): { internal_path: string; external_path: string } {
+): { internal_path: string; external_path: string; notice?: string } {
   const pair = getReportPair(db, scenario);
   const outDir = exportDir();
   mkdirSync(outDir, { recursive: true });
@@ -97,12 +97,12 @@ export function writeReportFiles(
   const externalDate = reportDateOf(pair.external.markdown, today);
   const internalPath = join(outDir, exportFileName(scenario.name, "internal", internalDate));
   const externalPath = join(outDir, exportFileName(scenario.name, "external", externalDate));
-  // 导出即覆盖：先把上一版移进 .history/，避免手改被静默吃掉（变更表 #127）
-  backupBeforeOverwrite(internalPath);
-  backupBeforeOverwrite(externalPath);
-  writeFileSync(internalPath, pair.internal.markdown, "utf8");
-  writeFileSync(externalPath, pair.external.markdown, "utf8");
-  return { internal_path: internalPath, external_path: externalPath };
+  // 先读后写（变更表 #131）：内容一模一样就一个字节都不动；被手改过就不覆盖用户文件，另存「(应用版 时间)」
+  const internal = safeWriteFile(internalPath, pair.internal.markdown);
+  const external = safeWriteFile(externalPath, pair.external.markdown);
+  const notice = [internal.notice, external.notice].filter(Boolean).join("；");
+  if (notice) console.warn(`[export] ${notice}`);
+  return { internal_path: internal.path, external_path: external.path, notice: notice || undefined };
 }
 
 /** 报告是否已生成（界面按钮文案用） */

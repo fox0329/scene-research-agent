@@ -1573,14 +1573,13 @@ export const REPORT_CHAPTERS: readonly ReportChapter[] = [
   {
     key: "problems",
     label: "场景与问题",
-    /* 变更表 #127：内部版只保留「场景边界 + 典型问题」；#129：对外版保留「门槛与合规」 */
+    /* 变更表 #127：内部版只保留「场景边界 + 典型问题」；#131：对外版也删掉「门槛与合规」（用户定稿），两版都是章下直接写 */
     sections: [
       /* 变更表 #129：内部版这两节有小节标题；对外版直接写在章下（用户定稿如此） */
       { title: "场景边界", keywords: ["边界"], only: "internal" },
       { title: "典型问题", keywords: ["问题", "痛点"], only: "internal" },
       { title: "场景边界", keywords: ["边界"], only: "external", noHeading: true },
       { title: "典型问题", keywords: ["问题", "痛点"], only: "external", noHeading: true },
-      { title: "门槛与合规", keywords: ["门槛", "合规"], only: "external" },
     ],
     internal: [
       { code: "表1-2", heading: "各环节现在的问题", cols: ["link", "pain"] },
@@ -1592,11 +1591,6 @@ export const REPORT_CHAPTERS: readonly ReportChapter[] = [
     external: [
       { code: "表1-2", heading: "各环节现在的问题", cols: ["link", "pain"] },
       { code: "表3-8", heading: "今天还没被满足的需求", cols: ["gap", "who_hurts", "pain_level", "current_alternative"] },
-      {
-        code: "表1-3",
-        heading: "门槛与合规要求",
-        cols: ["barrier_type", "barrier_name", "criteria", "veto_holder", "industry_practice"],
-      },
     ],
   },
   {
@@ -1639,10 +1633,9 @@ export const REPORT_CHAPTERS: readonly ReportChapter[] = [
         only: "external",
         noHeading: true,
       },
-      { title: "能力边界", keywords: ["边界", "不做"], only: "internal" },
+      /* 变更表 #131：边界只在内部版（对外定稿已删掉四条边界段落） */
+      { title: "能力边界", keywords: ["边界", "不做"], only: "internal", artifacts: ["boundary"] },
     ],
-    /* 两条口径都要写边界：对外版是「不替代 / 不参与 / 不承担 / 受限条件」四段，不套小节标题 */
-    artifacts: ["boundary"],
     internal: [
       { code: "表6-1", heading: "收益 → 指标 → 基线与预期", as: "table", cols: ["benefit", "metric", "baseline", "expected", "how_to_measure"] },
       { code: "表4-5", heading: "竞争力自评", as: "table", cols: ["dimension", "weight", "score", "basis"] },
@@ -1703,10 +1696,12 @@ export function reportChapterHeadings(kind: ReportKind): readonly string[] {
   return reportChaptersOf(kind).map((c) => reportChapterHeading(kind, c.key));
 }
 
-/** 术语表（两份都要，模型撰写；内部版排在附录 A/B 之后） */
-export const REPORT_GLOSSARY: { external: string } = {
-  external: "附录、术语表",
-};
+/**
+ * 术语表：**两份都没有**（变更表 #131——用户对外定稿删掉了「附录、术语表」，
+ * 内部版本来就到风险章为止）。留成空表是为了让校验/装配/提示词都走同一处判断，
+ * 将来要加回哪一份，只改这里。
+ */
+export const REPORT_GLOSSARY: Partial<Record<ReportKind, string>> = {};
 
 /**
  * 内部调研报告：附录部分

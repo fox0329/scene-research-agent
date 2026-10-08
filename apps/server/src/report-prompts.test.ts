@@ -94,18 +94,18 @@ describe("报告提示词（变更表 #112）", () => {
     expect(ext).toContain("「典型问题」：**章下直接写，不要单独加 `###` 标题**");
   });
 
-  it("两份的篇幅口径不同，且都按用户定稿实测校准（内部 2500–4000 / 对外 3000–3600）", () => {
+  it("两份的篇幅口径不同，且都按用户定稿实测校准（内部 2500–4000 / 对外 2500–3200）", () => {
     expect(buildReportPrompt("internal", base).system).toContain("2500–4000");
-    // 变更表 #129：对外定稿正文 3442 字，原来写 1800–3000 会把定稿压掉
-    expect(buildReportPrompt("external", base).system).toContain("3000–3600");
+    // 变更表 #131：对外定稿正文 2644 字（删掉门槛与合规、边界、附录之后）
+    expect(buildReportPrompt("external", base).system).toContain("2500–3200");
   });
 
   it("逐章回炉线不低于用户定稿的实测篇幅（否则一生成就被压改）", () => {
-    // 对外定稿实测：现状 933 / 问题 429 / 方案 1203 / 价值 422 / 下一步 323
-    expect(chapterProseBudget("external", "status")).toBeGreaterThan(933);
+    // 变更表 #131 对外定稿实测：现状 888 / 问题 169 / 方案 1203 / 价值 9 / 下一步 251
+    expect(chapterProseBudget("external", "status")).toBeGreaterThan(888);
     expect(chapterProseBudget("external", "solution")).toBeGreaterThan(1203);
-    expect(chapterProseBudget("external", "problems")).toBeGreaterThan(429);
-    expect(chapterProseBudget("external", "value")).toBeGreaterThan(422);
-    expect(chapterProseBudget("external", "next")).toBeGreaterThan(323);
+    expect(chapterProseBudget("external", "problems")).toBeGreaterThan(169);
+    expect(chapterProseBudget("external", "value")).toBeGreaterThan(9);
+    expect(chapterProseBudget("external", "next")).toBeGreaterThan(251);
   });
 });

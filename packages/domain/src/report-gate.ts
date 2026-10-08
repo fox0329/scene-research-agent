@@ -16,6 +16,7 @@
 
 import { proseChars } from "./md-metrics.js";
 import {
+  REPORT_GLOSSARY,
   reportChaptersOf,
   type ReportArtifact,
   type ReportKind,
@@ -389,7 +390,7 @@ export function checkReport(kind: ReportKind, markdown: string): ReportGateRepor
     });
   }
 
-  if (kind === "external" && !written.has("glossary")) {
+  if (REPORT_GLOSSARY[kind] && !written.has("glossary")) {
     violations.push({
       kind: "缺术语表",
       hard: false,

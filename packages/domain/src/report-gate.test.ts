@@ -132,10 +132,10 @@ describe("报告确定性校验（变更表 #112 / #113）", () => {
     expect(v?.detail).toContain("1 处");
   });
 
-  it("缺术语表只提示不拦（附录不该拖住整份报告）", () => {
+  it("术语表：契约里没有就不再要求（变更表 #131，用户对外定稿已删附录）", () => {
     const text = goodReport("external").replace("## 附录、术语表", "## 附录、说明");
     const r = checkReport("external", text);
-    expect(r.violations.find((v) => v.kind === "缺术语表")?.hard).toBe(false);
+    expect(r.violations.find((v) => v.kind === "缺术语表")).toBeUndefined();
   });
 
   it("篇幅超标只提示（要精要，不要流水账）", () => {
