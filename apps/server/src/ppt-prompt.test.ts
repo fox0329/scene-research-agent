@@ -1,21 +1,36 @@
 /**
- * @scene/server — PPT 提示词测试（变更表 #142 收尾、#144 升）
+ * @scene/server — PPT 提示词测试（变更表 #142 收尾、#144 升、#146 升：大纲质量要求 + 优化评审）
  *
  * 真跑暴露的问题：模型声明了版式却不给对应字段（`layout: "表格"` 没有 `table`），
  * 确定性层降级后就是一页只有两三条的空页。所以提示词里**必须**有这三条硬约束：
  * ① 版式与字段成套；② 每页写到 12 条以上；③ 给不出字段就用网格要点写满四块。
  * #144 再加一条：**图标清单原样给模型**（每页一个、每块一个、表头列一一对应），
  * 且写死"清单外一律兜底 `presentation`"——名字写错那处图标就没了。
- * 再加上重试提示要**点名到页**。这里锁住这些文案，免得以后改提示词又改丢。
+ * 再加上重试提示要**点名到页**。
+ * #146 再加：**大纲质量要求**（观点型标题 / 记忆点 / 信息量 / 数字可溯源 / 不重复 / 叙事顺序 /
+ * 自包含 / 图标与版式，词表与阈值取自契约 `PPT_OUTLINE_QUALITY`）、**优化评审提示词**
+ * （只输出 JSON、不许删内容、点对点解决问题）、以及"上一轮问题"作为反馈注入生成提示。
+ * 这里锁住这些文案，免得以后改提示词又改丢。
  */
 
 import { describe, it, expect } from "vitest";
-import { PPT_DEFAULT_ICON, PPT_ICONS, PPT_LIMITS, type PptPage } from "@scene/contract";
+import {
+  PPT_DEFAULT_ICON,
+  PPT_ICONS,
+  PPT_LIMITS,
+  PPT_OUTLINE_QUALITY,
+  type PptIssue,
+  type PptOutline,
+  type PptPage,
+} from "@scene/contract";
 import {
   PPT_ICON_RULES,
   PPT_JSON_SPEC,
   PPT_LAYOUT_FIELD_RULES,
+  PPT_OUTLINE_QUALITY_RULES,
+  PPT_REVIEW_PROMPT_MARKER,
   buildPptOutlinePrompt,
+  buildPptOutlineReviewPrompt,
   buildPptRetryPrompt,
 } from "./ppt-prompt.js";
 
@@ -139,5 +154,113 @@ describe("重试提示 —— 点名到页", () => {
     expect(plain.system).toContain("上一次的输出无法解析为 JSON");
     expect(plain.user).toContain("## PPT：上一次的大纲不合要求，只按格式重发一次");
     expect(plain.user).toContain("只输出 JSON。");
+  });
+});
+
+// ─── 大纲质量要求（变更表 #146） ──────────────────────────────
+
+describe("首次提示 —— 大纲质量要求（#146）", () => {
+  it("八条明确要求逐条在 system 里（不是几条原则）", () => {
+    expect(PPT_OUTLINE_QUALITY_RULES.join("\n")).toContain("大纲质量要求");
+    expect(firstSystem).toContain("### 1. 标题必须是观点，不是章节名");
+    expect(firstSystem).toContain("### 2. 每页都要有记忆点");
+    expect(firstSystem).toContain("### 3. 每页都要写满");
+    expect(firstSystem).toContain("### 4. 数字只能来自报告正文");
+    expect(firstSystem).toContain("### 5. 不许两页说同一件事");
+    expect(firstSystem).toContain("### 6. 顺序：问题 → 方案 → 价值");
+    expect(firstSystem).toContain("### 7. 自包含");
+    expect(firstSystem).toContain("### 8. 图标与版式成套");
+    expect(firstSystem).toContain("### 常见错误（❌ → ✅）");
+  });
+
+  it("词表与阈值取自契约（改契约就改提示词，两处不会走偏）", () => {
+    expect(firstSystem).toContain(PPT_OUTLINE_QUALITY.weakTitleWords.slice(0, 8).join("、"));
+    expect(firstSystem).toContain(`≤ ${PPT_OUTLINE_QUALITY.highlightChars} 字`);
+    expect(firstSystem).toContain(`至少 ${PPT_OUTLINE_QUALITY.minSentencesPerPage} 条有效短句`);
+    expect(firstSystem).toContain(
+      `不许出现「${PPT_OUTLINE_QUALITY.selfContainedBanned.slice(0, 4).join(" / ")}`,
+    );
+  });
+
+  it("观点型标题给了正反例（❌ 项目概述 → ✅ 一句判断）", () => {
+    expect(firstSystem).toContain("❌「项目概述」「背景」「现状」「小结」「设备清单」");
+    expect(firstSystem).toContain("✅「四条硬规则管住现场」");
+    expect(firstSystem).toContain("❌ 标题写「项目概述」 → ✅ 标题写「四条硬规则管住现场」");
+  });
+
+  it("结构上到不了 12 条的版式写死「把字段写满」（判据才可满足）", () => {
+    expect(firstSystem).toContain("`流程阶段` 每个阶段都要有 `note`（5 段 10 条）");
+    expect(firstSystem).toContain("`数据卡片` 给满 4 张（8 条）");
+  });
+
+  it("重试提示也带全套质量要求", () => {
+    const retry = buildPptRetryPrompt("solution", "智慧会议室", "第 5 页只有 2 条");
+    expect(retry.system).toContain("### 4. 数字只能来自报告正文");
+    expect(retry.system).toContain("标题必须是观点");
+  });
+
+  it("上一轮的问题作为反馈进生成的 system（没有就不加这一节）", () => {
+    const issues: PptIssue[] = [
+      { page: 3, code: "信息量不足", detail: "只有 6 条有效短句，少于 12 条" },
+      { page: 5, code: "数字不在正文", detail: "数字「47」在报告正文里找不到" },
+    ];
+    const withFeedback = buildPptOutlinePrompt("solution", "智慧会议室", "# 正文", issues).system;
+    expect(withFeedback).toContain("## 上一轮的问题（这一轮必须点对点改掉，别再犯）");
+    expect(withFeedback).toContain("- 第 3 页信息量不足：只有 6 条有效短句，少于 12 条");
+    expect(withFeedback).toContain("- 第 5 页数字不在正文：数字「47」在报告正文里找不到");
+    expect(buildPptRetryPrompt("solution", "智慧会议室", "空页", issues).system).toContain(
+      "- 第 3 页信息量不足",
+    );
+    expect(firstSystem).not.toContain("上一轮的问题");
+  });
+});
+
+describe("优化评审提示 —— 只输出 JSON、不许删内容、点对点解决（#146）", () => {
+  const outline: PptOutline = { pages: [] };
+  const issues: PptIssue[] = [{ page: 3, code: "信息量不足", detail: "只有 6 条有效短句，少于 12 条" }];
+  const review = buildPptOutlineReviewPrompt({
+    kind: "construction",
+    scenarioName: "智慧会议室",
+    outline,
+    issues,
+    round: 2,
+  });
+
+  it("改稿纪律三条写死：只输出 JSON、不许删内容、点对点解决", () => {
+    expect(review.system).toContain("只输出优化后的完整 JSON");
+    expect(review.system).toContain("不要解释、不要 Markdown 围栏、不要前后缀");
+    expect(review.system).toContain("不许删内容");
+    expect(review.system).toContain("页数不得减少");
+    expect(review.system).toContain("必须点对点解决下面列出的每一条问题");
+  });
+
+  it("system 里带全套质量要求 + schema 示例 + 图标白名单（改稿不能跑偏）", () => {
+    expect(review.system).toContain("标题必须是观点");
+    expect(review.system).toContain("至少 12 条有效短句");
+    expect(review.system).toContain("版式与字段必须成套");
+    expect(review.system).toContain(PPT_ICONS.join("、"));
+    expect(review.system).toContain("四页完整示例");
+    expect(review.system).toContain("不要 Markdown 代码围栏");
+  });
+
+  it("user 里带原大纲 JSON、问题清单、轮次与「只输出 JSON」", () => {
+    expect(review.user).toContain(PPT_REVIEW_PROMPT_MARKER);
+    expect(review.user).toContain("## 待优化的大纲（第 2 轮，JSON）");
+    expect(review.user).toContain(JSON.stringify(outline));
+    expect(review.user).toContain("## 必须解决的问题（共 1 条，逐条改掉）");
+    expect(review.user).toContain("- 第 3 页信息量不足：只有 6 条有效短句，少于 12 条");
+    expect(review.user.trimEnd().endsWith("只输出 JSON。")).toBe(true);
+  });
+
+  it("没有问题清单时也要求整体过一遍（第一轮就走的通道）", () => {
+    const clean = buildPptOutlineReviewPrompt({
+      kind: "solution",
+      scenarioName: "智慧会议室",
+      outline,
+      issues: [],
+      round: 1,
+    });
+    expect(clean.user).toContain("（上一轮没有判出问题）");
+    expect(clean.user).toContain("整体按上面的《大纲质量要求》再过一遍");
   });
 });

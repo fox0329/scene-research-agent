@@ -1,15 +1,36 @@
 /**
- * @scene/domain — PPT 大纲校验测试（变更表 #141 立、#142 升、#144 升）
+ * @scene/domain — PPT 大纲校验测试（变更表 #141 立、#142 升、#144 升、#146 升）
  *
  * 覆盖全部判定分支：合法 / 页数越界 clamp / 非法页丢弃 / 缺布局与旧布局名 /
  * 各字段超限截断（且不许把页删空）/ 布局回落（网格不足 3 块 → 要点清单）/ 禁用词 /
  * 旧字段兼容（subtitle ← takeaway、blocks ← bullets）/ 每页有效短句数（空页判定依据）/
  * #144 图标归一（缺 → 兜底、清单外 → 兜底、带库前缀 → 剥前缀、表头列一一对应）。
+ *
+ * 变更表 #146 追加**大纲质量判据** `checkPptOutlineQuality` 的逐条正反例：
+ * 观点型标题 / 记忆点 / 信息量（含版式容量）/ **数字不在正文** / **两页重复** /
+ * 叙事顺序 / 自包含 / 图标与版式成套。
  */
 
 import { describe, it, expect } from "vitest";
-import { PPT_DEFAULT_ICON, PPT_ICONS, PPT_LIMITS } from "@scene/contract";
-import { hasPptBanned, parsePptOutline, pptBannedHit, pptPageSentences } from "./ppt-outline.js";
+import {
+  PPT_DEFAULT_ICON,
+  PPT_ICONS,
+  PPT_LIMITS,
+  PPT_OUTLINE_QUALITY,
+  type PptOutline,
+  type PptPage,
+} from "@scene/contract";
+import {
+  PPT_OUTLINE_ISSUE_CODES,
+  checkPptOutlineQuality,
+  hasPptBanned,
+  parsePptOutline,
+  pptBannedHit,
+  pptLayoutSentenceMax,
+  pptPageSentences,
+  type PptOutlineQualityCode,
+  type PptOutlineQualityIssue,
+} from "./ppt-outline.js";
 
 /** 一页合规的网格要点页（默认布局，字段最全） */
 function page(over: Record<string, unknown> = {}): Record<string, unknown> {
@@ -780,5 +801,284 @@ describe("parsePptOutline — 图标归一（#144）", () => {
       PPT_DEFAULT_ICON,
       PPT_DEFAULT_ICON,
     ]);
+  });
+});
+
+// ─── 大纲质量判据（变更表 #146） ──────────────────────────────
+//
+// 每一条判据都要有**正反例**：合格基线 0 问题；一处坏掉就点名到页、点出问题码。
+// 关键负例两条：**数字不在正文**（防编造，硬判据）与**两页重复**（同一句话不许出现在两页）。
+
+/** 判据用例里用的"报告正文"（数字都取自这里，6 页页号也在里面） */
+const MD = [
+  "# 智慧会议室建设工作方案",
+  "",
+  "本方案共 6 部分。现场纳管设备 480 台，覆盖 12 个会议室，对账周期压到 2 天，只用 1 张表。",
+  "第1部分讲现状，第2部分讲问题，第3部分讲方案，第4部分讲建设，第5部分讲价值，第6部分讲节奏。",
+  "节省 30% 的巡检工时是客户给的目标。",
+].join("\n");
+
+/** 生成器用的词池（组合出互不相同的短句，避免判据之间互相干扰） */
+const G_HEADS = [
+  "设备台账",
+  "巡检任务",
+  "异常上报",
+  "数据口径",
+  "人员分工",
+  "系统对接",
+  "现场施工",
+  "验收标准",
+  "培训交接",
+  "运维值守",
+  "告警处置",
+  "报表口径",
+];
+const G_NOTE_A = ["设备现场", "巡检班次", "异常处置", "数据口径", "人员职责", "系统对接", "施工安排"];
+const G_NOTE_B = ["按区域落地", "按班次执行", "按等级通知", "按口径统一", "按岗位分派"];
+const G_LINE_A = [
+  "逐台贴码登记",
+  "照单派发任务",
+  "拍照上报异常",
+  "一处录入台账",
+  "按岗定责到人",
+  "按协议对接接口",
+  "分批进场施工",
+  "逐项核验交付",
+  "分批交接培训",
+  "轮值留痕值守",
+  "分级通知告警",
+  "按天核对数据",
+];
+const G_LINE_B = ["当场留痕", "到人可查", "有据可依", "口径唯一", "边界清楚", "接口明确", "差异可查"];
+
+/** 一页**判据合格**的网格要点页（20 条短句、标题是观点、有记忆点、内容按页号互不相同） */
+function okPage(i: number, over: Partial<PptPage> = {}): PptPage {
+  const at = (k: number): number => i * 4 + k;
+  return {
+    layout: "网格要点",
+    kicker: `小节${i + 1}`,
+    icon: "list-check",
+    title: `第${i + 1}条硬规则管住现场`,
+    subtitle: `第${i + 1}批做法写进系统，现场不再靠人记`,
+    blocks: [0, 1, 2, 3].map((k) => ({
+      head: G_HEADS[at(k) % G_HEADS.length]!,
+      note: `${G_NOTE_A[at(k) % G_NOTE_A.length]!}${G_NOTE_B[at(k) % G_NOTE_B.length]!}`,
+      icon: "file-text",
+      lines: [0, 1, 2].map(
+        (j) => `${G_LINE_A[(at(k) * 3 + j) % G_LINE_A.length]!}${G_LINE_B[(at(k) * 3 + j) % G_LINE_B.length]!}`,
+      ),
+    })),
+    columns: [],
+    stages: [],
+    layers: [],
+    cards: [],
+    table: null,
+    chips: [],
+    highlight: `第${i + 1}页的一句话结论`,
+    ...over,
+  };
+}
+
+/** 一份判据合格的 n 页大纲 */
+function okDeck(n = 6): PptOutline {
+  return { pages: Array.from({ length: n }, (_, i) => okPage(i)) };
+}
+
+/** 一份判据合格的 n 页大纲 + 把第 at 页换掉 */
+function deckWith(at: number, over: Partial<PptPage>, n = 6): PptOutline {
+  const deck = okDeck(n);
+  deck.pages[at] = okPage(at, over);
+  return deck;
+}
+
+/** 判据输出里某个问题码的页号（没有就空数组） */
+function codesOf(issues: readonly PptOutlineQualityIssue[], code: PptOutlineQualityCode): number[] {
+  return issues.filter((i) => i.code === code).map((i) => i.page);
+}
+
+describe("checkPptOutlineQuality — 合格基线与版式容量", () => {
+  it("六页合规大纲 → 0 问题（判据不能误杀合格稿）", () => {
+    expect(checkPptOutlineQuality(okDeck(), MD)).toEqual([]);
+  });
+
+  it("判据只会用声明的那些问题码（问题码清单是判据的对外契约）", () => {
+    const issues = checkPptOutlineQuality(deckWith(0, { title: "现状", highlight: "" }), MD);
+    expect(issues.length).toBeGreaterThan(0);
+    for (const issue of issues) {
+      expect(PPT_OUTLINE_ISSUE_CODES as readonly string[]).toContain(issue.code);
+    }
+  });
+
+  it("版式结构上限：网格 24 / 双栏 14 / 阶段 10 / 分层 20 / 卡片 8 / 表格 35 / 清单 6", () => {
+    expect(pptLayoutSentenceMax("网格要点")).toBe(24);
+    expect(pptLayoutSentenceMax("双栏对比")).toBe(14);
+    expect(pptLayoutSentenceMax("流程阶段")).toBe(10);
+    expect(pptLayoutSentenceMax("分层架构")).toBe(20);
+    expect(pptLayoutSentenceMax("数据卡片")).toBe(8);
+    expect(pptLayoutSentenceMax("表格")).toBe(35);
+    expect(pptLayoutSentenceMax("要点清单")).toBe(6);
+  });
+
+  it("结构上到不了 12 条的版式按「写满」算（数据卡片 4 张 = 8 条就合格）", () => {
+    const cards = [0, 1, 2, 3].map((k) => ({ value: `${k + 1} 张`, label: G_HEADS[k]!, icon: "chart-bar" }));
+    const issues = checkPptOutlineQuality(deckWith(0, { layout: "数据卡片", blocks: [], cards }), MD);
+    expect(codesOf(issues, "信息量不足")).toEqual([]);
+    // 但只给 3 张（6 条 < 8 条）就要报
+    const thin = checkPptOutlineQuality(
+      deckWith(0, { layout: "数据卡片", blocks: [], cards: cards.slice(0, 3) }),
+      MD,
+    );
+    expect(codesOf(thin, "信息量不足")).toEqual([1]);
+  });
+});
+
+describe("checkPptOutlineQuality — ① 观点型标题", () => {
+  it("章节式空词（现状 / 概述 / 背景 / 小结）一律判不合格", () => {
+    for (const title of ["现状", "项目概述", "背景介绍", "本章小结", "现状与问题"]) {
+      const issues = checkPptOutlineQuality(deckWith(2, { title }), MD);
+      expect(codesOf(issues, "非观点型标题"), title).toEqual([3]);
+      expect(issues.find((i) => i.code === "非观点型标题")!.detail).toContain("章节式空词");
+    }
+  });
+
+  it("名词堆也要报（既不是判断、也没有动词）", () => {
+    const issues = checkPptOutlineQuality(deckWith(0, { title: "设备清单" }), MD);
+    expect(codesOf(issues, "非观点型标题")).toEqual([1]);
+    expect(issues[0]!.detail).toContain("看不出观点");
+  });
+
+  it("带判断语气的长标题放行（「现状不改，代价只会更高」不算空词）", () => {
+    expect(codesOf(checkPptOutlineQuality(deckWith(0, { title: "现状不改，代价只会更高" }), MD), "非观点型标题")).toEqual([]);
+  });
+
+  it("超过 20 字要报「标题超长」", () => {
+    const long = "把每一台设备的台账按区域逐台贴码登记并当场确认更新后的责任人";
+    expect(Array.from(long).length).toBeGreaterThan(PPT_LIMITS.titleChars);
+    expect(codesOf(checkPptOutlineQuality(deckWith(1, { title: long }), MD), "标题超长")).toEqual([2]);
+  });
+});
+
+describe("checkPptOutlineQuality — ② 记忆点", () => {
+  it("空记忆点 → 缺记忆点（点名到页）", () => {
+    const issues = checkPptOutlineQuality(deckWith(3, { highlight: "" }), MD);
+    expect(codesOf(issues, "缺记忆点")).toEqual([4]);
+    expect(issues[0]!.detail).toContain("没有记忆点");
+  });
+
+  it("记忆点超过 34 字 → 缺记忆点（要短到能记住）", () => {
+    const long = "这一页把设备台账巡检任务异常上报数据口径四件事一次说清楚并且每一件都要落到人头上可查";
+    expect(Array.from(long).length).toBeGreaterThan(PPT_OUTLINE_QUALITY.highlightChars);
+    expect(codesOf(checkPptOutlineQuality(deckWith(0, { highlight: long }), MD), "缺记忆点")).toEqual([1]);
+  });
+});
+
+describe("checkPptOutlineQuality — ③ 信息量", () => {
+  it("有效短句不足 12 条 → 信息量不足（沿用 pptPageSentences 的口径）", () => {
+    const thin = deckWith(4, {
+      blocks: [0, 1].map((k) => ({
+        head: G_HEADS[k]!,
+        note: "",
+        icon: "file-text",
+        lines: [G_LINE_A[k]!],
+      })),
+    });
+    const issues = checkPptOutlineQuality(thin, MD);
+    expect(codesOf(issues, "信息量不足")).toEqual([5]);
+    expect(issues.find((i) => i.code === "信息量不足")!.detail).toContain("只有 4 条有效短句");
+  });
+});
+
+describe("checkPptOutlineQuality — ④ 数字只许来自报告正文（防编造，硬判据）", () => {
+  it("编造的数字（正文里没有）→ 数字不在正文，点名到页并写出是哪个数", () => {
+    const page = okPage(0);
+    page.blocks[0]!.lines[0] = "节省 47% 的巡检工时";
+    const issues = checkPptOutlineQuality({ pages: [page] }, MD);
+    expect(codesOf(issues, "数字不在正文")).toEqual([1]);
+    expect(issues[0]!.detail).toContain("47");
+  });
+
+  it("正文里有的数字（含 %、量词）一律放行", () => {
+    const page = okPage(0);
+    page.blocks[0]!.lines = ["现场纳管设备 480 台", "覆盖 12 个会议室", "对账周期压到 2 天", "只留 1 张表", "目标省 30% 工时"];
+    page.blocks[1]!.lines = ["第1部分讲现状", "第2部分讲问题", "第3部分讲方案"];
+    // 上面把第 1 页的标题/副题/记忆点里的数字也一起对一遍：1–6 都在正文里
+    expect(codesOf(checkPptOutlineQuality({ pages: [page] }, MD), "数字不在正文")).toEqual([]);
+  });
+
+  it("中文数字只认带量词的写法（「八个环节」可兜「8 个」，「统一」不能兜「1」）", () => {
+    // 这一页自己不带别的数字，只留一个 8，测"中文数字兜底"这一件事
+    const page = okPage(0, { kicker: "小节", title: "硬规则管住现场", subtitle: "做法写进系统", highlight: "一句话结论" });
+    page.blocks[0]!.lines = ["只用8个环节跑完全流程", "口径统一到一处"];
+    const noEight = checkPptOutlineQuality({ pages: [page] }, "口径统一到一处。");
+    expect(noEight.map((i) => i.code)).toEqual(["数字不在正文"]);
+    expect(noEight[0]!.detail).toContain("8");
+    const withEight = checkPptOutlineQuality({ pages: [page] }, "全部只用八个环节跑完全流程。");
+    expect(codesOf(withEight, "数字不在正文")).toEqual([]);
+  });
+});
+
+describe("checkPptOutlineQuality — ⑤ 页间不重复", () => {
+  it("同一句话出现在两页 → 两页重复，并把两个页号都写出来", () => {
+    const deck = okDeck();
+    deck.pages[4]!.blocks[0]!.lines[0] = deck.pages[1]!.blocks[0]!.lines[0]!;
+    const issues = checkPptOutlineQuality(deck, MD);
+    expect(codesOf(issues, "两页重复")).toEqual([5]);
+    expect(issues[0]!.detail).toContain("第 2 页与第 5 页");
+  });
+
+  it("短句（去掉标点不足 6 字）允许重名（「今天」「建成后」这类不算重复）", () => {
+    const deck = okDeck();
+    deck.pages[1]!.blocks[0]!.head = "今天";
+    deck.pages[3]!.blocks[1]!.head = "今天";
+    expect(codesOf(checkPptOutlineQuality(deck, MD), "两页重复")).toEqual([]);
+  });
+});
+
+describe("checkPptOutlineQuality — ⑥ 叙事顺序（问题 → 方案 → 价值）", () => {
+  /** 只改"这一页的框"（叙事顺序只看 kicker / title / subtitle / highlight） */
+  const framed = (i: number, kicker: string): PptPage =>
+    okPage(i, { kicker, subtitle: `第${i + 1}批内容写清边界` });
+
+  it("顺序对：问题页在前、方案页居中、价值页在后 → 不报", () => {
+    const deck: PptOutline = {
+      pages: [framed(0, "现状与痛点"), framed(1, "建设方案"), framed(2, "价值与收益")],
+    };
+    expect(codesOf(checkPptOutlineQuality(deck, MD), "叙事顺序错")).toEqual([]);
+  });
+
+  it("顺序错：价值页排在方案页与问题页之前 → 点名到页", () => {
+    const deck: PptOutline = {
+      pages: [framed(0, "价值与收益"), framed(1, "建设方案"), framed(2, "现状与痛点")],
+    };
+    const issues = checkPptOutlineQuality(deck, MD);
+    expect(codesOf(issues, "叙事顺序错")).toEqual([2, 3]);
+    expect(issues[0]!.detail).toContain("问题 → 方案 → 价值");
+  });
+});
+
+describe("checkPptOutlineQuality — ⑦ 自包含", () => {
+  it("写「详见报告」「谢谢观看」「目录」这类话 → 不自包含", () => {
+    const deck = okDeck();
+    deck.pages[0]!.blocks[0]!.lines[0] = "设备清单详见报告第三章";
+    deck.pages[1]!.highlight = "谢谢观看";
+    const issues = checkPptOutlineQuality(deck, MD);
+    expect(codesOf(issues, "不自包含")).toEqual([1, 2]);
+  });
+});
+
+describe("checkPptOutlineQuality — ⑧ 图标与版式成套", () => {
+  it("白名单外的图标名 → 图标不合规", () => {
+    const issues = checkPptOutlineQuality(deckWith(2, { icon: "sparkles" }), MD);
+    expect(codesOf(issues, "图标不合规")).toEqual([3]);
+    expect(issues[0]!.detail).toContain("sparkles");
+  });
+
+  it("声明了版式却不给字段 → 版式与字段不成套（沿用既有降级口径，不重复实现）", () => {
+    const issues = checkPptOutlineQuality(
+      deckWith(4, { layout: "表格", blocks: [], table: null }),
+      MD,
+    );
+    expect(codesOf(issues, "版式与字段不成套")).toEqual([5]);
+    expect(issues.find((i) => i.code === "版式与字段不成套")!.detail).toContain("没给合规 table");
   });
 });

@@ -1237,13 +1237,48 @@ describe("交付物导出", () => {
   }
 
   /** 合规的 6 页大纲（直接当模型的返回文本） */
+  /**
+   * 一份**过得了大纲质量判据**的 5 页大纲（变更表 #146）
+   *
+   * 这条用例只验路由与进度通道，所以给一份第一轮就能通过的稿：标题是观点、每页 20 条短句、
+   * 逐页内容不同（带页标记）、**不含数字**（推导出来的正文里没有数字，写了就会判"数字不在正文"）。
+   */
   function outlineText(): string {
-    const pages = Array.from({ length: 6 }, (_, i) => ({
-      layout: "要点",
-      title: `第${i + 1}页标题`,
-      takeaway: "一句话要点",
-      bullets: ["要点甲", "要点乙", "要点丙"],
-    }));
+    const marks = ["甲", "乙", "丙", "丁", "戊"];
+    const heads = ["设备台账", "巡检任务", "异常上报", "数据口径"];
+    const notes = ["按区域落地", "按班次执行", "按等级通知", "按口径统一"];
+    const lines = [
+      "逐台贴码当场留痕",
+      "照单派发到人可查",
+      "拍照上报有据可依",
+      "一处录入口径唯一",
+      "按岗定责边界清楚",
+      "按协议对接接口明确",
+      "分批进场进度可控",
+      "逐项核验差异可查",
+      "分批交接责任到岗",
+      "轮值留痕记录完整",
+      "分级通知通知到位",
+      "按天核对差异可查",
+    ];
+    const pages = Array.from({ length: 5 }, (_, i) => {
+      const mark = marks[i]!;
+      return {
+        layout: "网格要点",
+        kicker: i === 0 ? "现状与痛点" : i <= 2 ? "建设方案" : "价值与收益",
+        icon: "list-check",
+        title: `${mark}条硬规则管住现场`,
+        subtitle: `${mark}批内容写清边界`,
+        blocks: [0, 1, 2, 3].map((k) => ({
+          head: heads[k]!,
+          note: `${notes[k]!}，${mark}组`,
+          icon: "file-text",
+          lines: [0, 1, 2].map((j) => `${lines[(i * 4 + k * 3 + j) % lines.length]!}，${mark}组`),
+        })),
+        chips: [],
+        highlight: `${mark}页的一句话结论`,
+      };
+    });
     return JSON.stringify({ pages });
   }
 
@@ -1281,7 +1316,9 @@ describe("交付物导出", () => {
       expect(events.length).toBeGreaterThan(3);
       expect(events.every((e) => e.type === "progress")).toBe(true);
       const text = events.map((e) => String(e.message ?? "")).join("｜");
-      expect(text).toContain("正在梳理大纲");
+      expect(text).toContain("PPT：正在从正文提取大纲（第 1 轮）…");
+      expect(text).toContain("PPT：正在优化大纲…");
+      expect(text).toContain("PPT：正在做版面检查…");
       expect(text).toContain("正在转成 PPTX");
       expect(text).toContain("PPT：已导出");
 

@@ -294,12 +294,16 @@ export type {
 } from "./report-review.js";
 export type { ReportGateReport, ReportKind, ReportViolation } from "./report-gate.js";
 
-// ─── PPT 大纲校验与兜底（变更表 #141 立、#142 升） ──────────
+// ─── PPT 大纲校验与兜底（变更表 #141 立、#142 升、#146 升：大纲质量判据） ──
 export {
   PPT_BANNED_PATTERNS,
+  PPT_OUTLINE_ISSUE_CODES,
+  checkPptOutlineQuality,
   hasPptBanned,
   pptBannedHit,
+  pptLayoutSentenceMax,
+  pptPageSentenceBar,
   pptPageSentences,
   parsePptOutline,
 } from "./ppt-outline.js";
-export type { PptOutlineParse } from "./ppt-outline.js";
+export type { PptOutlineParse, PptOutlineQualityCode, PptOutlineQualityIssue } from "./ppt-outline.js";

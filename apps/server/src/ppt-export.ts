@@ -1,30 +1,25 @@
 /**
- * @scene/server — 导出 PPT（变更表 #141 立、#142 升：信息量与排版；#145 升：生成后必做版面检查）
+ * @scene/server — 导出 PPT（变更表 #141 立、#142 升：信息量与排版；#145 升：生成后版面检查；
+ * #146 升：**大纲质量要求 + 三轮修复闭环**）
  *
- * 用户点一次「导出PPT文档」，全自动跑完六步，不需要任何交互：
- *   1. **取正文**：当前项目该口径的交付物正文（`solution` / `construction` 各自可导）；
- *   2. **模型产大纲**（一次调用 + 不合要求时重试一次）：严格 JSON、5–10 页、无封面尾页、
- *      问题 → 方案 → 价值、每页写满、每处内容配图标——口径见 `docs/PPT输出要求.md` 与 `ppt-prompt.ts`；
- *   3. **确定性渲染**：`@scene/infra` 按七种布局画 SVG（绝不让模型写 SVG）；图标只写
- *      `data-icon` 占位（渲染层不读技能目录，保持渲染确定性）；
- *   4. **版面检查**（变更表 #145，**必跑**）：渲染完立刻 `checkPptDeck` 量一遍
- *      （`PPT_MIN_QUALITY` 是用户定调的**最低要求**）。**内容类**问题（信息量不足 / 图标不足 /
- *      重点不突出）按页点名后再让模型重写一次；**渲染类**问题（越界 / 压字 / 字号过小 / 缺骨架 /
- *      未对齐网格 / 留白不均 / 行首标点 / 孤字行）是确定性缺陷，**不靠模型重试**——渲染层
- *      （`ppt-svg.ts`）已经修掉了，这里再判一遍是为了不静默放过我们的 bug。仍不达标 →
- *      **拒绝写出文件**（notice 点名第 N 页 + 具体问题），用户原有文件一个字节都不动；
- *   5. **图标收尾**（变更表 #144）：调技能自带的 `finalize_svg.py --only embed-icons fix-rounded`
- *      把占位换成真实图标、圆角矩形转路径——**这一步失败只 warn、不阻断**；
- *   6. **转档**：调用户本机的 ppt-master 技能（`PPT_MASTER_DIR` 可配）导出 pptx，落到用户选的目录。
+ * 用户点一次「导出PPT文档」，全自动跑完，不需要任何交互。变更表 #146 起编排是**最多三轮的闭环**
+ * （`PPT_OUTLINE_ROUNDS = 3`），每一轮：
+ *   1. **重新取正文**（`getReport`，每轮都重读——正文被用户改过时下一轮就用新的）；
+ *   2. **重新生成大纲**（一次模型调用 + 不合要求时重试一次）；
+ *   3. **优化大纲**（变更表 #146 新增的第二次模型调用 `buildPptOutlineReviewPrompt`：
+ *      把这一轮的 JSON + 上一轮的问题清单喂进去，要求"只输出优化后的完整 JSON、不许删内容、
+ *      点对点解决列出的问题"）；
+ *   4. **确定性渲染**（`@scene/infra` 按七种布局画 SVG；图标只写 `data-icon` 占位）；
+ *   5. **检查**：`checkPptOutlineQuality`（大纲质量判据：观点型标题 / 记忆点 / 信息量 / 数字可溯源 /
+ *      页间不重复 / 叙事顺序 / 自包含 / 图标与版式）+ `checkPptDeck`（版面质量门禁）。
  *
- * 重试的触发（同一套提示词通道，各只重试一次）：① 解析不出来；② 页数少于下限；
- * ③ **有页面内容太少（空页）**——③ 是 #142 真跑暴露的问题：模型声明了 `layout` 却不给对应字段，
- * 降级后就是一页只有两三条的空清单；④ **版面检查的内容类问题**（#145）。③ 重试仍偏少不再当场定论，
- * 交给第 ④ 步的版面检查兜底：点名的页真过不了 `信息量不足` 就**拒绝写出文件**（#145 改口径：
- * 宁可不出，也不交一份不达标的稿——**不再"保留、不阻断"**）。
+ * **上一轮的全部问题**（两类都点名到页）作为下一轮的反馈喂进生成 / 优化提示词；问题清单为空
+ * 即通过、立刻导出。**三轮都过不了不报错**（用户定调「不是不满足标准就报错或者什么的」）：
+ * 取**问题最少的那一轮**产物照常导出，notice 写清「已生成，但仍有 N 处未达标：第X页…」，
+ * **不拒绝写出、不抛错、不阻断**（#145 的"不达标就拒绝写出"口径就此作废）。
  *
- * 与导出 Word 同一条纪律（`docx-export.ts`）：**不阻断**——技能缺失 / python3 不可用 /
- * 大纲不合法 / 子进程失败，一律只回一条 `notice` + 不产文件，绝不抛 500、绝不覆盖已有文件
+ * 与导出 Word 同一条纪律（`docx-export.ts`）：技能缺失 / python3 不可用 / 大纲不合法 /
+ * 子进程失败，一律只回一条 `notice` + 不产文件，绝不抛 500、绝不覆盖已有文件
  * （落盘走 `safeWriteFileBytes` 的先读后写：内容没变记为 `unchanged`）。
  *
  * 临时项目目录建在 `os.tmpdir()`，跑完就删（无论成败）。
@@ -37,9 +32,12 @@ import { basename, join } from "node:path";
 import { promisify } from "node:util";
 import {
   PPT_LIMITS,
+  PPT_OUTLINE_QUALITY,
+  PPT_OUTLINE_ROUNDS,
   REPORT_KIND_LABEL,
   type DshClient,
   type FollowEvent,
+  type PptIssue,
   type PptOutline,
   type ReportKind,
   type Scenario,
@@ -58,10 +56,19 @@ import {
   type PptQualityIssue,
   type PptSvgPage,
 } from "@scene/infra";
-import { parsePptOutline, type PptOutlineParse } from "@scene/domain";
+import {
+  checkPptOutlineQuality,
+  parsePptOutline,
+  pptPageSentenceBar,
+  type PptOutlineParse,
+} from "@scene/domain";
 import { getReport } from "./report-service.js";
 import { streamPrompt } from "./dsh-stream.js";
-import { buildPptOutlinePrompt, buildPptRetryPrompt } from "./ppt-prompt.js";
+import {
+  buildPptOutlinePrompt,
+  buildPptOutlineReviewPrompt,
+  buildPptRetryPrompt,
+} from "./ppt-prompt.js";
 
 const run = promisify(execFile);
 
@@ -140,10 +147,11 @@ async function buildOutline(args: {
   markdown: string;
   keepaliveMs: number;
   push: (event: FollowEvent) => void;
+  /** 上一轮判出的问题（变更表 #146：带进这一轮的生成 / 重试提示词，点对点改） */
+  feedback: readonly PptIssue[];
 }): Promise<OutlineOutcome> {
-  const { dshClient, scenario, kind, markdown, keepaliveMs, push } = args;
+  const { dshClient, scenario, kind, markdown, keepaliveMs, push, feedback } = args;
   const label = REPORT_KIND_LABEL[kind];
-  push({ type: "progress", message: "PPT：正在梳理大纲…" });
   let session;
   try {
     session = await dshClient.createSession({ title: `${scenario.name} · PPT 大纲` });
@@ -158,7 +166,7 @@ async function buildOutline(args: {
   const first = await streamPrompt({
     dshClient,
     session,
-    ...buildPptOutlinePrompt(kind, scenario.name, markdown),
+    ...buildPptOutlinePrompt(kind, scenario.name, markdown, feedback),
     label: `PPT 大纲（${label}）`,
     keepaliveMs,
     push,
@@ -179,7 +187,7 @@ async function buildOutline(args: {
     const again = await streamPrompt({
       dshClient,
       session,
-      ...buildPptRetryPrompt(kind, scenario.name, reason),
+      ...buildPptRetryPrompt(kind, scenario.name, reason, feedback),
       label: "PPT 大纲（重试）",
       keepaliveMs,
       push,
@@ -230,8 +238,8 @@ function inspectDeck(pages: readonly PptSvgPage[]): DeckCheck {
   };
 }
 
-/** 问题清单 → 人话（`第 3 页信息量不足：只有 9 条文字…`，最多点名前 4 页，免得 notice 太长） */
-function issueText(issues: readonly PptQualityIssue[]): string {
+/** 问题清单 → 人话（`第 3 页信息量不足：只有 9 条文字…`，最多点名前 4 条，免得 notice 太长） */
+function issueText(issues: readonly PptIssue[]): string {
   return issues
     .slice(0, 4)
     .map((i) => `第 ${i.page} 页${i.code}：${i.detail}`)
@@ -239,10 +247,10 @@ function issueText(issues: readonly PptQualityIssue[]): string {
 }
 
 /**
- * 最低要求的一句话（写进"拒绝写出"的 notice，让用户知道卡在哪条线上）
+ * 版面最低要求的一句话（写进 notice，让用户知道这一档质量卡在哪几条线上）
  *
  * 阈值取自 `PPT_MIN_QUALITY`（变更表 #145：用户定调的**最低要求**，只许收紧不许放宽）——
- * 导出链路**直接引用**它，所以这一档质量不可能被悄悄关掉；这里再把关键三条摆到用户眼前。
+ * 导出链路**直接引用**它，所以这一档质量不可能被悄悄关掉。
  */
 function minRequirementText(): string {
   return [
@@ -253,39 +261,61 @@ function minRequirementText(): string {
 }
 
 /**
- * 版面检查不过时再用一次模型（**复用同一条重试通道**：同一个会话 + 同一份重试提示词）
+ * 大纲最低要求的一句话（变更表 #146，写进"仍有 N 处未达标"的 notice）
  *
- * 只处理**内容类**问题（信息量 / 图标 / 重点）——渲染类问题重试一百次也没用，得改渲染层。
- * 返回 null = 这次重试没拿到合规大纲（调用方保留上一份，再按"仍不达标"处理）。
+ * 数字全部从契约 `PPT_OUTLINE_QUALITY` 现取（改阈值就会改文案，改不动才怪）。
  */
-async function retryOutlineForDeck(args: {
+function outlineMinRequirementText(): string {
+  return [
+    `大纲最低要求：标题是一句判断（不是「${PPT_OUTLINE_QUALITY.weakTitleWords.slice(0, 3).join("/")}」这类章节名）`,
+    `每页 ≥${PPT_OUTLINE_QUALITY.minSentencesPerPage} 条有效短句`,
+    `数字只能来自报告正文`,
+    `不许两页说同一件事`,
+    `叙事按 问题 → 方案 → 价值`,
+  ].join("、");
+}
+
+/**
+ * 优化大纲（变更表 #146）：**复用同一个会话**，把这一轮的 JSON + 上一轮问题清单喂进去
+ *
+ * 要求是"只输出优化后的完整 JSON、schema 不变、不许删内容、点对点解决列出的问题"。
+ * 返回 null = 这次评审没拿到合规大纲（调用方保留生成的那一份，绝不因此丢整轮产物）。
+ */
+async function reviewOutline(args: {
   dshClient: DshClient;
   session: SessionHandle;
   kind: ReportKind;
   scenarioName: string;
+  outline: PptOutline;
+  issues: readonly PptIssue[];
+  round: number;
   keepaliveMs: number;
   push: (event: FollowEvent) => void;
-  reason: string;
 }): Promise<{ outline: PptOutline; notes: string[] } | null> {
-  const again = await streamPrompt({
+  const reviewed = await streamPrompt({
     dshClient: args.dshClient,
     session: args.session,
-    ...buildPptRetryPrompt(args.kind, args.scenarioName, args.reason),
-    label: "PPT 大纲（版面重试）",
+    ...buildPptOutlineReviewPrompt({
+      kind: args.kind,
+      scenarioName: args.scenarioName,
+      outline: args.outline,
+      issues: args.issues,
+      round: args.round,
+    }),
+    label: "PPT 大纲（优化）",
     keepaliveMs: args.keepaliveMs,
     push: args.push,
   });
-  if (again.error) {
-    console.warn(`[ppt] 版面检查重试调用失败：${again.error}`);
+  if (reviewed.error) {
+    console.warn(`[ppt] 大纲优化调用失败，保留生成的那一份：${reviewed.error}`);
     return null;
   }
-  const parsed = parsePptOutline(again.text);
-  const outline = parsed.outline;
-  if (outline === null) {
-    console.warn(`[ppt] 版面检查重试未返回合规大纲：${parsed.error ?? "-"}`);
+  const parsed = parsePptOutline(reviewed.text);
+  if (parsed.outline === null) {
+    console.warn(`[ppt] 大纲优化没返回合规 JSON，保留生成的那一份：${parsed.error ?? "-"}`);
     return null;
   }
-  return { outline, notes: [...parsed.notes, ...thinNotes(parsed)] };
+  return { outline: parsed.outline, notes: [...parsed.notes, ...thinNotes(parsed)] };
 }
 
 /**
@@ -294,14 +324,16 @@ async function retryOutlineForDeck(args: {
  * 领域层的"有效短句"**不数** 6 条固定骨架文本（小节标签 / 标题 / 副题 / 结论带 / 页码 / 页脚），
  * 而质量门禁的 `PPT_LIMITS.minSentencesPerPage`（12）把骨架也算进去了 —— 所以这里取 8，
  * 比门禁更严一档：真跑暴露过"一页只有 2 条短句"的空页，等渲染完再发现就晚了。
+ * 版式结构上限不足 8 条的（数据卡片 8 / 要点清单 6）按"写满"算（`pptPageSentenceBar`）。
  */
 const THIN_PAGE_MIN = 8;
 
 /** 有效短句数不足的页（页码从 1 开始；来源是领域层的 `pageSentences`） */
 function thinPages(parsed: PptOutlineParse): { page: number; count: number }[] {
+  const pages = parsed.outline?.pages ?? [];
   return parsed.pageSentences
-    .map((count, i) => ({ page: i + 1, count }))
-    .filter((x) => x.count < THIN_PAGE_MIN);
+    .map((count, i) => ({ page: i + 1, count, bar: Math.min(THIN_PAGE_MIN, pptPageSentenceBar(pages[i]?.layout ?? "要点清单")) }))
+    .filter((x) => x.count < x.bar);
 }
 
 /**
@@ -454,7 +486,7 @@ function savePptx(dir: string, scenarioName: string, kind: ReportKind, bytes: Bu
   return result;
 }
 
-/** 大纲校验时的提示（丢页 / 截断）拼进 notice，让用户知道 PPT 与正文的差异 */
+/** 大纲校验时的提示（丢页 / 截断 / 内容偏少）拼进 notice，让用户知道 PPT 与正文的差异 */
 function withNotes(result: PptExportResult, notes: readonly string[]): PptExportResult {
   if (notes.length === 0) return result;
   const text = `PPT 大纲有 ${notes.length} 处调整：${notes.slice(0, 4).join("；")}`;
@@ -462,84 +494,171 @@ function withNotes(result: PptExportResult, notes: readonly string[]): PptExport
 }
 
 /**
- * 导出某一份交付物的 PPT（唯一入口）
+ * 一轮闭环的产物（变更表 #146）
  *
- * 任何一步失败都只回 `notice`，不抛错、不产半个文件（AGENTS.md §六.2 兜底要求）。
+ * 问题数目就是"这一轮有多好"的度量：三轮都过不了时取问题最少的那一轮（`pickBestRound`）。
+ */
+interface RoundOutcome {
+  /** 第几轮（1 起） */
+  round: number;
+  /** 这一轮最终采纳的大纲（评审产物优先，评审失败时是生成的那一份） */
+  outline: PptOutline;
+  /** 这一轮渲染出来的页面（已在盘上写过一次） */
+  pages: PptSvgPage[];
+  /** 大纲校验的调整说明（丢页 / 截断） */
+  notes: string[];
+  /** 大纲质量判据 + 版面门禁的全部问题（点名到页） */
+  issues: PptIssue[];
+}
+
+/** 问题最少的那一轮（并列时取更靠后的一轮——它已经过更多轮优化） */
+function pickBestRound(rounds: readonly RoundOutcome[]): RoundOutcome {
+  return rounds.reduce((best, cur) => (cur.issues.length <= best.issues.length ? cur : best));
+}
+
+/** 收尾：图标收尾 → 转档 → 落盘（通过与否都走这一条，notice 由调用方拼） */
+async function finishExport(args: {
+  projectDir: string;
+  scenario: Scenario;
+  kind: ReportKind;
+  dir: string;
+  script: string;
+  skillDir: string;
+  notes: readonly string[];
+  push: (event: FollowEvent) => void;
+  result?: PptExportResult;
+}): Promise<PptExportResult> {
+  const { projectDir, scenario, kind, dir, script, skillDir, notes, push } = args;
+  await embedIcons(skillDir, projectDir, push);
+  push({ type: "progress", message: "PPT：正在转成 PPTX…" });
+  const outFile = join(projectDir, "out.pptx");
+  const converted = await convertToPptx(script, projectDir, outFile);
+  if (!converted.ok) return refuse(`PPT 未导出（转档失败：${converted.reason}）`);
+  const saved = savePptx(dir, scenario.name, kind, readFileSync(outFile));
+  const merged: PptExportResult = args.result ? mergeNotice(args.result, saved) : saved;
+  push({ type: "progress", message: `PPT：已导出 ${basename(merged.files[0] ?? merged.unchanged[0] ?? "")}` });
+  return withNotes(merged, notes);
+}
+
+/** 把"仍有未达标"的 notice 与落盘 notice（被手改过会另存）合成一条 */
+function mergeNotice(main: PptExportResult, saved: PptExportResult): PptExportResult {
+  return {
+    files: saved.files,
+    unchanged: saved.unchanged,
+    notice: saved.notice ? `${main.notice ?? ""}；${saved.notice}` : main.notice,
+  };
+}
+
+/**
+ * 导出某一份交付物的 PPT（唯一入口，变更表 #146：最多三轮的"提取 → 优化 → 检查"闭环）
+ *
+ * 每一轮都**重新读正文**（用户改过正文时下一轮就用新的），问题清单为空即通过、立即导出；
+ * 三轮都过不了**不报错**：取问题最少的那一轮照常导出，notice 点名未达标处。
+ * 技能缺失 / 大纲整体失败 / 子进程失败仍然只回 `notice`、不产半个文件（AGENTS.md §六.2）。
  */
 export async function exportReportPptx(args: PptExportArgs): Promise<PptExportResult> {
   const { db, scenario, kind, dir, dshClient, push } = args;
   const keepaliveMs = args.keepaliveMs ?? 30_000;
-  const script = pptExporterScript(args.skillDir ?? pptMasterDir());
+  const skillDir = args.skillDir ?? pptMasterDir();
+  const script = pptExporterScript(skillDir);
   if (script === null) {
     push({ type: "progress", message: "PPT：导出组件未就绪" });
     return refuse("PPT 导出组件未就绪：找不到 ppt-master 技能（可用 PPT_MASTER_DIR 指定技能目录）");
   }
-  const markdown = getReport(db, scenario, kind).markdown;
-  if (markdown.trim() === "") {
+  if (getReport(db, scenario, kind).markdown.trim() === "") {
     return refuse(`PPT 未导出：「${scenario.name}${REPORT_KIND_LABEL[kind]}」还没有正文`);
-  }
-
-  const built = await buildOutline({ dshClient, scenario, kind, markdown, keepaliveMs, push });
-  if (built.outline === null) {
-    return refuse(`PPT 大纲生成失败（${built.error ?? "模型未返回合规 JSON"}），未导出 PPT`);
   }
 
   let projectDir: string | null = null;
   try {
     projectDir = mkdtempSync(join(tmpdir(), `scene-ppt-${safeSegment(scenario.id)}-`));
-    let notes = built.notes;
-    let rendered = renderPages(built.outline, projectDir, scenario.name, push);
-    if (rendered.svgDir === null) return refuse(`PPT 未导出：${rendered.error ?? "渲染失败"}`);
+    const rounds: RoundOutcome[] = [];
+    let feedback: readonly PptIssue[] = [];
+    let lastError: string | null = null;
 
-    // 版面检查（变更表 #145，**必跑**）：渲染完先量一遍，不达标不许写出文件
-    push({ type: "progress", message: "PPT：正在做版面检查…" });
-    let check = inspectDeck(rendered.pages);
-    if (check.content.length > 0) {
-      const reason = issueText(check.content);
-      push({ type: "progress", message: `PPT：${reason}，重试一次…` });
-      const retried =
+    for (let round = 1; round <= PPT_OUTLINE_ROUNDS; round += 1) {
+      // ① 每轮重新读正文：用户在中栏改过报告，这一轮就要用新的
+      const markdown = getReport(db, scenario, kind).markdown;
+      push({ type: "progress", message: `PPT：正在从正文提取大纲（第 ${round} 轮）…` });
+      const built = await buildOutline({ dshClient, scenario, kind, markdown, keepaliveMs, push, feedback });
+      if (built.outline === null) {
+        lastError = built.error ?? "模型未返回合规 JSON";
+        continue;
+      }
+
+      // ② 优化大纲（变更表 #146）：带着上一轮的问题再要一次完整 JSON，失败就保留生成的那一份
+      push({ type: "progress", message: "PPT：正在优化大纲…" });
+      const reviewed =
         built.session === null
           ? null
-          : await retryOutlineForDeck({
+          : await reviewOutline({
               dshClient,
               session: built.session,
               kind,
               scenarioName: scenario.name,
+              outline: built.outline,
+              issues: feedback,
+              round,
               keepaliveMs,
               push,
-              reason,
             });
-      if (retried !== null) {
-        const again = renderPages(retried.outline, projectDir, scenario.name, push);
-        if (again.svgDir !== null) {
-          rendered = again;
-          // 换了大纲，notice 里的"大纲调整"说明也要跟着换成这一份的
-          notes = retried.notes;
-        }
+      const outline = reviewed?.outline ?? built.outline;
+      const notes = reviewed?.notes ?? built.notes;
+
+      // ③ 渲染
+      const rendered = renderPages(outline, projectDir, scenario.name, push);
+      if (rendered.svgDir === null) {
+        lastError = rendered.error ?? "渲染失败";
+        continue;
       }
-      check = inspectDeck(rendered.pages);
-    }
-    if (check.all.length > 0) {
-      // 渲染类问题复用同一条日志线索：它是我们的 bug 信号，不许静默放过
-      for (const issue of check.render) {
+
+      // ④ 检查：大纲质量判据 + 版面门禁（两类问题都点名到页）
+      push({ type: "progress", message: "PPT：正在做版面检查…" });
+      const deck = inspectDeck(rendered.pages);
+      // 渲染类问题是我们的 bug 信号，不许静默放过（但不再因此拒绝导出）
+      for (const issue of deck.render) {
         console.warn(`[ppt-export] 版面检查未过（渲染类）第 ${issue.page} 页${issue.code}：${issue.detail}`);
       }
-      return refuse(
-        `PPT 未导出：版面检查未通过（${issueText(check.all)}）；${minRequirementText()}，已保留原有文件不动`,
+      const issues: PptIssue[] = [...checkPptOutlineQuality(outline, markdown), ...deck.all];
+      if (issues.length === 0) {
+        push({ type: "progress", message: `PPT：版面检查通过（${rendered.pages.length} 页）` });
+        return await finishExport({ projectDir, scenario, kind, dir, script, skillDir, notes, push });
+      }
+      rounds.push({ round, outline, pages: rendered.pages, notes, issues });
+      feedback = issues;
+      console.warn(
+        `[ppt-export] 第 ${round} 轮大纲仍有 ${issues.length} 处未达标：${issueText(issues)}`,
       );
     }
-    push({ type: "progress", message: `PPT：版面检查通过（${rendered.pages.length} 页）` });
 
-    await embedIcons(args.skillDir ?? pptMasterDir(), projectDir, push);
-    push({ type: "progress", message: "PPT：正在转成 PPTX…" });
-    const outFile = join(projectDir, "out.pptx");
-    const converted = await convertToPptx(script, projectDir, outFile);
-    if (!converted.ok) {
-      return refuse(`PPT 未导出（转档失败：${converted.reason}）`);
+    // 三轮都过不了：**不报错**，取问题最少的那一轮照常导出（用户明确的取舍）
+    if (rounds.length === 0) {
+      return refuse(`PPT 大纲生成失败（${lastError ?? "模型未返回合规 JSON"}），未导出 PPT`);
     }
-    const saved = withNotes(savePptx(dir, scenario.name, kind, readFileSync(outFile)), notes);
-    push({ type: "progress", message: `PPT：已导出 ${basename(saved.files[0] ?? saved.unchanged[0] ?? "")}` });
-    return saved;
+    const best = pickBestRound(rounds);
+    // 盘上现在是最后一轮渲染的产物；如果最优的不是最后一轮，重画一次再转档（静默渲染，不再刷进度）
+    if (rounds[rounds.length - 1] !== best) {
+      const again = renderPages(best.outline, projectDir, scenario.name, () => undefined);
+      if (again.svgDir === null) return refuse(`PPT 未导出：${again.error ?? "渲染失败"}`);
+    }
+    push({
+      type: "progress",
+      message: `PPT：三轮仍未全达标，按问题最少的一轮（第 ${best.round} 轮）导出…`,
+    });
+    const notice =
+      `已生成，但仍有 ${best.issues.length} 处未达标：${issueText(best.issues)}` +
+      `（${outlineMinRequirementText()}；${minRequirementText()}；已按问题最少的一轮（第 ${best.round} 轮）导出）`;
+    return await finishExport({
+      projectDir,
+      scenario,
+      kind,
+      dir,
+      script,
+      skillDir,
+      notes: best.notes,
+      push,
+      result: { files: [], unchanged: [], notice },
+    });
   } catch (err: unknown) {
     return refuse(`PPT 未导出：${err instanceof Error ? err.message : String(err)}`);
   } finally {

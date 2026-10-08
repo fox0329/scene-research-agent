@@ -1,10 +1,15 @@
 /**
- * @scene/domain — PPT 大纲的确定性校验与兜底（变更表 #141 立、#142 升）
+ * @scene/domain — PPT 大纲的确定性校验与兜底（变更表 #141 立、#142 升；#146 升：大纲质量判据）
  *
  * 模型只产内容（一页页的小节标签、标题、副题、块/栏/阶段/层/卡片/表格/标签、结论带），
  * **能不能上这一页由本模块说了算**：页数规模、字段长度、各组数量、布局回落、
  * 禁用词（占位 / 决策建议 / 内部痕迹），全部在这里逐条判定。
  * 判定留在确定性层（AGENTS.md §三.5），渲染层因此可以假定拿到的页一定能画。
+ *
+ * 变更表 #146 再加一套**大纲质量判据**（`checkPptOutlineQuality`）：观点型标题、记忆点、
+ * 每页信息量、数字可溯源、页间不重复、叙事顺序、自包含、图标与版式成套——见本文件末。
+ * 导出编排拿它当"这份大纲够不够好"的唯一尺子，不合格**不报错**，而是带着问题清单重跑
+ * （重新提取 → 优化 → 再检查），最多 `PPT_OUTLINE_ROUNDS` 轮。
  *
  * 铁律：
  *  - 模型返回不合法 → 明确失败值（`outline: null` + `error`），调用方据此重试一次再兜底提示；
@@ -17,13 +22,16 @@
 import {
   PPT_DEFAULT_ICON,
   PPT_DEFAULT_LAYOUT,
+  PPT_ICONS,
   PPT_LAYOUT_ALIASES,
   PPT_LIMITS,
   PPT_LAYOUTS,
+  PPT_OUTLINE_QUALITY,
   normalizePptIcon,
   type PptBlock,
   type PptCard,
   type PptColumn,
+  type PptIssue,
   type PptLayer,
   type PptLayout,
   type PptOutline,
@@ -710,4 +718,390 @@ export function parsePptOutline(raw: string): PptOutlineParse {
     );
   }
   return { outline: { pages }, pages: pages.length, pageSentences, dropped, trimmed, scrubbed, notes };
+}
+
+// ─── 大纲质量判据（变更表 #146） ──────────────────────────────
+//
+// 用户定调：「不是不满足标准就报错或者什么的，而是重新从文件提取大纲，优化大纲，然后再优化 PPT，
+// 保证高质量」——所以这套判据**不用来拒绝导出**，而是用来生成"下一轮要改什么"的问题清单。
+// 词表与阈值全部来自契约 `PPT_OUTLINE_QUALITY`（提示词同源），这里只做判定。
+
+/** 大纲质量的问题码（每一条都对应 §八 里的一条明确要求） */
+export const PPT_OUTLINE_ISSUE_CODES = [
+  "非观点型标题",
+  "标题超长",
+  "缺记忆点",
+  "信息量不足",
+  "数字不在正文",
+  "两页重复",
+  "叙事顺序错",
+  "不自包含",
+  "图标不合规",
+  "版式与字段不成套",
+] as const;
+
+export type PptOutlineQualityCode = (typeof PPT_OUTLINE_ISSUE_CODES)[number];
+
+/** 一条大纲质量问题（形状与版面门禁的 `PptQualityIssue` 一致，便于合成一条反馈） */
+export interface PptOutlineQualityIssue extends PptIssue {
+  code: PptOutlineQualityCode;
+}
+
+/**
+ * 某种版式**结构上最多能写几条**有效短句
+ *
+ * 存在的理由：`流程阶段`（5 段 × head+note = 10）、`数据卡片`（4 张 × value+label = 8）、
+ * `要点清单`（6 行）**结构上就到不了 12 条**——对它们只能要求"把字段写满"，
+ * 否则这两类版式永远不合格、notice 永远在点名（判据必须可满足，见 §八.4）。
+ */
+export function pptLayoutSentenceMax(layout: PptLayout): number {
+  switch (layout) {
+    case "网格要点":
+      return PPT_LIMITS.blocks.count * (2 + PPT_LIMITS.blocks.maxLines);
+    case "双栏对比":
+      return PPT_LIMITS.columns.count * (2 + PPT_LIMITS.columns.maxLines);
+    case "流程阶段":
+      return PPT_LIMITS.stages.max * 2;
+    case "分层架构":
+      return PPT_LIMITS.layers.max * (1 + PPT_LIMITS.layers.maxItems);
+    case "数据卡片":
+      return PPT_LIMITS.cards.max * 2;
+    case "表格":
+      return PPT_LIMITS.table.maxCols + PPT_LIMITS.table.maxRows * PPT_LIMITS.table.maxCols;
+    default:
+      return PPT_LIMITS.bullets.max;
+  }
+}
+
+/** 这一页要求的最低有效短句数（版式上限不足 12 条的，按"写满"算） */
+export function pptPageSentenceBar(layout: PptLayout): number {
+  return Math.min(PPT_OUTLINE_QUALITY.minSentencesPerPage, pptLayoutSentenceMax(layout));
+}
+
+/** 一页的全部文字（判数字 / 重复 / 自包含用；顺序稳定、去掉空串与重复项） */
+function pageTexts(page: PptPage): string[] {
+  const out: string[] = [page.kicker, page.title, page.subtitle, page.highlight, ...page.chips];
+  for (const b of page.blocks) out.push(b.head, b.note, ...b.lines);
+  for (const c of page.columns) out.push(c.head, c.note, ...c.lines);
+  for (const s of page.stages) out.push(s.head, s.note);
+  for (const l of page.layers) out.push(l.head, ...l.items);
+  for (const c of page.cards) out.push(c.value, c.label);
+  if (page.table !== null) out.push(...page.table.head, ...page.table.rows.flat());
+  out.push(...(page.bullets ?? []));
+  return [...new Set(out.map((t) => t.trim()).filter((t) => t !== ""))];
+}
+
+/** 一页自己的"框"（标题 / 副题 / 记忆点 / 小节标签）——叙事顺序只看这里，不扫正文条目 */
+function pageFrame(page: PptPage): string {
+  return [page.kicker, page.title, page.subtitle, page.highlight].join("｜");
+}
+
+/** 判重用的归一化：去掉空白与标点，只比"说的是不是同一件事" */
+function normalizeForCompare(text: string): string {
+  return text.replace(/[\s，。、；：！？（）()【】《》「」“”"'·—\-…,.!?;:%％|｜]/g, "");
+}
+
+/** 数字比对用的归一化：全角数字折半角、去掉空白 */
+function normalizeForNumber(text: string): string {
+  return text
+    .replace(/[\uFF10-\uFF19]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0xfee0))
+    .replace(/\s+/g, "");
+}
+
+const CN_DIGITS = ["零", "一", "二", "三", "四", "五", "六", "七", "八", "九"] as const;
+
+/** 阿拉伯数字 → 中文数字（0–99；范围外给 null，不做过度换算） */
+function cnNumberOf(value: number): string | null {
+  if (!Number.isInteger(value) || value < 0 || value > 99) return null;
+  if (value < 10) return CN_DIGITS[value]!;
+  const tens = Math.floor(value / 10);
+  const ones = value % 10;
+  return `${tens === 1 ? "" : CN_DIGITS[tens]}十${ones === 0 ? "" : CN_DIGITS[ones]}`;
+}
+
+/** 量词（中文数字写法只在带量词时才算数，避免「统一」里的「一」把 1 洗白） */
+const CN_QUANTIFIERS =
+  "个|台|间|倍|天|小时|分钟|周|月|年|万|亿|元|次|人|张|条|层|块|列|行|页|项|套|辆|米|户|家|所|种|类|份|组|批|级|处|分|秒|件";
+
+/**
+ * 这个数字在报告正文里找得到吗（**防编造**，硬判据）
+ *
+ * 比对宽容两处（宁可放过一处改写，也不误杀）：① 全角/半角与空白差异；
+ * ② 整数允许正文写的是中文数字（「八个环节」↔「8 个环节」），但**要求带量词**。
+ */
+function numberGrounded(token: string, mdNorm: string): boolean {
+  if (mdNorm.includes(token)) return true;
+  const cn = cnNumberOf(Number(token));
+  if (cn === null) return false;
+  return new RegExp(`${cn}(?:${CN_QUANTIFIERS})`).test(mdNorm);
+}
+
+/** 观点型标题的判定（返回命中的空词；null = 不弱） */
+function weakTitleHit(title: string): string | null {
+  const norm = normalizeForCompare(title);
+  for (const word of PPT_OUTLINE_QUALITY.weakTitleWords) {
+    if (!norm.includes(word)) continue;
+    const rest = norm.split(word).join("");
+    if (norm.length < PPT_OUTLINE_QUALITY.weakTitleShortChars || rest.length < PPT_OUTLINE_QUALITY.weakTitleRestChars) {
+      return word;
+    }
+  }
+  return null;
+}
+
+/** 标题有没有判断语气（含动词 / 判断词 / 数字即可——词表宁宽不严，不做过度 NLP） */
+function hasJudgment(title: string): boolean {
+  const norm = normalizeForCompare(title);
+  if (/\d/.test(norm)) return true;
+  return PPT_OUTLINE_QUALITY.judgmentWords.some((w) => norm.includes(w));
+}
+
+/** 一页命中叙事线的第几段（-1 = 没命中，不参与顺序判定；多段命中取最靠前那段） */
+function narrativeGroupOf(frame: string): number {
+  return PPT_OUTLINE_QUALITY.narrative.findIndex((group) => new RegExp(group.pattern).test(frame));
+}
+
+/** 版式与字段是否成套（沿用 `parsePptOutline` 的同一组限额，不重复实现降级） */
+function layoutFieldDefect(page: PptPage): string | null {
+  const l = PPT_LIMITS;
+  switch (page.layout) {
+    case "网格要点":
+      return page.blocks.length >= l.blocks.min ? null : `声明了「网格要点」却只有 ${page.blocks.length} 块（要 ${l.blocks.min}–${l.blocks.count} 块）`;
+    case "双栏对比":
+      return page.columns.length >= l.columns.count ? null : `声明了「双栏对比」却只有 ${page.columns.length} 栏（要 ${l.columns.count} 栏）`;
+    case "流程阶段":
+      return page.stages.length >= l.stages.min && page.stages.length <= l.stages.max
+        ? null
+        : `声明了「流程阶段」却有 ${page.stages.length} 个阶段（要 ${l.stages.min}–${l.stages.max} 个）`;
+    case "分层架构":
+      return page.layers.length >= l.layers.min && page.layers.length <= l.layers.max
+        ? null
+        : `声明了「分层架构」却有 ${page.layers.length} 层（要 ${l.layers.min}–${l.layers.max} 层）`;
+    case "数据卡片":
+      return page.cards.length >= l.cards.min && page.cards.length <= l.cards.max
+        ? null
+        : `声明了「数据卡片」却有 ${page.cards.length} 张（要 ${l.cards.min}–${l.cards.max} 张）`;
+    case "表格":
+      if (page.table === null) return "声明了「表格」却没给合规 table";
+      if (page.table.head.length < 2) return `表格只有 ${page.table.head.length} 列（至少要 2 列）`;
+      return page.table.rows.length === 0 ? "表格只有表头、没有数据行" : null;
+    default:
+      return (page.bullets ?? []).length >= l.bullets.min
+        ? null
+        : `「要点清单」只有 ${(page.bullets ?? []).length} 行（要 ${l.bullets.min}–${l.bullets.max} 行）`;
+  }
+}
+
+/** 一页的图标名清单（页图标 + 每个块/栏/阶段/层/卡片 + 表头列） */
+function pageIcons(page: PptPage): string[] {
+  const out = [page.icon];
+  for (const b of page.blocks) out.push(b.icon);
+  for (const c of page.columns) out.push(c.icon);
+  for (const s of page.stages) out.push(s.icon);
+  for (const l of page.layers) out.push(l.icon);
+  for (const c of page.cards) out.push(c.icon);
+  if (page.table !== null) out.push(...page.table.icons);
+  return out;
+}
+
+/** 一页的标题问题（观点型 / 超长 / 空词） */
+function titleIssues(page: PptPage, index: number): PptOutlineQualityIssue[] {
+  const out: PptOutlineQualityIssue[] = [];
+  const page1 = index + 1;
+  const title = page.title.trim();
+  if (Array.from(title).length > PPT_LIMITS.titleChars) {
+    out.push({
+      code: "标题超长",
+      page: page1,
+      detail: `标题「${title}」有 ${Array.from(title).length} 字，超过 ${PPT_LIMITS.titleChars} 字`,
+    });
+  }
+  const weak = weakTitleHit(title);
+  if (weak !== null) {
+    out.push({
+      code: "非观点型标题",
+      page: page1,
+      detail: `标题「${title}」是章节式空词（命中「${weak}」）——标题必须是一句判断 / 结论`,
+    });
+    return out;
+  }
+  if (!hasJudgment(title)) {
+    out.push({
+      code: "非观点型标题",
+      page: page1,
+      detail: `标题「${title}」看不出观点（既没有空词、也没有动词/判断词）——要写成一句话的判断`,
+    });
+  }
+  return out;
+}
+
+/** 一页的记忆点问题（`highlight` 必须非空且不超字） */
+function highlightIssues(page: PptPage, index: number): PptOutlineQualityIssue[] {
+  const text = page.highlight.trim();
+  const page1 = index + 1;
+  if (text === "") {
+    return [
+      {
+        code: "缺记忆点",
+        page: page1,
+        detail: `没有记忆点（highlight 为空）——每页都要有一句 ≤ ${PPT_OUTLINE_QUALITY.highlightChars} 字、能记住的结论`,
+      },
+    ];
+  }
+  const len = Array.from(text).length;
+  if (len > PPT_OUTLINE_QUALITY.highlightChars) {
+    return [
+      {
+        code: "缺记忆点",
+        page: page1,
+        detail: `记忆点「${text}」有 ${len} 字，超过 ${PPT_OUTLINE_QUALITY.highlightChars} 字（记忆点要短到能记住）`,
+      },
+    ];
+  }
+  return [];
+}
+
+/** 一页的数字可溯源问题（每个数字都要在报告正文里出现） */
+function numberIssues(page: PptPage, index: number, mdNorm: string): PptOutlineQualityIssue[] {
+  const out: PptOutlineQualityIssue[] = [];
+  const seen = new Set<string>();
+  for (const text of pageTexts(page)) {
+    const tokens = normalizeForNumber(text).match(new RegExp(PPT_OUTLINE_QUALITY.numberPattern, "g")) ?? [];
+    for (const token of tokens) {
+      if (seen.has(token)) continue;
+      seen.add(token);
+      if (numberGrounded(token, mdNorm)) continue;
+      out.push({
+        code: "数字不在正文",
+        page: index + 1,
+        detail: `数字「${token}」在报告正文里找不到（数字只能照抄正文，不许换算、加总、估）`,
+      });
+    }
+  }
+  return out;
+}
+
+/** 一页的自包含问题（不许写"参考正文""详见报告"这类指路话） */
+function selfContainedIssues(page: PptPage, index: number): PptOutlineQualityIssue[] {
+  const out: PptOutlineQualityIssue[] = [];
+  for (const text of pageTexts(page)) {
+    const hit = PPT_OUTLINE_QUALITY.selfContainedBanned.find((word) => text.includes(word));
+    if (hit === undefined) continue;
+    out.push({
+      code: "不自包含",
+      page: index + 1,
+      detail: `出现「${hit}」——PPT 是独立文件，所有要素要直接写清（不许"参考正文/详见报告"，也不许「${PPT_OUTLINE_QUALITY.selfContainedBanned.slice(-3).join("、")}」这类话）`,
+    });
+    if (out.length >= PPT_OUTLINE_QUALITY.duplicatePerPage) break;
+  }
+  return out;
+}
+
+/** 一页的图标与版式问题 */
+function shapeIssues(page: PptPage, index: number): PptOutlineQualityIssue[] {
+  const out: PptOutlineQualityIssue[] = [];
+  const page1 = index + 1;
+  const bad = pageIcons(page).filter((name) => !(PPT_ICONS as readonly string[]).includes(name));
+  if (bad.length > 0) {
+    out.push({
+      code: "图标不合规",
+      page: page1,
+      detail: `图标名 ${[...new Set(bad)].map((n) => `「${n}」`).join("、")} 不在白名单里（只能从 ${PPT_ICONS.length} 个名字里选，选不出用 ${PPT_DEFAULT_ICON}）`,
+    });
+  }
+  if (page.table !== null && page.table.icons.length !== page.table.head.length) {
+    out.push({
+      code: "图标不合规",
+      page: page1,
+      detail: `table.icons 有 ${page.table.icons.length} 个、表头有 ${page.table.head.length} 列，要一一对应`,
+    });
+  }
+  const defect = layoutFieldDefect(page);
+  if (defect !== null) out.push({ code: "版式与字段不成套", page: page1, detail: defect });
+  return out;
+}
+
+/** 页间重复（归一化后同一句话出现在两页就要报，并指出两页页号） */
+function duplicateIssues(pages: readonly PptPage[]): PptOutlineQualityIssue[] {
+  const out: PptOutlineQualityIssue[] = [];
+  const first = new Map<string, number>();
+  const reported = new Map<number, number>();
+  for (const [i, page] of pages.entries()) {
+    const counts = reported.get(i + 1) ?? 0;
+    let hits = counts;
+    for (const text of pageTexts(page)) {
+      const norm = normalizeForCompare(text);
+      if (norm.length < PPT_OUTLINE_QUALITY.duplicateMinChars) continue;
+      const at = first.get(norm);
+      if (at === undefined) {
+        first.set(norm, i + 1);
+        continue;
+      }
+      if (at === i + 1 || hits >= PPT_OUTLINE_QUALITY.duplicatePerPage) continue;
+      hits += 1;
+      out.push({
+        code: "两页重复",
+        page: i + 1,
+        detail: `第 ${at} 页与第 ${i + 1} 页说了同一件事：「${text}」（同一句话不许出现在两页）`,
+      });
+    }
+    reported.set(i + 1, hits);
+  }
+  return out;
+}
+
+/** 叙事顺序（问题 → 方案 → 价值；顺序错就报，点名到页） */
+function narrativeIssues(pages: readonly PptPage[]): PptOutlineQualityIssue[] {
+  const out: PptOutlineQualityIssue[] = [];
+  let maxGroup = -1;
+  let maxPage = 0;
+  for (const [i, page] of pages.entries()) {
+    const group = narrativeGroupOf(pageFrame(page));
+    if (group < 0) continue;
+    if (group < maxGroup) {
+      out.push({
+        code: "叙事顺序错",
+        page: i + 1,
+        detail: `第 ${i + 1} 页讲的是「${PPT_OUTLINE_QUALITY.narrative[group]!.label}」，却排在讲「${PPT_OUTLINE_QUALITY.narrative[maxGroup]!.label}」的第 ${maxPage} 页之后（叙事线只能是 问题 → 方案 → 价值）`,
+      });
+      continue;
+    }
+    maxGroup = group;
+    maxPage = i + 1;
+  }
+  return out;
+}
+
+/**
+ * 一份大纲的质量判据（变更表 #146）
+ *
+ * @param outline 已经过 `parsePptOutline` 归一的大纲（也可以用别处构造的同形对象）
+ * @param markdown 这份 PPT 的来源**报告正文**（判"数字是不是编的"唯一依据）
+ * @returns 逐条问题（空数组 = 大纲合格）；**调用方不许拿它拒绝导出**，它是"下一轮改什么"的输入
+ */
+export function checkPptOutlineQuality(
+  outline: PptOutline,
+  markdown: string,
+): PptOutlineQualityIssue[] {
+  const mdNorm = normalizeForNumber(markdown);
+  const out: PptOutlineQualityIssue[] = [];
+  for (const [i, page] of outline.pages.entries()) {
+    out.push(...titleIssues(page, i));
+    out.push(...highlightIssues(page, i));
+    const bar = pptPageSentenceBar(page.layout);
+    const sentences = pptPageSentences(page);
+    if (sentences < bar) {
+      out.push({
+        code: "信息量不足",
+        page: i + 1,
+        detail: `只有 ${sentences} 条有效短句，少于 ${bar} 条（${page.layout}最多写 ${pptLayoutSentenceMax(page.layout)} 条，要写满）`,
+      });
+    }
+    out.push(...numberIssues(page, i, mdNorm));
+    out.push(...selfContainedIssues(page, i));
+    out.push(...shapeIssues(page, i));
+  }
+  out.push(...duplicateIssues(outline.pages));
+  out.push(...narrativeIssues(outline.pages));
+  return out;
 }

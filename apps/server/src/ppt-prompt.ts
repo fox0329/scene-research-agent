@@ -1,5 +1,5 @@
 /**
- * @scene/server — PPT 大纲提示词（变更表 #141 立、#142 升：信息量与排版）
+ * @scene/server — PPT 大纲提示词（变更表 #141 立、#142 升：信息量与排版；#146 升：大纲质量要求 + 优化评审）
  *
  * 一次模型调用产出**全部页面**（严格 JSON，无围栏、无解释）。口径见 `docs/PPT输出要求.md`：
  * 5–10 页（目标 7 页）、不要封面/目录/尾页、第一页直接进内容、问题 → 方案 → 价值、
@@ -7,16 +7,25 @@
  * **`layout` 与字段必须成套**（声明 `表格` 就必须给 `table`，声明 `流程阶段` 就必须给 `stages`）、
  * 只用报告正文里出现过的名词与数字。
  *
+ * 变更表 #146 起，提示词里多一节**《大纲质量要求》**（`PPT_OUTLINE_QUALITY_RULES`）——
+ * 观点型标题、记忆点、每页信息量、数字可溯源、页间不重复、叙事顺序、自包含、图标与版式成套，
+ * 词表与阈值全部来自契约 `PPT_OUTLINE_QUALITY`（与领域层判据 `checkPptOutlineQuality` **同源**）：
+ * 写进提示词的要求，判据一定查；判据查的，提示词一定写了。
+ *
  * 提示词是"内容生成"侧；**能不能上这一页由 `@scene/domain` 的 `parsePptOutline` 说了算**
- * （页数、字段长度、组数、禁用词），页面挤不挤由 `@scene/infra` 的 `checkPptDeck` 量，
- * 页面太空由 `apps/server/src/ppt-export.ts` 的重试兜（见 `THIN_PAGE_MIN`）。
+ * （页数、字段长度、组数、禁用词），**够不够好由 `checkPptOutlineQuality` 说了算**，
+ * 页面挤不挤由 `@scene/infra` 的 `checkPptDeck` 量，不合格不报错、带着问题重跑
+ * （`buildPptOutlineReviewPrompt` + `PPT_OUTLINE_ROUNDS` 轮，见 `apps/server/src/ppt-export.ts`）。
  */
 
 import {
   PPT_DEFAULT_ICON,
   PPT_ICONS,
   PPT_LIMITS,
+  PPT_OUTLINE_QUALITY,
   REPORT_KIND_LABEL,
+  type PptIssue,
+  type PptOutline,
   type ReportKind,
 } from "@scene/contract";
 
@@ -83,7 +92,81 @@ export const PPT_PAGE_RULES: readonly string[] = [
   `- 图标：每页 1 个 \`icon\`、每个块/栏/阶段/层/卡片各 1 个 \`icon\`、\`table.icons\` 与表头列一一对应（见上面的「图标」一节）。`,
 ];
 
-/** 七种布局各要什么（与契约 `PptPage` 一一对应） */
+/**
+ * 大纲质量要求（变更表 #146）——**明确要求，不是几条原则**
+ *
+ * 用户定调：「PPT 大纲本身要有质量要求，不能只是简单的几条要求，要像 B 站 PPT 大纲生成的技能要求
+ * 一样有明确的生成要求」。这里逐条写死：观点型标题（含正反例）、记忆点、每页信息量、
+ * 数字可溯源、页间不重复、叙事顺序、自包含、图标与版式成套，最后附一份 ❌→✅ 常见错误清单。
+ * 词表与阈值**全部取自契约 `PPT_OUTLINE_QUALITY`**，与领域层 `checkPptOutlineQuality` 同源。
+ */
+export const PPT_OUTLINE_QUALITY_RULES: readonly string[] = [
+  "## 大纲质量要求（每一条都会被逐页检查，请照着写）",
+  "",
+  "### 1. 标题必须是观点，不是章节名",
+  `- 每页 \`title\` ≤ ${PPT_LIMITS.titleChars} 字，**一句话的判断 / 结论**，读完能记住；`,
+  `- **不许**只写「${PPT_OUTLINE_QUALITY.weakTitleWords.slice(0, 8).join("、")}」这类章节名（短标题里带这些词直接判不合格）；`,
+  "- ✅「四条硬规则管住现场」「今天的巡检，账对不上」「先跑通一层，再谈全区」；",
+  "- ❌「项目概述」「背景」「现状」「小结」「设备清单」（最后一个是名词堆：既不是判断，也没有动词）。",
+  "",
+  "### 2. 每页都要有记忆点",
+  `- \`highlight\`（底部结论带）**每页必有**、≤ ${PPT_OUTLINE_QUALITY.highlightChars} 字、是能记住的一句话；不许空着，也不许把标题抄一遍。`,
+  "",
+  "### 3. 每页都要写满",
+  `- 每页**至少 ${PPT_OUTLINE_QUALITY.minSentencesPerPage} 条有效短句**（≈ 4 块 × 3–4 行）；`,
+  "- 结构上到不了 12 条的版式要**把字段写满**：`流程阶段` 每个阶段都要有 `note`（5 段 10 条）、",
+  "  `数据卡片` 给满 4 张（8 条）、`表格` 行与列都写满、`要点清单` 写 5–6 行。",
+  "",
+  "### 4. 数字只能来自报告正文",
+  "- 大纲里出现的**每一个数字**（含 `%` 与 个/台/天/倍 这类量词）都必须在这份报告正文里出现过——",
+  "  **不许换算、不许加总、不许估、不许新造**；报告里没有的数字，就改写成不含新数字的定性结论。",
+  "",
+  "### 5. 不许两页说同一件事",
+  "- 同一句话（去掉标点后算）不许出现在两页；相邻页尤其要换事实、换角度，",
+  "  不能换个版式把同一批话再排一遍。",
+  "",
+  "### 6. 顺序：问题 → 方案 → 价值",
+  "- 讲「现状 / 问题 / 痛点 / 难点 / 风险」的页必须排在讲「方案 / 建设 / 架构 / 路径」的页**之前**，",
+  "  后者再排在讲「价值 / 收益 / 成效」的页之前（判定只看 `kicker` / `title` / `subtitle` / `highlight`）。",
+  "",
+  "### 7. 自包含",
+  `- 不许出现「${PPT_OUTLINE_QUALITY.selfContainedBanned.slice(0, 4).join(" / ")} / 待客户提供 / 建议采用 / 谢谢观看 / 目录」这类话——`,
+  "  PPT 是独立文件，所有要素要直接写清，读者看不到报告。",
+  "",
+  "### 8. 图标与版式成套",
+  `- \`icon\` 只能从白名单里选（选不出用 \`${PPT_DEFAULT_ICON}\`）；`,
+  "- `layout` 声明的版式必须给全它自己的字段（见下面「版式与字段必须成套」一节）。",
+  "",
+  "### 常见错误（❌ → ✅）",
+  "- ❌ 标题写「项目概述」 → ✅ 标题写「四条硬规则管住现场」（一句判断）；",
+  "- ❌ 一页只有两三条短句 → ✅ 用 `网格要点` 写满 4 块 × 3–4 行（≥12 条）；",
+  "- ❌ 编一个「节省 30%」 → ✅ 只写报告里出现过的数字，没有数字就写定性结论；",
+  "- ❌ 两页都用同一批块 → ✅ 每页换一批事实，同一件事只说一次；",
+  "- ❌ 先讲价值再讲问题 → ✅ 先问题、再方案、最后价值；",
+  "- ❌ 写「详见报告第三章」 → ✅ 把那条事实直接写出来。",
+];
+
+/** 问题清单 → 提示词里的点对点条目（最多 12 条，太多反而没人看） */
+export function pptIssueLines(issues: readonly PptIssue[]): string[] {
+  if (issues.length === 0) {
+    return [
+      "- （上一轮没有判出问题）整体按上面的《大纲质量要求》再过一遍：补强信息量、把标题改成观点句、去掉重复。",
+    ];
+  }
+  return issues.slice(0, 12).map((i) => `- 第 ${i.page} 页${i.code}：${i.detail}`);
+}
+
+/** 上一轮的问题（喂进下一轮的生成 / 重试提示词；没有就不加这一节） */
+function feedbackSection(issues: readonly PptIssue[]): string[] {
+  if (issues.length === 0) return [];
+  return [
+    "## 上一轮的问题（这一轮必须点对点改掉，别再犯）",
+    ...pptIssueLines(issues),
+    "",
+  ];
+}
+
+/** 七个布局各要什么（与契约 `PptPage` 一一对应） */
 export const PPT_LAYOUT_SPEC: readonly string[] = [
   "- `网格要点`：**默认布局，最密**。`blocks` 四块各讲一件事（如 设备台账 / 巡检任务 / 异常上报 / 数据口径），每块 3–4 条做法。",
   "- `双栏对比`：`columns` 两栏对比「今天 / 建成后」或两种做法，各 3–5 行，左栏在今天、右栏在建成后。",
@@ -148,8 +231,8 @@ export const PPT_JSON_SPEC: readonly string[] = [
         title: "同一件事两种做法",
         subtitle: "左边是今天的代价，右边是建成后的样子",
         columns: [
-          { head: "今天的做法", note: "纸质表单为主", icon: "file-text", lines: ["巡检靠纸质表单，一天一交", "数据事后补录，口径对不上", "异常靠电话上报，常常漏"] },
-          { head: "建成后的做法", note: "扫码巡检、自动留痕", icon: "list-check", lines: ["扫码巡检，当场提交", "数据实时入库，口径唯一", "异常自动派单到人"] },
+          { head: "今天的做法", note: "纸质表单为主", icon: "file-text", lines: ["巡检靠纸质表单，一天一交", "数据事后补录，口径对不上", "异常靠电话上报，常常漏", "月底对账要两天，还常对不上"] },
+          { head: "建成后的做法", note: "扫码巡检、自动留痕", icon: "list-check", lines: ["扫码巡检，当场提交", "数据实时入库，口径唯一", "异常自动派单到人", "月底对账当天出，差异可追"] },
         ],
         highlight: "同样的活，换个干法",
       },
@@ -162,8 +245,9 @@ export const PPT_JSON_SPEC: readonly string[] = [
         stages: [
           { head: "样板层建设", note: "一个楼层先装齐，跑通扫码巡检", icon: "building-community" },
           { head: "单点验证", note: "连续两周比对纸质记录，口径对齐", icon: "checkup-list" },
-          { head: "分批复制", note: "按楼层分批上线，每批一周", icon: "devices" },
-          { head: "全区运行", note: "全区纳管，报表自动出数", icon: "sitemap" },
+          { head: "首批复制", note: "按楼层分批上线，每批一周", icon: "devices" },
+          { head: "全区推广", note: "剩余楼层按批次推进，逐批验收", icon: "sitemap" },
+          { head: "全区运行", note: "全区纳管，报表自动出数", icon: "chart-bar" },
         ],
         highlight: "先跑通一层，再谈全区",
       },
@@ -196,6 +280,7 @@ export function buildPptOutlinePrompt(
   kind: ReportKind,
   scenarioName: string,
   markdown: string,
+  previousIssues: readonly PptIssue[] = [],
 ): { system: string; user: string } {
   const system = [
     `你是给《${scenarioName}${kindLabel(kind)}》做汇报 PPT 的排版编辑，读者是客户的业务负责人与决策人。`,
@@ -205,6 +290,9 @@ export function buildPptOutlinePrompt(
     "## 页面口径",
     ...PPT_PAGE_RULES,
     "",
+    ...PPT_OUTLINE_QUALITY_RULES,
+    "",
+    ...feedbackSection(previousIssues),
     "## 七种布局怎么用",
     ...PPT_LAYOUT_SPEC,
     "",
@@ -228,11 +316,13 @@ export function buildPptOutlinePrompt(
  * 重试：上一次的大纲不合要求（解析不出来 / 页数太少 / 有空页），点名原因后要求重发
  *
  * @param reason 上一次卡在哪（`apps/server/src/ppt-export.ts` 的 `retryReason` 给），会逐字写进提示
+ * @param previousIssues 上一轮判出的问题（变更表 #146：带进下一轮，点对点改）
  */
 export function buildPptRetryPrompt(
   kind: ReportKind,
   scenarioName: string,
   reason?: string,
+  previousIssues: readonly PptIssue[] = [],
 ): { system: string; user: string } {
   const why = reason ?? "上一次的输出无法解析为 JSON";
   const system = [
@@ -249,6 +339,9 @@ export function buildPptRetryPrompt(
     "## 页面口径（不变）",
     ...PPT_PAGE_RULES,
     "",
+    ...PPT_OUTLINE_QUALITY_RULES,
+    "",
+    ...feedbackSection(previousIssues),
     // 重试也是整页重发，图标清单必须一起带上（否则新写的块又只能回落 presentation）
     ...PPT_ICON_RULES,
     "",
@@ -257,6 +350,62 @@ export function buildPptRetryPrompt(
   const user = [
     PPT_RETRY_PROMPT_MARKER,
     `（《${scenarioName}${kindLabel(kind)}》的 PPT 大纲：${why}，请按格式与信息量要求重发一次）`,
+    "只输出 JSON。",
+  ].join("\n");
+  return { system, user };
+}
+
+/** 优化评审的路标（测试据此分辨"生成"与"优化"两步调用） */
+export const PPT_REVIEW_PROMPT_MARKER = "## PPT：只输出优化后的完整 JSON（大纲评审）";
+
+/**
+ * 优化评审（变更表 #146）：把上一轮的大纲 JSON + 问题清单一起喂进去，要求点对点改
+ *
+ * 用户定调「优化大纲，然后再优化 PPT」——所以每轮在生成之后**多一次评审调用**：
+ *  - **只输出优化后的完整 JSON**（schema 不变、不要围栏、不要解释）；
+ *  - **不许删内容**：只能补强 / 改写 / 调序 / 换版式（页数不得减少、块与行只能更密不能更稀）；
+ *  - **必须点对点解决列出的每一条问题**（问题都点名到页）。
+ * 失败（非 JSON / 报错）时调用方保留生成的那一份，绝不因此丢整轮产物。
+ */
+export function buildPptOutlineReviewPrompt(args: {
+  kind: ReportKind;
+  scenarioName: string;
+  outline: PptOutline;
+  issues: readonly PptIssue[];
+  /** 第几轮（写进提示，便于模型知道这是第几次优化） */
+  round: number;
+}): { system: string; user: string } {
+  const { kind, scenarioName, outline, issues, round } = args;
+  const system = [
+    `你是《${scenarioName}${kindLabel(kind)}》汇报 PPT 的大纲评审。第 ${round} 轮大纲已经生成，`,
+    "你的活儿是**把它改到过得了《大纲质量要求》**，然后**只输出优化后的完整 JSON**。",
+    "",
+    "## 改稿纪律（三条硬规则）",
+    "- **只输出优化后的完整 JSON**：整份大纲照原 schema 重发，不要解释、不要 Markdown 围栏、不要前后缀；",
+    "- **不许删内容**：只能补强 / 改写 / 调序 / 换版式——页数不得减少，每页的块与行只能更密不能更稀；",
+    "- **必须点对点解决下面列出的每一条问题**（每条都点名到页）：信息量不足的页改写成 `网格要点` 写满 4 块，",
+    "  标题空泛的页改成一句判断，重复的页换一批事实，数字不在正文的一律换掉或改成定性说法。",
+    "",
+    ...PPT_OUTLINE_QUALITY_RULES,
+    "",
+    "## 七种布局怎么用",
+    ...PPT_LAYOUT_SPEC,
+    "",
+    ...PPT_PAGE_RULES,
+    "",
+    ...PPT_ICON_RULES,
+    "",
+    ...PPT_JSON_SPEC,
+  ].join("\n");
+  const user = [
+    PPT_REVIEW_PROMPT_MARKER,
+    "",
+    `## 待优化的大纲（第 ${round} 轮，JSON）`,
+    JSON.stringify(outline),
+    "",
+    `## 必须解决的问题（共 ${issues.length} 条，逐条改掉）`,
+    ...pptIssueLines(issues),
+    "",
     "只输出 JSON。",
   ].join("\n");
   return { system, user };
