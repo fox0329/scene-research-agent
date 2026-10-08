@@ -1,5 +1,5 @@
 /**
- * @scene/server — 交付物报告生成命令（变更表 #112 / #136 / #137）
+ * @scene/server — 交付物报告生成命令（变更表 #112 / #136 / #137 / #139）
  *
  * 用户定调：「要的是总结，不是罗列」——报告正文由**模型撰写**，本命令负责：
  *  取数 → 组提示词 → 流式撰写 → **确定性校验**（不合规带着违规清单重试一次）
@@ -20,7 +20,7 @@
 
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
-import type { DshClient, FollowEvent, Scenario, SessionHandle, StageData } from "@scene/contract";
+import type { DshClient, FollowEvent, Scenario, StageData } from "@scene/contract";
 import {
   REPORT_KINDS,
   REPORT_KIND_LABEL,
@@ -36,20 +36,19 @@ import {
   type ChapterDigest,
 } from "@scene/infra";
 import {
-  missingChapterArtifacts,
   proseChars,
   checkReport,
   matchChapterKey,
-  repairProseHeads,
   reportMinChars,
+  reportMaxChars,
+  missingChapterArtifacts,
+  firstProseParagraph,
+  leadParagraphIssue,
   type ReportViolation,
 } from "@scene/domain";
-import {
-  buildChapterPrompt,
-  buildCompressPrompt,
-  buildReportPrompt,
-  chapterProseBudget,
-} from "./report-prompts.js";
+import { buildChapterPrompt, buildReportPrompt } from "./report-prompts.js";
+import { streamPrompt } from "./dsh-stream.js";
+import { reviewReport, type ReviewMode } from "./report-review.js";
 
 /**
  * 报告正文落盘目录
@@ -82,6 +81,8 @@ export interface DeliverableReportDeps {
   dshClient: DshClient;
   /** 流式读取的心跳间隔（毫秒），便于测试注入 */
   keepaliveMs?: number;
+  /** 交付物终检开关（变更表 #139，默认 `on`）：关掉就一次终检调用都不发 */
+  review?: ReviewMode;
 }
 
 /** 生成结果（返回给调用方与测试）：两个口径各一份 */
@@ -96,6 +97,19 @@ export interface DeliverableReportResult {
   violations: ReportViolation[];
   /** 是否因硬伤重写过 */
   retried: boolean;
+  /** 终检小结（变更表 #139）：各口径各一行 */
+  review: DeliverableReviewSummary[];
+}
+
+/** 一份交付物终检的小结（进 `done` 事件，界面/测试据此显示"发现几处、改了几处、留几处"） */
+export interface DeliverableReviewSummary {
+  kind: ReportKind;
+  /** 模型报出的问题条数 */
+  issues: number;
+  /** 采纳并改掉的条数 */
+  fixed: number;
+  /** 仍存疑、只记提示的条数 */
+  remaining: number;
 }
 
 /** 单份报告的撰写结果（run 循环里按口径汇总） */
@@ -132,54 +146,48 @@ export function splitReportChapters(
   return out;
 }
 
-/** 一次流式调用：累加正文 + 上报进度 */
-async function streamPrompt(args: {
-  dshClient: DshClient;
-  session: SessionHandle;
-  system: string;
-  user: string;
-  label: string;
-  keepaliveMs: number;
-  push: (event: FollowEvent) => void;
-}): Promise<{ text: string; error?: string }> {
-  const { dshClient, session, system, user, label, keepaliveMs, push } = args;
-  let text = "";
-  let lastBeat = Date.now();
-  try {
-    const iterator = dshClient
-      .prompt(session, { system, user, outputContract: {} })
-      [Symbol.asyncIterator]();
-    for (;;) {
-      // 心跳：模型思考期间没有正文，超过一个心跳就报一次"仍在写"，否则界面看着像卡死
-      const step = await Promise.race([
-        iterator.next(),
-        new Promise<"tick">((resolve) => setTimeout(() => resolve("tick"), keepaliveMs)),
-      ]);
-      if (step === "tick") {
-        push({ type: "progress", message: `${label}：模型仍在撰写（已写 ${text.length} 字）…` });
-        continue;
-      }
-      if (step.done) break;
-      const event = step.value;
-      if (event.type === "text") {
-        text += String((event as { text?: string }).text ?? "");
-        if (Date.now() - lastBeat >= 3000) {
-          lastBeat = Date.now();
-          push({ type: "progress", message: `${label}：已写 ${text.length} 字…` });
-        }
-      }
-      if (event.type === "error") {
-        return { text, error: `${label}：${String(event["message"] ?? "模型调用出错")}` };
-      }
-      if (event.type === "done" && String(event["finishReason"] ?? "") === "length") {
-        return { text, error: `${label} 的输出被长度上限截断` };
-      }
-    }
-  } catch (err: unknown) {
-    return { text, error: `${label} 调用失败：${err instanceof Error ? err.message : String(err)}` };
-  }
-  return { text };
+/**
+ * 回炉重写稿的采纳判据（变更表 #139 补丁）
+ *
+ * 真实现象：目标章 613 → 692 字、路径 724 → 779 字都被收下了——重写**更长**等于没达标；
+ * 而且重写稿把「### 数据采集」这类小节整节吃掉了（少一节就是掉内容）。所以采纳必须**同时**满足：
+ *   ① 比原稿更短 ② 方案构件不比原稿少 ③ `###` 小节数不比原稿少 ④ 章首段仍合格。
+ * 返回 `null` = 采纳；返回字符串 = 拒绝原因（调用方保留原稿，绝不截断）。
+ */
+export function chapterRewriteRejection(args: {
+  kind: ReportKind;
+  key: string;
+  before: string;
+  after: string;
+}): string | null {
+  const { kind, key, before, after } = args;
+  const wasChars = proseChars(before);
+  const nowChars = proseChars(after);
+  if (nowChars >= wasChars) return `重写稿没变短（${wasChars} → ${nowChars} 字）`;
+
+  const missingBefore = missingChapterArtifacts(kind, key, before);
+  const missingAfter = missingChapterArtifacts(kind, key, after);
+  if (missingAfter.length > missingBefore.length) return "方案构件变少";
+
+  const wasSections = countSections(before);
+  const nowSections = countSections(after);
+  if (nowSections < wasSections) return `小节变少（${wasSections} → ${nowSections} 个）`;
+
+  const lead = leadParagraphIssue(firstProseParagraph(after));
+  if (lead) return `章首段不合格：${lead}`;
+  return null;
 }
+
+/** `###` / `####` 小节数（用来确认重写没有把整节吃掉） */
+function countSections(markdown: string): number {
+  return (markdown.match(/^#{3,4}\s/gm) ?? []).length;
+}
+
+/** 超总量时最多回炉几章（少了没用，多了既慢又容易越改越差） */
+/** 只在 checkReport 与终检里各算一次的确定性判据（同类型只报一条） */
+const DETERMINISTIC_VIOLATION_KINDS = new Set(["悬空残句", "重复", "空节", "章首段不合规"]);
+
+const MAX_REWRITE_CHAPTERS = 2;
 
 /**
  * 按口径生成一份报告：整篇写 → 校验 →（有硬伤）重写一次 → 缺章单独补写 → 仍未达标才兜底
@@ -263,63 +271,97 @@ async function writeOneReport(args: {
     if (r.error) error = r.error;
   }
 
-  // 篇幅回炉：正文（表格不计）超预算的章，让模型只删不加地压一次——提示词约束不住篇幅，
-  // 这一步才是能真正把"流水账"压下去的地方；压不动（更长了 / 出错）就保留原样，不截断正文。
-  if (error === undefined) {
-    for (const d of digest) {
+  // 篇幅回炉（变更表 #139 补丁：**总量驱动**）
+  //
+  // 用户要的是"总字数"（「可以设置一个总的字数，比如 2000–5000 字左右，没必要直接截断」），
+  // 所以逐章预算只是**提示词里的写作指引**，不当硬闸——真实场景模型稳定写 500–800 字/章，
+  // 拿逐章线逐章触发只会白跑四五章。现在的规矩：
+  //   ① 全篇正文总字数（表格不计，与 `reportMaxChars` 同一口径）没超上限 → **一章都不回炉**；
+  //   ② 超了 → 只挑**正文最长的 1–2 章**各回炉重写一次（提示重申该章预算）；
+  //   ③ 改完重算总量，仍超 → **保留、不截断**，只提示「超总上限 M（已回炉 K 章）」；
+  //   ④ 低于下限只提示（`checkReport` 的「篇幅不足」），不回炉。每章最多一次，失败不中断整篇。
+  const maxChars = reportMaxChars(kind);
+  let total = proseChars(chapterText(written, digest));
+  const longest = [...digest]
+    .filter((d) => (written.get(d.key)?.trim() ?? "") !== "")
+    .sort((a, b) => proseChars(written.get(b.key) ?? "") - proseChars(written.get(a.key) ?? ""))
+    .slice(0, MAX_REWRITE_CHAPTERS);
+  let requalified = 0;
+  const overLimit = error === undefined && total > maxChars;
+  if (!overLimit && error === undefined) {
+    push({
+      type: "progress",
+      message: `${label}：正文合计 ${total} 字，在总上限 ${maxChars} 字内，不回炉`,
+    });
+  }
+  if (overLimit) {
+    push({
+      type: "progress",
+      message: `${label}：正文合计 ${total} 字，超总上限 ${maxChars} 字，回炉最长的 ${longest.length} 章…`,
+    });
+    for (const d of longest) {
+      // 前几章已经改回总量就不再动下一章（"1–2 章"里的 1）
+      if (total <= maxChars) break;
       const body = written.get(d.key)?.trim();
       if (!body) continue;
-      const budget = chapterProseBudget(kind, d.key);
-      const current = proseChars(body);
-      if (current <= budget) continue;
-      push({
-        type: "progress",
-        message: `${label}：${d.title} 正文 ${current} 字，超过 ${budget} 字预算，正在压短…`,
-      });
+      const wasChars = proseChars(body);
       const r = await streamPrompt({
         dshClient,
         session,
-        ...buildCompressPrompt({ title: d.title, markdown: body, budget, current }),
-        label: `${label}（压缩·${d.title}）`,
+        ...buildChapterPrompt(kind, [d], scenario.name),
+        label: `${label}（回炉·${d.title}）`,
         keepaliveMs,
         push,
       });
       if (r.error) {
-        error = r.error;
-        break;
-      }
-      const shorter = splitReportChapters(r.text, kind, [d.key]).get(d.key)?.trim();
-      // 先修再判（变更表 #138）：压缩把句子砍成半句时，段首会留下残标点。删掉那截残句头
-      // 之后**再**比长度、再查构件——修好的稿子该采纳就采纳，不因为模型的坏习惯整章退回。
-      const repaired = shorter === undefined ? undefined : repairProseHeads(shorter);
-      const fixed = repaired?.markdown;
-      const headNote =
-        repaired && repaired.repaired > 0 ? `（修掉 ${repaired.repaired} 处断头句）` : "";
-      // 守卫：压缩是"只删不加"，但不许把方案构件删掉（实测有一次把「### 设计原则」整节压没了，
-      // 交付物因此缺构件、判硬伤）。构件变少就作废这次压缩，保留原正文——宁可偏长，不能缺构件。
-      const lostArtifact =
-        fixed !== undefined &&
-        missingChapterArtifacts(kind, d.key, fixed).length >
-          missingChapterArtifacts(kind, d.key, body).length;
-      // 结构塌陷（原来有多个小节、压完成一个都没有）也作废
-      const collapsed =
-        fixed !== undefined && headingsOf(body).length >= 1 && headingsOf(fixed).length === 0;
-      const fragmented = fixed !== undefined && hasFragment(fixed);
-      if (lostArtifact || collapsed || fragmented) {
+        // 回炉失败只是"这一章没救回来"：保留原正文，绝不让整篇生成中断
         push({
           type: "progress",
-          message: fragmented
-            ? `${label}：${d.title} 压缩后出现残句，保留原正文${headNote}`
-            : `${label}：${d.title} 压缩会把方案构件/结构压没，保留原正文${headNote}`,
+          message: `${label}：${d.title} 回炉重写失败（${r.error}），保留原正文`,
         });
+        continue;
       }
-      if (fixed && !lostArtifact && !collapsed && !fragmented && proseChars(fixed) < current) {
-        written.set(d.key, fixed);
+      const rewritten = splitReportChapters(r.text, kind, [d.key]).get(d.key)?.trim();
+      if (!rewritten) {
         push({
           type: "progress",
-          message: `${label}：${d.title} 压到正文 ${proseChars(fixed)} 字${headNote}`,
+          message: `${label}：${d.title} 回炉产出解析不出来，保留原正文`,
         });
+        continue;
       }
+      // 采纳门槛（#139 补丁）：重写更长 / 构件变少 / 小节被吃掉 / 章首段不合格 → 一律保留原稿
+      const rejected = chapterRewriteRejection({
+        kind,
+        key: d.key,
+        before: body,
+        after: rewritten,
+      });
+      if (rejected !== null) {
+        push({
+          type: "progress",
+          message: `${label}：${d.title} 回炉稿 ${wasChars} 字 → ${proseChars(rewritten)} 字，没达标，保留原稿（${rejected}）`,
+        });
+        continue;
+      }
+      written.set(d.key, rewritten);
+      requalified += 1;
+      // 每改一章就重算总量：够用就停手，不为了"凑满两章"多跑一次
+      total = proseChars(chapterText(written, digest));
+      push({
+        type: "progress",
+        message: `${label}：${d.title} 回炉后 ${proseChars(rewritten)} 字（原 ${wasChars} 字），正文合计 ${total} 字`,
+      });
+    }
+    if (total > maxChars) {
+      push({
+        type: "progress",
+        message: `${label}：正文 ${total} 字，超总上限 ${maxChars}（已回炉 ${requalified} 章），保留正文不截断`,
+      });
+    } else {
+      push({
+        type: "progress",
+        message: `${label}：回炉后正文 ${total} 字，已在总上限 ${maxChars} 字内`,
+      });
     }
   }
 
@@ -339,25 +381,6 @@ async function writeOneReport(args: {
   return assemble(kind, written, digest, scenario, stageData, args.today, gate.violations, retried);
 }
 
-/** 有没有"残句"：短段落却不像一句完整的话（压缩只删不加，但可能把一句话砍成半句） */
-function hasFragment(markdown: string): boolean {
-  return markdown.split("\n").some((line) => {
-    const t = line.trim().replace(/\*\*$/, "");
-    if (t === "" || t.startsWith("|") || t.startsWith("#") || t.startsWith("-") || t.startsWith(">")) {
-      return false;
-    }
-    return t.length < 12 && !/[。！？：；、）】」…]$/.test(t);
-  });
-}
-
-/**
- * 小节标题（`###` 及更深）——只数小节，不数章标题：
- * 压缩后连一个小节标题都不剩，说明整章被压成一团，这次压缩作废。
- */
-function headingsOf(markdown: string): string[] {
-  return (markdown.match(/^#{3,4} .*$/gm) ?? []).map((h) => h.trim());
-}
-
 /** 已写成章节拼成整篇（给确定性校验用：校验的是最终正文，不是模型的原文） */
 function chapterText(written: Map<string, string>, digest: readonly ChapterDigest[]): string {
   return digest
@@ -373,7 +396,7 @@ function briefOf(
   digest: readonly ChapterDigest[],
 ): string {
   const missing = digest.filter((d) => !written.get(d.key)?.trim()).map((d) => d.title);
-  // 只带硬伤：像「缺小节」这种提示性项塞进重写提示，等于让模型把刚压缩掉的铺陈又写回来
+  // 只带硬伤：像「缺小节」这种提示性项塞进重写提示，等于让模型把刚回炉掉的铺陈又写回来
   return [
     "上一版的问题（重写时逐条改掉，各章仍要齐全）：",
     ...violations.filter((v) => v.hard).map((v) => `- 【${v.kind}】${v.detail}`),
@@ -425,6 +448,8 @@ interface KindSummary {
   retried: boolean;
   fallback: number;
   violations: number;
+  /** 终检报出的问题条数（变更表 #139） */
+  reviewed?: number;
 }
 
 /**
@@ -441,6 +466,8 @@ export interface DeliverableReportInput {
 
 export function createDeliverableReportCommand(deps: DeliverableReportDeps) {
   const keepaliveMs = deps.keepaliveMs ?? 20_000;
+  /** 终检默认开（变更表 #139）；`off` 时一次终检调用都不发 */
+  const reviewMode: ReviewMode = deps.review ?? "on";
 
   return {
     async execute(input: DeliverableReportInput): Promise<AsyncGenerator<FollowEvent>> {
@@ -471,6 +498,7 @@ export function createDeliverableReportCommand(deps: DeliverableReportDeps) {
       sources: [],
       violations: [],
       retried: false,
+      review: [],
     };
     /** 一份写失败不该拖住另一份：失败信息攒起来，两份都跑完再报 */
     const failures: string[] = [];
@@ -514,19 +542,45 @@ export function createDeliverableReportCommand(deps: DeliverableReportDeps) {
               today,
               push,
             });
-            result.markdowns[kind] = written.markdown;
+            // 交付物终检（变更表 #139）：装配好的整篇再过一道"通读找问题 → 只改被点名的段落 → 复查"。
+            // 它只降级不阻断：模型失败/解析失败就跳过，落盘的仍是撰写出来的整篇。
+            const reviewed = await reviewReport({
+              kind,
+              markdown: written.markdown,
+              scenarioName: scenario.name,
+              dshClient,
+              keepaliveMs,
+              push,
+              enabled: reviewMode === "on",
+            });
+            result.markdowns[kind] = reviewed.markdown;
             result.sources.push(...written.sources);
-            result.violations.push(...written.violations);
-            if (written.violations.some((v) => v.hard)) result.passed = false;
+            // 初稿校验决定要不要重写；对外要说的是「交付出去的那份还有哪些问题」。
+            // 确定性判据（断头段/重复/空节/章首段）初稿与终检后各算一次——同类型取后者（终检后最新状态），
+            // 其余类型按「类型 + 说明」去重，右栏才不会把同一条提示数两遍
+            const mergedViolations = new Map<string, ReportViolation>();
+            for (const v of [...written.violations, ...reviewed.violations]) {
+              const key = DETERMINISTIC_VIOLATION_KINDS.has(v.kind) ? v.kind : `${v.kind}|${v.detail}`;
+              mergedViolations.set(key, v);
+            }
+            result.violations.push(...mergedViolations.values());
+            if (result.violations.some((v) => v.hard)) result.passed = false;
+            result.review.push({
+              kind,
+              issues: reviewed.issues,
+              fixed: reviewed.fixed,
+              remaining: reviewed.remaining,
+            });
             summaries.set(kind, {
               retried: written.retried,
               fallback: written.sources.filter((s) => s.from === "兜底").length,
               violations: written.violations.length,
+              reviewed: reviewed.issues,
             });
             if (written.retried) result.retried = true;
             // 用户会直接在交付物上改字：覆盖前留档，手改永远可恢复（变更表 #127）
             // 先读后写（变更表 #131）：内容相同不落盘；被手改过则保留用户版本、新版本另存
-            const saved = safeWriteFile(deliverableReportPath(scenario.id, kind), written.markdown);
+            const saved = safeWriteFile(deliverableReportPath(scenario.id, kind), reviewed.markdown);
             if (saved.notice) console.warn(`[generate] ${saved.notice}`);
           } catch (err: unknown) {
             failures.push(
@@ -575,6 +629,7 @@ export function createDeliverableReportCommand(deps: DeliverableReportDeps) {
           `（表格不计，下限 ${reportMinChars(kind)} 字）` +
           (s.fallback > 0 ? `；${s.fallback} 章用了要点版兜底` : "") +
           (s.retried ? "；有硬伤已重写" : "") +
+          (s.reviewed ? `；终检发现 ${s.reviewed} 处` : "") +
           (s.violations > 0 ? `；${s.violations} 项校验提示` : ""),
       };
     }
@@ -586,6 +641,8 @@ export function createDeliverableReportCommand(deps: DeliverableReportDeps) {
       },
       sources: result.sources,
       violations: result.violations,
+      // 终检小结（变更表 #139）：每份一行「发现几处、改了几处、留几处提示」
+      review: result.review,
     };
   }
 }

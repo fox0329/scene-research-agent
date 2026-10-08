@@ -133,11 +133,13 @@ describe("报告确定性校验（变更表 #112 / #113）：solution 口径", (
     expect(v?.detail).toContain("1 处");
   });
 
-  it("篇幅超标只提示（要精要，不要流水账）", () => {
+  it("篇幅超总上限只提示（#139 补丁：出稿前已定向回炉，这里再升硬伤会触发整篇重写）", () => {
     const long = goodReport("solution") + "\n\n" + "补充废话。".repeat(1000);
     const v = checkReport("solution", long).violations.find((x) => x.kind === "篇幅超标");
     expect(v?.hard).toBe(false);
-    expect(v?.detail).toContain("超过");
+    expect(v?.detail).toContain("超过 4500 字总上限");
+    // 只提示 = 不影响整体结论
+    expect(checkReport("solution", long).ok).toBe(true);
   });
 
   it("篇幅按正文字数算：表格再长也不算流水账", () => {
@@ -250,16 +252,48 @@ describe("建设工作方案口径（变更表 #137）", () => {
     expect(v?.detail).toContain("低于 2000 字");
   });
 
-  it("篇幅按 construction 口径：超过 6000 只提示", () => {
+  it("篇幅按 construction 口径：超过 5000 只提示（回炉在出稿前做，不靠这里拦）", () => {
     const long = goodReport("construction") + "\n\n" + "补充废话。".repeat(1500);
-    const v = checkReport("construction", long).violations.find((x) => x.kind === "篇幅超标");
+    const r = checkReport("construction", long);
+    const v = r.violations.find((x) => x.kind === "篇幅超标");
     expect(v?.hard).toBe(false);
-    expect(v?.detail).toContain("超过 6000 字");
+    expect(v?.detail).toContain("超过 5000 字总上限");
+    expect(r.ok).toBe(true);
   });
 
-  it("篇幅上下限按口径给（solution 1200/4500，construction 2000/6000）", () => {
+  it("篇幅上下限按口径给（solution 1200/4500，construction 2000/5000）——下限同样只提示", () => {
     expect([reportMinChars("solution"), reportMaxChars("solution")]).toEqual([1200, 4500]);
-    expect([reportMinChars("construction"), reportMaxChars("construction")]).toEqual([2000, 6000]);
+    expect([reportMinChars("construction"), reportMaxChars("construction")]).toEqual([2000, 5000]);
+  });
+
+  it("章首段不是总纲 → 只提示（变更表 #139；不阻断出稿）", () => {
+    const bad = goodReport("construction").replace(
+      "这是现场现状的归纳正文。",
+      "多园区由 IT 与厂商支持；纪要手工或录音转写，无统一检索。",
+    );
+    const v = checkReport("construction", bad).violations.find((x) => x.kind === "章首段不合规");
+    expect(v?.hard).toBe(false);
+    expect(v?.detail).toContain("建设背景与必要性");
+    // 干净的那份不产生这条
+    expect(kindsOf("construction", goodReport("construction"))).not.toContain("章首段不合规");
+  });
+
+  it("整篇出现断头段 → 硬伤（终检的最后一道断言）", () => {
+    const broken = goodReport("construction").replace(
+      "这是现场现状的归纳正文。",
+      "、Teams 等云平台；多园区由 IT 支持。",
+    );
+    const v = checkReport("construction", broken).violations.find((x) => x.kind === "悬空残句");
+    expect(v?.hard).toBe(true);
+  });
+
+  it("跨章重复的长句与小节占位 → 只提示", () => {
+    const dup =
+      goodReport("construction") +
+      "\n\n现场巡检仍靠人工记录，数据分散在三个系统里，统计口径对不上。";
+    const kinds = kindsOf("construction", dup);
+    expect(kinds).toContain("空节");
+    expect(checkReport("construction", dup).violations.find((x) => x.kind === "空节")?.hard).toBe(false);
   });
 
   it("不再产生已退场的违规类型（缺风险或边界 / 缺术语表）", () => {

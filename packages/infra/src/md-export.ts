@@ -438,7 +438,7 @@ function buildReport(data: DeliverableInput, kind: ReportKind, bodyOf: (key: str
 
   for (const chapter of reportChapters(kind)) {
     const body: string[] = [`## ${reportChapterHeading(kind, chapter.key)}`, ""];
-    // 兜最后一道（变更表 #138）：无论正文来自模型初稿、压缩稿还是历史文件，
+    // 兜最后一道（变更表 #138）：无论正文来自模型初稿、回炉稿还是历史文件，
     // 落盘前都过一遍断头段修复——装配是唯一出口，出口干净，交付物就不会带半句话。
     const text = repairProseHeads(stripEchoedTitle(bodyOf(chapter.key).trim(), chapter.label)).markdown;
     body.push(text || "（本节内容待补）");
@@ -458,17 +458,104 @@ function normTitle(text: string): string {
     .trim();
 }
 
+/** 模型爱在正文里重抄章名时省掉的修饰（「建设背景与必要性」→「背景与必要性」） */
+const TITLE_PREFIXES = ["建设", "工作", "本章", "方案", "实施"] as const;
+
+/** 章名的尾巴修饰（「建设背景与必要性章」「建设背景与必要性部分」） */
+const TITLE_SUFFIXES = ["章", "部分"] as const;
+
+/** 「长度 ≤ N 字且被章名包含」才算回声标题的上限（防误伤正常正文首段） */
+const ECHOED_TITLE_MAX_CHARS = 12;
+
+/** 一次最多连剥两段回声标题（模型偶尔连抄两遍；剥多了会吃掉正常正文） */
+const MAX_ECHOED_LINES = 2;
+
+/** 去掉前导修饰与结尾「章 / 部分」后的各种形态（可能连着两层，如「建设工作方案」） */
+function affixStripped(text: string): string[] {
+  const out: string[] = [];
+  let cur = text;
+  for (const suf of TITLE_SUFFIXES) {
+    if (cur.length > suf.length && cur.endsWith(suf)) {
+      cur = cur.slice(0, -suf.length);
+      out.push(cur);
+    }
+  }
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const pre of TITLE_PREFIXES) {
+      if (cur.length > pre.length && cur.startsWith(pre)) {
+        cur = cur.slice(pre.length);
+        out.push(cur);
+        changed = true;
+        break;
+      }
+    }
+  }
+  return out;
+}
+
+/** 章名的全部近似形态（原样 + 去修饰 + 去编号/去尾部「章」） */
+function labelForms(label: string): string[] {
+  const base = normTitle(label);
+  const forms = new Set<string>([base, ...affixStripped(base)]);
+  for (const f of [...forms]) {
+    const deord = f.replace(/^第\s*[一二三四五六七八九十\d]+\s*[章部分节]\s*/, "");
+    if (deord !== "" && deord !== f) forms.add(deord);
+  }
+  return [...forms];
+}
+
+/** 正文首段可能的形态（去编号、去尾部「章 / 部分」、去前导修饰后仍要看一遍） */
+function candidateForms(line: string): string[] {
+  const t = normTitle(line);
+  if (t === "") return [];
+  const out = new Set<string>([t, ...affixStripped(t)]);
+  const deord = t.replace(/^第\s*[一二三四五六七八九十\d]+\s*[章部分节]\s*/, "");
+  if (deord !== "") {
+    out.add(deord);
+    for (const f of affixStripped(deord)) out.add(f);
+  }
+  const detrail = t.replace(/[章部分]$/, "");
+  if (detrail !== "") out.add(detrail);
+  return [...out];
+}
+
 /**
- * 去掉正文开头重复的章标题
+ * 这一行是不是"回声标题"（模型把章名当正文第一段又抄了一遍）
  *
- * 实测模型会在 `## 一、现状` 之后又把「一、现状」当正文第一行抄一遍——同一章名连着出现两次，
- * 读者以为是排版错误。装配时只删这一行重复标题，其余正文一字不动。
+ * 只认**近似章名**，四条任一即可：等于章名 / 等于去掉「建设·工作·本章·方案·实施」前缀与
+ * 末尾「章·部分」的形态 / ≤12 字且被章名包含（「背景与必要性」⊂「建设背景与必要性」）/
+ * 形如「XX章」「一、XX」（去章号后仍满足上面任一条）。
+ * 「现状特征与提升空间」这种小节名**不算**——它不被任何章名包含，删掉就是吃正文。
+ */
+export function isEchoedTitle(line: string, label: string): boolean {
+  const forms = labelForms(label);
+  for (const c of candidateForms(line)) {
+    if (forms.includes(c)) return true;
+    if (c.replace(/\s/g, "").length <= ECHOED_TITLE_MAX_CHARS && forms.some((f) => f.includes(c))) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * 去掉正文开头重复的章标题（变更表 #139 补丁）
+ *
+ * 实测模型会在 `## 一、现状` 之后又把章名当正文第一行抄一遍，而且**抄得不完整**：
+ * 真实生成物的第 1 章首段就是孤零零一句「背景与必要性」（原章名「建设背景与必要性」）。
+ * 老实现只剥"完全等于章名"的首行，于是这 6 个字被当成章首段（读者看到的第一句话）。
+ * 现在按"近似章名"剥，**最多连剥两段**，其余正文一字不动；对已剥干净的正文再剥一次不变。
  */
 export function stripEchoedTitle(body: string, label: string): string {
   const lines = body.split("\n");
-  const i = lines.findIndex((l) => l.trim() !== "");
-  if (i < 0) return body;
-  if (normTitle(lines[i]!) !== normTitle(label)) return body;
-  lines.splice(i, 1);
-  return lines.join("\n").trim();
+  let stripped = 0;
+  while (stripped < MAX_ECHOED_LINES) {
+    const i = lines.findIndex((l) => l.trim() !== "");
+    if (i < 0 || !isEchoedTitle(lines[i]!, label)) break;
+    lines.splice(i, 1);
+    stripped += 1;
+  }
+  return stripped === 0 ? body : lines.join("\n").trim();
 }

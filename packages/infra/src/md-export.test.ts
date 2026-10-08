@@ -22,6 +22,7 @@ import {
   reportChapterDigest,
   reportTypeName,
   safeWriteFile,
+  stripEchoedTitle,
 } from "./md-export.js";
 import type { DeliverableInput, StageData } from "@scene/contract";
 import { reportChapterHeading, reportChapters } from "@scene/contract";
@@ -599,6 +600,83 @@ describe("exportDeliverables — 断头段兜底（变更表 #138）", () => {
     );
     expect(brokenProseHeads(report)).toEqual([]);
     expect(report).toContain("完整句在这里。");
+  });
+});
+
+describe("stripEchoedTitle — 回声章名（变更表 #139 补丁）", () => {
+  // 真实生成物的第 1 章首段：孤零零一句「背景与必要性」（原章名「建设背景与必要性」）
+  const real = "背景与必要性\n\n本方案对象是企业与园区内部的会议室。";
+
+  it("真实形态：模型写成「背景与必要性」也算回声，剥掉后正文才是章首段", () => {
+    expect(stripEchoedTitle(real, "建设背景与必要性")).toBe(
+      "本方案对象是企业与园区内部的会议室。",
+    );
+  });
+
+  it("完全等于章名 / 带 `##` / 带章号 / 带「章」尾 / 带修饰 的形态都剥", () => {
+    for (const line of [
+      "建设背景与必要性",
+      "## 建设背景与必要性",
+      "一、建设背景与必要性",
+      "背景与必要性章",
+      "本章背景与必要性",
+      "建设背景与必要性部分",
+    ]) {
+      expect(stripEchoedTitle(`${line}\n\n正文在这里。`, "建设背景与必要性"), line).toBe(
+        "正文在这里。",
+      );
+    }
+  });
+
+  it("连抄两遍就剥两遍，最多两段（第三段留给正文，别把内容吃进去）", () => {
+    expect(stripEchoedTitle("背景与必要性\n\n建设背景与必要性\n\n正文。", "建设背景与必要性")).toBe(
+      "正文。",
+    );
+    expect(
+      stripEchoedTitle("背景与必要性\n\n背景与必要性\n\n背景与必要性\n\n正文。", "建设背景与必要性"),
+    ).toBe("背景与必要性\n\n正文。");
+  });
+
+  it("幂等：剥干净的正文再剥一次一字不变", () => {
+    const once = stripEchoedTitle(real, "建设背景与必要性");
+    expect(stripEchoedTitle(once, "建设背景与必要性")).toBe(once);
+  });
+
+  it("不误伤正常正文首段：小节名、正常段落、别的章名都不算回声", () => {
+    const cases: [string, string][] = [
+      // 小节名不被章名包含（「现状特征与提升空间」⊄「现状」）
+      ["现状特征与提升空间\n\n下面的正文。", "现状"],
+      // 正常长段落
+      ["本方案对象是企业与园区内部的会议室。\n\n第二段。", "建设背景与必要性"],
+      // 别的章名
+      ["建设目标与思路\n\n正文。", "建设背景与必要性"],
+      // 空正文
+      ["", "建设背景与必要性"],
+    ];
+    for (const [body, label] of cases) {
+      expect(stripEchoedTitle(body, label), `${label} / ${body.slice(0, 12)}`).toBe(body);
+    }
+  });
+
+  it("端到端：真实那种首段被装配剥掉，落盘的章首段是可读的正文", async () => {
+    const input = makeConstructionInput();
+    const report = await exportDeliverables(
+      {
+        ...input,
+        chapters: [
+          {
+            key: "background",
+            markdown: "背景与必要性\n\n本方案对象是企业与园区内部的会议室，当前靠人工预约与到场调试维持。",
+          },
+        ],
+      },
+      "construction",
+    );
+    const section = report.split("## 建设背景与必要性")[1]!.split("\n---")[0]!;
+    expect(section).not.toMatch(/^\s*背景与必要性\s*$/m);
+    expect(section).toContain("本方案对象是企业与园区内部的会议室");
+    // 章首段（第一段正文）就是那句完整的话
+    expect(section.trim().startsWith("本方案对象")).toBe(true);
   });
 });
 

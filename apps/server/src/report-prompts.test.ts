@@ -2,9 +2,9 @@ import { describe, it, expect } from "vitest";
 import { reportChapterHeading, reportChapters } from "@scene/contract";
 import type { ReportKind } from "@scene/contract";
 import type { ChapterDigest } from "@scene/infra";
+import { reportMaxChars } from "@scene/domain";
 import {
   buildChapterPrompt,
-  buildCompressPrompt,
   buildReportPrompt,
   chapterProseBudget,
 } from "./report-prompts.js";
@@ -106,31 +106,13 @@ describe("解决方案提示词（变更表 #112 / #136）", () => {
     expect(system).not.toContain("内部版每章");
   });
 
-  it("补写与压缩提示词同样是单一口径", () => {
+  it("补写提示词同样是单一口径（变更表 #139：它现在也用于超预算章的回炉重写）", () => {
     const chapter = buildChapterPrompt("solution", digest.slice(1, 2), "智慧会议室");
     expect(chapter.user).toContain("只写下面这几节");
     expect(`${chapter.system}\n${chapter.user}`).not.toContain("术语表");
-    const compress = buildCompressPrompt({ title: "现状", markdown: "正文", budget: 1000, current: 1500 });
-    expect(compress.system).toContain("只删不加");
-    expect(compress.user).toContain("1000 字以内");
-    expect(`${compress.system}\n${compress.user}`).not.toContain("内部版");
-    expect(`${compress.system}\n${compress.user}`).not.toContain("对外");
-  });
-
-  it("压缩提示词要求每段从句首开始：不许把句子砍成半句，也不许留残标点（变更表 #138）", () => {
-    const compress = buildCompressPrompt({
-      title: "建设背景与必要性",
-      markdown: "正文",
-      budget: 600,
-      current: 1884,
-    });
-    expect(compress.system).toContain("绝不许把句子砍成半句");
-    expect(compress.system).toContain("完整句子");
-    expect(compress.system).toContain("残标点");
-    // 老规则一条都没弱化（只删不加 / 不许留半句话 / 构件必须留）
-    expect(compress.system).toContain("只删不加");
-    expect(compress.system).toContain("不许留半句话");
-    expect(compress.system).toContain("方案构件必须留");
+    // 逐章重申该章预算与「章首段是总纲」——篇幅靠预算在前面管住，不靠事后压缩删内容
+    expect(chapter.user).toContain("本章正文预算不超过 300 字");
+    expect(chapter.user).toContain("第一段是本章总纲");
   });
 
   it("逐章回炉线是变更表 #136 定下的那一档（solution 五章）", () => {
@@ -184,10 +166,19 @@ describe("建设工作方案提示词（变更表 #137）", () => {
     expect(system).toContain("只写这三列");
     expect(system).toContain("要客户自己评估或提供");
     expect(system).toContain("也不要为它们留「待客户提供」占位");
-    // 建设路径的篇幅区间与回炉线一起收到 400–800
-    expect(system).toContain("路径约 400–800");
-    expect(system).toContain("本章 400–800 字");
-    expect(chapterProseBudget("construction", "path")).toBe(800);
+    // 逐章区间与回炉线一致（变更表 #139 补丁：按真实分布抬到 650/650/1700/700/200/550/250）
+    expect(system).toContain("背景约 400–650");
+    expect(system).toContain("内容约 1400–1600");
+    expect(system).toContain("目标约 400–600");
+    expect(system).toContain("保障约 400–550");
+    expect(system).toContain("路径约 500–700");
+    expect(system).toContain("本章 400–650 字");
+    expect(system).toContain("（本章 400–550 字）");
+    expect(system).toContain("本章 500–700 字");
+    expect(chapterProseBudget("construction", "path")).toBe(700);
+    // 「本章 N 字」只出现在版式里那七处，不许再有旧的 400–500 / 500 口径
+    expect(system).not.toContain("本章 400–500 字");
+    expect(system).not.toContain("（本章 400–500 字）");
   });
 
   it("客户没给的数字不许编，缺数写「待客户提供 / 待现场勘查确定」", () => {
@@ -205,13 +196,38 @@ describe("建设工作方案提示词（变更表 #137）", () => {
     expect(system).toContain("不是选项比较");
   });
 
-  it("篇幅 4,200–5,200 字，且不混入解决方案的 2,500–3,200 口径", () => {
+  it("总字数预算写在提示词里：正文 2,000–5,000 字、目标 4,300 字左右", () => {
     const { system } = buildReportPrompt("construction", constructionBase);
-    expect(system).toContain("4,200–5,200");
+    expect(system).toContain("2,000–5,000");
+    expect(system).toContain("目标 4,300 字左右");
+    expect(system).not.toContain("4,200–5,200");
     expect(system).not.toContain("2500–3200");
     expect(system).not.toContain("2,500–3,200");
     // 逐章回炉线也要是建设方案那七档，别把解决方案的章序当预算
     expect(system).not.toContain("现状约 900");
+  });
+
+  it("construction 总上限 5000，且逐章预算之和不超过总上限（solution 预算与上限未动）", () => {
+    const sum = (kind: ReportKind): number =>
+      reportChapters(kind).reduce((acc, c) => acc + chapterProseBudget(kind, c.key), 0);
+    // construction：650+600+1600+700+200+550+250 = 4,550 ≤ 5,000（#139 补丁后只是写作指引，贴近目标 4,300）
+    expect(sum("construction")).toBe(4_550);
+    expect(sum("construction")).toBeLessThanOrEqual(reportMaxChars("construction"));
+    // solution 的预算与上限都没动：1000+300+1350+200+400 = 3,250 < 4,500
+    expect(sum("solution")).toBe(3_250);
+    expect(sum("solution")).toBeLessThanOrEqual(reportMaxChars("solution"));
+  });
+
+  it("章首段规则进通用硬规则（报告提示词与补写提示词都在）", () => {
+    const report = buildReportPrompt("construction", constructionBase).system;
+    expect(report).toContain("每章第一段是本章总纲");
+    expect(report).toContain("不以分号列举或半句开头");
+    expect(report).toContain("不超过 120 字");
+    const chapter = buildChapterPrompt("construction", constructionDigest.slice(0, 1), "智慧会议室");
+    expect(chapter.system).toContain("每章第一段是本章总纲");
+    expect(chapter.user).toContain("第一段是本章总纲");
+    // 解决方案口径共用同一批硬规则
+    expect(buildReportPrompt("solution", base).system).toContain("每章第一段是本章总纲");
   });
 
   it("口径隔离：两份提示词不互相出现对方的章名", () => {
@@ -237,14 +253,14 @@ describe("建设工作方案提示词（变更表 #137）", () => {
     expect(solution).not.toContain("建设工程方案撰写人");
   });
 
-  it("逐章回炉线两份口径各取精确值，未知章兜底 450", () => {
-    expect(chapterProseBudget("construction", "background")).toBe(600);
-    expect(chapterProseBudget("construction", "goals")).toBe(700);
-    expect(chapterProseBudget("construction", "content")).toBe(2900);
-    expect(chapterProseBudget("construction", "path")).toBe(800);
+  it("逐章回炉线两份口径各取精确值（变更表 #139 重排），未知章兜底 450", () => {
+    expect(chapterProseBudget("construction", "background")).toBe(650);
+    expect(chapterProseBudget("construction", "goals")).toBe(600);
+    expect(chapterProseBudget("construction", "content")).toBe(1600);
+    expect(chapterProseBudget("construction", "path")).toBe(700);
     expect(chapterProseBudget("construction", "schedule")).toBe(200);
-    expect(chapterProseBudget("construction", "safeguards")).toBe(650);
-    expect(chapterProseBudget("construction", "outlook")).toBe(300);
+    expect(chapterProseBudget("construction", "safeguards")).toBe(550);
+    expect(chapterProseBudget("construction", "outlook")).toBe(250);
     expect(chapterProseBudget("construction", "不存在的章")).toBe(450);
     // 隔离：解决方案的章 key 在建设方案口径里没有预算 → 兜底
     expect(chapterProseBudget("construction", "status")).toBe(450);

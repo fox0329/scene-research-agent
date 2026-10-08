@@ -1,16 +1,23 @@
 /**
- * @scene/domain — 报告正文形态（变更表 #138）
+ * @scene/domain — 报告正文形态（变更表 #138 / #139）
  *
- * 交付物的**篇幅压缩回炉**只认「压完更短」与「构件不丢」，查不出"句子是不是完整"：
+ * 交付物的篇幅回炉只认「压完更短」与「构件不丢」，查不出"句子是不是完整"：
  * 模型为凑字数从句子中间删起，落盘的正文段落就以残标点开头——
  *
  *   `、Teams 等云平台；多园区由 IT、弱电运维（常含外包）与厂商支持；纪要手工或录音转写。`
  *
  * 读者看到的是一段**从半句话开始**的正文（断头段）。本模块是确定性兜底：识别这种段落、
- * 把残句头切掉，并在**装配落盘前**再过一遍（模型初稿 / 压缩稿 / 历史文件都走同一条路）。
+ * 把残句头切掉，并在**装配落盘前**再过一遍（模型初稿 / 历史文件都走同一条路）。
+ *
+ * 变更表 #139：篇幅改由**总字数预算前置管住**（超标的章回炉重写整章，而不是事后压缩删内容），
+ * 于是这里再加两条确定性判据：
+ *  - `firstProseParagraph()`：取一章/一段 markdown 的第一段正文（跳过标题/表格/分隔线/引用/空行）；
+ *  - `leadParagraphIssue()`：**章首段是本章总纲**——≤120 字、不以分号列举或半句开头（只提示，不阻断）。
  *
  * 纯函数，无 IO；判定落确定性层（AGENTS.md §三.5）。
  */
+
+import { proseChars } from "./md-metrics.js";
 
 /**
  * 残标点：正文段落**以这些字符开头**就是被砍断的句子。
@@ -58,7 +65,7 @@ function repairHead(text: string): string | null {
 }
 
 /**
- * 断头段：正文段落以残标点开头（压缩砍断句子的产物）
+ * 断头段：正文段落以残标点开头（篇幅回炉砍断句子的产物）
  *
  * 只认正文段落：按空行分段，跳过标题（`#`）、表格行（`|`）、分隔线（`---`）、引用（`>`）。
  * 段落内的列表行（`- ` / `* ` / `1. `）只要该段**首字符**不是残标点就不算。
@@ -110,6 +117,62 @@ export function repairProseHeads(markdown: string): { markdown: string; repaired
     i = j;
   }
   return { markdown: out.join("\n").trim(), repaired };
+}
+
+/**
+ * 第一段正文（跳过标题 / 表格 / 分隔线 / 引用 / 空行）
+ *
+ * 交付物的一章落盘时，正文里最前面可能是一句 `### 小节` 标题或一张表；「章首段」指的是
+ * **读者读到的第一段话**。拿它做两类确定性判定：章首段是不是总纲（`leadParagraphIssue`）、
+ * 终检改动有没有动到没被点名的段落。
+ *
+ * @returns 这一段正文（trim 过，段内换行原样保留）；整篇没有正文段落时返回 `""`
+ */
+export function firstProseParagraph(markdown: string): string {
+  const lines = markdown.split("\n");
+  let i = 0;
+  while (i < lines.length) {
+    if (lines[i]!.trim() === "" || isNonProse(lines[i]!)) {
+      i += 1;
+      continue;
+    }
+    const para: string[] = [];
+    while (i < lines.length && lines[i]!.trim() !== "") {
+      para.push(lines[i]!);
+      i += 1;
+    }
+    return para.join("\n").trim();
+  }
+  return "";
+}
+
+/** 章首段（本章总纲）的字数上限 */
+export const LEAD_PARAGRAPH_MAX_CHARS = 120;
+
+/** 段落里的第一个分句边界（用于判"一开口就是分号列举"） */
+const FIRST_CLAUSE = /^([^，。！？；：]*)([，。！？；：])/;
+
+/**
+ * 章首段（本章总纲）的确定性判据
+ *
+ * 用户定调（变更表 #139）：「每章第一段是本章总纲，要能独立读懂，不以分号列举或半句开头，≤120 字」。
+ * 真实缺陷现场就是章首段被删成 `多园区由 IT…支持；纪要手工…`——标点合规，但读者读到的第一句
+ * 既没有主语也没有处境。这里是**提示级**判定（不阻断出稿），落确定性层。
+ *
+ * @returns `null` = 合规；否则是一句人能看懂的原因
+ */
+export function leadParagraphIssue(paragraph: string): string | null {
+  const t = paragraph.trim();
+  if (t === "") return null; // 没有正文的章由「缺章 / 缺小节」去管，这里不重复报
+  const chars = proseChars(t);
+  if (chars > LEAD_PARAGRAPH_MAX_CHARS) {
+    return `首段 ${chars} 字，超过 ${LEAD_PARAGRAPH_MAX_CHARS} 字`;
+  }
+  // 半句开头：段首就是残标点（上一句被砍掉的痕迹）
+  if (RESIDUAL_PREFIX.test(t)) return "以残标点开头（半句开头）";
+  // 分号列举开头：第一个分句一收尾就是「；」——一开口就是并列项，不是一句自足的判断
+  if (FIRST_CLAUSE.exec(t)?.[2] === "；") return "以分号列举开头";
+  return null;
 }
 
 /** 按空行分段（每段是若干非空行；空行不算段） */

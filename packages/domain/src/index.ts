@@ -262,6 +262,34 @@ export {
 } from "./report-gate.js";
 export { proseChars } from "./md-metrics.js";
 
-// ─── 报告正文形态（断头段：压缩把句子砍成半句，变更表 #138） ──────
-export { brokenProseHeads, repairProseHeads } from "./prose-shape.js";
+// ─── 报告正文形态（断头段 + 章首段：变更表 #138 / #139） ──────
+export {
+  brokenProseHeads,
+  repairProseHeads,
+  firstProseParagraph,
+  leadParagraphIssue,
+  LEAD_PARAGRAPH_MAX_CHARS,
+} from "./prose-shape.js";
+
+// ─── 交付物终检（通读找问题 → 只改被点名的段落；变更表 #139） ──────
+export {
+  MAX_REVIEW_ISSUES,
+  REVIEW_ISSUE_TYPES,
+  DUPLICATE_SENTENCE_MIN_CHARS,
+  STUB_SECTION_CHARS,
+  parseReviewIssues,
+  parseUnresolved,
+  chapterBlocks,
+  duplicateSentences,
+  stubSections,
+  leadParagraphProblems,
+  deterministicReviewFindings,
+  fixAccepted,
+} from "./report-review.js";
+export type {
+  ReviewIssue,
+  ReviewIssueType,
+  ParsedReviewIssues,
+  ReviewFinding,
+} from "./report-review.js";
 export type { ReportGateReport, ReportKind, ReportViolation } from "./report-gate.js";

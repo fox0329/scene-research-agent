@@ -1,5 +1,5 @@
 /**
- * @scene/server — 交付物报告生成测试（变更表 #112 / #137）
+ * @scene/server — 交付物报告生成测试（变更表 #112 / #137 / #139）
  *
  * 真 SQLite（:memory:）+ mock dshClient：覆盖「模型撰写 → 确定性校验 → 逐章兜底 → 落盘」
  * 全链路，以及三条铁律（章节齐全 / 不给决策建议 / 不带内部信息痕迹）在模型不听话时的行为。
@@ -23,7 +23,16 @@ import type { DshClient, FollowEvent } from "@scene/contract";
 import { createDb } from "@scene/infra";
 import type { DbInstance } from "@scene/infra";
 import { reportMinChars } from "@scene/domain";
-import { createDeliverableReportCommand, splitReportChapters } from "./deliverable-report.js";
+import {
+  chapterRewriteRejection,
+  createDeliverableReportCommand,
+  splitReportChapters,
+} from "./deliverable-report.js";
+import {
+  FIX_PROMPT_MARKER,
+  REVIEW_PROMPT_MARKER,
+  VERIFY_PROMPT_MARKER,
+} from "./report-review.js";
 import { getReport, getReports } from "./report-service.js";
 
 /** 章节 + 方案构件都齐的"好"报告（模拟模型照要求作答）；两个口径各生成一份 */
@@ -80,6 +89,9 @@ function kindOfPrompt(input: { system: string; user: string }): ReportKind {
 }
 
 /** 按提示词内容决定返回什么（两份一起跑时靠它分辨口径） */
+/** 终检通读一律回"没问题"：这些用例只关心撰写链路，别让终检重试多打一次调用 */
+const REVIEW_CLEAN = '{"issues":[]}';
+
 function dshByPrompt(
   pick: (input: { system: string; user: string }) => string,
 ): { client: DshClient; calls: string[] } {
@@ -140,14 +152,15 @@ function makeHarness(): Harness {
   return { db, scenarioId: scenario.id, dir };
 }
 
-/** 跑一遍命令，收集事件 */
+/** 跑一遍命令，收集事件（终检默认开；`off` 用于只关心撰写链路的用例） */
 async function run(
   db: DbInstance,
   dsh: DshClient,
   scenarioId: string,
   kinds?: readonly ReportKind[],
+  review: "on" | "off" = "on",
 ): Promise<FollowEvent[]> {
-  const cmd = createDeliverableReportCommand({ db, dshClient: dsh, keepaliveMs: 10_000 });
+  const cmd = createDeliverableReportCommand({ db, dshClient: dsh, keepaliveMs: 10_000, review });
   const events: FollowEvent[] = [];
   for await (const e of await cmd.execute({ scenarioId, kinds })) events.push(e);
   return events;
@@ -160,6 +173,76 @@ beforeEach(() => {
 afterEach(() => {
   rmSync(h.dir, { recursive: true, force: true });
   delete process.env.DELIVERABLE_DIR;
+});
+
+describe("chapterRewriteRejection — 回炉稿的采纳门槛（变更表 #139 补丁）", () => {
+  // 建设内容章：总体架构（要表）+ 核心功能（要表）+ 状态研判与分级管控；3 张表才算构件齐
+  const before = [
+    "### 总体架构",
+    "",
+    "本方案采用四层架构，逐层说明组件与部署，这段话写得长一些，用来把篇幅撑起来。",
+    "",
+    "| 层次 | 我方组件与部署 | 承担什么 |",
+    "|---|---|---|",
+    "| 感知层 | 传感器 | 采集 |",
+    "| 传输层 | 网关 | 回传 |",
+    "| 平台层 | 平台 | 研判 |",
+    "| 应用层 | 应用 | 展示 |",
+    "",
+    "### 核心功能",
+    "",
+    "以两条主线切入，按场景列项，这段话同样写得长一些，用来把篇幅撑起来。",
+    "",
+    "| 设备类别 | 感知设备 |",
+    "|---|---|",
+    "| 户内 | 传感器 |",
+    "",
+    "### 状态研判与分级管控",
+    "",
+    "一段说研判模型与结论口径，另一段说分级机制与管控频次的差异。",
+    "",
+    "| 风险等级 | 判定依据 |",
+    "|---|---|",
+    "| 高 | 状态差 |",
+  ].join("\n");
+  /** 只把三句话改短：小节、表格、段落结构都不动 */
+  const shorter = (text: string): string =>
+    text
+      .replace(
+        "本方案采用四层架构，逐层说明组件与部署，这段话写得长一些，用来把篇幅撑起来。",
+        "本方案采用四层架构。",
+      )
+      .replace("以两条主线切入，按场景列项，这段话同样写得长一些，用来把篇幅撑起来。", "以两条主线切入。")
+      .replace("一段说研判模型与结论口径，另一段说分级机制与管控频次的差异。", "说清研判与分级。");
+
+  const check = (after: string): string | null =>
+    chapterRewriteRejection({ kind: "construction", key: "content", before, after });
+
+  it("更短、构件不少、小节不少、章首段合格 → 采纳（返回 null）", () => {
+    expect(check(shorter(before))).toBeNull();
+  });
+
+  it("重写没变短（等长或更长）→ 不采纳", () => {
+    expect(check(before)).toContain("没变短");
+    expect(check(`${before}\n\n再补一句。`)).toContain("没变短");
+  });
+
+  it("方案构件变少（表格被吃掉）→ 不采纳", () => {
+    const dropped = shorter(before).replace("\n\n| 设备类别 | 感知设备 |\n|---|---|\n| 户内 | 传感器 |", "");
+    expect(dropped).not.toBe(shorter(before));
+    expect(check(dropped)).toBe("方案构件变少");
+  });
+
+  it("`###` 小节变少（整节被吃掉）→ 不采纳", () => {
+    const trimmed = shorter(before).replace("\n\n### 状态研判与分级管控\n\n说清研判与分级。", "");
+    expect(trimmed).not.toBe(shorter(before));
+    expect(check(trimmed)).toBe("小节变少（3 → 2 个）");
+  });
+
+  it("改后章首段不合格（半句/分号列举开头）→ 不采纳", () => {
+    const badLead = shorter(before).replace("本方案采用四层架构。", "多园区由 IT 与厂商支持；现场靠人工预约。");
+    expect(check(badLead)).toContain("章首段不合格");
+  });
 });
 
 describe("交付物报告生成（两份：模型撰写 + 确定性校验）", () => {
@@ -225,95 +308,209 @@ describe("交付物报告生成（两份：模型撰写 + 确定性校验）", (
     expect(construction).not.toContain("主要风险点");
   });
 
-  it("正文超预算的章回炉压短（模型只删不加），压短后的正文进交付物", async () => {
-    // 现状章第一节的正文灌水到超预算（解决方案现状章预算 1000 字）
-    const filler = "现状特征与提升空间";
-    const fat = goodReport("solution").replace(
-      `${filler}的归纳正文。`,
-      `${filler}的归纳正文。`.repeat(80),
+  /** 往某章末尾追加 n 段正文（不改首段，所以"章首段是总纲"这条不会被自己踩到） */
+  const pad = (md: string, anchor: string, n: number): string =>
+    md.replace(anchor, `${anchor}\n\n${"补充说明现场情况与处置口径。\n\n".repeat(n).trimEnd()}`);
+
+  it("全篇总量在上限内 → 一章都不回炉（逐章预算只是写作指引）", async () => {
+    const { client, calls } = dshByPrompt((input) =>
+      input.user.includes(REVIEW_PROMPT_MARKER) ? REVIEW_CLEAN : goodReport(kindOfPrompt(input)),
     );
-    const squeezed = goodReport("solution").replace(`${filler}的归纳正文。`, "压短后的现状结论。");
+    const events = await run(h.db, client, h.scenarioId, ["solution"]);
+
+    // 一次整篇撰写 + 一次终检通读，没有任何回炉调用
+    expect(calls.filter((c) => c.includes("本章正文预算"))).toEqual([]);
+    expect(calls).toHaveLength(2);
+    const progress = events.filter((e) => e.type === "progress").map((e) => String(e["message"] ?? ""));
+    expect(progress.some((m) => m.includes("在总上限 4500 字内，不回炉"))).toBe(true);
+    expect(progress.some((m) => /回炉最长的|回炉后|已回炉|回炉重写/.test(m))).toBe(false);
+  });
+
+  it("全篇超总量 → 只回炉最长的那一章（提示词带该章名与预算），改回上限内就收手", async () => {
+    // 现状章灌到 5,200+ 字 → 全篇 5,500 字 > 4,500；它也是最长的章
+    const fat = pad(goodReport("solution"), "现状特征与提升空间的归纳正文。", 400);
     const { client, calls } = dshByPrompt((input) => {
+      if (input.user.includes(REVIEW_PROMPT_MARKER)) return REVIEW_CLEAN;
       if (kindOfPrompt(input) !== "solution") return goodReport("construction");
-      return input.user.includes("压到") ? squeezed : fat;
+      if (input.user.includes("本章正文预算")) return goodReport("solution"); // 回炉：达标稿
+      return fat;
     });
-    await run(h.db, client, h.scenarioId);
+    const events = await run(h.db, client, h.scenarioId, ["solution"]);
+
+    const rewrites = calls.filter((c) => c.includes("本章正文预算"));
+    expect(rewrites).toHaveLength(1); // 够用就停手：不为了"凑满两章"多跑一次
+    expect(rewrites[0]).toContain("现状"); // 挑的是最长的章
+    expect(rewrites[0]).toContain("本章正文预算不超过 1000 字");
+    expect(rewrites[0]).toContain("第一段是本章总纲");
+
+    const progress = events.filter((e) => e.type === "progress").map((e) => String(e["message"] ?? ""));
+    expect(progress.some((m) => m.includes("超总上限 4500 字，回炉最长的 2 章"))).toBe(true);
+    expect(progress.some((m) => m.includes("回炉后正文") && m.includes("已在总上限 4500 字内"))).toBe(true);
 
     const saved = readFileSync(join(h.dir, `${h.scenarioId}.solution.md`), "utf8");
-    expect(saved).toContain("压短后的现状结论。");
-    expect(calls.some((p) => p.includes("压到"))).toBe(true);
+    expect(saved).not.toContain("补充说明现场情况与处置口径。");
+    expect(saved).toContain("现状特征与提升空间的归纳正文。");
   });
 
-  it("压缩把方案构件压没 → 作废这次压缩，保留原正文（缺构件比偏长更糟）", async () => {
-    const filler = "现状特征与提升空间";
-    const fat = goodReport("solution").replace(
-      `${filler}的归纳正文。`,
-      `${filler}的归纳正文。`.repeat(80),
+  it("回炉两章后仍超总量 → 保留正文不截断，进度报「超总上限 M（已回炉 K 章）」", async () => {
+    const fat = pad(
+      pad(goodReport("solution"), "现状特征与提升空间的归纳正文。", 400),
+      "实施要点的归纳正文。",
+      250,
     );
-    // 压缩结果更短，但整章的小节结构被压平（原本 3 个小节，压完一个标题都没有）→ 不能采用
-    const lost = "## 现状\n\n只留一句话，小节标题被压没了。";
-    const { client } = dshByPrompt((input) => {
+    // 两章各回炉一次，都只是变短、仍然超标
+    const leaner = pad(
+      pad(goodReport("solution"), "现状特征与提升空间的归纳正文。", 300),
+      "实施要点的归纳正文。",
+      150,
+    );
+    let rewriteNo = 0;
+    const { client, calls } = dshByPrompt((input) => {
+      if (input.user.includes(REVIEW_PROMPT_MARKER)) return REVIEW_CLEAN;
       if (kindOfPrompt(input) !== "solution") return goodReport("construction");
-      return input.user.includes("压到") ? lost : fat;
+      if (input.user.includes("本章正文预算")) {
+        rewriteNo += 1;
+        if (rewriteNo === 1) expect(input.user).toContain("现状"); // 降序：先最长的
+        return leaner;
+      }
+      return fat;
     });
-    await run(h.db, client, h.scenarioId);
+    const events = await run(h.db, client, h.scenarioId, ["solution"]);
+
+    expect(calls.filter((c) => c.includes("本章正文预算"))).toHaveLength(2); // 上限内就不再动第二章
+    const progress = events.filter((e) => e.type === "progress").map((e) => String(e["message"] ?? ""));
+    expect(progress.some((m) => /超总上限 4500（已回炉 2 章），保留正文不截断/.test(m))).toBe(true);
+
+    // 采纳的是更短的那版，但一个字都没再删
     const saved = readFileSync(join(h.dir, `${h.scenarioId}.solution.md`), "utf8");
-    expect(saved).toContain(`${filler}的归纳正文。`.repeat(80));
-    expect(saved).not.toContain("小节标题被压没了");
+    expect(saved).toContain("补充说明现场情况与处置口径。");
+    expect(saved.match(/补充说明现场情况与处置口径。/g) ?? []).toHaveLength(450); // 300 + 150
   });
 
-  it("压缩只删叙述、结构与构件都在 → 采用压缩结果", async () => {
-    const filler = "现状特征与提升空间";
-    const fat = goodReport("solution").replace(
-      `${filler}的归纳正文。`,
-      `${filler}的归纳正文。`.repeat(80),
+  it("回炉稿更长 / 吃掉 `###` 小节 → 不采纳，保留原稿（超总量的前提下触发）", async () => {
+    const fat = pad(
+      pad(goodReport("solution"), "现状特征与提升空间的归纳正文。", 400),
+      "实施要点的归纳正文。",
+      250,
     );
-    // 同一章、小节标题与构件都保留，只是把灌水的叙述压成一句话
-    const tight = fat.replace(`${filler}的归纳正文。`.repeat(80), "压短后的现状结论。");
+    // 现状章回炉稿更长；方案章回炉稿把「### 实施要点」（不背构件）整节吃掉
+    const longer = pad(goodReport("solution"), "现状特征与提升空间的归纳正文。", 450);
+    const dropped = pad(
+      goodReport("solution").replace("\n\n### 实施要点\n\n实施要点的归纳正文。", ""),
+      "实施要点的归纳正文。",
+      100,
+    );
+    let rewriteNo = 0;
     const { client } = dshByPrompt((input) => {
+      if (input.user.includes(REVIEW_PROMPT_MARKER)) return REVIEW_CLEAN;
       if (kindOfPrompt(input) !== "solution") return goodReport("construction");
-      return input.user.includes("压到") ? tight : fat;
+      if (input.user.includes("本章正文预算")) {
+        rewriteNo += 1;
+        return rewriteNo === 1 ? longer : dropped;
+      }
+      return fat;
     });
-    await run(h.db, client, h.scenarioId);
+    const events = await run(h.db, client, h.scenarioId, ["solution"]);
+
+    const progress = events.filter((e) => e.type === "progress").map((e) => String(e["message"] ?? ""));
+    expect(progress.some((m) => m.includes("没达标，保留原稿") && m.includes("没变短"))).toBe(true);
+    expect(progress.some((m) => m.includes("没达标，保留原稿") && m.includes("小节变少"))).toBe(true);
+    // 两份回炉稿都没采纳：原稿一字未动，也没截断
     const saved = readFileSync(join(h.dir, `${h.scenarioId}.solution.md`), "utf8");
-    expect(saved).toContain("压短后的现状结论。");
+    expect(saved.match(/补充说明现场情况与处置口径。/g) ?? []).toHaveLength(650); // 400 + 250
+    expect(saved).toContain("### 实施要点");
   });
 
-  it("压缩稿带断头段 → 先修再采纳（不是整章退回），落盘正文既更短又没有半句话", async () => {
-    const filler = "现状特征与提升空间";
-    const fat = goodReport("solution").replace(
-      `${filler}的归纳正文。`,
-      `${filler}的归纳正文。`.repeat(80),
-    );
-    // 压缩稿：灌水删掉了（确实更短），但把一句话砍成了半句——段首留下「、」
-    const broken = goodReport("solution").replace(
-      `${filler}的归纳正文。`,
-      "、Teams 等云平台；多园区由 IT 支持。",
-    );
+  it("回炉重写失败（模型报错）→ 保留原正文，不中断整篇生成", async () => {
+    const fat = pad(goodReport("solution"), "现状特征与提升空间的归纳正文。", 400);
     const { client } = dshByPrompt((input) => {
+      if (input.user.includes(REVIEW_PROMPT_MARKER)) return REVIEW_CLEAN;
       if (kindOfPrompt(input) !== "solution") return goodReport("construction");
-      return input.user.includes("压到") ? broken : fat;
+      if (input.user.includes("本章正文预算")) throw new Error("回炉这一次断连了");
+      return fat;
     });
-    const events = await run(h.db, client, h.scenarioId);
+    const events = await run(h.db, client, h.scenarioId, ["solution"]);
 
-    // 按章标题切（不能用 `split("## 现状")`：正文里的 `### 现状特征与提升空间` 也含这个子串）
-    const chapterOf = (md: string): string =>
-      md.split(/\n(?=## )/).find((p) => p.startsWith("## 现状")) ?? "";
+    expect(events.some((e) => e.type === "error")).toBe(false);
     const saved = readFileSync(join(h.dir, `${h.scenarioId}.solution.md`), "utf8");
-    const chapter = chapterOf(saved);
-    // 断头段被修掉：段首残标点与残句头都不在了，剩下的是完整句
-    expect(chapter).not.toContain("、Teams");
-    expect(chapter).toContain("多园区由 IT 支持。");
-    // 该章其它内容（小节与结论）仍在
-    expect(chapter).toContain(`### ${filler}`);
-    // 是"修完再采纳"，不是"整章退回原稿"：采纳后的这一章仍明显短于灌水版
-    expect(chapter.length).toBeLessThan(chapterOf(fat).length);
-    expect(chapter).not.toContain(`### ${filler}\n\n${`${filler}的归纳正文。`.repeat(80)}`);
-    // 进度里明说修了几处断头句
-    const progress = events
-      .filter((e) => e.type === "progress")
-      .map((e) => String(e["message"] ?? ""));
-    expect(progress.some((m) => m.includes("修掉 1 处断头句"))).toBe(true);
+    expect(saved.match(/补充说明现场情况与处置口径。/g) ?? []).toHaveLength(400);
+    const progress = events.filter((e) => e.type === "progress").map((e) => String(e["message"] ?? ""));
+    expect(progress.some((m) => m.includes("回炉重写失败") && m.includes("保留原正文"))).toBe(true);
+  });
+
+  it("终检：通读发现 1 处并改掉 → 落盘里那处已改、其它章逐字不变、done 带终检提示数", async () => {
+    const kind: ReportKind = "construction";
+    const before = goodReport(kind);
+    // 在「建设内容」章开头插一句读不通的话（它成为该章首段，正好是终检要改的段落）
+    const withProblem = before.replace(
+      "## 建设内容\n\n",
+      "## 建设内容\n\n这句前后矛盾的话要改掉，它和上一段说的是两回事。\n\n",
+    );
+    // 章与章之间装配层会插 `---` 分隔线；比对章正文时把它剥掉
+    const chapterOf = (md: string, title: string): string =>
+      (md.split(/\n(?=## )/).find((p) => p.startsWith(`## ${title}`)) ?? "")
+        .replace(/\n+---\s*$/, "")
+        .trim();
+    const fixedChapter = chapterOf(withProblem, "建设内容").replace(
+      "这句前后矛盾的话要改掉，它和上一段说的是两回事。",
+      "建设内容按感知、平台、应用三层展开，逐层说明组件与职责。",
+    );
+
+    const { client, calls } = dshByPrompt((input) => {
+      if (input.user.includes(REVIEW_PROMPT_MARKER)) {
+        return JSON.stringify({
+          issues: [
+            {
+              chapter: "建设内容",
+              anchor: "这句前后矛盾的话要改掉",
+              type: "前后矛盾",
+              note: "与上一段冲突",
+            },
+          ],
+        });
+      }
+      if (input.user.includes(FIX_PROMPT_MARKER)) return fixedChapter;
+      if (input.user.includes(VERIFY_PROMPT_MARKER)) return '{"unresolved":[]}';
+      return withProblem;
+    });
+    const events = await run(h.db, client, h.scenarioId, ["construction"]);
+
+    // 三次终检调用：通读 / 改章 / 复查
+    expect(calls.filter((p) => p.includes(REVIEW_PROMPT_MARKER))).toHaveLength(1);
+    expect(calls.filter((p) => p.includes(FIX_PROMPT_MARKER))).toHaveLength(1);
+
+    const saved = readFileSync(join(h.dir, `${h.scenarioId}.construction.md`), "utf8");
+    expect(saved).toContain("建设内容按感知、平台、应用三层展开，逐层说明组件与职责。");
+    expect(saved).not.toContain("这句前后矛盾的话要改掉");
+    // 没被点名的段落与章节逐字不变
+    for (const title of ["建设背景与必要性", "建设路径", "保障措施"]) {
+      expect(chapterOf(saved, title), title).toBe(chapterOf(before, title));
+    }
+
+    const progress = events.filter((e) => e.type === "progress").map((e) => String(e["message"] ?? ""));
+    expect(progress.some((m) => m.includes("终检：发现 1 处，改了 1 处，留 0 处提示"))).toBe(true);
+
+    const done = events.find((e) => e.type === "done")!;
+    expect(done["review"]).toEqual([
+      { kind: "construction", issues: 1, fixed: 1, remaining: 0 },
+    ]);
+  });
+
+  it("同一条校验提示只报一次：初稿校验与终检后校验的确定性判据不重复计数", async () => {
+    const kind: ReportKind = "construction";
+    // 把「建设内容」章首段灌成 >120 字的长段：checkReport 的确定性判据（章首段不合规）
+    // 初稿与终检后各会命中一次，去重后只该剩一条
+    const longLead = "本段刻意写得很长，用来触发章首段不合规的确定性判据。" + "内容".repeat(70) + "。";
+    const withProblem = goodReport(kind).replace("## 建设内容\n\n", `## 建设内容\n\n${longLead}\n\n`);
+
+    const { client } = dshByPrompt((input) => (input.user.includes("## 建设内容") ? withProblem : goodReport(kind)));
+    // 只跑建设方案这一份：两份各有一条同名提示是正常的，这里查的是"同一份里不许重复"
+    const events = await run(h.db, client, h.scenarioId, [kind]);
+    const done = events.find((e) => e.type === "done")!;
+    const violations = done["violations"] as { kind: string; detail: string }[];
+    const lead = violations.filter((v) => v.kind === "章首段不合规");
+    expect(lead).toHaveLength(1);
+    expect(new Set(violations.map((v) => `${v.kind}|${v.detail}`)).size).toBe(violations.length);
   });
 
   it("两份交付物都不装内部附录，也不出现内部表号与内部口径的章", async () => {
@@ -332,11 +529,13 @@ describe("交付物报告生成（两份：模型撰写 + 确定性校验）", (
 
   it("模型漏章 + 写决策建议 → 重写一次；仍不达标则该章用要点版兜底", async () => {
     const bad = "## 现状\n\n我方建议优先投入到试点。";
-    const { client, calls } = dshByPrompt(() => bad);
+    const { client, calls } = dshByPrompt((input) =>
+      input.user.includes(REVIEW_PROMPT_MARKER) ? REVIEW_CLEAN : bad,
+    );
     const events = await run(h.db, client, h.scenarioId);
 
-    // 每个口径：整篇写 2 次（重写）+ 缺章补写 1 次 = 3 次；两份共 6 次
-    expect(calls.length).toBe(6);
+    // 每个口径：整篇写 2 次（重写）+ 缺章补写 1 次 + 终检通读 1 次 = 4 次；两份共 8 次
+    expect(calls.length).toBe(8);
     expect(calls.some((c) => c.includes("只写下面这几节"))).toBe(true);
     // 第二次整篇调用带上一版的问题清单
     expect(calls[1]).toContain("上一次的问题");
@@ -355,6 +554,7 @@ describe("交付物报告生成（两份：模型撰写 + 确定性校验）", (
   it("交付物泄漏内部信息 → 硬伤，触发重写；重写合格即通过（两份各自重写一次）", async () => {
     const seen = new Map<ReportKind, number>();
     const { client, calls } = dshByPrompt((input) => {
+      if (input.user.includes(REVIEW_PROMPT_MARKER)) return REVIEW_CLEAN;
       const kind = kindOfPrompt(input);
       const n = (seen.get(kind) ?? 0) + 1;
       seen.set(kind, n);
@@ -363,8 +563,8 @@ describe("交付物报告生成（两份：模型撰写 + 确定性校验）", (
       return n === 1 ? good.replace(/^(## .+)$/m, "$1\n\n见 表3-8，来源：客户台账。") : good;
     });
     const events = await run(h.db, client, h.scenarioId);
-    // 泄漏被拦下重写一次，重写版是干净的两份
-    expect(calls.length).toBe(4);
+    // 泄漏被拦下重写一次（每口径 2 次调用），干净版再走 1 次终检：两份共 6 次
+    expect(calls.length).toBe(6);
     const done = events.find((e) => e.type === "done")!;
     expect((done["violations"] as { hard: boolean }[]).filter((v) => v.hard)).toEqual([]);
     for (const kind of REPORT_KINDS) {

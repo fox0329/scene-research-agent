@@ -10,9 +10,15 @@
  * 章名别名按口径隔离匹配，避免「建设路径」被当成 solution 的「实施路径」这类串台。
  *
  * 判定分两档：
- *  - **硬伤**（缺章 / 缺少方案构件 / 对外泄漏内部信息 / 出现决策建议）：必须重写，调用方
- *    会带着违规清单重试一次；仍不过就用确定性兜底版。
- *  - **存疑**（缺小节、手写章号、说明性套话、价值写成缺口清单、篇幅）：只提示，不拦。
+ *  - **硬伤**（缺章 / 缺少方案构件 / 对外泄漏内部信息 / 出现决策建议 / **断头段**）：必须重写，
+ *    调用方会带着违规清单重试一次；仍不过就用确定性兜底版。
+ *  - **存疑**（缺小节、手写章号、说明性套话、价值写成缺口清单、篇幅超上限、篇幅不足、重复、
+ *    空节、章首段不合规）：只提示，不拦。
+ *
+ * 变更表 #139：篇幅改由**总字数预算前置管住**——超总量时调用方"定向回炉最长的 1–2 章"（#139 补丁：
+ * 触发条件是**全篇总量**，不是逐章超线；逐章预算只是提示词里的写作指引），这里只留提示，
+ * **不再截断正文**，也不再因为篇幅触发整篇重写。终检的确定性补充（断头段 / 重复 / 空节 / 章首段）
+ * 由 `report-review.ts` 提供，这里统一并进违规清单，保证"同一份稿子两处判定一致"。
  *
  * 变更表 #113（用户给参照件后纠偏）：「不要把报告做成前面内容的总结，而是形成自己的
  * 价值」——所以校验不只数章节，还查**方案构件**（设计原则、自建表格、编号连接关系、
@@ -20,6 +26,7 @@
  */
 
 import { proseChars } from "./md-metrics.js";
+import { deterministicReviewFindings } from "./report-review.js";
 import {
   reportChapters,
   type ReportArtifact,
@@ -41,10 +48,17 @@ export interface ReportViolation {
     | "价值写成缺口清单"
     | "说明书腔"
     | "篇幅超标"
-    | "篇幅不足";
+    | "篇幅不足"
+    | "悬空残句"
+    | "重复"
+    | "空节"
+    | "章首段不合规"
+    | "终检问题";
   /** 硬伤 = 必须重写 */
   hard: boolean;
   detail: string;
+  /** 出处：只在**交付物终检**环节产生的违规带这个标记（变更表 #139） */
+  from?: "终检";
 }
 
 export interface ReportGateReport {
@@ -88,12 +102,15 @@ export function reportMinChars(kind: ReportKind): number {
 }
 
 /**
- * 篇幅上限（超过就是没归纳，用户要精要：变更表 #116 / #137）
+ * 篇幅上限（变更表 #116 / #137 / #139）
  *
- * 上限贴着定稿量级给（6000 ≈ 定稿 4700 的 1.27 倍），太松会让模型灌水。
+ * 用户定调（变更表 #139）：「文档生成可以设置一个**总的字数**，比如 2000–5000 字左右，
+ * 没必要直接截断」——所以上限就是**总字数预算**这条线：超了先定向回炉最长的 1–2 章
+ * （#139 补丁：总量驱动），仍超就保留、只提示；任何时候都不截断。
+ * construction 由 6000 收到 5000（逐章写作指引之和 4550，留出章间浮动）。
  */
 export function reportMaxChars(kind: ReportKind): number {
-  return kind === "construction" ? 6000 : 4500;
+  return kind === "construction" ? 5000 : 4500;
 }
 
 /** 自我说明 / 免责声明这类"澄清文字"（用户要求全部删掉，变更表 #116） */
@@ -202,11 +219,11 @@ const ARTIFACT_CHECKS: Record<ReportArtifact, (md: string, tables: number) => bo
   table: (_md, tables) => tables >= 3,
   "numbered-connections": (md) =>
     /[①②③④⑤⑥⑦⑧⑨⑩]/.test(md) || /(?:^|\n)\s*\|\s*\d+\s*\|/.test(md),
-  // 「原则一/原则二」编号算；压缩后常写成「### 设计原则」+ 若干条，只要小节下有内容也算
+  // 「原则一/原则二」编号算；模型也常写成「### 设计原则」+ 若干条，只要小节下有内容也算
   principles: (md) => /原则\s*[一二三四五1-5]/.test(md) || sectionHasBullets(md, "原则", 2),
 };
 
-/** 某个小节标题下是否有至少 n 条非空内容（压缩后模型常把编号换成小节 + 条目） */
+/** 某个小节标题下是否有至少 n 条非空内容（模型常把编号换成小节 + 条目） */
 function sectionHasBullets(markdown: string, keyword: string, n: number): boolean {
   const lines = markdown.split("\n");
   const at = lines.findIndex((l) => /^#{3,4}\s/.test(l) && l.includes(keyword));
@@ -244,10 +261,10 @@ function missingArtifacts(
 }
 
 /**
- * 某一章压缩后还缺哪些方案构件
+ * 某一章还缺哪些方案构件
  *
- * 压缩是"只删不加"，但模型偶尔会把整节（如「### 设计原则」）压没——那就把构件压丢了。
- * 用它做守恒检查：压缩**不许让构件变少**（缺构件是硬伤，比篇幅偏长严重）。
+ * 用途：交付物终检的采纳判据——模型"只改被点名的段落"时偶尔会顺手把整节删掉，
+ * 用它对改动前后做守恒检查：**不许让构件变少**（缺构件是硬伤，比病句严重）。
  */
 export function missingChapterArtifacts(
   kind: ReportKind,
@@ -387,10 +404,12 @@ export function checkReport(kind: ReportKind, markdown: string): ReportGateRepor
   // 注意：`text` 去掉了所有空白（表格行首的 `|` 信息也没了），篇幅必须按**原始 markdown** 的正文算
   const prose = proseChars(markdown);
   if (prose > maxChars) {
+    // 变更表 #139 补丁：这里**只提示**。超总量已经在出稿前用"定向回炉最长的 1–2 章"处理过；
+    // 若还升为硬伤，会再触发一次**整篇重写**（慢，而且常常更差）。截断一律不做。
     violations.push({
       kind: "篇幅超标",
       hard: false,
-      detail: `正文（表格不计）${prose} 字，超过 ${maxChars} 字上限——把并列事实合并成结论，细节留给表格`,
+      detail: `正文（表格不计）${prose} 字，超过 ${maxChars} 字总上限——把并列事实合并成结论、把细节留给表格，不许截断内容`,
     });
   }
 
@@ -401,6 +420,10 @@ export function checkReport(kind: ReportKind, markdown: string): ReportGateRepor
       detail: `正文（表格不计）${prose} 字，低于 ${minChars} 字下限（可能被截断或写得太简）`,
     });
   }
+
+  // 终检的确定性补充（变更表 #139）：断头段（硬伤）/ 跨章重复 / 空节 / 章首段不合规。
+  // 与终检环节共用同一份实现，避免"checkReport 说没问题、终检又说不合格"两头打架。
+  violations.push(...deterministicReviewFindings(markdown));
 
   return { kind, chars: text.length, chapters, violations, ok: violations.every((v) => !v.hard) };
 }
