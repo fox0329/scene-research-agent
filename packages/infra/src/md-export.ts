@@ -46,6 +46,7 @@ import {
   type ReportKind,
   type StageData,
 } from "@scene/contract";
+import { repairProseHeads } from "@scene/domain";
 
 // ─── 覆盖留档 ──────────────────────────────────────────────
 
@@ -437,7 +438,9 @@ function buildReport(data: DeliverableInput, kind: ReportKind, bodyOf: (key: str
 
   for (const chapter of reportChapters(kind)) {
     const body: string[] = [`## ${reportChapterHeading(kind, chapter.key)}`, ""];
-    const text = stripEchoedTitle(bodyOf(chapter.key).trim(), chapter.label);
+    // 兜最后一道（变更表 #138）：无论正文来自模型初稿、压缩稿还是历史文件，
+    // 落盘前都过一遍断头段修复——装配是唯一出口，出口干净，交付物就不会带半句话。
+    const text = repairProseHeads(stripEchoedTitle(bodyOf(chapter.key).trim(), chapter.label)).markdown;
     body.push(text || "（本节内容待补）");
     sections.push(body.join("\n").trimEnd());
   }

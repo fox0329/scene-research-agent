@@ -279,6 +279,43 @@ describe("交付物报告生成（两份：模型撰写 + 确定性校验）", (
     expect(saved).toContain("压短后的现状结论。");
   });
 
+  it("压缩稿带断头段 → 先修再采纳（不是整章退回），落盘正文既更短又没有半句话", async () => {
+    const filler = "现状特征与提升空间";
+    const fat = goodReport("solution").replace(
+      `${filler}的归纳正文。`,
+      `${filler}的归纳正文。`.repeat(80),
+    );
+    // 压缩稿：灌水删掉了（确实更短），但把一句话砍成了半句——段首留下「、」
+    const broken = goodReport("solution").replace(
+      `${filler}的归纳正文。`,
+      "、Teams 等云平台；多园区由 IT 支持。",
+    );
+    const { client } = dshByPrompt((input) => {
+      if (kindOfPrompt(input) !== "solution") return goodReport("construction");
+      return input.user.includes("压到") ? broken : fat;
+    });
+    const events = await run(h.db, client, h.scenarioId);
+
+    // 按章标题切（不能用 `split("## 现状")`：正文里的 `### 现状特征与提升空间` 也含这个子串）
+    const chapterOf = (md: string): string =>
+      md.split(/\n(?=## )/).find((p) => p.startsWith("## 现状")) ?? "";
+    const saved = readFileSync(join(h.dir, `${h.scenarioId}.solution.md`), "utf8");
+    const chapter = chapterOf(saved);
+    // 断头段被修掉：段首残标点与残句头都不在了，剩下的是完整句
+    expect(chapter).not.toContain("、Teams");
+    expect(chapter).toContain("多园区由 IT 支持。");
+    // 该章其它内容（小节与结论）仍在
+    expect(chapter).toContain(`### ${filler}`);
+    // 是"修完再采纳"，不是"整章退回原稿"：采纳后的这一章仍明显短于灌水版
+    expect(chapter.length).toBeLessThan(chapterOf(fat).length);
+    expect(chapter).not.toContain(`### ${filler}\n\n${`${filler}的归纳正文。`.repeat(80)}`);
+    // 进度里明说修了几处断头句
+    const progress = events
+      .filter((e) => e.type === "progress")
+      .map((e) => String(e["message"] ?? ""));
+    expect(progress.some((m) => m.includes("修掉 1 处断头句"))).toBe(true);
+  });
+
   it("两份交付物都不装内部附录，也不出现内部表号与内部口径的章", async () => {
     const { client } = dshByPrompt((input) => goodReport(kindOfPrompt(input)));
     await run(h.db, client, h.scenarioId);

@@ -1656,7 +1656,6 @@ export const REPORT_CHAPTERS: Record<ReportKind, readonly ReportChapter[]> = {
       sections: [
         { title: "数据采集", keywords: ["数据采集", "采集", "数据来源"] },
         { title: "新增感知设备", keywords: ["新增", "设备", "感知设备", "清单"], artifacts: ["table"] },
-        { title: "成本评估", keywords: ["成本", "投资", "费用", "预算"], artifacts: ["table"] },
       ],
       blocks: [
         { code: "表5-1", heading: "方案架构与接口（采集点位落在哪一层）", cols: ["layer", "components", "interface"] },

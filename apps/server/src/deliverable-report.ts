@@ -40,6 +40,7 @@ import {
   proseChars,
   checkReport,
   matchChapterKey,
+  repairProseHeads,
   reportMinChars,
   type ReportViolation,
 } from "@scene/domain";
@@ -288,29 +289,35 @@ async function writeOneReport(args: {
         break;
       }
       const shorter = splitReportChapters(r.text, kind, [d.key]).get(d.key)?.trim();
+      // 先修再判（变更表 #138）：压缩把句子砍成半句时，段首会留下残标点。删掉那截残句头
+      // 之后**再**比长度、再查构件——修好的稿子该采纳就采纳，不因为模型的坏习惯整章退回。
+      const repaired = shorter === undefined ? undefined : repairProseHeads(shorter);
+      const fixed = repaired?.markdown;
+      const headNote =
+        repaired && repaired.repaired > 0 ? `（修掉 ${repaired.repaired} 处断头句）` : "";
       // 守卫：压缩是"只删不加"，但不许把方案构件删掉（实测有一次把「### 设计原则」整节压没了，
       // 交付物因此缺构件、判硬伤）。构件变少就作废这次压缩，保留原正文——宁可偏长，不能缺构件。
       const lostArtifact =
-        shorter !== undefined &&
-        missingChapterArtifacts(kind, d.key, shorter).length >
+        fixed !== undefined &&
+        missingChapterArtifacts(kind, d.key, fixed).length >
           missingChapterArtifacts(kind, d.key, body).length;
       // 结构塌陷（原来有多个小节、压完成一个都没有）也作废
       const collapsed =
-        shorter !== undefined && headingsOf(body).length >= 1 && headingsOf(shorter).length === 0;
-      const fragmented = shorter !== undefined && hasFragment(shorter);
+        fixed !== undefined && headingsOf(body).length >= 1 && headingsOf(fixed).length === 0;
+      const fragmented = fixed !== undefined && hasFragment(fixed);
       if (lostArtifact || collapsed || fragmented) {
         push({
           type: "progress",
           message: fragmented
-            ? `${label}：${d.title} 压缩后出现残句，保留原正文`
-            : `${label}：${d.title} 压缩会把方案构件/结构压没，保留原正文`,
+            ? `${label}：${d.title} 压缩后出现残句，保留原正文${headNote}`
+            : `${label}：${d.title} 压缩会把方案构件/结构压没，保留原正文${headNote}`,
         });
       }
-      if (shorter && !lostArtifact && !collapsed && !fragmented && proseChars(shorter) < current) {
-        written.set(d.key, shorter);
+      if (fixed && !lostArtifact && !collapsed && !fragmented && proseChars(fixed) < current) {
+        written.set(d.key, fixed);
         push({
           type: "progress",
-          message: `${label}：${d.title} 压到正文 ${proseChars(shorter)} 字`,
+          message: `${label}：${d.title} 压到正文 ${proseChars(fixed)} 字${headNote}`,
         });
       }
     }

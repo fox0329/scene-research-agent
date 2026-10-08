@@ -221,13 +221,17 @@ describe("建设工作方案口径（变更表 #137）", () => {
     expect(v?.detail).toContain("「核心功能」");
   });
 
-  it("建设路径章缺「新增感知设备 / 成本评估」两张表 → 硬伤", () => {
+  it("建设路径章缺那一张表（新增感知设备）→ 硬伤；成本评估小节已按用户要求删除", () => {
     const v = checkReport("construction", bareReport("construction")).violations.find(
       (x) => x.kind === "缺少方案构件",
     );
     expect(v?.hard).toBe(true);
     expect(v?.detail).toContain("「新增感知设备」");
-    expect(v?.detail).toContain("「成本评估」");
+    // 成本评估退场：建设路径只剩数据采集 + 新增感知设备，也不该再被当成缺构件
+    expect(v?.detail).not.toContain("成本评估");
+    expect(
+      reportChapters("construction").find((c) => c.key === "path")?.sections.map((s) => s.title),
+    ).toEqual(["数据采集", "新增感知设备"]);
   });
 
   it("工作安排章缺计划表 → 硬伤", () => {

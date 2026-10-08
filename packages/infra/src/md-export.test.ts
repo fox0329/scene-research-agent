@@ -24,6 +24,8 @@ import {
   safeWriteFile,
 } from "./md-export.js";
 import type { DeliverableInput, StageData } from "@scene/contract";
+import { reportChapterHeading, reportChapters } from "@scene/contract";
+import { brokenProseHeads } from "@scene/domain";
 
 // ─── 测试数据构造 ────────────────────────────────────────────
 
@@ -501,11 +503,11 @@ describe("exportDeliverables — <场景>建设工作方案（变更表 #137）"
       "",
       "以上设备按点位分批安装，不中断供水。",
       "",
-      "### 成本评估",
+      "### 数据采集",
       "",
-      "| 项目 | 金额 |",
+      "| 数据 | 来源 |",
       "| --- | --- |",
-      "| 设备 | 36 万 |",
+      "| 压力 | IOT 远传 |",
     ].join("\n");
     const report = await exportDeliverables({
       ...input,
@@ -518,16 +520,16 @@ describe("exportDeliverables — <场景>建设工作方案（变更表 #137）"
       "| --- | --- | --- |",
       "| 水位计 | WG-2 | 12 |",
       "以上设备按点位分批安装，不中断供水。",
-      "### 成本评估",
-      "| 项目 | 金额 |",
-      "| 设备 | 36 万 |",
+      "### 数据采集",
+      "| 数据 | 来源 |",
+      "| 压力 | IOT 远传 |",
     ]) {
       expect(report, keep).toContain(keep);
     }
     // 顺序不乱：表 → 正文 → 表
     const at = (s: string): number => report.indexOf(s);
     expect(at("| 水位计 | WG-2 | 12 |")).toBeLessThan(at("以上设备按点位分批安装"));
-    expect(at("以上设备按点位分批安装")).toBeLessThan(at("| 设备 | 36 万 |"));
+    expect(at("以上设备按点位分批安装")).toBeLessThan(at("| 压力 | IOT 远传 |"));
   });
 
   it("construction 口径下也不含内部信息（来源、证据级、竞品身份、利润池）", async () => {
@@ -559,6 +561,44 @@ describe("exportDeliverables — <场景>建设工作方案（变更表 #137）"
     expect(report).toContain("## 监管协同展望");
     expect(report.match(/本节信息待补充/g)?.length).toBe(7);
     expect(report).not.toContain("（本节内容待补）");
+  });
+});
+
+// ─── 断头段兜底：装配是落盘前最后一道（变更表 #138） ─────────────
+
+describe("exportDeliverables — 断头段兜底（变更表 #138）", () => {
+  it("某章正文以残标点开头 → 装配时修掉；该章其它正文一字不动（两份口径都过）", async () => {
+    for (const kind of ["solution", "construction"] as const) {
+      const input = kind === "solution" ? makeInput() : makeConstructionInput();
+      const chapter = reportChapters(kind)[0]!;
+      const title = reportChapterHeading(kind, chapter.key);
+      const rest = "该章其余正文一字不动。";
+      const report = await exportDeliverables(
+        {
+          ...input,
+          chapters: [{ key: chapter.key, markdown: `、Teams 等云平台；多园区由 IT 支持。\n\n${rest}` }],
+        },
+        kind,
+      );
+      const section = report.split(`## ${title}`)[1]!.split("\n---")[0]!;
+      // 断头段的残句头没了，剩下的是完整句
+      expect(section, kind).not.toContain("、Teams");
+      expect(section, kind).toContain("多园区由 IT 支持。");
+      // 同一章其它正文一字不动
+      expect(section, kind).toContain(rest);
+    }
+  });
+
+  it("整篇装配后不再有任何断头段（brokenProseHeads 为空）", async () => {
+    const report = await exportDeliverables(
+      {
+        ...makeInput(),
+        chapters: [{ key: "problems", markdown: "、压缩砍断的半句；完整句在这里。" }],
+      },
+      "solution",
+    );
+    expect(brokenProseHeads(report)).toEqual([]);
+    expect(report).toContain("完整句在这里。");
   });
 });
 

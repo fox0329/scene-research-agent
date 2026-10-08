@@ -117,6 +117,22 @@ describe("解决方案提示词（变更表 #112 / #136）", () => {
     expect(`${compress.system}\n${compress.user}`).not.toContain("对外");
   });
 
+  it("压缩提示词要求每段从句首开始：不许把句子砍成半句，也不许留残标点（变更表 #138）", () => {
+    const compress = buildCompressPrompt({
+      title: "建设背景与必要性",
+      markdown: "正文",
+      budget: 600,
+      current: 1884,
+    });
+    expect(compress.system).toContain("绝不许把句子砍成半句");
+    expect(compress.system).toContain("完整句子");
+    expect(compress.system).toContain("残标点");
+    // 老规则一条都没弱化（只删不加 / 不许留半句话 / 构件必须留）
+    expect(compress.system).toContain("只删不加");
+    expect(compress.system).toContain("不许留半句话");
+    expect(compress.system).toContain("方案构件必须留");
+  });
+
   it("逐章回炉线是变更表 #136 定下的那一档（solution 五章）", () => {
     expect(chapterProseBudget("solution", "status")).toBe(1000);
     expect(chapterProseBudget("solution", "problems")).toBe(300);
@@ -147,16 +163,31 @@ describe("建设工作方案提示词（变更表 #137）", () => {
       "| 设备类别 | 感知设备 | 感知手段 | 研判结论（状态结果） |",
       "| 风险等级 | 判定依据（状态结论） | 安检频次 |",
       "| 设备名称 | 感知对象 | 主要用途 |",
-      "| 设备名称 | 配置规模 | 预计金额（单位：万元） |",
       "| 序号 | 里程碑事项 | 时间节点 | 责任部门 |",
     ]) {
       expect(system, header).toContain(header);
     }
-    // 分层表 ≥4 行、清单表 ≥3 行、计划表 9 条里程碑、成本表分试点与推广两段
+    // 分层表 ≥4 行、清单表 ≥3 行、计划表 9 条里程碑
     expect(system).toContain("**≥4 行**");
     expect(system).toContain("**≥3 行**");
     expect(system).toContain("9 条里程碑");
-    expect(system).toContain("分试点与推广两段口径");
+  });
+
+  it("要客户自己评估/提供的列一律不进表：成本评估、预计金额、配置规模都不再出现（用户定调）", () => {
+    const { system, user } = buildReportPrompt("construction", constructionBase);
+    const all = `${system}\n${user}`;
+    for (const gone of ["成本评估", "成本表", "预计金额", "配置规模", "分试点与推广两段口径"]) {
+      expect(all, gone).not.toContain(gone);
+    }
+    // 设备清单表只留三列，并明写不要为这类列留「待客户提供」占位
+    expect(system).toContain("| 设备名称 | 感知对象 | 主要用途 |");
+    expect(system).toContain("只写这三列");
+    expect(system).toContain("要客户自己评估或提供");
+    expect(system).toContain("也不要为它们留「待客户提供」占位");
+    // 建设路径的篇幅区间与回炉线一起收到 400–800
+    expect(system).toContain("路径约 400–800");
+    expect(system).toContain("本章 400–800 字");
+    expect(chapterProseBudget("construction", "path")).toBe(800);
   });
 
   it("客户没给的数字不许编，缺数写「待客户提供 / 待现场勘查确定」", () => {
@@ -210,7 +241,7 @@ describe("建设工作方案提示词（变更表 #137）", () => {
     expect(chapterProseBudget("construction", "background")).toBe(600);
     expect(chapterProseBudget("construction", "goals")).toBe(700);
     expect(chapterProseBudget("construction", "content")).toBe(2900);
-    expect(chapterProseBudget("construction", "path")).toBe(1000);
+    expect(chapterProseBudget("construction", "path")).toBe(800);
     expect(chapterProseBudget("construction", "schedule")).toBe(200);
     expect(chapterProseBudget("construction", "safeguards")).toBe(650);
     expect(chapterProseBudget("construction", "outlook")).toBe(300);
@@ -231,12 +262,15 @@ describe("建设工作方案提示词（变更表 #137）", () => {
     expect(solution.user).toContain("第 2 章「场景与问题」");
   });
 
-  it("报告任务句带口径名，并点出建设方案自己的构件（硬表与两阶段成本）", () => {
+  it("报告任务句带口径名，并点出建设方案自己的构件（硬表，不再有两阶段成本）", () => {
     const { user } = buildReportPrompt("construction", constructionBase);
     expect(user).toContain("《智慧会议室建设工作方案》");
     expect(user).toContain("不要写成前面内容的总结");
     expect(user).toContain("里程碑计划表");
-    expect(user).toContain("试点 / 推广");
+    expect(user).toContain("新增设备清单");
+    // 成本口径整条退场（用户定调：表里不要需要客户自己评估的内容）
+    expect(user).not.toContain("试点 / 推广");
+    expect(user).not.toContain("成本");
   });
 
   it("共用硬规则在建设方案里同样在位（不是总结 / 结论降调 / 写不出就说缺 / 说人话 / 数字带口径 / 不记流水账）", () => {

@@ -261,4 +261,7 @@ export {
   reportMaxChars,
 } from "./report-gate.js";
 export { proseChars } from "./md-metrics.js";
+
+// ─── 报告正文形态（断头段：压缩把句子砍成半句，变更表 #138） ──────
+export { brokenProseHeads, repairProseHeads } from "./prose-shape.js";
 export type { ReportGateReport, ReportKind, ReportViolation } from "./report-gate.js";
