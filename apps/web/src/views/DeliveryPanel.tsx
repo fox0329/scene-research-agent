@@ -331,10 +331,28 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
   return (
     <div className="pnl">
       {/* 变更表 #140（用户定调）：动作行与两份交付物的 chip 合成**中栏顶部一行**——
-          左边是本步动作（生成 / 编辑 / 导出 Word / 导出 PPT / 导出 Markdown），
-          右边是这一份还是那一份（原来挂在流程轴第二行，这一步已不再画） */}
+          左边是这一份还是那一份（解决方案 / 建设工作方案，原来挂在流程轴第二行），
+          右边是本步动作（生成 / 编辑 / 导出 Word / 导出 PPT / 导出 Markdown）。
+          变更表 #141：两组位置对调（chip 靠左、动作靠右） */}
       <div className="pnl-h pnl-h--wrap">
-        <div className="pnl-actions">
+        {/* 两份交付物：放行首（用户定调「解决方案 和 工作方案放左边」）。名字取契约
+            `REPORT_KIND_LABEL`（与报告标题、导出文件名同源），`active` 高亮当前这一份，
+            点一下切份（切份丢弃草稿） */}
+        <div className="pnl-actions" role="group" aria-label="交付物">
+          {DELIVERY_OUTPUTS.map((o) => (
+            <button
+              key={o.key}
+              type="button"
+              className={`chip${tab === o.key ? " active" : ""}`}
+              title={deliveryHint(o.key)}
+              aria-pressed={tab === o.key}
+              onClick={() => handlePickReport(o.key)}
+            >
+              {o.label}
+            </button>
+          ))}
+        </div>
+        <div className="pnl-actions pnl-actions--end">
           <button
             className="btn primary"
             type="button"
@@ -415,22 +433,6 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
             </button>
           </div>
         ) : null}
-        {/* 两份交付物：同一行里靠右。名字取契约 `REPORT_KIND_LABEL`（与报告标题、
-            导出文件名同源），`active` 高亮当前这一份，点一下切份（切份丢弃草稿） */}
-        <div className="pnl-actions pnl-actions--end" role="group" aria-label="交付物">
-          {DELIVERY_OUTPUTS.map((o) => (
-            <button
-              key={o.key}
-              type="button"
-              className={`chip${tab === o.key ? " active" : ""}`}
-              title={deliveryHint(o.key)}
-              aria-pressed={tab === o.key}
-              onClick={() => handlePickReport(o.key)}
-            >
-              {o.label}
-            </button>
-          ))}
-        </div>
       </div>
 
       <div className="pnl-b">

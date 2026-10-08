@@ -18,7 +18,7 @@ import { join } from "node:path";
  *  ③ 第二行在中栏滚动容器 `.ws` 外面 → 上下滚表格时它始终可见（用户要解决的正是这个）；
  *  ④ 中栏不再自己再来一行表名（上一版曾在表格上面压一层粘性表头，用户否掉了）；
  *  ⑤ 交付物这一步例外（变更表 #140）：两份交付物（解决方案 / 建设工作方案）的切换入口
- *     在**中栏顶部**与动作同一行、靠右，流程轴第二行在这一步不再画这两个 chip。
+ *     在**中栏顶部**行首（靠左），本步动作靠右，流程轴第二行在这一步不再画这两个 chip。
  */
 
 const LIVE = "http://127.0.0.1:46175";
@@ -144,15 +144,18 @@ test("交付物这一步：两份交付物在中栏顶部切换，流程轴第�
   await expect(chips.nth(1)).toHaveText("建设工作方案");
   await expect(chips.filter({ hasText: "解决方案" })).toHaveClass(/active/);
 
-  // 与左侧动作**同一行**、贴右（不是掉到下一行，也不是挤在按钮中间）
-  const actions = page.locator(".ws .pnl-actions").first();
+  // chip 靠左、动作靠右，两组**同一行**（不是掉到下一行，也不是挤成一团）
+  const chipsGroup = page.locator('.ws [aria-label="交付物"]');
+  const actions = page.locator(".ws .pnl-actions--end");
   const headBox = (await page.locator(".ws .pnl-h").boundingBox())!;
   const actionsBox = (await actions.boundingBox())!;
-  const chipsBox = (await page.locator(".ws .pnl-actions--end").boundingBox())!;
+  const chipsBox = (await chipsGroup.boundingBox())!;
   const midY = (b: { y: number; height: number }) => b.y + b.height / 2;
   expect(Math.abs(midY(chipsBox) - midY(actionsBox))).toBeLessThanOrEqual(8);
-  expect(chipsBox.x).toBeGreaterThan(actionsBox.x + actionsBox.width);
-  expect(headBox.x + headBox.width - (chipsBox.x + chipsBox.width)).toBeLessThanOrEqual(20);
+  // chip 在动作左侧、贴内容左边；动作贴内容右边
+  expect(actionsBox.x).toBeGreaterThan(chipsBox.x + chipsBox.width);
+  expect(chipsBox.x - headBox.x).toBeLessThanOrEqual(20);
+  expect(headBox.x + headBox.width - (actionsBox.x + actionsBox.width)).toBeLessThanOrEqual(20);
 
   // 动作同一行：改名后的导出 Word、只是入口的导出 PPT、以及保留的导出 Markdown
   await expect(actions).toContainText("生成报告");
