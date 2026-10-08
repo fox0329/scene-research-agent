@@ -14,7 +14,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { describe, it, expect } from "vitest";
-import { backupBeforeOverwrite, exportDeliverables, exportFileName, safeWriteFile } from "./md-export.js";
+import {
+  backupBeforeOverwrite,
+  exportDeliverables,
+  exportFileName,
+  reportDateOf,
+  safeWriteFile,
+} from "./md-export.js";
 import type { DeliverableInput, StageData } from "@scene/contract";
 
 // ─── 测试数据构造 ────────────────────────────────────────────
@@ -130,18 +136,20 @@ describe("exportFileName", () => {
 });
 
 describe("exportDeliverables — 内部调研报告", () => {
-  it("封面只留身份信息（场景 + 日期），澄清/免责文字一律不出现", async () => {
+  it("封面只有一行报告名（变更表 #134 起不再写场景行 / 日期行），澄清/免责文字一律不出现", async () => {
     const { internal_report } = await exportDeliverables(makeInput());
-    expect(internal_report).toContain("# 智慧水务 内部调研报告 ");
-    expect(internal_report).toContain("**生成日期**：2026-09-25");
+    expect(internal_report).toMatch(/^# 智慧水务 内部调研报告 2026-09-25$/m);
+    // 封面除了报告名什么都不留：场景行、日期行、场景锚副标题都不许再出现
+    expect(internal_report).not.toContain("> **场景**");
+    expect(internal_report).not.toContain("**生成日期**");
+    expect(internal_report).not.toContain("制水到输配 ｜ 市政水务集团");
     expect(internal_report).not.toContain("怎么读");
     expect(internal_report).not.toContain("不给决策建议");
     expect(internal_report).not.toContain("内部版侧重");
     // 每章导语（口径说明）也不再有
     expect(internal_report).not.toContain("先讲清场景在业务链条里的位置");
-    // 场景锚派生副标题
-    // 场景锚派生副标题：场景边界 ｜ 买方类型（新口径里"客户类型"已不在表1-1）
-    expect(internal_report).toContain("制水到输配 ｜ 市政水务集团");
+    // 日期改从标题里取 → 导出文件名不变（导出文件名 = 场景 + 类型 + 报告自己的日期）
+    expect(reportDateOf(internal_report, "兜底")).toBe("2026-09-25");
   });
 
   it("正文按新骨架成章（不再是「阶段 N 总结」的拼接）", async () => {

@@ -8,7 +8,8 @@
  * 解析铁律：**任何解析不出来的行都不许丢**——最差当普通段落写进去。
  *
  * 约定：
- *  - 文件开头第一个 `#` + 紧随的 `>` 引用块 = 封面；封面后依次是目录页、正文；
+ *  - 文件开头第一个 `#` = 封面（第一页顶部空 3 行后写报告名，标题后的 `>` 引用块不渲染）；
+ *    封面后依次是目录页、正文；
  *  - `##`→Heading1、`###`→Heading2、`####`→Heading3、`#####`/`######`→Heading4，
  *    后续若再出现 `#` 也按 Heading1（报告里只应有一个 `#`）；
  *  - `---`（分隔线）忽略，不生成内容也不分页；
@@ -48,6 +49,9 @@ const VT_NS = "http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTy
 const FONT_LATIN = "Times New Roman";
 const FONT_CN_BODY = "宋体";
 const FONT_CN_COVER = "黑体";
+
+/** 封面上标题之前空几行（用户定稿：「在第一页往下空3行显示」） */
+const COVER_BLANK_LINES = 3;
 
 /** A4 = 210×297mm，1cm = 567 twip */
 const PAGE_WIDTH = 11906;
@@ -160,13 +164,6 @@ function coverTitleXml(text: string): string {
   return paragraphXml(text, `<w:spacing w:before="0" w:after="0" w:line="600" w:lineRule="exact"/>${NO_INDENT}<w:jc w:val="center"/>`, {
     bold: true,
     half: 48,
-    eastAsia: FONT_CN_COVER,
-  });
-}
-
-function coverQuoteXml(text: string): string {
-  return paragraphXml(text, `${LINE_ONE_HALF}${NO_INDENT}<w:jc w:val="center"/>`, {
-    half: 28,
     eastAsia: FONT_CN_COVER,
   });
 }
@@ -419,20 +416,22 @@ function renderBlocks(lines: string[], start: number): string {
   return out.join("");
 }
 
-/** 封面 = 开头第一个 `#` 标题 + 紧随（允许空行）的 `>` 引用块 */
+/**
+ * 封面 = 第一页顶部**空 3 行**后写报告名（变更表 #134，用户定稿逐字要求：
+ * 「标题 智慧会议室 内部调研报告 2026-10-07 在第一页往下空3行显示」）。
+ * 标题后面如果有 `>` 引用块（#134 之前的老报告才有：场景行 + 日期行），
+ * 这里只**消费掉**不渲染——封面上除了报告名不留别的内容。
+ */
 function takeCover(lines: string[]): { xml: string; title: string; start: number } {
   let index = 0;
   while (index < lines.length && isBlank(lines[index] ?? "")) index += 1;
   const heading = matchHeading(lines[index] ?? "");
   if (heading === null || heading.level !== 1) return { xml: "", title: "", start: 0 };
   index += 1;
-  const chunks = [coverTitleXml(heading.text), "<w:p/>"];
   while (index < lines.length && isBlank(lines[index] ?? "")) index += 1;
-  while (index < lines.length && isQuote(lines[index] ?? "")) {
-    chunks.push(coverQuoteXml((lines[index] ?? "").trim().replace(/^>\s?/, "")));
-    index += 1;
-  }
-  return { xml: chunks.join(""), title: heading.text, start: index };
+  while (index < lines.length && isQuote(lines[index] ?? "")) index += 1;
+  const blanks = "<w:p/>".repeat(COVER_BLANK_LINES);
+  return { xml: blanks + coverTitleXml(heading.text), title: heading.text, start: index };
 }
 
 // ─── OOXML 部件 ─────────────────────────────────────────────

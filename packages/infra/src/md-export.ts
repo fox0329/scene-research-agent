@@ -153,10 +153,16 @@ function recordFingerprint(fp: string, value: string): void {
 
 // ─── 命名规则（00b §11.5） ──────────────────────────────────
 
-/** 取报告自己的生成日期（封面 `> **生成日期**：YYYY-MM-DD`），取不到再用兜底日期 */
+/**
+ * 取报告自己的生成日期，取不到再用兜底日期。
+ * 变更表 #134 起日期写在标题里（`# <场景> <报告类型> <日期>`）；
+ * 老报告（#134 之前）的封面 `> **生成日期**：YYYY-MM-DD` 仍认，保证老文件导出文件名不变。
+ */
 export function reportDateOf(markdown: string, fallback: string): string {
-  const m = markdown.match(/>\s*\*\*(?:生成)?日期\*\*：\s*(\d{4}-\d{2}-\d{2})/);
-  return m?.[1] ?? fallback;
+  const title = markdown.match(/^#\s+.*?(\d{4}-\d{2}-\d{2})\s*$/m);
+  if (title?.[1]) return title[1];
+  const cover = markdown.match(/>\s*\*\*(?:生成)?日期\*\*：\s*(\d{4}-\d{2}-\d{2})/);
+  return cover?.[1] ?? fallback;
 }
 
 /** 报告类型名（标题与文件名共用） */
@@ -226,15 +232,6 @@ function segs(parts: readonly (readonly [string, unknown])[]): string {
     .filter(([, v]) => !blank(v))
     .map(([label, v]) => (label ? `${label}${cell(v)}` : cell(v)))
     .join("；");
-}
-
-/** 依场景锚（表1-1）取一个可读的副标题：边界 + 买方类型 */
-function anchorLine(stageData: readonly StageData[]): string {
-  const rows = stageData.filter((r) => r.table_code === "表1-1");
-  const get = (item: string): string =>
-    String(rows.find((r) => String(r.row["item"]) === item)?.row["content"] ?? "").trim();
-  const parts = [get("场景边界"), get("买方类型")].filter((s) => s && s !== "未提供");
-  return truncate(parts.join(" ｜ "), 80);
 }
 
 /** 一张表在给定列下的「部门/环节」标签，用于导语与计数文案 */
@@ -491,24 +488,10 @@ function buildReport(
   bodyOf: (key: string) => string,
 ): string {
   const { scenario, stageData } = data;
-  const sub = anchorLine(stageData);
-  const isInternal = kind === "internal";
 
-  // 封面只留身份信息（场景 + 生成日期）：口径说明、免责声明这类澄清文字用户要求全部删掉
-  const head = isInternal
-    ? [
-        `# ${scenario.name} ${reportTypeName(kind)} ${today}`,
-        "",
-        `> **场景**：${scenario.name}${sub ? `（${sub}）` : ""}`,
-        `> **生成日期**：${today}`,
-      ]
-    : [
-        /* 变更表 #132：与文件名、与内部版统一——`# <场景> 对外汇报材料 <日期>` */
-        `# ${scenario.name} ${reportTypeName(kind)} ${today}`,
-        "",
-        `> **场景**：${scenario.name}${sub ? `（${sub}）` : ""}`,
-        `> **日期**：${today}`,
-      ];
+  // 封面只有一行报告名（变更表 #134，用户定稿逐字要求）：
+  // 场景名与日期都在标题里，再写「场景 / 生成日期」两行引用块是重复（精要优先：一个事实只说一次）
+  const head = [`# ${scenario.name} ${reportTypeName(kind)} ${today}`];
 
   const sections: string[] = [head.join("\n")];
 

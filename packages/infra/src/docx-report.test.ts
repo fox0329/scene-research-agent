@@ -131,6 +131,13 @@ describe("reportMarkdownToDocx — 基本形态", () => {
     const coverIndex = doc.indexOf("智慧会议室 解决方案");
     expect(coverIndex).toBeGreaterThan(-1);
     expect(doc.slice(Math.max(0, coverIndex - 600), coverIndex + 120)).toContain('w:sz w:val="48"');
+
+    // 变更表 #134：封面 = 第一页顶部空 3 行后写报告名；老报告的 `> 场景 / 日期` 两行不再渲染
+    const bodyStart = doc.indexOf("<w:body>") + "<w:body>".length;
+    // 正文起点 → 标题文字之间，正好是 3 个空段落再接标题段落本身
+    expect(doc.slice(bodyStart, coverIndex)).toMatch(/^(<w:p\/>){3}<w:p>/);
+    expect(doc).not.toContain("企业/园区内部会议室");
+    expect(doc).not.toContain("2026-10-07");
     expect(doc).toContain("目  录");
     expect(doc).toContain('TOC \\o "1-3"');
     expect(doc).toContain('w:fldCharType="begin"');
