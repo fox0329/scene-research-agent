@@ -16,6 +16,7 @@ import type {
 } from "@scene/contract";
 import type { Repo, MessageRepo } from "@scene/infra";
 import { parseCommandBlock, executeAppCommand } from "./scenario-commands.js";
+import { isUserConversation } from "./conversation-kind.js";
 import {
   validateSessionTitle,
   canArchive,
@@ -95,7 +96,7 @@ export function createConverseCommand(deps: ConverseDeps) {
      * 数据保留，`get`/消息接口照旧可查。
      */
     list: (scenarioId: string): Conversation[] =>
-      listConversations(db, scenarioId).filter((c) => (c.kind ?? "用户") !== "阶段分析"),
+      listConversations(db, scenarioId).filter(isUserConversation),
 
     /**
      * 获取单个会话。

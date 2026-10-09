@@ -143,6 +143,8 @@ export function SceneTable<T extends Record<string, unknown>>({
   /** 选中行（右栏详情联动高亮） */
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
   const tableRef = useRef<HTMLTableElement>(null);
+  /** 离屏测量表：只用来量各列自然宽，用户看不见（见 `fitting`） */
+  const measureRef = useRef<HTMLTableElement>(null);
   /** RO 回调里读最新列定义/列宽（effect 不随它们重建，避免反复解绑观察器） */
   const columnsRef = useRef(columns);
   const widthsRef = useRef(widths);
@@ -167,6 +169,15 @@ export function SceneTable<T extends Record<string, unknown>>({
 
   /* 测量阶段（无留存宽度）：整表单行自然宽渲染，量完立即适配容器（绘制前完成，无闪烁） */
   const measuring = widths === null;
+  /**
+   * 需不需要重新量一次列宽（首屏 / 行集变了 / 双击复位）
+   *
+   * 要害：**不再清空 `widths`**。清空会让可见表掉回测量渲染（`width: max-content` +
+   * 整表单行 `nowrap`），表格一瞬撑成一个很宽的单行版再弹回来——用户看到的就是
+   * 「表格在闪、还发糊」（分析在跑、行陆续落库，每批都会闪一次）。现在测量改在**离屏**
+   * 那张表上做，可见表全程按现有列宽渲染，量好了再一次性换上新宽度。
+   */
+  const [fitting, setFitting] = useState(true);
 
   /** 渲染用百分比列宽：由 px 列宽按"和"归一化，保证列宽之和恰好 100%（不撑出中栏） */
   const percentWidths = useMemo(() => (widths ? toPercentWidths(widths) : {}), [widths]);
@@ -263,8 +274,8 @@ export function SceneTable<T extends Record<string, unknown>>({
    * 只有知道每一行需要多宽，才能把宽给到真正撑高行的那一列。
    */
   useLayoutEffect(() => {
-    if (!measuring) return;
-    const table = tableRef.current;
+    if (!fitting) return;
+    const table = measureRef.current;
     if (!table) return;
     const firstCell = table.querySelector("th, td");
     const cs = firstCell ? window.getComputedStyle(firstCell) : null;
@@ -290,8 +301,9 @@ export function SceneTable<T extends Record<string, unknown>>({
     demandsSigRef.current = colKeysSig;
     manualRef.current = false;
     fitToContainer();
+    setFitting(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [measuring, colKeysSig]);
+  }, [fitting, colKeysSig]);
 
   /**
    * 内容/行集变化（表格刚生成、重算换了一版）→ 重新自动适配
@@ -310,9 +322,9 @@ export function SceneTable<T extends Record<string, unknown>>({
   useEffect(() => {
     if (dataSigRef.current === dataSig) return;
     dataSigRef.current = dataSig;
-    // 回到测量态：先按单行自然宽渲染量需求，再在绘制前换成适配结果（无闪烁）
+    // 离屏重量：可见表保持现有列宽不动，量好再一次性换（无闪烁）
     manualRef.current = false;
-    setWidths(null);
+    setFitting(true);
   }, [dataSig]);
 
   /* 容器宽变化：记下来（算填充列宽）；未手动调过列宽时按内容重新适配 */
@@ -346,6 +358,7 @@ export function SceneTable<T extends Record<string, unknown>>({
     const loaded = loadWidths(storageKey, colKeys);
     manualRef.current = loaded !== null;
     setWidths(loaded);
+    if (loaded === null) setFitting(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [storageKey, colKeysSig]);
 
@@ -443,7 +456,7 @@ export function SceneTable<T extends Record<string, unknown>>({
   /** 双击分割线：该表回到「按内容自适应」（撤销手动列宽） */
   const resetWidths = useCallback(() => {
     manualRef.current = false;
-    setWidths(null);
+    setFitting(true);
     if (!storageKey) return;
     try {
       window.localStorage.removeItem(`${COL_WIDTHS_KEY_PREFIX}${storageKey}`);
@@ -480,13 +493,18 @@ export function SceneTable<T extends Record<string, unknown>>({
     />
   );
 
-  return (
-    <div className={`tw${isResizing ? " is-resizing" : ""}`} ref={wrapRef}>
+  /**
+   * 表体（两处复用）
+   *
+   * `isMeasure = true` → 离屏测量表：单行自然宽（`.measure`）+ 纯文本（textarea 会把自然宽量歪）；
+   * `isMeasure = false` → 用户看得见的那张：始终按当前列宽渲染，不参与测量。
+   */
+  const renderTable = (isMeasure: boolean): React.ReactElement => (
       <table
-        ref={tableRef}
-        className={measuring ? "measure" : tableClassName}
+        ref={isMeasure ? measureRef : tableRef}
+        className={isMeasure ? "measure" : tableClassName}
         style={
-          measuring
+          isMeasure || !widths
             ? undefined
             : {
                 tableLayout: "fixed",
@@ -497,7 +515,7 @@ export function SceneTable<T extends Record<string, unknown>>({
               }
         }
       >
-        {!measuring && (
+        {!isMeasure && widths && (
           <colgroup>
             {columns.map((col) => (
               <col
@@ -551,7 +569,7 @@ export function SceneTable<T extends Record<string, unknown>>({
                    多行编辑在**测量阶段**先渲染纯文本，否则 textarea 会把自然宽量歪 */
                 const canEdit =
                   Boolean(col.editable) &&
-                  !(col.multiline && measuring) &&
+                  !(col.multiline && (isMeasure || measuring)) &&
                   (rowEditable ? rowEditable(row) : true);
 
                 // 长文本：换行显示 + 行高随内容长
@@ -615,6 +633,19 @@ export function SceneTable<T extends Record<string, unknown>>({
           ))}
         </tbody>
       </table>
-    </div>
+  );
+
+  return (
+    <>
+      <div className={`tw${isResizing ? " is-resizing" : ""}`} ref={wrapRef}>
+        {renderTable(false)}
+      </div>
+      {/* 离屏测量表：`visibility: hidden` 仍参与布局，所以量得到自然宽，但用户看不见 → 不再闪 */}
+      {fitting && (
+        <div className="tw-measure-host" aria-hidden="true">
+          {renderTable(true)}
+        </div>
+      )}
+    </>
   );
 }

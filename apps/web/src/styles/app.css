@@ -328,6 +328,17 @@ body {
   overflow-x: auto;
 }
 
+/* 离屏测量表：`visibility: hidden` 仍然参与布局，所以能量到各列自然宽；
+   用户只看得到上面那张已定好列宽的表 —— 重新适配不再「闪」。
+   放负坐标：只往左溢出，不会给页面添横向滚动条。 */
+.tw-measure-host {
+  position: absolute;
+  left: -100000px;
+  top: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
 .tw > table {
   box-sizing: border-box;
 }

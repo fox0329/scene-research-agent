@@ -10,8 +10,9 @@
  * 解析失败时放行（fail-open）：澄清输出异常不得阻断分析主链路。
  */
 
-import type { DshClient, FollowEvent, Scenario, SessionHandle } from "@scene/contract";
+import type { Conversation, DshClient, FollowEvent, Scenario, SessionHandle } from "@scene/contract";
 import type { DbInstance } from "@scene/infra";
+import { isUserConversation } from "./conversation-kind.js";
 
 /** 场景澄清判定结果 */
 export interface ClarifyOutcome {
@@ -21,6 +22,25 @@ export interface ClarifyOutcome {
   questions: string[];
   /** 问题所在会话 id（供 UI 引导） */
   conversationId?: string;
+}
+
+/**
+ * 澄清问题该写进哪条会话：该场景最近一条**用户可见**的活跃会话
+ *
+ * 必须跳过阶段分析内部会话（`kind = "阶段分析"`）——它们已从左侧栏隐藏。写进去的话，
+ * 用户既看不到问题、也没法回答（2026-10-09 用户指出的真故障）。
+ */
+export function pickClarifyConversation(
+  db: DbInstance,
+  scenarioId: string,
+): Conversation | undefined {
+  return db.conversationRepo
+    .list({
+      where: "scenario_id = ? AND status = ?",
+      params: [scenarioId, "活跃"],
+      orderBy: "created_at DESC",
+    })
+    .find(isUserConversation);
 }
 
 const CLARIFY_SYSTEM = `你是场景落地分析的预检助手。分析开始前，判断场景信息是否足以支撑严谨分析，并找出必须向用户澄清的点。
@@ -127,8 +147,7 @@ export async function runScenarioClarify(
   if (!needClarification) return { needClarification: false, questions: [] };
 
   // 写进该场景的对话（复用最近活跃会话；没有则创建「场景澄清」会话）
-  let conversation = db.conversationRepo
-    .list({ where: "scenario_id = ? AND status = ?", params: [scenario.id, "活跃"], orderBy: "created_at DESC" })[0];
+  let conversation = pickClarifyConversation(db, scenario.id);
   if (!conversation) {
     const handle = await dshClient.createSession({ title: "场景澄清" });
     conversation = db.conversationRepo.insert({
@@ -177,11 +196,13 @@ export function clarifyAbortEvent(questions: number, stage: number): FollowEvent
  * 命中则沿用现有问题拦下分析，不重复生成。
  */
 function findPendingQuestions(db: DbInstance, scenarioId: string): ClarifyOutcome | null {
-  const conversations = db.conversationRepo.list({
-    where: "scenario_id = ? AND status = ?",
-    params: [scenarioId, "活跃"],
-    orderBy: "created_at DESC",
-  });
+  const conversations = db.conversationRepo
+    .list({
+      where: "scenario_id = ? AND status = ?",
+      params: [scenarioId, "活跃"],
+      orderBy: "created_at DESC",
+    })
+    .filter(isUserConversation);
   for (const c of conversations) {
     const messages = db.messageRepo.listByConversation(c.id);
     let clarifyIdx = -1;
