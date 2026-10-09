@@ -448,14 +448,24 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
         );
       }
       const def = flowStep(step);
-      const isCurrent = flow.currentStep === step;
       return (
         <RealStagePanel
           projectId={project.id}
           stage={stepStage}
           tables={def.tables}
           stepId={step}
-          refreshToken={isCurrent ? analysisRefresh : 0}
+          /**
+           * 收尾令牌照传，**不许**再按"是不是流程轴当前步"过滤（变更表 #172，用户实测）
+           *
+           * 曾经的写法是 `isCurrent ? analysisRefresh : 0`，而面板里是
+           * `if (refreshToken === 0) return`——于是"回看已完成的步 → 点重算本步"这条路
+           * （`isCurrent` 为假）永远拿不到令牌，面板一次都不重取，用户只能按 F5 才看到新结果
+           * （复现：回看第 2 步重算，本步面板 0 次请求；当前步同一动作是 2 次）。
+           *
+           * 为什么照传是安全的：运行入口在流程轴上、且只对**正在看的那一步**发起，
+           * 所以令牌每次自增都恰好对应"用户眼前这个面板"，不会误刷别的步。
+           */
+          refreshToken={analysisRefresh}
           onChanged={handleDataChanged}
           onStageSnapshot={onStageSnapshot}
           pick={pickForStep}
