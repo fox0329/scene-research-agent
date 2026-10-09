@@ -5,11 +5,12 @@
  * 依赖 contract + domain；被 server 引用。
  */
 
-export { createDb, sourceSearch } from "./sqlite-repo.js";
+export { createDb, sourcePassages, sourceSearch } from "./sqlite-repo.js";
 export type {
   DbInstance,
   Repo,
   ListFilters,
+  SourcePassage,
   SourceSearchResult,
   MessageRepo,
   CreateMessageInput,

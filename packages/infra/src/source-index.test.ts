@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import Database from "better-sqlite3";
 import { createSourceLookup, deleteSourceIndex, ftsPhrase } from "./source-index.js";
+import { sourcePassages } from "./sqlite-repo.js";
 
 /** 建一张和线上同构的 trigram FTS 表（schema 见 packages/infra/src/sql/001_init.sql） */
 function makeDb(): Database.Database {
@@ -90,5 +91,28 @@ describe("source-index — 删行时清索引（变更表 #156）", () => {
     deleteSourceIndex(db, "   ");
     expect(l.hasSource("ingest-1790179276611-30.pdf:10")).toBe(true);
     expect(l.hasSource("ingest-1790179276611-30.pdf:11")).toBe(true);
+  });
+});
+
+describe("source-index — 右栏「看原文」按来源取段落（变更表 #179）", () => {
+  it("等值取用：只回这一条来源的原文，按内容去重", () => {
+    const db = new Database(":memory:");
+    db.exec(`CREATE VIRTUAL TABLE source_fts USING fts5(
+      ref_id, source, content, table_code, tokenize='trigram'
+    );`);
+    const ins = db.prepare(
+      "INSERT INTO source_fts (ref_id, source, content, table_code) VALUES (?,?,?,?)",
+    );
+    ins.run("a", "在鸿工控机CT21B规格参数.docx:1", "支持宽温 -40~70℃ 工作", "M1");
+    ins.run("b", "在鸿工控机CT21B规格参数.docx:1", "支持宽温 -40~70℃ 工作", "M2"); // 同一句被两张表引用
+    ins.run("c", "在鸿工控机CT21B规格参数.docx:1", "八核处理器 RK3588J", "M1");
+    ins.run("d", "别的材料.pdf:9", "这条不该被捞进来", "M1"); // 来源不同
+
+    const got = sourcePassages(db, "在鸿工控机CT21B规格参数.docx:1");
+    expect(got.map((p) => p.content)).toEqual(["支持宽温 -40~70℃ 工作", "八核处理器 RK3588J"]);
+    expect(got.every((p) => p.source === "在鸿工控机CT21B规格参数.docx:1")).toBe(true);
+
+    // 没有原文的出处（「用户输入」「模型知识」）返回空数组，不是报错
+    expect(sourcePassages(db, "用户输入")).toEqual([]);
   });
 });

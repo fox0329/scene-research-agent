@@ -402,6 +402,13 @@ export class ApiError extends Error {
   }
 }
 
+/** 来源原文段落（`/sources/passages`，变更表 #179） */
+export interface ApiSourcePassage {
+  source: string;
+  content: string;
+  table_code: string;
+}
+
 async function req<T>(
   path: string,
   init: { method?: string; body?: unknown } = {},
@@ -439,6 +446,18 @@ export const api = {
   health: () => req<{ status: string }>("/health"),
 
   listProjects: () => req<ApiProject[]>("/projects"),
+
+  /**
+   * 来源原文（变更表 #179）：右栏「来源」旁边点「看原文」时取
+   *
+   * 返回材料库全文索引里这一条来源的原文段落（证明"这页确实有这句话"），
+   * 以及来源里自带的 http(s) 链接（有就直接新窗口打开）。
+   * `passages` 为空不是错误——「用户输入」「行业通例（模型知识）」这类出处本就没有原文。
+   */
+  sourcePassages: (source: string) =>
+    req<{ source: string; url: string | null; passages: ApiSourcePassage[] }>(
+      `/sources/passages?source=${encodeURIComponent(source)}`,
+    ),
   /**
    * 新建项目
    *

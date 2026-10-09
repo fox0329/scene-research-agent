@@ -33,6 +33,7 @@ import { AutoGrowTextarea } from "./AutoGrowTextarea";
 import { FoldSection } from "./FoldSection";
 import { splitBold } from "./md-inline";
 import { SceneTable } from "./SceneTable";
+import { SourceReference } from "./SourceReference";
 import type { StageSnapshot } from "./stage-snapshot";
 import { plainText } from "./text-display";
 
@@ -360,6 +361,9 @@ export const StageRightPanel: React.FC<StageRightPanelProps> = ({ snapshot, live
                                   ariaLabel={fieldLabel}
                                   onChange={(v) => snapshot.onSupplementChange(r.id, c.key, v)}
                                 />
+                                {/* 来源旁边给「看原文」（变更表 #179）：出处是引用痕迹，
+                                    用户要能点开核对——材料库全文索引里查那一句，取到什么显示什么 */}
+                                {c.key === "source" ? <SourceReference source={text} /> : null}
                               </div>
                             );
                           })}

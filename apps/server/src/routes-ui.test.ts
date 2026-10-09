@@ -75,6 +75,60 @@ function seedScenario(db: DbInstance, name = "测试项目"): {
   return { productLineId: line.id, scenarioId: scenario.id };
 }
 
+// ─── 来源原文（右栏「看原文」，变更表 #179）────────────────
+
+describe("来源原文路由", () => {
+  let h: Harness;
+  beforeEach(() => {
+    h = makeHarness();
+  });
+
+  it("按来源串取回材料库原文段落；来源自带 URL 就一并给出", async () => {
+    const { productLineId } = seedScenario(h.db);
+    // 材料库行落库时触发器会把 source/content 写进 source_fts（001_init.sql）
+    h.db.productRepo.insert({
+      product_line_id: productLineId,
+      model: "CT21B",
+      name: "在鸿工控机CT21B",
+      status: "在售",
+      launch_date: "2026-01-01",
+      position_desc: "基于 RK3588J 八核处理器，宽温 -40~70℃",
+      source: "在鸿工控机CT21B规格参数.docx:1",
+      source_type: "AI提取",
+    });
+
+    const res = await h.app.inject({
+      method: "GET",
+      url: `/api/v1/sources/passages?source=${encodeURIComponent("在鸿工控机CT21B规格参数.docx:1")}`,
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.source).toBe("在鸿工控机CT21B规格参数.docx:1");
+    expect(body.url).toBeNull();
+    expect(body.passages[0].content).toContain("RK3588J");
+
+    // 带链接的来源：原样给出，前端直接新窗口打开
+    const withUrl = await h.app.inject({
+      method: "GET",
+      url: `/api/v1/sources/passages?source=${encodeURIComponent("OpenHarmony 官网 https://www.openharmony.cn/ 2026-09-30")}`,
+    });
+    expect(withUrl.json().url).toBe("https://www.openharmony.cn/");
+
+    // 没有原文的出处（用户输入 / 模型知识）：不报错，段落为空
+    const none = await h.app.inject({
+      method: "GET",
+      url: `/api/v1/sources/passages?source=${encodeURIComponent("行业通例（模型知识）")}`,
+    });
+    expect(none.statusCode).toBe(200);
+    expect(none.json().passages).toEqual([]);
+  });
+
+  it("缺 source → 400（不是 500，也不是空 200）", async () => {
+    const bad = await h.app.inject({ method: "GET", url: "/api/v1/sources/passages" });
+    expect(bad.statusCode).toBe(400);
+  });
+});
+
 // ─── 项目路由 ──────────────────────────────────────────────
 
 describe("项目路由", () => {

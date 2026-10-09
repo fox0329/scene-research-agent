@@ -794,6 +794,48 @@ export function createDb(dbPath?: string): DbInstance {
  * @param query FTS5 查询字符串（支持 NEAR、AND、OR 等）
  * @param limit 最大返回条数，默认 20
  */
+/** FTS5 来源段落行：右栏「看原文」用（不带 rank——这里是精确取用，不是检索） */
+export interface SourcePassage {
+  source: string;
+  content: string;
+  table_code: string;
+}
+
+/**
+ * 按来源串取出索引里的原文段落（变更表 #179）
+ *
+ * 右栏「来源」旁边点「看原文」时用：`source` 就是引用痕迹里的那个串
+ * （形如 `在鸿工控机CT21B规格参数.docx:1` 或 URL），所以这里是**等值取用**而不是检索——
+ * 用 `MATCH` 会被分词拆散、把别的来源也捞进来，反而证明不了"这句话确实在这一页"。
+ * 同一来源在同一页可能被多张表引用，按内容去重后**长段优先**——
+ * 索引里同一页既有"MCU -"这种表格碎片，也有整段描述；碎片证明不了什么，先给信息量大的。
+ */
+export function sourcePassages(
+  db: Database.Database,
+  source: string,
+  limit = 3,
+): SourcePassage[] {
+  const rows = db
+    .prepare(
+      `SELECT source, content, table_code
+       FROM source_fts
+       WHERE source = ? AND content <> ''
+       ORDER BY length(content) DESC`,
+    )
+    .all(source) as SourcePassage[];
+
+  const seen = new Set<string>();
+  const out: SourcePassage[] = [];
+  for (const r of rows) {
+    const key = r.content.trim();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(r);
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+
 export function sourceSearch(
   db: Database.Database,
   query: string,

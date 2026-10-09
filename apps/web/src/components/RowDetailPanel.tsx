@@ -1,6 +1,7 @@
 import React, { useCallback, useState } from "react";
 import { api } from "../api";
 import { useToast } from "./Toast";
+import { SourceReference } from "./SourceReference";
 
 /**
  * 行详情面板（右栏备注区，变更表 #19「组合拳」）
@@ -61,7 +62,11 @@ export const RowDetailPanel: React.FC<RowDetailPanelProps> = ({ detail, onClose 
 
   const renderField = (f: RowDetailField, canEdit: boolean) => (
     <div className="rd-field" key={f.key}>
-      <span className="rd-label">{f.label}</span>
+      <span className="rd-label">
+        {f.label}
+        {/* 来源旁边给「看原文」（变更表 #179）：资料库行详情也走同一份全局来源索引 */}
+        {f.label === "来源" ? <SourceReference source={String(fields[f.key] ?? "")} /> : null}
+      </span>
       <span
         className={canEdit ? "rd-value ed" : "rd-value"}
         contentEditable={canEdit}

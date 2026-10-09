@@ -18,6 +18,7 @@
 import {
   FLOW_LAST_STEP,
   FLOW_STEPS,
+  REPORT_KINDS,
   flowStep,
   type Scenario,
 } from "@scene/contract";
@@ -30,6 +31,7 @@ import {
   type FlowStatus,
 } from "@scene/domain";
 import { readAnchorRows } from "./scenario-anchor.js";
+import { hasGeneratedReport } from "./report-service.js";
 import { readStageRowsByTable } from "./stage-summary-service.js";
 
 /** 步骤就绪判定的统一形态 */
@@ -101,7 +103,21 @@ export function getFlowState(db: DbInstance, scenario: Scenario): FlowStatus {
         break;
       }
       case "组装": {
-        readiness[step.id] = readinessOf(true, "可生成并导出交付物");
+        /**
+         * 交付物（第 7 步）：就绪 = **两份交付物都已生成**（变更表 #178，用户定调）
+         *
+         * 以前恒为 ready（"可生成并导出交付物"），于是流程轴那个按钮一直可点、而且它还写着
+         * 「下一步」——最后一步哪来的下一步？用户根本看不出"点它 = 完成交付物"，项目就永远
+         * 停在 6/7，交付物那格也永远是"当前"（蓝）而不是"已完成"（绿）。
+         */
+        const done = REPORT_KINDS.filter((kind) => hasGeneratedReport(scenario.id, kind));
+        const ok = done.length === REPORT_KINDS.length;
+        readiness[step.id] = readinessOf(
+          ok,
+          ok
+            ? "两份交付物都已生成；确认无误就点「完成交付物」收尾"
+            : `还差 ${REPORT_KINDS.length - done.length} 份交付物没生成，先在上方点「生成报告」`,
+        );
         break;
       }
     }

@@ -2088,6 +2088,36 @@ td.ed {
 .supp-fields { display: flex; flex-direction: column; gap: var(--s1); }
 /* 一行一个「字段名 → 值」，不并排多列（窄栏并排就都读不成） */
 .supp-field { display: flex; flex-direction: column; gap: var(--s05); min-width: 0; }
+
+/* ── 来源原文（右栏「看原文」，变更表 #179）──
+   出处是引用痕迹：右栏给一个可点入口，点开显示材料库索引里那一句原话。
+   窄栏里按钮做成文字链（不占一整行），原文引用块限高可滚，别把面板顶长。 */
+.src-ref { display: block; }
+.src-ref-btn {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--cp);
+  font-size: var(--txs);
+  cursor: pointer;
+  text-align: left;
+}
+.src-ref-btn:hover { text-decoration: underline; }
+.src-ref-body {
+  margin-top: var(--s05);
+  max-height: 220px;
+  overflow-y: auto;
+  border-left: 2px solid var(--cb);
+  padding-left: var(--s1);
+}
+.src-ref-hint { margin: 0 0 var(--s05); color: var(--ct3); font-size: var(--txs); line-height: 1.6; }
+.src-ref-quote {
+  margin: 0 0 var(--s05);
+  color: var(--ct2);
+  font-size: var(--txs);
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
 .supp-field-name { font-size: var(--txs); color: var(--ct3); overflow-wrap: anywhere; }
 .supp-value { font-size: var(--ts); overflow-wrap: anywhere; }
 

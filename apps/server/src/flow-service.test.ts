@@ -16,6 +16,7 @@ import { createApp } from "./app.js";
 import { createSseHub } from "./sse-hub.js";
 import { getFlowState, completeFlowStep, reopenFlowStep } from "./flow-service.js";
 import { ensureAnchorRows, writeAnchorRows } from "./scenario-anchor.js";
+import { saveReportFile } from "./report-service.js";
 
 function mockDsh(): DshClient {
   return {
@@ -154,6 +155,35 @@ describe("flow-service — 锁步与就绪", () => {
     expect(sc.status).toBe("已完成");
     const flow = getFlowState(db, sc);
     expect(flow.finished).toBe(true);
+  });
+
+  it("交付物（第 7 步）：两份都生成才算就绪，未生成时提示说清还差什么（变更表 #178）", () => {
+    const dir = mkdtempSync(join(tmpdir(), "scene-deliv-"));
+    const prev = process.env["DELIVERABLE_DIR"];
+    process.env["DELIVERABLE_DIR"] = dir;
+    try {
+      const { db, scenarioId } = setup();
+      const sc = () => db.scenarioRepo.getById(scenarioId)!;
+      const step7 = () => getFlowState(db, sc()).steps.find((s) => s.id === 7)!;
+
+      // 一份都没有：不就绪，提示先回去生成
+      expect(step7().ready).toBe(false);
+      expect(step7().readyHint).toContain("还差 2 份");
+      expect(step7().readyHint).toContain("生成报告");
+
+      // 只生成一份：仍不就绪，差 1 份
+      saveReportFile(sc(), "solution", "# 解决方案\n\n正文");
+      expect(step7().ready).toBe(false);
+      expect(step7().readyHint).toContain("还差 1 份");
+
+      // 两份齐了：就绪，提示指向「完成交付物」（末步按钮已改名，用户看得出怎么收尾）
+      saveReportFile(sc(), "construction", "# 建设工作方案\n\n正文");
+      expect(step7().ready).toBe(true);
+      expect(step7().readyHint).toContain("完成交付物");
+    } finally {
+      if (prev === undefined) delete process.env["DELIVERABLE_DIR"];
+      else process.env["DELIVERABLE_DIR"] = prev;
+    }
   });
 
   it("锁步：未完成步不进「可推进」，也无法跳过（没有解锁全部这个后门）", () => {

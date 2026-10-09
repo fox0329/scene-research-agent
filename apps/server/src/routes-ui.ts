@@ -59,6 +59,7 @@ import {
   checkProviderConnection,
   fetchProviderModels,
   deleteSourceIndex,
+  sourcePassages,
 } from "@scene/infra";
 import type { ProviderModelEntry } from "@scene/infra";
 import type { SseHub } from "./sse-hub.js";
@@ -907,6 +908,32 @@ function registerProjectRoutes(app: FastifyInstance, deps: UiRoutesDeps) {
       }
     }
     return { scenario_id: id, linked_line_ids: ids };
+  });
+
+  /**
+   * 来源串里自带的 http(s) 链接（有就直接新窗口打开原文） */
+  const firstUrlIn = (text: string): string | null =>
+    /https?:\/\/[^\s，。；）)"']+/u.exec(text)?.[0] ?? null;
+
+  /**
+   * 来源原文（变更表 #179）：右栏「来源」旁边点「看原文」时取
+   *
+   * **不带项目前缀**：来源索引（`source_fts`）是全局只读资产（见 AGENTS.md 分层规则），
+   * 项目右栏与资料库行详情都要用，挂到某个项目下反而把它说成了项目私有数据。
+   * `?source=<来源串>` 就是引用痕迹里的那个串（`文件名:页码` 或 URL）。
+   * 返回三样：原文段落（材料库全文索引里的那一句/那一段，**证明"这页确实有这句话"**）、
+   * 来源里若带 http(s) 链接则原样给出（前端直接新窗口打开原文）。
+   * 取不到段落不是错误：来源可能是「用户输入」「行业通例（模型知识）」这类没有原文的出处，
+   * 前端据此显示"这条来源没有可核对的材料原文"。
+   */
+  app.get("/api/v1/sources/passages", async (request, reply) => {
+    const source = String((request.query as { source?: unknown }).source ?? "").trim();
+    if (source === "") return badRequest(reply, "缺少 source（来源串，如「规格书.docx:12」）");
+    return {
+      source,
+      url: firstUrlIn(source),
+      passages: sourcePassages(db.db, source, 3),
+    };
   });
 
   app.patch("/api/v1/projects/:id", async (request, reply) => {
