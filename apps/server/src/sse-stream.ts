@@ -68,6 +68,18 @@ export async function streamEvents(
       reply.raw.write(`event: follow\n${idLine}data: ${JSON.stringify(event)}\n\n`);
     }
   } finally {
-    if (!closed) reply.raw.end();
+    /**
+     * 收尾必须无条件 end()——**不许**因为"客户端已断开"就跳过
+     *
+     * 曾经的写法是 `if (!closed) reply.raw.end()`，理由是"客户端都走了，不用回了"。
+     * 但用户按 F5 正是这条分支的常态：断开后 socket 停在 CLOSE_WAIT，服务端不 end
+     * 就永远不会发 FIN，于是这条 HTTP 响应永远不收尾——Fastify 一辈子不打
+     * `request completed`，连接挂在那儿不释放。实跑里"方案实现"因此有两条流挂了
+     * 十几分钟（场景其实早已跑完、行也早已落库）。
+     *
+     * 对已断开的 socket 调 end() 是安全的（写失败不会抛到调用方），
+     * 却能让响应真正结束、连接归还。
+     */
+    if (!reply.raw.writableEnded) reply.raw.end();
   }
 }

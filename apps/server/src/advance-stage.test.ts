@@ -435,6 +435,30 @@ function makeStage2DshOutput() {
 
 import { gradeSource } from "@scene/domain";
 
+/**
+ * 自检永远不返回的 mock：表格生成正常，进入"生成后自检"就悬挂
+ *
+ * 实机经过：行早已落库，自检那条链卡住不返回，于是整步、整条 SSE 流、
+ * 用户界面一起钉死在"分析中"，用户只能按 F5 才看到早就写好的内容（故障清单 #47）。
+ */
+function withHangingPostcheck(inner: DshClient): DshClient {
+  const base = inner.prompt as unknown as (
+    session: unknown,
+    req?: { system?: string },
+  ) => AsyncIterable<FollowEvent>;
+  return {
+    ...inner,
+    prompt: vi.fn((session: unknown, req?: { system?: string }) => {
+      if (String(req?.system ?? "").includes("生成后自检")) {
+        return (async function* (): AsyncGenerator<FollowEvent> {
+          await new Promise<never>(() => {}); // 悬挂：既不产出也不结束
+        })();
+      }
+      return base(session, req);
+    }),
+  } as unknown as DshClient;
+}
+
 describe("createAdvanceStageCommand", () => {
   let db: DbInstance;
   let dshClient: DshClient;
@@ -714,6 +738,34 @@ describe("createAdvanceStageCommand", () => {
       expect(types.findIndex((m) => /已输出/.test(m))).toBeGreaterThan(
         types.findIndex((m) => /正在并行生成/.test(m)),
       );
+    });
+
+    it("自检卡死也必须收口：到点跳过自检、照常推进并 done（故障清单 #47）", async () => {
+      process.env["POSTCHECK_DEADLINE_MS"] = "300";
+      process.env["POSTCHECK_HEARTBEAT_MS"] = "100";
+      try {
+        db = createMockDb({ scenario: { current_stage: 2 } });
+        dshClient = withHangingPostcheck(createTableAwareDshClient(makeStage2DshOutput()));
+        const cmd = createAdvanceStageCommand({ db, dshClient });
+
+        const events = await collectEvents(cmd.execute({ scenarioId: "sc-1", stage: 2 }));
+        const types = events.map((e) => e.type);
+        const messages = events.map((e) => String((e as { message?: string }).message ?? ""));
+
+        // 自检之后的环节一个都不能少：完整度、总结、推进（current_stage 到 3）都要发生
+        expect(types).toContain("completeness");
+        expect(types).toContain("summary");
+        expect(types).toContain("done");
+        expect(db.scenarioRepo.update).toHaveBeenCalledWith(
+          "sc-1",
+          expect.objectContaining({ current_stage: 3 }),
+        );
+        // 且必须明说"跳过自检"，不许静默
+        expect(messages.some((m) => /已跳过自检/.test(m))).toBe(true);
+      } finally {
+        delete process.env["POSTCHECK_DEADLINE_MS"];
+        delete process.env["POSTCHECK_HEARTBEAT_MS"];
+      }
     });
 
     it("应将 3 条行写入 stageDataRepo", async () => {

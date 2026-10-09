@@ -174,7 +174,20 @@ export function createApp(deps: AppDeps): FastifyInstance {
     // 上限口径收敛到契约（FILE_UPLOAD_LIMIT_MB），前端上传前预检读同一个数（变更表 #155）
     limits: { fileSize: uploadLimitMb * 1024 * 1024 },
   });
-  registerUiRoutes(app, { db, dshClient, hub, uploadLimitMb });
+  registerUiRoutes(app, {
+    db,
+    dshClient,
+    hub,
+    uploadLimitMb,
+    /**
+     * 这一步此刻是否还有分析在跑：刷新后的页面靠它继续显示"分析中"、
+     * 并在跑完自动对账——不再出现"服务端早就跑完了、界面非要按 F5 才更新"（故障清单 #47）
+     */
+    isStageRunning: (scenarioId, stage) => {
+      const runId = latestRuns.get(`${scenarioId}:stage:${stage}`);
+      return runId !== undefined && hub.has(runId) && !hub.isDone(runId);
+    },
+  });
 
   // ── web 构建产物同源托管（单端口起完整应用，SPA 回退） ──
   if (deps.webDist && existsSync(deps.webDist)) {

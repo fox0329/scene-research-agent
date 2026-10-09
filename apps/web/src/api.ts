@@ -74,6 +74,15 @@ export interface ApiFlowStep {
   /** 未就绪时缺什么（人话，直接显示） */
   readyHint: string;
   progress: ApiFlowProgress;
+  /**
+   * 本步此刻是否还有分析在服务端跑
+   *
+   * 用户按 F5 会掐断那条 SSE 流，但服务端的生成**仍在继续**；没有这个标记，新页面
+   * 只会显示"开始本步分析"、中栏也一直空着，用户以为没跑（故障清单 #47）。
+   * 按**步**给（不是只给当前步）：回看已完成的步点「重算本步」时，跑的那一步并不是
+   * 流程轴当前步。旧后端可能没有这个字段——缺失即视为未在跑，不做本地猜测。
+   */
+  running?: boolean;
 }
 
 export interface ApiFlowStatus {

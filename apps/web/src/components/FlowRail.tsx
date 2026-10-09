@@ -175,7 +175,8 @@ export const FlowRail: React.FC<FlowRailProps> = ({
                 disabled={busy || run.running}
                 title={
                   run.running
-                    ? `${run.progress ?? "分析进行中…"}（已用 ${run.elapsedLabel}）`
+                    ? /* 刷新后重新接上的运行没有本地计时（elapsedLabel 为空），此时不硬凑"已用" */
+                      `${run.progress ?? "分析进行中…"}${run.elapsedLabel ? `（已用 ${run.elapsedLabel}）` : ""}`
                     : (run.title ?? "本步已经跑过一次：想换一版就重算（结果会覆盖本步表格）")
                 }
                 onClick={run.onStart}
@@ -191,7 +192,8 @@ export const FlowRail: React.FC<FlowRailProps> = ({
                 disabled={busy || run.running}
                 title={
                   run.running
-                    ? `${run.progress ?? "分析进行中…"}（已用 ${run.elapsedLabel}）`
+                    ? /* 刷新后重新接上的运行没有本地计时（elapsedLabel 为空），此时不硬凑"已用" */
+                      `${run.progress ?? "分析进行中…"}${run.elapsedLabel ? `（已用 ${run.elapsedLabel}）` : ""}`
                     : (run.title ?? `${run.hint}——跑完停在这一步，看完结果再点「下一步」`)
                 }
                 onClick={run.onStart}

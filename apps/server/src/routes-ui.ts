@@ -27,6 +27,7 @@ import {
   FILE_UPLOAD_LIMIT_MB,
   FLOW_LAST_STEP,
   REPORT_KINDS,
+  flowStep,
   flowStepLabel,
   flowStepOfTable,
   type InfoStageId,
@@ -114,6 +115,15 @@ export interface UiRoutesDeps {
   hub: SseHub;
   /** 单文件上传上限（MB）；缺省读契约，测试用小值验证 413 与临时文件清理 */
   uploadLimitMb?: number;
+  /**
+   * 某个阶段此刻是否还有分析在跑（由 app 层按 runId 台账回答）
+   *
+   * 为什么要暴露：用户按 F5 之后，新页面**不知道**服务端还在跑那一步——界面显示
+   * "开始本步分析"、中栏也没有新数据，用户以为没跑，于是反复刷新甚至重复发起
+   * （实跑里"方案实现"被发起了两次）。有这个标记，前端就能在刷新后继续对账
+   * 并显示"分析中"，跑完自动出结果（故障清单 #47）。
+   */
+  isStageRunning?: (scenarioId: string, stage: number) => boolean;
 }
 
 /** 通用行（HTTP 层做动态列编辑时使用，字段按表 schema 异构） */
@@ -710,7 +720,19 @@ function registerProjectRoutes(app: FastifyInstance, deps: UiRoutesDeps) {
     const { id } = request.params as { id: string };
     const scenario = db.scenarioRepo.getById(id);
     if (!scenario) return notFound(reply, `场景 ${id} 不存在`);
-    return getFlowState(db, scenario);
+    const state = getFlowState(db, scenario);
+    // 当前步是否正在跑（刷新后前端据此保持"分析中"并继续对账，跑完自动出结果）
+    /**
+     * 每步各报自己的 running（不是只报"当前步"）
+     *
+     * 用户会在**回看已完成的步**时点「重算本步」——跑的是那一步的 stage，而它并不是
+     * 流程轴当前步。只报当前步的话，刷新后前端根本不知道有分析在跑（故障清单 #47）。
+     */
+    const steps = state.steps.map((step) => {
+      const stage = flowStep(step.id).stage; // 交付物步不落 stage_data（stage=null），没有"在跑"的分析
+      return { ...step, running: stage === null ? false : (deps.isStageRunning?.(id, stage) ?? false) };
+    });
+    return { ...state, steps };
   });
 
   /** 完成本步（用户显式动作；就绪与否由前端按 ready 决定按钮是否可点） */

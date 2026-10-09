@@ -265,6 +265,27 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
   });
 
   /**
+   * 服务端还在跑这一步时，页面自己继续对账
+   *
+   * 用户按 F5 会掐断那条 SSE 流，但服务端的生成**仍在继续**——新页面既收不到进度、
+   * 也不知道还在跑，于是只能靠手动刷新才看到结果（故障清单 #47）。
+   * 服务端在流程状态里标了"本步在跑"，这里就每 15 秒重取流程状态与本步数据，
+   * 跑完自动收口：长跑期间还能顺带看到已完成的表逐张出现。
+   */
+  /** 有没有哪一步正在服务端跑（含回看重算：那一步不是流程轴当前步） */
+  const serverRunning = Boolean(flow?.steps.some((s) => s.running));
+  /** 正在跑的正是"眼前这一步"——本步按钮据此保持"分析中"，别让用户重复发起 */
+  const stepServerRunning = Boolean(stepDef?.running);
+  useEffect(() => {
+    if (!serverRunning) return;
+    const timer = setInterval(() => {
+      setAnalysisRefresh((n) => n + 1);
+      void reloadFlow(true);
+    }, 15_000);
+    return () => clearInterval(timer);
+  }, [serverRunning, reloadFlow]);
+
+  /**
    * 场景定义对话整理/关闭后，**流程状态必须重取**
    *
    * 曾经漏了这一步：App 层的「场景定义」弹窗（新建场景时自动打开的那条主路径）
@@ -389,8 +410,9 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
   const runAction =
     canRunStep
       ? {
-          running: analysis.running,
-          elapsedLabel: analysis.elapsedLabel,
+          // 服务端仍在跑也算"分析中"：刷新后重新接上的页面不能显示成"没跑过"，否则用户会重复发起
+          running: analysis.running || stepServerRunning,
+          elapsedLabel: analysis.running ? analysis.elapsedLabel : "",
           ready: Boolean(stepDef.ready),
           hint: stepDef.readyHint,
           // 第 1 步的运行 = 打开场景定义对话（不跑表；表1-1 由对话里的「整理成定义」写）
@@ -403,7 +425,11 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
             : stepStale
               ? { title: `本步资料因上游改动失效：${stepDef.readyHint}` }
               : {}),
-          progress: flow?.currentStep === step ? analysis.streamLines.at(-1) : undefined,
+          progress: stepServerRunning
+            ? analysis.running
+              ? analysis.streamLines.at(-1)
+              : "服务端仍在分析，跑完会自动更新"
+            : undefined,
           onStart: () => {
             setAnalysisNotice(null);
             if (stepDef.kind === "确认") {

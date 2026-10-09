@@ -205,6 +205,26 @@ function tableConcurrency(): number {
   return Number.isFinite(raw) && raw >= 1 ? Math.floor(raw) : 5;
 }
 
+/**
+ * 等待生成后三问自检的**总上限**（默认 10 分钟；POSTCHECK_DEADLINE_MS 可覆盖，测试压到毫秒级）
+ *
+ * 为什么必须有总上限：行是在自检**之前**就落库的，自检只是生成过程的内部环节。
+ * 一旦自检这条链卡住（模型调用悬挂、上游不返回），没有上限就等于把整步、整条 SSE
+ * 流、以及用户界面一起钉死在"分析中"——实跑里"方案实现"就这样挂了十几分钟，
+ * 用户只能按 F5 才看到早就写好的内容（故障清单 #47）。
+ * 到点按已落库内容收口，并在进度里明说"自检未跑完"，绝不静默。
+ */
+function postcheckDeadlineMs(): number {
+  const raw = Number(process.env["POSTCHECK_DEADLINE_MS"] ?? 600_000);
+  return Number.isFinite(raw) && raw > 0 ? raw : 600_000;
+}
+
+/** 自检等待期间的心跳间隔（让前端看到"还在动"，也避免客户端看门狗把连接判死） */
+function postcheckHeartbeatMs(): number {
+  const raw = Number(process.env["POSTCHECK_HEARTBEAT_MS"] ?? 20_000);
+  return Number.isFinite(raw) && raw > 0 ? raw : 20_000;
+}
+
 /** 进度文案用的表标签（表号 + 表名） */
 function labelOf(code: string): string {
   const t = tableDef(code);
@@ -782,14 +802,40 @@ async function* executeAdvanceStage(
     .finally(() => {
       pcSettled = true;
     });
+  const pcStartedAt = Date.now();
+  const pcDeadlineMs = postcheckDeadlineMs();
+  const pcHeartbeatMs = postcheckHeartbeatMs();
+  let pcLastBeat = pcStartedAt;
+  let pcAbandoned = false;
   while (!pcSettled || pcQueue.length > 0) {
     while (pcQueue.length > 0) {
       yield emit({ type: "progress", stage, message: pcQueue.shift()! });
     }
     if (pcSettled) break;
+    const waited = Date.now() - pcStartedAt;
+    if (waited > pcDeadlineMs) {
+      // 到点收口：自检是内部环节，绝不许把整步/整条流/用户界面一起钉在"分析中"
+      pcAbandoned = true;
+      yield emit({
+        type: "progress",
+        stage,
+        message: `生成后自检超过 ${Math.round(pcDeadlineMs / 60_000)} 分钟仍未返回，已跳过自检、按已落库内容继续（不影响本次产出）`,
+      });
+      break;
+    }
+    // 心跳：自检长时间没有产出时，前端仍要看到"还在动"，看门狗也不会误判连接已死
+    if (Date.now() - pcLastBeat >= pcHeartbeatMs) {
+      pcLastBeat = Date.now();
+      yield emit({
+        type: "progress",
+        stage,
+        message: `正在做生成后三问自检…（已用 ${Math.round(waited / 1000)} 秒）`,
+      });
+    }
     await new Promise<void>((resolve) => setTimeout(resolve, 250));
   }
-  await pcPromise;
+  // 放弃等待时不再 await：那条链可能永远不返回，await 会把后面的完整度检查、总结、done 全断送
+  if (!pcAbandoned) await pcPromise;
   if (pcReport) {
     yield emit({ type: "postcheck", stage, report: pcReport });
   }
