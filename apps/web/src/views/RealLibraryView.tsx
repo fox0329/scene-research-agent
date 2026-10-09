@@ -524,12 +524,15 @@ const LibraryMaterialsPanel: React.FC<{
       // 二次确认说清三件事：删哪个文件、删多少行、不可恢复。
       // 下游待重算只在"这份资料真被场景分析用过"时才发生，所以写成条件句、不打包票。
       const ok = window.confirm(
-        `删除资料文件「${item.file}」？\n\n将从本库删除它的 ${item.rows} 行资料（${tablesSummary(item.tables)}），删掉后不可恢复。\n若这些资料已被某个场景的分析用过，对应阶段会被标记为待重算。`,
+        `删除资料文件「${item.file}」？\n\n将从本库删除它的 ${item.rows} 行资料（${tablesSummary(item.tables)}），删掉后不可恢复。\n若其中产品行的规格参数来自别的文件，那些规格行会一并删除（删完会报数）。\n若这些资料已被某个场景的分析用过，对应阶段会被标记为待重算。`,
       );
       if (!ok) return;
       try {
         const r = await api.deleteLibraryMaterial(lineId, item.file);
-        showToast(`已删除「${r.file}」${r.deleted} 行`);
+        showToast(
+          `已删除「${r.file}」${r.deleted} 行` +
+            (r.cascaded_specs ? `（含 ${r.cascaded_specs} 行连带规格）` : ""),
+        );
         reload();
         onChanged();
       } catch (err: unknown) {

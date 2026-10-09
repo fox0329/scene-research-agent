@@ -1215,9 +1215,39 @@ describe("资料文件删除入口（变更表 #156）", () => {
     expect(noFile.statusCode).toBe(400);
   });
 
-  it("DELETE materials：产品行还有别的文件的规格 → 409 说清先删规格（不撞外键 500）", async () => {
+  it("DELETE materials：同一个文件的产品行 + 规格行一起删得掉（变更表 #159 真机 500 的回归）", async () => {
+    // 真机现场：60 行 = M1×14 + M2×7 + …，删除返回 500 FOREIGN KEY constraint failed。
+    // 原因是删除循环按表定义顺序走（M1 在前），删 M1 时它自己的规格行还指着它。
     const product = seedProduct("A1", "方案.pptx:1");
     h.db.specParamRepo.insert({
+      product_id: product.id,
+      param_class: "接口",
+      param_name: "网口",
+      value: "2 路",
+      measured: "未提及",
+      source_type: "AI提取",
+      source: "方案.pptx:3",
+    } as never);
+
+    const res = await h.app.inject({
+      method: "DELETE",
+      url: `/api/v1/library/materials?product_line_id=${lineId}&file=${encodeURIComponent("方案.pptx")}`,
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().deleted).toBe(2);
+    expect(res.json().tables).toMatchObject({ M1: 1, M2: 1 });
+    expect(res.json().cascaded_specs).toBe(0);
+    // 外键不再悬空：产品行与规格行都不在库里了
+    expect(h.db.productRepo.getById(product.id)).toBeUndefined();
+    expect(
+      h.db.specParamRepo.list({ where: "product_id = ?", params: [product.id] }),
+    ).toHaveLength(0);
+  });
+
+  it("DELETE materials：规格来自**别的文件**时连带删掉并如实报数（不再 409 卡住用户）", async () => {
+    // 产品行被删了，规格行留着既没用又卡外键；它来自别的文件这件事必须报出来，不能静默
+    const product = seedProduct("A1", "方案.pptx:1");
+    const other = h.db.specParamRepo.insert({
       product_id: product.id,
       param_class: "接口",
       param_name: "网口",
@@ -1231,10 +1261,31 @@ describe("资料文件删除入口（变更表 #156）", () => {
       method: "DELETE",
       url: `/api/v1/library/materials?product_line_id=${lineId}&file=${encodeURIComponent("方案.pptx")}`,
     });
-    expect(res.statusCode).toBe(409);
-    expect(res.json().error).toContain("1 条规格参数来自其它文件");
-    // 一个字节都没删
-    expect(h.db.productRepo.getById(product.id)).toBeDefined();
+    expect(res.statusCode).toBe(200);
+    expect(res.json().cascaded_specs).toBe(1);
+    expect(res.json().tables).toMatchObject({ M1: 1, M2: 1 });
+    expect(h.db.specParamRepo.getById(other.id)).toBeUndefined();
+  });
+
+  it("DELETE library/rows：单行删除产品行同样先清规格（两条路径一个口径）", async () => {
+    const product = seedProduct("A1", "方案.pptx:1");
+    const spec = h.db.specParamRepo.insert({
+      product_id: product.id,
+      param_class: "接口",
+      param_name: "网口",
+      value: "2 路",
+      measured: "未提及",
+      source_type: "AI提取",
+      source: "方案.pptx:3",
+    } as never);
+
+    const res = await h.app.inject({
+      method: "DELETE",
+      url: `/api/v1/library/rows/M1/${product.id}`,
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ deleted: true, cascaded_specs: 1 });
+    expect(h.db.specParamRepo.getById(spec.id)).toBeUndefined();
   });
 
   it("DELETE product-lines/:id：空库但被活场景当共享输入引用 → 409 并点名场景（#157）", async () => {

@@ -1366,22 +1366,34 @@ function registerLibraryRoutes(app: FastifyInstance, deps: UiRoutesDeps) {
     if (targets.length === 0) {
       return notFound(reply, `该资料库没有来源为「${file}」的资料`);
     }
-    const blocked = specRowsBlockingProductDelete(db, targets);
-    if (blocked > 0) {
-      return reply.code(409).send({
-        error: `该文件的产品行还有 ${blocked} 条规格参数来自其它文件，先删掉那些规格再删本文件`,
-      });
-    }
-
     const tables: Record<string, number> = {};
+    const removedIds = new Set<string>();
+    /* 级联删掉的规格行：产品行被删了，规格行留着既没用又卡外键。如实报数，不静默。 */
+    const cascadedSpecs: string[] = [];
+    const targetIds = new Set(targets.map((r) => r.id));
     for (const row of targets) {
-      LIBRARY_TABLES[row.code]!.repo(db).deleteById(row.id);
-      deleteSourceIndex(db.db, row.id);
+      if (removedIds.has(row.id)) continue;
+      const res = deleteLibraryRow(db, row.code, row.id);
+      if (!res.removed) continue;
+      removedIds.add(row.id);
       tables[row.code] = (tables[row.code] ?? 0) + 1;
+      for (const id of res.cascadedSpecs) {
+        if (removedIds.has(id)) continue;
+        removedIds.add(id);
+        tables["M2"] = (tables["M2"] ?? 0) + 1;
+        // 只有"本文件之外"的规格才算"连带"——本来就属于本文件的行，用户已经知道要删它们
+        if (!targetIds.has(id)) cascadedSpecs.push(id);
+      }
     }
     // 顺手标下游待重算（与单元格编辑/去重同一口径）：删了材料，已生成的分析就不再可信
     const staleMarked = markLineStale(db, lineId, [...new Set(targets.map((r) => r.code))]);
-    return { file, deleted: targets.length, tables, stale_marked_stages: staleMarked };
+    return {
+      file,
+      deleted: removedIds.size,
+      tables,
+      cascaded_specs: cascadedSpecs.length,
+      stale_marked_stages: staleMarked,
+    };
   });
 
   app.patch("/api/v1/library/rows/:code/:rowId", async (request, reply) => {
@@ -1444,13 +1456,11 @@ function registerLibraryRoutes(app: FastifyInstance, deps: UiRoutesDeps) {
     const { code, rowId } = request.params as { code: string; rowId: string };
     const spec = LIBRARY_TABLES[code];
     if (!spec) return badRequest(reply, `表编号非法: ${code}`);
-    const ok = spec.repo(db).deleteById(rowId);
-    if (!ok) return notFound(reply, `${code} 表行 ${rowId} 不存在`);
-    // 索引跟着业务行一起走（变更表 #156）：触发器只加了 INSERT/UPDATE，
-    // 不清索引的话"来源真实性"自检会对已删材料给出假阳性
-    deleteSourceIndex(db.db, rowId);
+    // 走共用删除函数：删 M1 会先清它的规格行（变更表 #159，否则撞外键 500）
+    const res = deleteLibraryRow(db, code, rowId);
+    if (!res.removed) return notFound(reply, `${code} 表行 ${rowId} 不存在`);
     markDependentStale(db, code, rowId);
-    return { deleted: true };
+    return { deleted: true, cascaded_specs: res.cascadedSpecs.length };
   });
 
   /**
@@ -1597,26 +1607,36 @@ function lineRowRefs(db: DbInstance, productLineId: string): LineRowRef[] {
 }
 
 /**
- * 要删的 M1 产品行里，有多少规格参数（M2）来自**别的文件**
+ * 删一行资料（连同它的子行）——两条删除路径共用（变更表 #159）
  *
- * 为什么必须拦：`spec_param.product_id` 是外键，删掉产品行会留下悬空规格 → SQLite 直接报错
- * （用户看到 500）。而那些规格是别的文件带进来的，不能跟着一起删。返回 0 才允许继续。
+ * 真机教训：`spec_param.product_id` 是指向 `product.id` 的**外键**，而"按文件删"的循环
+ * 按表定义顺序走（M1 在前、M2 在后），删 M1 时它自己的规格行还指着它 → 直接
+ * `FOREIGN KEY constraint failed`（用户看到 500 与「删库里的资料失败」）。
+ * 原实现在删之前拦了一道"规格来自别的文件就 409"，但**拦错了对象**：同一个文件带进来的
+ * 规格行照样会让外键报错，所以那道闸门放行了、外键却炸了。
+ * 全库外键逐条核过：资料表之间**只有这一条**（其余都指向 product_line / scenario），
+ * 规则因此很简单——**删 M1 之前先删它的规格行**。
+ * 级联删掉的规格行在返回值里如实报数，不静默（它可能来自另一个文件，用户需要知道
+ * "这个动作顺带动了什么"）。
  */
-function specRowsBlockingProductDelete(db: DbInstance, targets: LineRowRef[]): number {
-  const products = targets.filter((t) => t.code === "M1" && t.id);
-  if (products.length === 0) return 0;
-  const targetIds = new Set(targets.filter((t) => t.code === "M2").map((t) => t.id));
-  let blocked = 0;
-  for (const product of products) {
-    const specs = db.specParamRepo.list({
-      where: "product_id = ?",
-      params: [product.id],
-    }) as unknown as Record<string, unknown>[];
-    for (const spec of specs) {
-      if (!targetIds.has(String(spec["id"]))) blocked += 1;
+function deleteLibraryRow(
+  db: DbInstance,
+  code: string,
+  rowId: string,
+): { removed: boolean; cascadedSpecs: string[] } {
+  const cascadedSpecs: string[] = [];
+  if (code === "M1") {
+    for (const spec of db.specParamRepo.list({ where: "product_id = ?", params: [rowId] })) {
+      const specId = String((spec as unknown as Record<string, unknown>)["id"] ?? "");
+      if (specId && db.specParamRepo.deleteById(specId)) {
+        deleteSourceIndex(db.db, specId);
+        cascadedSpecs.push(specId);
+      }
     }
   }
-  return blocked;
+  const removed = LIBRARY_TABLES[code]!.repo(db).deleteById(rowId);
+  if (removed) deleteSourceIndex(db.db, rowId);
+  return { removed, cascadedSpecs };
 }
 
 /**

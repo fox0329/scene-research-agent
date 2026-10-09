@@ -279,6 +279,8 @@ export interface ApiMaterialDeleteResult {
   file: string;
   deleted: number;
   tables: Record<string, number>;
+  /** 连带删掉的规格行数（产品行被删后这些规格无处依附，可能来自别的文件；变更表 #159） */
+  cascaded_specs: number;
   /** 被标为待重算的**阶段号**（有场景引用这个库时才非空） */
   stale_marked_stages: number[];
 }
