@@ -201,6 +201,7 @@ export {
   briefDraftHints,
   descriptionFromAnchor,
   anchorCompletion,
+  isPlaceholderAnchorContent,
   mergeAnchorRows,
 } from "./anchor.js";
 export type { AnchorCompletion } from "./anchor.js";

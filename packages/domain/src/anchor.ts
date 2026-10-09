@@ -153,6 +153,22 @@ export function anchorCompletion(rows: readonly AnchorRow[]): AnchorCompletion {
  *
  * 起草/重算时使用：**用户确认过的行不被系统覆盖**（用户的决定优先）。
  */
+/**
+ * 占位内容（变更表 #170）
+ *
+ * 模型拿不出依据时，提示词要求它写「（待研究）」而不是留空；系统侧还有「未提供」。
+ * 这些**都不是信息**，不能用来覆盖已经写出来的真内容。
+ */
+export function isPlaceholderAnchorContent(content: string): boolean {
+  const t = content.trim();
+  if (t === "" || t === "未提供") return true;
+  /**
+   * 模型的习惯是**带尾巴**：「（待研究）——需先确定场景名称，才能框定包含哪些场所/环节」
+   * （实测就是这么覆盖掉智慧医院的场景定义的），所以用"包含"而不是"等于"来判定。
+   */
+  return /[（(]\s*待(研究|定|补|确认)\s*[）)]/.test(t);
+}
+
 export function mergeAnchorRows(
   existing: readonly AnchorRow[],
   incoming: readonly AnchorRow[],
@@ -163,6 +179,19 @@ export function mergeAnchorRows(
     const userOwned =
       prev && (prev.source_type === "用户确认" || prev.source_type === "用户补充");
     if (userOwned) continue;
+    /**
+     * 占位符不许覆盖真内容（变更表 #170，实跑事故）：
+     * 用户在**没说什么**的情况下点了一次「整理成定义」，模型按提示词把 5 项全写成
+     * 「（待研究）」，整表覆盖 → 两个场景的场景定义被洗成占位符。
+     * 「整理成定义」是"把说过的话整理成表"，没说过的话不该把已有的结论清掉。
+     */
+    if (
+      prev &&
+      isPlaceholderAnchorContent(row.content) &&
+      !isPlaceholderAnchorContent(prev.content)
+    ) {
+      continue;
+    }
     result.set(row.item, row);
   }
   return anchorFixedRows()

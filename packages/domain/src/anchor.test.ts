@@ -170,3 +170,43 @@ describe("anchor — 合并（用户确认优先）", () => {
     expect(merged.find((r) => r.item === "买方类型")?.content).toBe("地方燃气公司");
   });
 });
+
+describe("mergeAnchorRows — 占位符不许覆盖真内容（变更表 #170，实跑事故）", () => {
+  const real = (content: string) => ({ item: "场景边界", content, source_type: "AI推断" as const });
+  const ph = (content: string) => ({ item: "场景边界", content, source_type: "AI推断" as const });
+
+  it("模型返回「（待研究）」→ 保留已有真内容（用户点了「整理成定义」但什么都没说）", () => {
+    const merged = mergeAnchorRows([real("覆盖一个住院病区，含护理呼叫与输液监护")], [ph("（待研究）")]);
+    expect(merged.find((r) => r.item === "场景边界")?.content).toBe("覆盖一个住院病区，含护理呼叫与输液监护");
+  });
+
+  it("带尾巴的占位（实测就是它覆盖了智慧医院）也算占位，不许覆盖真内容", () => {
+    let merged = mergeAnchorRows(
+      [real("覆盖一个住院病区")],
+      [ph("（待研究）——需先确定场景名称，才能框定包含哪些场所/环节")],
+    );
+    expect(merged.find((r) => r.item === "场景边界")?.content).toBe("覆盖一个住院病区");
+    merged = mergeAnchorRows([real("真内容")], [ph("（待研究）——一般为工艺装置 + 站控/自控")]);
+    expect(merged.find((r) => r.item === "场景边界")?.content).toBe("真内容");
+  });
+
+  it("「未提供」与空串同样不覆盖真内容", () => {
+    for (const placeholder of ["未提供", "", "  ", "（待定）", "(待补)"]) {
+      const merged = mergeAnchorRows([real("真内容")], [ph(placeholder)]);
+      expect(merged.find((r) => r.item === "场景边界")?.content, placeholder).toBe("真内容");
+    }
+  });
+
+  it("已有内容本来就是占位符 → 允许被真内容替换（首次起草、重新整理不受影响）", () => {
+    const merged = mergeAnchorRows([real("（待研究）")], [ph("覆盖一个住院病区")]);
+    expect(merged.find((r) => r.item === "场景边界")?.content).toBe("覆盖一个住院病区");
+  });
+
+  it("用户确认过的行依旧优先（既有行为不回归）", () => {
+    const merged = mergeAnchorRows(
+      [{ item: "场景边界", content: "用户改过的边界", source_type: "用户确认" }],
+      [ph("覆盖一个住院病区")],
+    );
+    expect(merged.find((r) => r.item === "场景边界")?.content).toBe("用户改过的边界");
+  });
+});
