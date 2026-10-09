@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import type { DshClient, FollowEvent } from "@scene/contract";
 import type { InfoRow } from "@scene/domain";
-import type { SourceLookup } from "@scene/domain";
+import type { PostcheckFinding, SourceLookup } from "@scene/domain";
 import { runPostcheck, parseProblems, sanitizeFix, toPostcheckRows } from "./postcheck-pass.js";
 
 const lookupWith = (pages: Record<string, string[]>): SourceLookup => ({
@@ -48,6 +48,7 @@ function deps(rows: { id: string; row: InfoRow; source?: string | null; sourceTy
   lookup?: SourceLookup;
   fixes?: { rowId: string; row?: InfoRow; source?: string | null }[];
   progress?: string[];
+  listViolations?: () => readonly PostcheckFinding[];
 }) {
   const fixes = extra.fixes ?? [];
   return {
@@ -60,6 +61,7 @@ function deps(rows: { id: string; row: InfoRow; source?: string | null; sourceTy
       if (target && patch.row) target.row = patch.row;
     },
     onProgress: (m: string) => extra.progress?.push(m),
+    ...(extra.listViolations ? { listViolations: extra.listViolations } : {}),
     scenarioName: "测试场景",
     stage: 2 as never,
     fixes,
@@ -245,5 +247,44 @@ describe("postcheck-pass — 行标签", () => {
       { id: "x", tableCode: "表9-9", row: { a: "1" }, source: null, sourceType: null },
     ]);
     expect(rows[0]?.label).toBe("(未命名条目)");
+  });
+});
+
+describe("postcheck-pass — 产出行校验并入修复轮（变更表 #163）", () => {
+  it("机械违规也进「被点名的行」，由第 2 轮改写", async () => {
+    const rows = [
+      {
+        id: "v1",
+        row: { item: "场景边界", content: "覆盖一个试点病区", verification_verdict: "行业通例", verification: "按行业口径写，客户口径未提供" },
+      },
+      {
+        id: "ok1",
+        row: { item: "买方类型", content: "终端用户型买方", verification_verdict: "行业通例", verification: "按行业口径写，客户口径未提供" },
+      },
+    ];
+    const { client, prompts } = fakeDsh(['{"problems":[]}']);
+    const progress: string[] = [];
+    await runPostcheck(
+      deps(rows, {
+        dsh: client,
+        progress,
+        listViolations: () => [
+          { tableCode: "表1-1", rowId: "v1", label: "场景边界", kind: "枚举非法", detail: "取值不在枚举内", severity: "硬伤" },
+        ],
+      }),
+    );
+    // 第 2 轮（下标 1）的问题清单里必须带上这条机械违规；被点名行数＝1（只有 v1）
+    expect(prompts[1]).toContain("枚举非法");
+    expect(progress.some((m) => m.includes("只改被点名的 1 行"))).toBe(true);
+  });
+
+  it("没接产出行校验时行为不变（默认空清单）", async () => {
+    const rows = [
+      { id: "a", row: { item: "场景边界", content: "覆盖一个试点病区", verification_verdict: "行业通例", verification: "按行业口径写" } },
+    ];
+    const { client, prompts } = fakeDsh(['{"problems":[]}']);
+    const progress: string[] = [];
+    await runPostcheck(deps(rows, { dsh: client, progress }));
+    expect(prompts).toHaveLength(0); // 没问题就不调模型，也没有"枚举非法"这类话题
   });
 });

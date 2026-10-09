@@ -30,6 +30,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   isModelStage,
+  middleColumns,
   stageDef,
   tableDef,
   tablesOfStage,
@@ -40,9 +41,11 @@ import {
   LAST_STAGE,
   checkStageCompleteness,
   gapsBrief,
+  gradeSource,
+  parseCitations,
   validateIncomingRows,
 } from "@scene/domain";
-import type { InfoRow, PostcheckReport } from "@scene/domain";
+import type { InfoRow, PostcheckFinding, PostcheckReport, RowViolation } from "@scene/domain";
 import { buildStagePrompt, getStageOutputContract } from "./stage-prompts.js";
 import { scenarioLineContext } from "./scenario-lines.js";
 import { runScenarioClarify, clarifyAbortEvent } from "./scenario-clarify.js";
@@ -80,6 +83,55 @@ interface DshStageOutput {
  * @returns 包含 execute 方法的 command 对象
  */
 /** 模型流空闲心跳间隔（默认 15 秒；测试用 STAGE_KEEPALIVE_MS 压到毫秒级） */
+/**
+ * 解析一条产出行的来源标记（G-R0 / G-R5）
+ *
+ * 模型声明优先；**没声明时按出处如实判定**——给得出 `文件名:页码` 才算「AI提取」，
+ * 给不出就是「AI推断」。
+ *
+ * 变更表 #162：原来未声明一律记 AI提取，等于替模型声称"材料里真有这句"，
+ * 转头又被自检判成「声称有据但无出处」的硬伤——谎报的源头在这里。
+ */
+export function resolveSourceType(
+  declared: unknown,
+  source: unknown,
+): "AI提取" | "AI推断" {
+  if (declared === "AI提取" || declared === "AI推断") return declared;
+  return parseCitations(String(source ?? "")).length > 0 ? "AI提取" : "AI推断";
+}
+
+/**
+ * 产出行校验的机械违规 → 自检问题（变更表 #163）
+ *
+ * 这些违规（枚举非法 / 缺必填列 / 自称用户确认 / 核实推诿）是确定性层判出来的，
+ * 原来只作为进度消息报给用户、行照样入库，修复轮又只吃 `runDeterministicPostcheck`
+ * 的问题清单 → 永远修不掉。转成自检问题后：第 2 轮改、第 3 轮复查、仍存疑按实留痕。
+ */
+export function rowViolationsToFindings(
+  violations: readonly RowViolation[],
+  rows: readonly { id: string; tableCode: string; row: InfoRow }[],
+): PostcheckFinding[] {
+  const out: PostcheckFinding[] = [];
+  for (const v of violations) {
+    const target = rows[v.rowIndex];
+    if (!target) continue; // 下标对不上（行没入库）就不编造 rowId
+    const def = tableDef(v.tableCode as never);
+    const label =
+      (def ? middleColumns(def) : [])
+        .map((c) => String(target.row[c.key] ?? "").trim())
+        .find((value) => value !== "") ?? v.tableCode;
+    out.push({
+      tableCode: v.tableCode,
+      rowId: target.id,
+      label,
+      kind: v.kind,
+      detail: v.detail,
+      severity: "硬伤", // 机械违规没有"存疑"的余地：要么改掉，要么按实留痕
+    });
+  }
+  return out;
+}
+
 function keepaliveIntervalMs(): number {
   const raw = Number(process.env["STAGE_KEEPALIVE_MS"] ?? 15_000);
   return Number.isFinite(raw) && raw > 0 ? raw : 15_000;
@@ -606,7 +658,8 @@ async function* executeAdvanceStage(
     // v1.25：原来这里还会按列级 filledInStages 剥掉"后续阶段才填"的列（表2-5 实现路径/责任人等）。
     // 那套跨阶段补填已删——后面的步只跑自己的表，不会回头更新上游表，列永远填不上，留着只会让人以为"以后会填"。
     const { source_type: declared, confirm_state: _ignored, ...fields } = row.fields;
-    const sourceType = declared === "AI推断" || row.source_type === "AI推断" ? "AI推断" : "AI提取";
+    // 来源标记（变更表 #162）：模型声明优先，未声明按出处如实判定，不替模型声称"材料提取"
+    const sourceType = resolveSourceType(declared ?? row.source_type, row.source);
     const inserted = db.stageDataRepo.insert({
       scenario_id: scenarioId,
       stage,
@@ -615,7 +668,10 @@ async function* executeAdvanceStage(
       is_stale: false,
       source_type: sourceType,
       source: row.source,
-      source_authority: "T3",
+      // 变更表 #162：来源权威性按 G-R1 的确定性映射派生（用户补充 T1 / 用户确认 T2 /
+      // AI提取 T3 / AI推断 T4）。原来一律写死 T3，把"模型推断"伪装成"材料提取"，
+      // 右栏的来源权威性列因此失去分辨力。
+      source_authority: gradeSource(sourceType),
       evidence_level: "B",
     });
     writtenRows.push(inserted);
@@ -654,22 +710,46 @@ async function* executeAdvanceStage(
   const pcQueue: string[] = [];
   let pcSettled = false;
   let pcReport: PostcheckReport | undefined;
+  /** 本步表集当前落库的行：自检与产出行校验共用同一份口径 */
+  const listStageRows = (): {
+    id: string;
+    tableCode: string;
+    row: InfoRow;
+    source?: string | null;
+    sourceType?: string | null;
+  }[] =>
+    coveredCodes.flatMap((code) =>
+      db.stageDataRepo
+        .list({
+          where: "scenario_id = ? AND stage = ? AND table_code = ?",
+          params: [scenarioId, stage, code],
+        })
+        .map((r) => ({
+          id: r.id,
+          tableCode: code,
+          row: r.row as InfoRow,
+          source: r.source,
+          sourceType: r.source_type,
+        })),
+    );
   const pcPromise = runPostcheck({
-    listRows: () =>
-      coveredCodes.flatMap((code) =>
-        db.stageDataRepo
-          .list({
-            where: "scenario_id = ? AND stage = ? AND table_code = ?",
-            params: [scenarioId, stage, code],
-          })
-          .map((r) => ({
-            id: r.id,
-            tableCode: code,
-            row: r.row as InfoRow,
-            source: r.source,
-            sourceType: r.source_type,
+    listRows: listStageRows,
+    listViolations: () => {
+      const rows = listStageRows();
+      return rowViolationsToFindings(
+        validateIncomingRows(
+          effectiveStage,
+          rows.map((r) => ({
+            table_code: r.tableCode,
+            fields: r.row,
+            source: r.source ?? undefined,
+            source_type: r.sourceType ?? undefined,
           })),
-      ),
+          stepTables,
+        ),
+        rows,
+      );
+    },
     lookup: makeSourceLookup(db),
     dshClient,
     applyFix: (rowId, patch) => {

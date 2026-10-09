@@ -30,6 +30,8 @@ import {
   descriptionFromAnchor,
   mergeAnchorRows,
 } from "@scene/domain";
+import type { InfoRow } from "@scene/domain";
+import { makeSourceLookup, runPostcheck } from "./postcheck-pass.js";
 import { ownLineOf } from "./scenario-lines.js";
 
 /** 起草结果 */
@@ -43,12 +45,14 @@ export interface AnchorDraftOutcome {
 
 // ─── 锚行读写（stage_data） ────────────────────────────────
 
-function toAnchorRow(row: Record<string, unknown>): AnchorRow {
+function toAnchorRow(row: Record<string, unknown>, columnSourceType?: string | null): AnchorRow {
   return {
     item: String(row["item"] ?? "").trim(),
     content: String(row["content"] ?? ""),
     source: (row["source"] as string | undefined) ?? null,
-    source_type: (row["source_type"] as AnchorRow["source_type"]) ?? null,
+    // 变更表 #166：`stage_data.source_type` 列是权威值——生成后自检按实降级时改的是列，
+    // JSON 里的那份可能滞后；读的时候列优先，避免"确认一次又写回旧的假声明"
+    source_type: ((columnSourceType ?? row["source_type"]) as AnchorRow["source_type"]) ?? null,
     confirm_state: (row["confirm_state"] as string | undefined) ?? null,
   };
 }
@@ -59,7 +63,7 @@ export function readAnchorRows(db: DbInstance, scenarioId: string): AnchorRow[] 
   return db.stageDataRepo
     .listByScenarioStage(scenarioId, ANCHOR_STAGE)
     .filter((r) => r.table_code === ANCHOR_TABLE_CODE)
-    .map((r) => toAnchorRow(r.row))
+    .map((r) => toAnchorRow(r.row, r.source_type))
     .sort((a, b) => order.indexOf(a.item) - order.indexOf(b.item));
 }
 
@@ -339,17 +343,79 @@ export async function draftAnchor(
   // 建骨架 → 合并（用户确认优先）→ 写锚 → 重算缓存
   ensureAnchorRows(db, scenario.id, scenario.name);
   const merged = mergeAnchorRows(readAnchorRows(db, scenario.id), incoming);
-  const rows = writeAnchorRows(db, scenario.id, merged);
+  writeAnchorRows(db, scenario.id, merged);
   syncDerivedDescription(db, scenario.id);
 
+  // G-R8：第 1 步「整理成定义」同样要跑生成后三问自检
+  // （变更表 #164：原来只有阶段推进跑自检，表1-1 的核实两列因此永远空着，
+  //   无出处却标了「AI提取」的行也没人按实降级）
+  await runAnchorPostcheck(db, dshClient, scenario);
+
   const conversationId = await ensureScenarioConversation(db, dshClient, scenario);
+  const finalRows = readAnchorRows(db, scenario.id);
   db.messageRepo.insert({
     conversation_id: conversationId,
     role: "系统",
-    content: buildDraftMessage(rows, openQuestions, usedLlm),
+    content: buildDraftMessage(finalRows, openQuestions, usedLlm),
   });
 
-  return { rows, openQuestions, conversationId, usedLlm };
+  return { rows: finalRows, openQuestions, conversationId, usedLlm };
+}
+
+/**
+ * 场景锚（表1-1）的生成后自检
+ *
+ * 与阶段推进共用同一条流水线：确定性判问题 → 模型只改被点名的行 → 改不掉的按实降级。
+ * 唯一的差别是**锚行按 `item` 定位**，所以模型改写后必须把 `item` 原样钉回去——
+ * 条目名一改，用户在界面上就再也找不到那一行了。
+ */
+async function runAnchorPostcheck(
+  db: DbInstance,
+  dshClient: DshClient,
+  scenario: Scenario,
+): Promise<void> {
+  const listRows = (): {
+    id: string;
+    tableCode: string;
+    row: InfoRow;
+    source?: string | null;
+    sourceType?: string | null;
+  }[] =>
+    db.stageDataRepo
+      .list({
+        where: "scenario_id = ? AND table_code = ?",
+        params: [scenario.id, ANCHOR_TABLE_CODE],
+      })
+      .map((r) => ({
+        id: r.id,
+        tableCode: ANCHOR_TABLE_CODE,
+        row: r.row as InfoRow,
+        source: r.source,
+        sourceType: r.source_type,
+      }));
+
+  const items = new Map(listRows().map((r) => [r.id, String(r.row["item"] ?? "")]));
+  await runPostcheck({
+    listRows,
+    lookup: makeSourceLookup(db),
+    dshClient,
+    scenarioName: scenario.name,
+    stage: ANCHOR_STAGE,
+    applyFix: (rowId, patch) => {
+      const item = items.get(rowId);
+      const decided = patch.source_type;
+      const base = patch.row && item !== undefined ? { ...patch.row, item } : patch.row;
+      // 变更表 #166：来源属性必须一起落库，而且 JSON 与列两处同步——
+      // 这里原来只写 row（没写 source_type），"按实降级为 AI 推断"的决定被丢掉，
+      // 表1-1 就留下了"标着 AI提取、又给不出出处"的硬伤。
+      const row = base && decided ? { ...base, source_type: decided } : base;
+      db.stageDataRepo.update(rowId, {
+        ...(row ? { row } : {}),
+        ...(patch.source !== undefined ? { source: patch.source } : {}),
+        ...(decided !== undefined ? { source_type: decided } : {}),
+      });
+    },
+  });
 }
 
 /** 资料库摘要（起草输入：我们能用什么材料认识这个场景） */

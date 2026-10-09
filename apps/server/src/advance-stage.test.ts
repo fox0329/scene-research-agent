@@ -32,7 +32,11 @@ import type {
   MessageRepo,
 } from "@scene/infra";
 
-import { createAdvanceStageCommand, readyTables } from "./advance-stage.js";
+import {
+  createAdvanceStageCommand,
+  readyTables,
+  resolveSourceType,
+} from "./advance-stage.js";
 import type { AdvanceStageDeps } from "./advance-stage.js";
 
 // ─── Mock 工厂 ─────────────────────────────────────────────
@@ -428,6 +432,8 @@ function makeStage2DshOutput() {
 }
 
 // ─── 测试用例 ──────────────────────────────────────────────
+
+import { gradeSource } from "@scene/domain";
 
 describe("createAdvanceStageCommand", () => {
   let db: DbInstance;
@@ -1139,4 +1145,27 @@ describe("createAdvanceStageCommand", () => {
     });
   });
 });
+});
+// ─── 变更表 #162：来源标记与来源权威性如实化 ──────────────────
+
+describe("resolveSourceType：未声明时按出处如实判定（变更表 #162）", () => {
+  it("模型声明优先，原样采用", () => {
+    expect(resolveSourceType("AI提取", null)).toBe("AI提取");
+    expect(resolveSourceType("AI推断", "文件.pdf:12")).toBe("AI推断");
+  });
+
+  it("没声明但给得出「文件名:页码」→ AI提取", () => {
+    expect(resolveSourceType(undefined, "开鸿医疗方案.pptx:12")).toBe("AI提取");
+    expect(resolveSourceType("", "https://example.com/a")).toBe("AI推断"); // URL 不是材料文件名:页码
+  });
+
+  it("没声明且给不出出处 → AI推断（不得声称材料提取）", () => {
+    expect(resolveSourceType(undefined, null)).toBe("AI推断");
+    expect(resolveSourceType(undefined, "行业通例（模型知识）")).toBe("AI推断");
+  });
+
+  it("来源权威性按 G-R1 映射：AI提取→T3，AI推断→T4", () => {
+    expect(gradeSource(resolveSourceType(undefined, "文件.pdf:12"))).toBe("T3");
+    expect(gradeSource(resolveSourceType(undefined, null))).toBe("T4");
+  });
 });

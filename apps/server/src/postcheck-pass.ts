@@ -80,6 +80,14 @@ const FIXABLE_KEYS = new Set(["verification", "verification_verdict", "source"])
 export interface PostcheckRunnerDeps {
   /** 取本阶段的行（服务端注入，便于单测用假数据） */
   listRows: () => { id: string; tableCode: string; row: InfoRow; source?: string | null; sourceType?: string | null }[];
+  /**
+   * 产出行校验（`validateIncomingRows`）判出的机械违规
+   *
+   * 变更表 #163：这些违规原来只progress报给用户、行照样入库，
+   * 而修复轮只吃 `runDeterministicPostcheck` 的问题清单 → 永远修不掉。
+   * 接上之后它们同样进"被点名的行"，由第 2 轮改、第 3 轮复查。
+   */
+  listViolations?: () => readonly PostcheckFinding[];
   /** 材料库反查（服务端注入 createSourceLookup(db)；领域层只认端口） */
   lookup: SourceLookup;
   dshClient?: DshClient;
@@ -444,7 +452,9 @@ export async function runPostcheck(deps: PostcheckRunnerDeps): Promise<Postcheck
   }
 
   // 判定始终由领域层给：模型只改内容，不判"什么算问题"
-  let findings = runDeterministicPostcheck({ rows: all, lookup });
+  // 产出行校验的机械违规同样并入（变更表 #163）——判定仍在确定性层，只是不再漏掉它们
+  const violationsOf = deps.listViolations ?? ((): readonly PostcheckFinding[] => []);
+  let findings = [...runDeterministicPostcheck({ rows: all, lookup }), ...violationsOf()];
   progress(`生成后自检：初查 ${all.length} 行，命中 ${findings.length} 处待处理`);
   const allFindings = [...findings];
   let fixedRows = 0;
@@ -511,8 +521,8 @@ export async function runPostcheck(deps: PostcheckRunnerDeps): Promise<Postcheck
         progress("第 2/3 轮：没有被点名的行，无须改写");
       }
 
-      // 改完再判一遍——判定权始终在确定性层
-      findings = runDeterministicPostcheck({ rows: all, lookup });
+      // 改完再判一遍——判定权始终在确定性层（产出行校验也重判，改没改掉由它说了算）
+      findings = [...runDeterministicPostcheck({ rows: all, lookup }), ...violationsOf()];
       allFindings.push(...findings);
 
       // 第 3/3 轮：对"改完还存疑"的行再问一遍（第三问）

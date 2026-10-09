@@ -127,23 +127,27 @@ export function createSseHub(): SseHub {
     return iterate(state);
   };
 
+  /** 清理最早的已结束 run：事件缓冲只增不减会让长跑实例的内存单调上涨 */
+  const prune = (keepDone = DEFAULT_KEEP_DONE): void => {
+    const doneIds = [...runs.entries()]
+      .filter(([, s]) => s.done)
+      .map(([id]) => id);
+    for (const id of doneIds.slice(0, Math.max(0, doneIds.length - keepDone))) {
+      runs.delete(id);
+    }
+  };
+
   return {
     has: (runId) => runs.has(runId),
     isDone: (runId) => runs.get(runId)?.done ?? false,
     start: (runId, source) => {
+      prune(); // 每次起新 run 顺手清一次（缓存的终局事件只服务断线续传，留最近若干次即可）
       const state = getOrCreate(runId);
       if (state.started) return; // 重复启动忽略
       state.started = true;
       void drain(state, source);
     },
     subscribe,
-    prune: (keepDone = DEFAULT_KEEP_DONE) => {
-      const doneIds = [...runs.entries()]
-        .filter(([, s]) => s.done)
-        .map(([id]) => id);
-      for (const id of doneIds.slice(0, Math.max(0, doneIds.length - keepDone))) {
-        runs.delete(id);
-      }
-    },
+    prune,
   };
 }

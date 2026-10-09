@@ -180,4 +180,36 @@ describe("sse-hub 生命周期", () => {
     expect(hub.has("b")).toBe(false);
     expect(hub.has("c")).toBe(true); // 保留最近 1 个
   });
+
+  /**
+   * 变更表 #161：prune 原本只有测试在调，生产路径从不调用，
+   * 于是每个 run 的事件缓冲永不释放（长跑实例内存单调上涨）。
+   */
+  const doneOnce = (): AsyncGenerator<FollowEvent> =>
+    (async function* () {
+      yield { type: "done", id: "1" };
+    })();
+
+  it("起新 run 时自动清理旧 run（变更表 #161）", async () => {
+    const hub = createSseHub();
+    for (let i = 1; i <= 21; i++) hub.start(`run-${i}`, doneOnce());
+    await tick();
+    await tick();
+
+    hub.start("run-22", doneOnce()); // 这一次 start 会先清理
+    expect(hub.has("run-1")).toBe(false); // 最早的已结束 run 被清掉
+    expect(hub.has("run-2")).toBe(true); // 最近 20 个保留
+    expect(hub.has("run-22")).toBe(true);
+  });
+
+  it("自动清理不动正在跑的 run（变更表 #161）", async () => {
+    const hub = createSseHub();
+    hub.start("live", createManualSource().source);
+    for (let i = 1; i <= 25; i++) hub.start(`d-${i}`, doneOnce());
+    await tick();
+    await tick();
+    hub.start("d-26", doneOnce());
+    expect(hub.has("live")).toBe(true);
+    expect(hub.isDone("live")).toBe(false);
+  });
 });

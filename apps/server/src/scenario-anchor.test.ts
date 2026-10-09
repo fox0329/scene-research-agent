@@ -229,8 +229,19 @@ describe("scenario-anchor — 起草", () => {
     const rows = readAnchorRows(db, scenarioId);
     expect(rows).toHaveLength(6);
     expect(rows.find((r) => r.item === "场景边界")?.content).toBe("制水厂到管网末端");
-    expect(rows.find((r) => r.item === "场景边界")?.source_type).toBe("AI提取");
     expect(rows.find((r) => r.item === "买方类型")?.source_type).toBe("AI推断");
+    /**
+     * 变更表 #166：模型声明「AI提取」但给不出可定位出处（这个测试库也没有材料可查），
+     * 第 1 步的生成后自检会按实降为「AI 推断」——降级决定必须真的落库
+     * （列与 row JSON 两处同步），不能留下"标着 AI提取、又查不到出处"的硬伤。
+     * 原来这里断言的是"AI提取"（声明被原样采信），那正是 #166 要修的行为。
+     */
+    const boundary = db.stageDataRepo
+      .list({ where: "scenario_id = ? AND table_code = ?", params: [scenarioId, "表1-1"] })
+      .find((r) => String(r.row["item"] ?? "").trim() === "场景边界");
+    expect(boundary?.source_type).toBe("AI推断");
+    expect(boundary?.row["source_type"]).toBe("AI推断");
+    expect(String(boundary?.row["verification"] ?? "")).toContain("AI 推断");
     expect(rows.some((r) => r.item === "不存在的项")).toBe(false);
     // 派生缓存已写入
     expect(db.scenarioRepo.getById(scenarioId)?.description).toContain("制水厂到管网末端");
