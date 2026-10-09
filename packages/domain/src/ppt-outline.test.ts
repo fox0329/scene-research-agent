@@ -1030,7 +1030,10 @@ describe("checkPptOutlineQuality — ④ 数字只许来自报告正文（防编
 describe("checkPptOutlineQuality — ⑤ 页间不重复", () => {
   it("同一句话出现在两页 → 两页重复，并把两个页号都写出来", () => {
     const deck = okDeck();
-    deck.pages[4]!.blocks[0]!.lines[0] = deck.pages[1]!.blocks[0]!.lines[0]!;
+    const line = "各现场每周五下午集中检查一遍";
+    expect(Array.from(line)).toHaveLength(14);
+    deck.pages[1]!.blocks[0]!.lines[0] = line;
+    deck.pages[4]!.blocks[0]!.lines[0] = line;
     const issues = checkPptOutlineQuality(deck, MD);
     expect(codesOf(issues, "两页重复")).toEqual([5]);
     expect(issues[0]!.detail).toContain("第 2 页与第 5 页");
@@ -1073,12 +1076,40 @@ describe("checkPptOutlineQuality — ⑤ 页间不重复", () => {
     expect(codesOf(checkPptOutlineQuality(deck, MD), "两页重复")).toEqual([4]);
   });
 
-  it("#146 补充：无标点但够长（≥10 字）的整句重复也照报", () => {
+  it("#146 补充：无标点但够长（≥14 字）的整句重复也照报", () => {
     const deck = okDeck();
     const line = "每一台设备都要逐台贴码登记留痕";
+    expect(Array.from(line)).toHaveLength(15); // 无标点、无多字动作词 → 只靠"够长"这条
     deck.pages[1]!.blocks[0]!.lines[0] = line;
     deck.pages[3]!.blocks[0]!.lines[0] = line;
     expect(codesOf(checkPptOutlineQuality(deck, MD), "两页重复")).toEqual([4]);
+  });
+
+  it("#146 补充 4：**短判断句**跨页复述不报（真跑原文「端层不开放第三方认证」，10 字）", () => {
+    const deck = okDeck();
+    const line = "端层不开放第三方认证";
+    expect(Array.from(line)).toHaveLength(10); // 上级口述"11 字"，原文实际 10 字，都远在 14 字线下
+    deck.pages[1]!.blocks[0]!.lines[0] = line;
+    deck.pages[4]!.blocks[1]!.lines[0] = line;
+    expect(codesOf(checkPptOutlineQuality(deck, MD), "两页重复")).toEqual([]);
+  });
+
+  it("#146 补充 4：**边界 13 字**不报（无标点、无多字判断/动作词，只靠长度这条判）", () => {
+    const deck = okDeck();
+    const line = "现场每周五下午集中检查一遍";
+    expect(Array.from(line)).toHaveLength(13);
+    deck.pages[1]!.blocks[0]!.lines[0] = line;
+    deck.pages[4]!.blocks[1]!.lines[0] = line;
+    expect(codesOf(checkPptOutlineQuality(deck, MD), "两页重复")).toEqual([]);
+  });
+
+  it("#146 补充 4：**边界 14 字**要报（刚好到线）", () => {
+    const deck = okDeck();
+    const line = "各现场每周五下午集中检查一遍";
+    expect(Array.from(line)).toHaveLength(14);
+    deck.pages[1]!.blocks[0]!.lines[0] = line;
+    deck.pages[4]!.blocks[1]!.lines[0] = line;
+    expect(codesOf(checkPptOutlineQuality(deck, MD), "两页重复")).toEqual([5]);
   });
 });
 
