@@ -173,10 +173,14 @@ export const FlowRail: React.FC<FlowRailProps> = ({
                 className="btn"
                 type="button"
                 disabled={busy || run.running}
-                title={run.running ? (run.progress ?? "分析进行中…") : (run.title ?? "本步已经跑过一次：想换一版就重算（结果会覆盖本步表格）")}
+                title={
+                  run.running
+                    ? `${run.progress ?? "分析进行中…"}（已用 ${run.elapsedLabel}）`
+                    : (run.title ?? "本步已经跑过一次：想换一版就重算（结果会覆盖本步表格）")
+                }
                 onClick={run.onStart}
               >
-                {run.running ? `分析中 ${run.elapsedLabel}` : "重算本步"}
+                {run.running ? "分析中" : "重算本步"}
               </button>
             ) : null}
 
@@ -185,10 +189,14 @@ export const FlowRail: React.FC<FlowRailProps> = ({
                 className="btn primary"
                 type="button"
                 disabled={busy || run.running}
-                title={run.running ? (run.progress ?? "分析进行中…") : (run.title ?? `${run.hint}——跑完停在这一步，看完结果再点「下一步」`)}
+                title={
+                  run.running
+                    ? `${run.progress ?? "分析进行中…"}（已用 ${run.elapsedLabel}）`
+                    : (run.title ?? `${run.hint}——跑完停在这一步，看完结果再点「下一步」`)
+                }
                 onClick={run.onStart}
               >
-                {run.running ? `分析中 ${run.elapsedLabel}` : "开始本步分析"}
+                {run.running ? "分析中" : "开始本步分析"}
               </button>
             ) : (
               <button

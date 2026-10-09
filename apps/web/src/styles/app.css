@@ -550,6 +550,10 @@ td.ed {
   cursor: pointer;
   font-family: inherit;
   transition: all var(--d) var(--e);
+  /* 用户定调 2026-10-09：按钮文案一律不折行——放不下就让整组按钮换行（.pnl-actions 允许 wrap），
+     不要把同一个按钮里的字挤成两行；进行中的标签已收短成「导出中 / 撰写中 / 分析中」，
+     详细进度与耗时进 title（悬停可见），信息不丢、宽度不变 */
+  white-space: nowrap;
 }
 
 .btn:hover {
@@ -2020,6 +2024,8 @@ td.ed {
   display: inline-flex; align-items: center; gap: var(--s1);
   padding: var(--s1) var(--s2); font-size: var(--txs); color: var(--ct2);
   background: transparent; border: 1px solid var(--cb); border-radius: var(--r4); cursor: pointer;
+  /* 同 .btn：chip 文案不折行（表名可能很长），放不下就让整组 chip 换行 */
+  white-space: nowrap;
 }
 .chip:hover { color: var(--ct); border-color: var(--ct3); }
 .chip.active { color: var(--cp); border-color: var(--cp); background: var(--cp-s); }

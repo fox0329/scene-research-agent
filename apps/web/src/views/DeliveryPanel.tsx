@@ -458,9 +458,17 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
 
   const stepActions = (
     <div className="pnl-actions pnl-actions--end">
-      <button className="btn primary" type="button" disabled={gen.running} onClick={handleGenerate}>
+      {/* 用户定调 2026-10-09：进行中的按钮**只留一个短标签**，不要把进度/耗时写进标签——
+          标签一变宽就把按钮挤换行。详细进度放 title（悬停可见），信息不丢、宽度不变 */}
+      <button
+        className="btn primary"
+        type="button"
+        disabled={gen.running}
+        title={gen.running ? `正在撰写报告…已用 ${gen.elapsedLabel}` : undefined}
+        onClick={handleGenerate}
+      >
         {gen.running
-          ? `撰写中… ${gen.elapsedLabel}`
+          ? "撰写中"
           : generated
             ? "重新生成报告"
             : "生成报告"}
@@ -473,7 +481,7 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
             disabled={saving || draft.trim() === ""}
             onClick={() => void handleSave()}
           >
-            {saving ? "保存中…" : "保存"}
+            {saving ? "保存中" : "保存"}
           </button>
           <button className="btn" type="button" disabled={saving} onClick={() => setDraft(null)}>
             取消
@@ -493,9 +501,10 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
         className="btn"
         type="button"
         disabled={busyWord || busyPpt}
+        title={busyWord ? "正在导出 Word 文档…" : undefined}
         onClick={() => void pickDirThen("word")}
       >
-        {busyWord ? "导出中…" : "导出Word文档"}
+        {busyWord ? "导出中" : "导出Word文档"}
       </button>
       {/* PPT（变更表 #141）：点一下全自动排中间页（5–10 页、无封面尾页）；等待期显示阶段文案 */}
       <button
@@ -505,10 +514,16 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
         title={pptPhase ?? "按 B 站蓝色模版排中间页：5–10 页，不要封面与尾页，突出问题、方案与价值"}
         onClick={() => void pickDirThen("ppt")}
       >
-        {busyPpt ? (pptPhase ?? "PPT 导出中…") : "导出PPT文档"}
+        {busyPpt ? "导出中" : "导出PPT文档"}
       </button>
-      <button className="btn" type="button" disabled={busy} onClick={() => void handleExport()}>
-        {busy ? "导出中…" : "导出 Markdown"}
+      <button
+        className="btn"
+        type="button"
+        disabled={busy}
+        title={busy ? "正在导出 Markdown…" : undefined}
+        onClick={() => void handleExport()}
+      >
+        {busy ? "导出中" : "导出 Markdown"}
       </button>
     </div>
   );
