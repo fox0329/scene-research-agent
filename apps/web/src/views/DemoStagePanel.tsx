@@ -1,8 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
-  FLOW_STEPS,
-  FLOW_TOTAL,
-  STAGE_DEFS,
   tablesOfStage,
   tableDef,
   rowBelongsToBlock,
@@ -11,14 +8,9 @@ import {
 } from "@scene/contract";
 import { buildStageSummary, checkStageCompleteness, type InfoRow } from "@scene/domain";
 import { SchemaTable, tableBlocks, tableCategories } from "../components/SchemaTable";
-import { anchorSummary } from "../components/definition-progress";
-import {
-  asSourceType,
-  type StageSnapshot,
-  type SupplementTable,
-} from "../components/stage-snapshot";
-import type { ApiAnchorRow, ApiCompleteness } from "../api";
-import { DEMO_ANCHOR, DEMO_ROWS, demoStageSummary } from "../mock/demo-flow";
+import type { StageSnapshot, SupplementTable } from "../components/stage-snapshot";
+import type { ApiCompleteness } from "../api";
+import { DEMO_ROWS, demoStageSummary } from "../mock/demo-flow";
 
 /**
  * 演示模式阶段面板（无后端）
@@ -37,10 +29,8 @@ export interface DemoStagePanelProps {
   stage: number;
   /** 本步表集（流程定义给出）；缺省 = 该阶段全部表 */
   tables?: readonly string[];
-  /** 流程步骤号（右栏页头用「第 n/FLOW_TOTAL 步」而不是阶段号） */
+  /** 流程步骤号：本步总结按流程步取（阶段 1 横跨第 1、2 两步） */
   stepId?: number;
-  /** 演示态场景锚（确认清单的 L1 来源） */
-  anchor?: readonly ApiAnchorRow[];
   onStageSnapshot?: (snap: StageSnapshot | null) => void;
   /** 流程轴第二行点了某个输出物：`id` 变化时套用（与联真同口径） */
   pick?: { id: number; code: string | null; block: string | null };
@@ -52,13 +42,11 @@ export const DemoStagePanel: React.FC<DemoStagePanelProps> = ({
   stage,
   tables,
   stepId,
-  anchor,
   onStageSnapshot,
   pick,
   onTableChange,
 }) => {
   const id = (stage >= 7 ? 6 : stage) as InfoStageId;
-  const def = STAGE_DEFS.find((s) => s.id === id);
   const stageTables = useMemo(() => {
     const all = tablesOfStage(id).filter((t) => t.code !== "表1-1");
     return tables ? all.filter((t) => tables.includes(t.code)) : all;
@@ -113,8 +101,10 @@ export const DemoStagePanel: React.FC<DemoStagePanelProps> = ({
     setEdits((prev) => ({ ...prev, [key]: { ...(prev[key] ?? {}), [cell]: value } }));
   };
 
-  /** 场景锚行：联真/演示同口径（调用方给了就用，没给退回示例锚） */
-  const anchorRows = anchor && anchor.length > 0 ? anchor : DEMO_ANCHOR;
+  const summary = useMemo(
+    () => demoStageSummary(id, stepId),
+    [id, stepId],
+  );
 
   /** 右栏只针对当前步骤：完整度与总结都按**本步表集**算 */
   const stepCodes = tables && tables.length > 0 ? tables : undefined;
@@ -126,11 +116,6 @@ export const DemoStagePanel: React.FC<DemoStagePanelProps> = ({
         ...(stepCodes ? { tableCodes: stepCodes } : {}),
       }) as unknown as ApiCompleteness,
     [id, rowsByTable, stepCodes],
-  );
-
-  const summary = useMemo(
-    () => demoStageSummary(id, stepId),
-    [id, stepId],
   );
 
   const snapshot = useMemo<StageSnapshot>(() => {
@@ -151,17 +136,7 @@ export const DemoStagePanel: React.FC<DemoStagePanelProps> = ({
         });
       }
     }
-    const checklistAnchor = anchorRows;
     return {
-      stage,
-      stageLabel: def?.name ?? "",
-      ...(stepId
-        ? {
-            title: `第 ${stepId}/${FLOW_TOTAL} 步 · ${
-              FLOW_STEPS.find((s) => s.id === stepId)?.title ?? (def?.name ?? "")
-            }`,
-          }
-        : {}),
       // 右栏「核实」段读这里的行（v1.27）：演示态也要能看到每条信息的核实结论
       rows: activeTable
         ? (rowsByTable[activeTable] ?? []).map((r, i) => ({
@@ -178,8 +153,6 @@ export const DemoStagePanel: React.FC<DemoStagePanelProps> = ({
       summaryLoading: false,
       activeTable,
       supplements,
-      anchor: [...checklistAnchor],
-      anchorSummary: anchorSummary(checklistAnchor),
       onRefreshSummary: () => undefined,
       // 演示态的补充说明/核实同样可编辑（与联真同口径：逐格可编辑，只改本地内存）
       onSupplementChange: (rowId, cell, value) => {
@@ -189,7 +162,7 @@ export const DemoStagePanel: React.FC<DemoStagePanelProps> = ({
         handleDemoEdit(activeTable, idx, cell, value);
       },
     };
-  }, [stage, stepId, def, completeness, summary, activeTable, supplementsKey(activeTable, category), rowsByTable, id, anchorRows]);
+  }, [stage, stepId, completeness, summary, activeTable, supplementsKey(activeTable, category), rowsByTable, id]);
 
   useEffect(() => {
     onStageSnapshot?.(snapshot);

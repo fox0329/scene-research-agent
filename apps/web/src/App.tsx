@@ -356,36 +356,15 @@ const AppShell: React.FC = () => {
         />
       </main>
 
-      {/* 右栏：决策支撑（项目工作台）/ 行详情备注（资料库选中行，变更表 #19）/ 预留 */}
+      {/* 右栏：项目工作台显示阶段面板（补充说明 + 阶段总结）/ 资料库选中行显示行详情。
+          变更表 #149：没有可显示的内容时右栏就空着——不再放装饰性说明文案
+          （「决策支撑 / 项目工作台专属」与库页引导都是重复或承诺做不到的废话） */}
       <aside className="det">
         {view === "project" ? (
           <StageRightPanel snapshot={stageSnapshot} live={live} />
         ) : view === "library" && live && rowDetail ? (
           <RowDetailPanel detail={rowDetail} onClose={() => setRowDetail(null)} />
-        ) : (
-          <>
-            <div className="det-h">
-              <h3>{view === "library" ? "行详情" : "决策支撑"}</h3>
-            </div>
-            <div className="det-body">
-              <div className="empty-state">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <circle cx="12" cy="12" r="10" />
-                  <line x1="12" y1="16" x2="12" y2="12" />
-                  <line x1="12" y1="8" x2="12.01" y2="8" />
-                </svg>
-                <div className="empty-state-title">
-                  {view === "library" ? "未选中行" : "项目工作台专属"}
-                </div>
-                <div className="empty-state-desc">
-                  {view === "library"
-                    ? "点击表格行，这里显示该行的补充信息与来源溯源详情"
-                    : "决策支撑面板在项目工作台视图中显示"}
-                </div>
-              </div>
-            </div>
-          </>
-        )}
+        ) : null}
       </aside>
 
       <NewScenarioDialog

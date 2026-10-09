@@ -5,9 +5,9 @@ import { useToast } from "./Toast";
 /**
  * 行详情面板（右栏备注区，变更表 #19「组合拳」）
  *
- * 主表降维后收进来的补充字段（如 M1 曾用名）与溯源四列在这里全量展示：
- * 补充字段与溯源字段可直接编辑（失焦保存，走 PATCH library rows），
- * 业务字段仍留在主表编辑。来源信息一键可达，满足溯源铁律。
+ * 主表降维后收进来的**补充字段**与**溯源四列**在这里全量展示，两者都可直接编辑
+ * （失焦保存，走 PATCH library rows）。业务字段与主表同一行、中栏已经可编辑，
+ * 右栏不再重复列一遍（变更表 #149：右栏宽度有限，重复内容一律删）。
  */
 
 export interface RowDetailField {
@@ -29,8 +29,6 @@ export interface RowDetail {
   traceKeys: RowDetailField[];
   /** 溯源字段是否可编辑（M 表 true） */
   traceEditable: boolean;
-  /** 业务字段（主表可编辑，这里只读列出方便对照） */
-  businessFields: RowDetailField[];
 }
 
 interface RowDetailPanelProps {
@@ -102,17 +100,6 @@ export const RowDetailPanel: React.FC<RowDetailPanelProps> = ({ detail, onClose 
           <h4>来源溯源{detail.traceEditable ? "（可编辑）" : ""}</h4>
           {detail.traceKeys.map((f) => renderField(f, detail.traceEditable))}
         </div>
-        {detail.businessFields.length > 0 && (
-          <div className="rd-group">
-            <h4>业务字段（主表可编辑）</h4>
-            {detail.businessFields.map((f) => (
-              <div className="rd-field" key={f.key}>
-                <span className="rd-label">{f.label}</span>
-                <span className="rd-value">{fields[f.key]}</span>
-              </div>
-            ))}
-          </div>
-        )}
       </div>
     </>
   );

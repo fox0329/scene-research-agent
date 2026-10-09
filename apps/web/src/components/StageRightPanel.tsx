@@ -1,10 +1,20 @@
 /**
- * @scene/web — 右栏：阶段面板（双 Tab）
+ * @scene/web — 右栏：阶段面板（条目形式，无表格）
  *
  * 对应 04 §4.2 的分工（**只讲当前步骤，不整理整个过程**——用户定调 v2.9）：
- *  - **Tab ① 补充说明**：中栏**当前表**放不下的说明类信息（来源、证据级、权威性等）
- *  - **Tab ② 步骤总结**：本步表集的五段骨架 Markdown（可导出）——
- *    不含用户诉求全文与上下游衔接（那两段属于交付物装配的阶段级文档）
+ *  - **Tab ① 补充说明**：中栏**当前表**放不下的说明类信息（长文本全文、来源、
+ *    证据等级、权威性、周期……）——这些列**只存在于右栏**，中栏看不到
+ *  - **Tab ② 步骤总结**：本步表集的五段骨架 Markdown（可导出）
+ *
+ * 变更表 #149（用户定调）：「右栏不要有表格，因为右栏本身宽度就有限，用表格根本很难看
+ * 内容。用条目的形式就行」「没有价值的删除，一定要确保右栏的内容对于用户理解中栏的
+ * 输出有价值」。于是右栏收敛为：
+ *  - 一律**条目形式**：一条信息 = 一个条目标签 + 若干行「字段名 → 值」；
+ *    长文本用可自动增高的多行编辑器，正文看得见、改得动（旧版塞进单行 input，全文只在
+ *    `title` 悬浮里）
+ *  - 删掉与流程轴/中栏/Tab② 重复或失效的内容：页头「第 n/7 步」、完整度裸数字条、
+ *    两份交付物名与说明、生成前提（引用的确认动作已取消）、导出文件名规则与口号、
+ *    装配原料的逐步名与状态、固定口径套话与自检过程留痕
  *
  * 三条铁律的落点：
  *  - **不出现建议档位与"通过/不通过"**：右栏只呈现信息
@@ -19,6 +29,7 @@
 
 import React, { useMemo, useState } from "react";
 import { enumValues, middleColumns, tableDef } from "@scene/contract";
+import { AutoGrowTextarea } from "./AutoGrowTextarea";
 import { FoldSection } from "./FoldSection";
 import { splitBold } from "./md-inline";
 import type { StageSnapshot } from "./stage-snapshot";
@@ -32,7 +43,18 @@ export interface StageRightPanelProps {
 
 type Tab = "supplement" | "summary";
 
-/** 极简 Markdown 渲染（标题/列表/引用/表格分隔）——避免引入第三方依赖 */
+/**
+ * 渲染选项
+ *
+ * `tables: false` 是**右栏专用**：右栏只有 240–480 宽，多列表格会把每列挤到几十像素，
+ * 内容根本读不下去（用户定调 #149）——管道表降为「字段：值 · 字段：值」的条目行。
+ * 中栏（交付物正文，`DeliveryPanel`）保持默认，表格照旧排。
+ */
+export interface RenderMarkdownOptions {
+  tables?: boolean;
+}
+
+/** 极简 Markdown 渲染（标题/列表/引用/表格）——避免引入第三方依赖 */
 /** 行内粗体：报告正文用 `**结论**` 起句，不解析就会把星号原样显示给用户 */
 function inline(text: string): React.ReactNode {
   const parts = splitBold(text);
@@ -40,7 +62,27 @@ function inline(text: string): React.ReactNode {
   return parts.map((p, i) => (p.bold ? <strong key={i}>{p.text}</strong> : p.text));
 }
 
-export function renderMarkdown(md: string): React.ReactNode {
+/** 一行的主标识：该表中栏列里第一个非空值（右栏条目与核实段共用同一取法） */
+function rowLabel(tableCode: string, row: Record<string, unknown>): string {
+  const def = tableDef(tableCode);
+  const mid = def ? middleColumns(def) : [];
+  for (const c of mid) {
+    const v = String(row[c.key] ?? "").trim();
+    if (v !== "") return v;
+  }
+  return "(未命名条目)";
+}
+
+/** 单元格值 → 展示文本（多值列按「、」连起来，与中栏同一口径） */
+function cellText(v: unknown): string {
+  return Array.isArray(v) ? v.join("、") : String(v ?? "");
+}
+
+export function renderMarkdown(
+  md: string,
+  options: RenderMarkdownOptions = {},
+): React.ReactNode {
+  const renderTables = options.tables ?? true;
   const lines = md.split("\n");
   const out: React.ReactNode[] = [];
   let list: string[] = [];
@@ -60,6 +102,17 @@ export function renderMarkdown(md: string): React.ReactNode {
   const flushTable = (): void => {
     if (table.length === 0) return;
     const [head, ...body] = table;
+    // 右栏不排表格：一行一条，把表头折进每个值前面（表头本身 + 0 行的极端情况也照此处理）
+    if (!renderTables) {
+      for (const r of body.length > 0 ? body : [head]) {
+        const pairs = r
+          .map((c, i) => (c === "" ? "" : `${head[i] ?? ""}：${c}`))
+          .filter((s) => s !== "");
+        if (pairs.length > 0) out.push(<p key={`tb-${out.length}`}>{inline(pairs.join(" · "))}</p>);
+      }
+      table = [];
+      return;
+    }
     out.push(
       <table key={`tb-${out.length}`} className="schema-table md-table">
         <thead>
@@ -142,7 +195,7 @@ export const StageRightPanel: React.FC<StageRightPanelProps> = ({ snapshot, live
   /**
    * 核实（v1.27）：每条信息准确吗·客观吗·为什么
    *
-   * 为什么不横排进「补充说明」表：右栏只有 240–480 宽，8 列会挤成 27px/列；
+   * 为什么不与补充说明并排：右栏只有 240–480 宽，并排会挤成几十像素一列；
    * 核实说明是长文本，纵向一条一条排才读得下去——它也是这份产物最该被看见的内容。
    */
   const verifyRows = useMemo(() => {
@@ -151,52 +204,35 @@ export const StageRightPanel: React.FC<StageRightPanelProps> = ({ snapshot, live
       ? snapshot.rows.filter((r) => r.table_code === snapshot.activeTable)
       : snapshot.rows;
     return mine.map((r) => {
-      const def = tableDef(r.table_code);
-      const mid = def ? middleColumns(def) : [];
-      const label =
-        mid
-          .map((c) => String((r.row as Record<string, unknown>)[c.key] ?? "").trim())
-          .find((v) => v !== "") ?? "(未命名条目)";
       const verdict = String((r.row as Record<string, unknown>)["verification_verdict"] ?? "").trim();
       const text = String((r.row as Record<string, unknown>)["verification"] ?? "");
-      return { id: r.id, tableCode: r.table_code, label, verdict, text };
+      return {
+        id: r.id,
+        tableCode: r.table_code,
+        label: rowLabel(r.table_code, r.row as Record<string, unknown>),
+        verdict,
+        text,
+      };
     });
   }, [snapshot]);
 
-  // 注意顺序：有快照就渲染（演示态也会产生快照，走同一套结构），
-  // 只有既无快照又非联真时才显示演示占位——否则演示态会被占位挡住。
+  // 首帧（快照还没冒泡上来）不渲染占位块：闪一下的指引没有价值，联真态给一句极短状态即可
   if (!snapshot) {
-    if (!live) {
-      return (
-        <>
-          <div className="det-h">
-            <h3>阶段信息</h3>
-          </div>
-          <div className="det-body">
-            <div className="empty-state">
-              <div className="empty-state-title">演示模式</div>
-              <div className="empty-state-desc">
-                连接后端后，这里显示中栏表格的补充说明与阶段总结文档。
-              </div>
-            </div>
-          </div>
-        </>
-      );
-    }
     return (
-      <>
-        <div className="det-h">
-          <h3>阶段信息</h3>
-        </div>
-        <div className="det-body">
-          <div className="loading-strip" role="status" aria-label="加载中" />
-        </div>
-      </>
+      <div className="det-body">
+        {live ? (
+          <p className="brief-hint" role="status">
+            加载中…
+          </p>
+        ) : null}
+      </div>
     );
   }
 
-  const { completeness, supplements, rows } = snapshot;
-
+  const { supplements } = snapshot;
+  /** 没有补充说明就别把 Tab① 显示成可点但空白（第 1 步、交付物步）——默认落在阶段总结 */
+  const hasSupplement = supplements.length > 0;
+  const activeTab: Tab = hasSupplement ? tab : "summary";
 
   const emptyMsg = "本步还没有产出——做完本步分析后这里会生成本步总结";
   const full = snapshot.summary ?? "";
@@ -205,37 +241,23 @@ export const StageRightPanel: React.FC<StageRightPanelProps> = ({ snapshot, live
 
   return (
     <>
-      <div className="det-h">
-        <h3>
-          {snapshot.title ?? `阶段 ${snapshot.stage} · ${snapshot.stageLabel}`}
-        </h3>
-      </div>
-
-      {/* 完整度状态行：只说明本阶段表产出的进度，不虚报缺口（缺口已转智能体待办） */}
-      {completeness ? (
-        <div className="completeness-bar">
-          <span>
-            信息完整度 {completeness.tablesWithData}/{completeness.expectedTables} 张表（
-            {completeness.percent}%）
-          </span>
-        </div>
-      ) : null}
-
       <div className="det-tabs" role="tablist">
+        {hasSupplement ? (
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === "supplement"}
+            className={`det-tab${activeTab === "supplement" ? " active" : ""}`}
+            onClick={() => setTab("supplement")}
+          >
+            补充说明
+          </button>
+        ) : null}
         <button
           type="button"
           role="tab"
-          aria-selected={tab === "supplement"}
-          className={`det-tab${tab === "supplement" ? " active" : ""}`}
-          onClick={() => setTab("supplement")}
-        >
-          补充说明
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={tab === "summary"}
-          className={`det-tab${tab === "summary" ? " active" : ""}`}
+          aria-selected={activeTab === "summary"}
+          className={`det-tab${activeTab === "summary" ? " active" : ""}`}
           onClick={() => setTab("summary")}
         >
           阶段总结
@@ -243,58 +265,48 @@ export const StageRightPanel: React.FC<StageRightPanelProps> = ({ snapshot, live
       </div>
 
       <div className="det-body">
-        {tab === "supplement" ? (
+        {activeTab === "supplement" ? (
           <>
-            {/* 中栏表格的补充说明列 */}
-            {supplements.length === 0 ? (
-              <div className="empty-state">
-                <div className="empty-state-title">暂无补充说明</div>
-                <div className="empty-state-desc">
-                  这里只显示本步当前表的说明类信息（来源、证据级、方法口径）——切中栏的表就跟着换。
-                </div>
-              </div>
-            ) : (
-              supplements.map((s) => (
-                <section className="det-sec" key={s.tableCode}>
-                  <h4>
-                    {s.tableCode} {s.tableName}
-                    <span className="det-sec-sub">补充说明</span>
-                  </h4>
-                  <table className="schema-table supplement-table">
-                    <thead>
-                      <tr>
-                        {s.columns.map((c) => (
-                          <th key={c.key}>{c.label}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {s.rows.map((r) => (
-                        <tr key={r.id}>
+            {/* 中栏表格的补充说明列：一条信息一条目，字段名 → 值纵排（窄栏不排表格） */}
+            {supplements.map((s) => (
+              <section className="det-sec" key={s.tableCode}>
+                <h4>
+                  {s.tableCode} {s.tableName}
+                  <span className="det-sec-sub">补充说明</span>
+                </h4>
+                <div className="supp-list">
+                  {s.rows.map((r) => {
+                    const label = rowLabel(s.tableCode, r.row);
+                    return (
+                      <div className="supp-item" key={r.id}>
+                        <div className="supp-label">{label}</div>
+                        <div className="supp-fields">
                           {s.columns.map((c) => {
-                            const v = r.row[c.key];
-                            const text = Array.isArray(v) ? v.join("、") : String(v ?? "");
+                            const text = cellText(r.row[c.key]);
+                            const fieldLabel = `${label} · ${c.label}`;
                             return (
-                              <td key={c.key}>
-                                <input
-                                  className="cell-input"
+                              <div className="supp-field" key={c.key}>
+                                <span className="supp-field-name">{c.label}</span>
+                                {/* 值一律用可增高的多行编辑器：右栏窄，单行 input 只能看到开头几个字
+                                    （旧版全文只塞在 title 悬浮里）；也不按字数在 input/textarea 之间切换——
+                                    输入途中换控件会丢焦点，长出来的那一瞬间用户就断在半个词上 */}
+                                <AutoGrowTextarea
+                                  className="cell-input cell-input--multi supp-value"
                                   value={text}
                                   placeholder="—"
-                                  title={text}
-                                  onChange={(e) =>
-                                    snapshot.onSupplementChange(r.id, c.key, e.target.value)
-                                  }
+                                  ariaLabel={fieldLabel}
+                                  onChange={(v) => snapshot.onSupplementChange(r.id, c.key, v)}
                                 />
-                              </td>
+                              </div>
                             );
                           })}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </section>
-              ))
-            )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+            ))}
 
             {/* 核实：结论 + 准确·客观·为什么（长文本，纵向排） */}
             {verifyRows.length > 0 ? (
@@ -328,14 +340,12 @@ export const StageRightPanel: React.FC<StageRightPanelProps> = ({ snapshot, live
                           ))}
                         </select>
                       </div>
-                      <textarea
-                        className="cell-input verify-text"
+                      <AutoGrowTextarea
+                        className="cell-input cell-input--multi verify-text"
                         value={r.text}
-                        rows={3}
                         placeholder="准确：对得上哪份材料的哪一处、能否复算；客观：事实还是推断、谁的口径、有无利益相关方；为什么：凭什么采信、哪里不确定"
-                        onChange={(e) =>
-                          snapshot.onSupplementChange(r.id, "verification", e.target.value)
-                        }
+                        ariaLabel={`${r.label} · 核实说明`}
+                        onChange={(v) => snapshot.onSupplementChange(r.id, "verification", v)}
                       />
                     </div>
                   ))}
@@ -359,7 +369,7 @@ export const StageRightPanel: React.FC<StageRightPanelProps> = ({ snapshot, live
               </div>
             </div>
             {/* 本步还没有产出：一句话空态，不渲染六段空骨架 */}
-            {rows.length === 0 && !snapshot.summary ? (
+            {snapshot.rows.length === 0 && !snapshot.summary ? (
               <div className="empty-state">
                 <div className="empty-state-title">本步还没有产出</div>
                 <div className="empty-state-desc">{emptyMsg}</div>
@@ -378,7 +388,10 @@ export const StageRightPanel: React.FC<StageRightPanelProps> = ({ snapshot, live
                 summary={preview || "（总结只有标题，点开看全文）"}
                 expandLabel={`展开全文（约 ${fullLength} 字）`}
               >
-                <div className="md-body">{renderMarkdown(snapshot.summary)}</div>
+                {/* 右栏只有 240–480 宽：总结里的管道表也按条目排，不排表格（#149） */}
+                <div className="md-body">
+                  {renderMarkdown(snapshot.summary, { tables: false })}
+                </div>
               </FoldSection>
             )}
           </section>

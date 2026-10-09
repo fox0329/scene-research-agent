@@ -16,7 +16,6 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { FLOW_TOTAL, flowStep } from "@scene/contract";
 import { api, type ApiAnchorRow } from "../api";
 import { AnchorFoldPanel } from "../components/AnchorFoldPanel";
 import { anchorSummary } from "../components/definition-progress";
@@ -58,7 +57,6 @@ export const AnchorStepPanel: React.FC<AnchorStepPanelProps> = ({
   onDefinitionOpenChange,
 }) => {
   const { showToast } = useToast();
-  const step = flowStep(1);
   const dialogOpen = definitionOpen;
   const setDialogOpen = useCallback(
     (open: boolean) => onDefinitionOpenChange?.(open),
@@ -167,21 +165,16 @@ export const AnchorStepPanel: React.FC<AnchorStepPanelProps> = ({
 
   const snapshot = useMemo<StageSnapshot | null>(() => {
     return {
-      stage: 1,
-      stageLabel: step.title,
-      title: `第 1/${FLOW_TOTAL} 步 · ${step.title}`,
       rows: [],
       completeness: null,
       summary,
       summaryLoading,
       activeTable: "表1-1",
       supplements: [],
-      anchor,
-      anchorSummary: anchorSummary(anchor),
       onRefreshSummary: () => void loadSummary(true),
       onSupplementChange: () => undefined,
     };
-  }, [anchor, step.title, summary, summaryLoading, loadSummary]);
+  }, [summary, summaryLoading, loadSummary]);
 
   useEffect(() => {
     onStageSnapshot?.(snapshot);

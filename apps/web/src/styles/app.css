@@ -1942,14 +1942,6 @@ td.ed {
    铁律：不出现建议档位与"通过/不通过"，只呈现信息与缺口。
    ───────────────────────────────────────────────────────────── */
 
-.completeness-bar {
-  display: flex; align-items: center; gap: var(--s3); flex-wrap: wrap;
-  padding: var(--s2) var(--s4); font-size: var(--ts); color: var(--ct2);
-  border-bottom: 1px solid var(--cb);
-}
-.completeness-bar .gap-count { color: var(--ct); }
-.completeness-bar .gap-none { color: var(--cs-h); }
-
 .det-tabs { display: flex; gap: var(--s1); padding: var(--s2) var(--s3) 0; border-bottom: 1px solid var(--cb); }
 .det-tab {
   display: inline-flex; align-items: center; gap: var(--s1);
@@ -2029,7 +2021,29 @@ td.ed {
 .chip-n { color: var(--ct3); }
 .chip.active .chip-n { color: var(--cp); }
 
-.supplement-table .cell-input { font-size: var(--txs); }
+/* ─────────────────────────────────────────────────────────────
+   右栏补充说明（变更表 #149）：一律条目形式
+   用户定调：「右栏不要有表格，因为右栏本身宽度就有限」——一条信息 = 一个条目标签
+   + 若干行「字段名 → 值」；长文本用可增高的多行编辑器，全文看得见也改得动。
+   ───────────────────────────────────────────────────────────── */
+
+.supp-list { display: flex; flex-direction: column; gap: var(--s3); }
+.supp-item {
+  padding: var(--s2) 0 0;
+  border-top: 1px solid var(--cb);
+}
+.supp-item:first-child { padding-top: 0; border-top: none; }
+/* 条目标签 = 这一行在中栏的主标识；长标签换行显示而不是截断（截断就看不出是哪一条） */
+.supp-label {
+  margin-bottom: var(--s1);
+  font-size: var(--ts); font-weight: var(--fm2); color: var(--ct);
+  overflow-wrap: anywhere;
+}
+.supp-fields { display: flex; flex-direction: column; gap: var(--s1); }
+/* 一行一个「字段名 → 值」，不并排多列（窄栏并排就都读不成） */
+.supp-field { display: flex; flex-direction: column; gap: var(--s05); min-width: 0; }
+.supp-field-name { font-size: var(--txs); color: var(--ct3); overflow-wrap: anywhere; }
+.supp-value { font-size: var(--ts); overflow-wrap: anywhere; }
 
 /* ─────────────────────────────────────────────────────────────
    核实（v1.27）：结论 + 准确·客观·为什么
@@ -2045,7 +2059,8 @@ td.ed {
 }
 .verify-verdict { flex: 0 0 auto; width: auto; max-width: 40%; }
 .verify-verdict.warn { color: var(--cw-h); border-color: var(--cw); background: var(--cw-s); }
-.verify-text { width: 100%; resize: vertical; line-height: 1.5; }
+/* 长文本随内容增高（AutoGrowTextarea），不用 resize 手柄 */
+.verify-text { line-height: 1.5; }
 
 /* ─────────────────────────────────────────────────────────────
    场景诉求对话框（第一输入，三步走）

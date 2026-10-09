@@ -20,12 +20,8 @@ test.beforeEach(async ({ page }) => {
 
 /* ───────────────────── §4.2 表头对齐：三栏头部统一 48px ───────────────────── */
 
-test("三栏页头统一 48px 且底边线水平对齐", async ({ page }) => {
-  const heads = [
-    page.locator(".side .side-hd"),
-    page.locator(".main .pgh"),
-    page.locator(".det .det-h"),
-  ];
+test("栏头统一 48px 且底边线水平对齐（右栏页头已删，变更表 #149）", async ({ page }) => {
+  const heads = [page.locator(".side .side-hd"), page.locator(".main .pgh")];
   const boxes = [];
   for (const h of heads) {
     await expect(h).toBeVisible();
@@ -36,6 +32,11 @@ test("三栏页头统一 48px 且底边线水平对齐", async ({ page }) => {
   }
   const bottoms = boxes.map((b) => Math.round(b.y + b.height));
   expect(Math.max(...bottoms) - Math.min(...bottoms)).toBeLessThanOrEqual(1);
+
+  // 变更表 #149：右栏「第 n/7 步 · 步骤名」整块删除（与流程轴节点、中栏表头重复）
+  // ——右栏不再有 48px 页头，直接从 Tab 开始
+  await expect(page.locator(".det .det-h")).toHaveCount(0);
+  await expect(page.locator(".det .det-tabs")).toBeVisible();
 });
 
 /* ───────────────────── §4.2 对话抽屉 ───────────────────── */
@@ -146,12 +147,11 @@ test("项目与会话均有 ⋯ 菜单（重命名/归档/删除）", async ({ p
 
 /* ────────────── §4.2 信息版：完整度提示 + 双 Tab（替代旧建议卡） ────────────── */
 
-test("信息完整度状态行：只说产出进度，不出现建议档位与判定", async ({ page }) => {
-  // 完整度只出现在**右栏**（中栏只放信息表）；同一信息不得两栏重复
+test("右栏不再有完整度裸数字条：进度只在中栏表与流程轴说一次（变更表 #149）", async ({ page }) => {
   await gotoStep2(page);
-  const bar = page.locator(".det .completeness-bar").first();
-  await expect(bar).toBeVisible();
-  await expect(bar).toContainText(/信息完整度 \d+\/\d+ 张表/);
+  // 变更表 #149：与 Tab② 头部的同一组数字重复，且演示态第 1 步用的是全流程口径
+  // ——右栏这一条整块删除
+  await expect(page.locator(".det .completeness-bar")).toHaveCount(0);
   // 产品不产出判断：整页不应出现建议档位或"通过/不通过"
   const body = await page.locator(".ws").innerText();
   expect(body).not.toMatch(/建议(通过|有条件通过|不通过|进)/);
@@ -191,12 +191,57 @@ test("右栏双 Tab：补充说明 / 阶段总结（确认清单与缺口清单�
   await expect(md).not.toContainText("上下游衔接");
 });
 
-test("右栏核实段：每条信息给出核实结论与「准确·客观·为什么」，不挤进补充说明表", async ({ page }) => {
+test("右栏补充说明：一律条目形式，不用表格；字段一个不丢、值可编辑（变更表 #149）", async ({ page }) => {
   await gotoStep2(page);
   const det = page.locator(".det");
-  // 补充说明表只有出处类列，核实两列**不横排**进去（否则右栏 8 列挤成 27px/列）
-  const head = det.locator(".supplement-table th");
-  await expect(head.filter({ hasText: "核实" })).toHaveCount(0);
+  const tabs = det.locator(".det-tab");
+  await expect(tabs.nth(0)).toContainText("补充说明");
+  await tabs.nth(0).click();
+
+  // ① 右栏**不再有任何表格**（用户定调：右栏宽度有限，表格根本看不清内容）
+  await expect(det.locator("table")).toHaveCount(0);
+  await expect(det.locator(".supplement-table")).toHaveCount(0);
+
+  // ② 一条信息一条目：条目标签 = 该行在中栏的主标识（表1-2 的「业务环节」）
+  const list = det.locator(".supp-list");
+  await expect(list).toBeVisible();
+  const items = list.locator(".supp-item");
+  await expect(items).toHaveCount(3);
+  await expect(items.first().locator(".supp-label")).toHaveText("制水");
+
+  // ③ 每个「字段名 → 值」一行，一个字段都不丢（表1-2 的右栏补充列全在）
+  const names = await items.first().locator(".supp-field-name").allInnerTexts();
+  expect(names).toEqual([
+    "环节说明",
+    "责任归属",
+    "依据",
+    "来源",
+    "证据等级",
+    "来源权威性",
+  ]);
+  // 值可编辑（就地改）且全文可见：长文本走可增高的多行编辑器，不再只在 title 里
+  const desc = items
+    .first()
+    .locator(".supp-field", { hasText: "环节说明" })
+    .locator("textarea.supp-value");
+  await expect(desc).toBeVisible();
+  await expect(desc).toHaveValue("加药与过滤环节");
+  await desc.fill("加药与过滤环节：加药泵按流量比例投加，过滤池反冲洗按压差触发");
+  await expect(desc).toHaveValue(/反冲洗按压差触发/);
+
+  // ④ 值的宽度不超过右栏、长串不溢出（overflow-wrap: anywhere 生效）
+  const itemBox = (await items.first().boundingBox())!;
+  const descBox = (await desc.boundingBox())!;
+  expect(descBox.width).toBeLessThanOrEqual(itemBox.width + 1);
+  expect(await desc.evaluate((el) => getComputedStyle(el).overflowWrap)).toBe("anywhere");
+});
+
+test("右栏核实段：每条信息给出核实结论与「准确·客观·为什么」，不挤进补充说明", async ({ page }) => {
+  await gotoStep2(page);
+  const det = page.locator(".det");
+  // 补充说明只有出处类列，核实两列**不并排**进去（否则右栏挤成几十像素一列）
+  const names = await det.locator(".supp-list .supp-field-name").allInnerTexts();
+  expect(names.filter((n) => n.includes("核实"))).toHaveLength(0);
 
   // 核实单独一段：结论可选（六档 + 未核）、说明是可编辑长文本
   const verify = det.locator(".verify-list");
@@ -539,6 +584,16 @@ test("第 1 步：中栏只有表1-1；步标题/引导语/状态行/完整度/�
   await expect(anchor.locator("textarea.cell-input")).toHaveCount(6);
   await expect(anchor.locator(".owner-tag")).toHaveCount(1);
 
+  // 右栏（变更表 #149）：第 1 步没有补充说明列 → 不显示成可点但空白的 Tab①，
+  // 直接落在「阶段总结」上；右栏也不再有任何表格
+  const det = page.locator(".det");
+  await expect(det.locator(".det-tab")).toHaveCount(1);
+  await expect(det.locator(".det-tab").first()).toHaveText("阶段总结");
+  await expect(det.locator(".det-tab").first()).toHaveClass(/active/);
+  await expect(det.locator("table")).toHaveCount(0);
+  await expect(det.locator(".completeness-bar")).toHaveCount(0);
+  await expect(det.locator(".det-h")).toHaveCount(0);
+
   // 独立弹窗（不是中栏、不是右下角抽屉）：入口是流程轴上的本步运行按钮（八步同形）
   const entry = page.locator(".flow-actions").getByRole("button", { name: /开始本步分析|重算本步/ });
   await entry.click();
@@ -870,16 +925,6 @@ test("右栏不再有确认清单/缺口清单（智能体的待办不进用户�
   expect(text).not.toContain("待确认");
   expect(text).not.toContain("缺口");
   expect(text).not.toContain("表态");
-});
-
-
-test("右栏完整度状态行不再喊「缺口 N 项」", async ({ page }) => {
-  await gotoStep2(page);
-  const bar = page.locator(".det .completeness-bar").first();
-  await expect(bar).toContainText("信息完整度");
-  const text = await bar.innerText();
-  expect(text).not.toContain("缺口");
-  expect(text).not.toContain("不阻断");
 });
 
 test("第 1 步「整理成定义」结果里带生成后自检（真实吗·客观吗·有价值吗）", async ({ page }) => {

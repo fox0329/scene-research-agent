@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { FLOW_TOTAL, STAGE_DEFS, flowStep, type InfoStageId } from "@scene/contract";
+import { FLOW_TOTAL, flowStep, type InfoStageId } from "@scene/contract";
 import { RealStagePanel } from "./RealStagePanel";
 import { DemoStagePanel } from "./DemoStagePanel";
 import { AnchorStepPanel } from "./AnchorStepPanel";
@@ -437,7 +437,6 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
         <RealStagePanel
           projectId={project.id}
           stage={stepStage}
-          stageLabel={STAGE_DEFS.find((s) => s.id === stepStage)?.name ?? def.title}
           tables={def.tables}
           stepId={step}
           refreshToken={isCurrent ? analysisRefresh : 0}
@@ -481,7 +480,6 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
         stage={stepStage}
         tables={def.tables}
         stepId={step}
-        anchor={demoAnchor}
         onStageSnapshot={onStageSnapshot}
         pick={pickForStep}
         onTableChange={handlePanelTableChange}

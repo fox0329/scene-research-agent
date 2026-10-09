@@ -12,8 +12,7 @@
  * 这样 E2E 在演示模式下断言的流程轴、定义对话与本步面板断言，与联真态是同一套结构。
  */
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { FLOW_TOTAL, flowStep } from "@scene/contract";
+import React, { useCallback, useEffect, useMemo, useRef } from "react";
 import { AnchorFoldPanel } from "../components/AnchorFoldPanel";
 import { anchorSummary } from "../components/definition-progress";
 import { ScenarioDefinitionDialog } from "../components/ScenarioDefinitionDialog";
@@ -29,7 +28,6 @@ function overallCompleteness(flow: ApiFlowStatus, stage: number): ApiCompletenes
     stage,
     expectedTables,
     tablesWithData,
-    missingTables: [],
     gaps: [],
     percent: expectedTables > 0 ? Math.round((tablesWithData / expectedTables) * 100) : 0,
   };
@@ -64,7 +62,6 @@ export const DemoFirstStep: React.FC<DemoFirstStepProps> = ({
   definitionOpen = false,
   onDefinitionOpenChange,
 }) => {
-  const step = flowStep(1);
 
 
   /** 回调经 ref 转发：快照 identity 只跟数据走（与联真同因） */
@@ -78,21 +75,16 @@ export const DemoFirstStep: React.FC<DemoFirstStepProps> = ({
 
   const snapshot = useMemo<StageSnapshot>(
     () => ({
-      stage: 1,
-      stageLabel: step.title,
-      title: `第 1/${FLOW_TOTAL} 步 · ${step.title}`,
       rows: [],
       completeness: overallCompleteness(flow, 1),
       summary: demoStageSummary(1, 1),
       summaryLoading: false,
       activeTable: "表1-1",
       supplements: [],
-      anchor: [...anchor],
-      anchorSummary: anchorSummary(anchor),
       onRefreshSummary: () => undefined,
       onSupplementChange: () => undefined,
     }),
-    [flow, anchor, step.title],
+    [flow],
   );
 
   useEffect(() => {

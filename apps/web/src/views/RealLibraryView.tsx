@@ -339,19 +339,15 @@ const TablePanel: React.FC<TablePanelProps> = ({
     }
   }, [code, lineId, optional, reload, onChanged, showToast]);
 
-  /** 行点击 → 上报右栏行详情（补充字段 + 溯源全量 + 业务字段快照） */
+  /** 行点击 → 上报右栏行详情（补充字段 + 溯源全量） */
   const handleRowClick = useCallback(
     (ri: number) => {
       const row = rows[ri];
       if (!row || !onRowSelect) return;
-      const detailOnly = new Set(DETAIL_ONLY_KEYS[code] ?? []);
       const fields: Record<string, string> = {};
       for (const [k, v] of Object.entries(row)) {
         if (k !== "__id") fields[k] = cellText(v);
       }
-      const businessFields = Object.keys(fields)
-        .filter((k) => !TRACE_SET.has(k) && !detailOnly.has(k))
-        .map((k) => ({ key: k, label: fieldLabel(code, k) }));
       onRowSelect({
         code,
         tableLabel: label,
@@ -363,7 +359,6 @@ const TablePanel: React.FC<TablePanelProps> = ({
         })),
         traceKeys: TRACE_KEYS.map((k) => ({ key: k, label: fieldLabel(code, k) })),
         traceEditable: !optional,
-        businessFields,
       });
     },
     [rows, code, label, optional, onRowSelect],

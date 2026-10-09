@@ -28,7 +28,7 @@
 
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
-import { FLOW_TOTAL, flowStep } from "@scene/contract";
+import { FLOW_TOTAL } from "@scene/contract";
 import {
   api,
   exportPptProgressStream,
@@ -76,51 +76,51 @@ function asDeliverableKind(code: string | null | undefined): DeliverableKind | n
   return code === "solution" || code === "construction" ? code : null;
 }
 
-/** 右栏：装配原料 + 两份是什么 + 导出结果（中栏只放正文，说明性内容归右栏） */
+/**
+ * 右栏：装配原料 + 导出结果（中栏只放正文，说明性内容归右栏）
+ *
+ * 变更表 #149（用户定调「没有价值的删除」）：这里只留两件对用户有用的事——
+ *  ① 装配原料的**统计**与"哪几步没产出（报告里会标「无信息」）"：前者是产出的规模，
+ *     后者是用户需要知道的缺口；逐步的步名 + 状态与流程轴第二次重复，删
+ *  ② 已导出文件的**绝对路径**（事实）
+ * 删掉：两份交付物的名字与说明（流程轴 chip 的 label/title 已说）、生成前提
+ * （引用的"场景锚以用户确认过的版本为准"随 v1.19 的确认动作一起失效，留着是误导）、
+ * 导出文件名规则（用户点导出自然看到结果，规则是噪声）与末尾口号。
+ */
 function deliveryNote(
   flow: ApiFlowStatus,
   paths: { files: string[] } | null,
   docxPaths: string[] = [],
   pptPaths: string[] = [],
 ): string {
+  // 装配原料 = 前面各步的步骤总结；没有任何产出的步骤会在交付物里标「无信息」
+  const sources = flow.steps.slice(0, FLOW_TOTAL - 1);
+  const hasTables = sources.filter((s) => s.progress.expectedTables > 0);
+  const done = hasTables.filter((s) => s.progress.tablesWithData > 0);
+  const tablesWithData = hasTables.reduce((n, s) => n + s.progress.tablesWithData, 0);
+  const tablesTotal = hasTables.reduce((n, s) => n + s.progress.expectedTables, 0);
+  const rowsTotal = hasTables.reduce((n, s) => n + s.progress.rows, 0);
+  const empty = sources.filter(
+    (s) => s.progress.expectedTables === 0 || s.progress.tablesWithData === 0,
+  );
+
   const lines = [
     "## 装配原料",
-    `前面 ${FLOW_TOTAL - 1} 步的步骤总结（每步一份）是装配原料；没有产出的步骤会在交付物里标「无信息」。`,
-    "",
-  ];
-  for (const s of flow.steps.slice(0, FLOW_TOTAL - 1)) {
-    lines.push(
-      `- 第 ${s.id} 步 ${s.title}：${s.state}　${
-        s.progress.expectedTables > 0
-          ? `${s.progress.tablesWithData}/${s.progress.expectedTables} 张表 · ${s.progress.rows} 行`
-          : "无信息表"
-      }`,
-    );
-  }
-  lines.push(
-    "",
-    "## 两份交付物",
-    `- ${deliveryLabel("solution")}：${deliveryHint("solution")}`,
-    `- ${deliveryLabel("construction")}：${deliveryHint("construction")}`,
-    "",
-    "## 生成前提",
-    "- 场景锚（表1-1）以**用户确认过的版本**为准；标「推断」的行不会被写进交付物",
+    `前面 ${FLOW_TOTAL - 1} 步的步骤总结（每步一份）是装配原料。`,
+    `- 已产出：${done.length}/${sources.length} 步 · ${tablesWithData}/${tablesTotal} 张表 · ${rowsTotal} 行`,
+    empty.length > 0
+      ? `- 没有产出的步骤会在交付物里标「无信息」：${empty.map((s) => `第 ${s.id} 步 ${s.title}`).join("、")}`
+      : "- 前面各步都有产出",
     "",
     "## 导出",
-  );
+  ];
   const md = paths?.files ?? [];
   for (const p of md) lines.push(`- Markdown：\`${p}\``);
   for (const p of docxPaths) lines.push(`- Word：\`${p}\``);
   for (const p of pptPaths) lines.push(`- PPT：\`${p}\``);
-  // 还没导出过：导出会写出哪几个文件，只说文件名规则（路径要等用户选完文件夹才知道）
   if (md.length === 0 && docxPaths.length === 0 && pptPaths.length === 0) {
-    lines.push(
-      `- Markdown：一次写两份，文件名是「{场景}${deliveryLabel("solution")}.md」与「{场景}${deliveryLabel("construction")}.md」`,
-      "- Word：同样两份（.docx），文件名规则同上",
-      "- PPT：按 B 站蓝色模版排中间页（5–10 页，无封面与尾页，问题→方案→价值），文件名规则同上（.pptx）",
-    );
+    lines.push("- 还没有导出过文件");
   }
-  lines.push("", "> 交付物只陈述信息与缺口，不含建议或判断——判断由使用者自己做。");
   return lines.join("\n");
 }
 
@@ -134,7 +134,6 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
   onReportChange,
 }) => {
   const { showToast } = useToast();
-  const step = flowStep(FLOW_TOTAL);
   /** 当前在看哪一份（变更表 #137）：两份都是正式交付物，中栏一次只显示一份 */
   const [tab, setTab] = useState<DeliverableKind>(DEFAULT_TAB);
   /** 两份一起取回：切份只换显示，不再发请求 */
@@ -403,20 +402,16 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
 
   const snapshot = useMemo<StageSnapshot>(
     () => ({
-      stage: 6,
-      stageLabel: step.title,
-      title: `第 ${FLOW_TOTAL}/${FLOW_TOTAL} 步 · ${step.title}`,
       rows: [],
       completeness: null,
       summary: deliveryNote(flow, mdPaths, docxPaths, pptPaths),
       summaryLoading: false,
       activeTable: null,
       supplements: [],
-      anchor: [],
       onRefreshSummary: () => void loadReports(),
       onSupplementChange: () => undefined,
     }),
-    [flow, mdPaths, docxPaths, pptPaths, step.title, loadReports],
+    [flow, mdPaths, docxPaths, pptPaths, loadReports],
   );
 
   useEffect(() => {

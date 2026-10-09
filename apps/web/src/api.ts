@@ -127,7 +127,6 @@ export interface ApiCompleteness {
   stage: number;
   expectedTables: number;
   tablesWithData: number;
-  missingTables: string[];
   gaps: ApiCompletenessGap[];
   percent: number;
 }

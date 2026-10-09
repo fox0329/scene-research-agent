@@ -1,12 +1,6 @@
 import { fitWidthsMinHeight, toPercentWidths, type FitColumn } from "./table-fit";
-import React, {
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { AutoGrowTextarea } from "./AutoGrowTextarea";
 
 export interface ColumnDef<T> {
   key: keyof T & string;
@@ -83,56 +77,23 @@ function loadWidths(storageKey: string | undefined, colKeys: string[]): Widths |
 }
 
 /**
- * 自适应高度的多行编辑器（用户定调：内容换行 + 行高随内容长）
- *
- * 为什么不是 `<input>`：单行输入框既显示不了换行，行高也永远只有一行。
- * 为什么不用固定 `rows={4}`：内容短时留白、内容长时框内滚动，都不叫"行高随内容"。
- * 这里按 scrollHeight 长高，并用 ResizeObserver 跟随列宽变化重算
- * （列被拖窄 → 换行变多 → 行随之变高）。
+ * 中栏长文本单元格：草稿留在本地，失焦才落库（逐键写库会把请求打爆）
+ * ——自适应高度与换行由 `AutoGrowTextarea` 负责，两处共用同一实现。
  */
-const AutoGrowTextarea: React.FC<{
+const CellTextarea: React.FC<{
   value: string;
   placeholder: string;
   ariaLabel: string;
   onCommit: (value: string) => void;
-}> = ({ value, placeholder, ariaLabel, onCommit }) => {
-  const ref = useRef<HTMLTextAreaElement>(null);
-
-  const grow = useCallback(() => {
-    const el = ref.current;
-    if (!el) return;
-    const next = `${el.scrollHeight}px`;
-    if (el.style.height !== next) el.style.height = next;
-  }, []);
-
-  useLayoutEffect(() => {
-    grow();
-  }, [grow]);
-
-  useEffect(() => {
-    const el = ref.current;
-    if (!el || typeof ResizeObserver === "undefined") return;
-    const ro = new ResizeObserver(() => grow());
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [grow]);
-
-  return (
-    <textarea
-      ref={ref}
-      className="cell-input cell-input--multi"
-      rows={1}
-      defaultValue={value}
-      placeholder={placeholder}
-      aria-label={ariaLabel}
-      onInput={grow}
-      onBlur={(e) => {
-        const next = e.currentTarget.value;
-        if (next !== value) onCommit(next);
-      }}
-    />
-  );
-};
+}> = ({ value, placeholder, ariaLabel, onCommit }) => (
+  <AutoGrowTextarea
+    value={value}
+    placeholder={placeholder}
+    ariaLabel={ariaLabel}
+    commitOnBlur
+    onChange={onCommit}
+  />
+);
 
 /**
  * 通用场景表格组件
@@ -539,7 +500,7 @@ export function SceneTable<T extends Record<string, unknown>>({
                   if (canEdit) {
                     return (
                       <td key={col.key} className="ed ed-multi">
-                        <AutoGrowTextarea
+                        <CellTextarea
                           value={String(value ?? "")}
                           placeholder={placeholderOf(col, row)}
                           ariaLabel={`${col.label}（第 ${ri + 1} 行）`}

@@ -1,8 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  FLOW_TOTAL,
-  STAGE_DEFS,
-  flowStep,
   rowBelongsToBlock,
   detailColumns,
   tableDef,
@@ -12,11 +9,7 @@ import {
 import { api, type ApiStagePanel, type ApiStageRow } from "../api";
 import { useAsync } from "../hooks/useAsync";
 import { SchemaTable, tableBlocks, tableCategories } from "../components/SchemaTable";
-import {
-  asSourceType,
-  type StageSnapshot,
-  type SupplementTable,
-} from "../components/stage-snapshot";
+import type { StageSnapshot, SupplementTable } from "../components/stage-snapshot";
 import { useToast } from "../components/Toast";
 
 /**
@@ -37,13 +30,12 @@ import { useToast } from "../components/Toast";
 interface RealStagePanelProps {
   projectId: string;
   stage: number;
-  stageLabel: string;
   onChanged?: () => void;
   /** 右栏数据面（null=加载中/不可用） */
   onStageSnapshot?: (snap: StageSnapshot | null) => void;
   /** 本步表集（流程定义给出，如 `flowStep(4).tables`）；缺省 = 该阶段全部表 */
   tables?: readonly string[];
-  /** 流程步骤号：右栏标题与后续动作按流程步走 */
+  /** 流程步骤号：本步数据与本步总结都按流程步取（阶段 1 横跨第 1、2 两步） */
   stepId?: number;
 
   /** 分析落库后自增：本组件收到变化就重取本步数据与阶段总结 */
@@ -58,7 +50,6 @@ interface RealStagePanelProps {
 export const RealStagePanel: React.FC<RealStagePanelProps> = ({
   projectId,
   stage,
-  stageLabel,
   onChanged,
   onStageSnapshot,
   tables,
@@ -195,24 +186,12 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
           tableCode: def.code,
           tableName: def.name,
           columns: cols.map((c) => ({ key: c.key, label: c.label })),
-          rows: tRows.map((r) => ({
-            id: r.id,
-            row: r.row,
-            sourceType: r.source_type,
-            source: r.source,
-            evidenceLevel: r.evidence_level,
-            authority: r.source_authority,
-          })),
+          rows: tRows.map((r) => ({ id: r.id, row: r.row })),
         });
       }
     }
 
     return {
-      stage,
-      stageLabel,
-      ...(stepId !== undefined
-        ? { title: `第 ${stepId}/${FLOW_TOTAL} 步 · ${flowStep(stepId).title}` }
-        : {}),
       rows,
       completeness: data.completeness ?? null,
       summary,
@@ -230,9 +209,6 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
     stage,
     activeTable,
     category,
-    stage,
-    stageLabel,
-    stepId,
     loadSummary,
     handleCellChange,
   ]);
