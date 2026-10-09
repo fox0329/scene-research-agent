@@ -1,6 +1,7 @@
 import React, { useCallback, useRef, useState } from "react";
 import { api, ingestStream } from "../api";
-import { pickSupportedFiles, describeSkipped } from "../constants";
+import { pickSupportedFiles, describeSkipped, splitOversizeFiles, describeOversize } from "../constants";
+import { FILE_UPLOAD_LIMIT_MB } from "@scene/contract";
 import { useToast } from "./Toast";
 
 /**
@@ -22,8 +23,8 @@ export const MaterialUpload: React.FC<{
 
   /** 批量上传：逐个解析入库，最后汇总每表行数 */
   const handleUploadFiles = useCallback(
-    async (files: File[], skippedNames: string[] = []) => {
-      setSkipNotice(describeSkipped(skippedNames));
+    async (files: File[], skipNotice = "") => {
+      setSkipNotice(skipNotice);
       if (!lineId) {
         showToast("目标资料库不存在");
         return;
@@ -88,8 +89,14 @@ export const MaterialUpload: React.FC<{
     const files = Array.from(e.target.files ?? []);
     e.target.value = "";
     if (files.length) {
-      const { files: ok, skippedNames } = pickSupportedFiles(files);
-      void handleUploadFiles(ok, skippedNames);
+      const { files: supported, skippedNames } = pickSupportedFiles(files);
+      // 体积预检放在发请求之前：超限文件当场说清"多大、上限多少、怎么办"，
+      // 不让它走到服务端换回一句英文 413（变更表 #155）
+      const { ok, oversize } = splitOversizeFiles(supported, FILE_UPLOAD_LIMIT_MB);
+      const notice = [describeSkipped(skippedNames), describeOversize(oversize, FILE_UPLOAD_LIMIT_MB)]
+        .filter(Boolean)
+        .join("；");
+      void handleUploadFiles(ok, notice);
     }
   };
 

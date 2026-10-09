@@ -9,7 +9,7 @@
  */
 
 import Fastify from "fastify";
-import { FLOW_LAST_STEP, flowStep } from "@scene/contract";
+import { FILE_UPLOAD_LIMIT_MB, FLOW_LAST_STEP, flowStep } from "@scene/contract";
 import type { FastifyInstance } from "fastify";
 import fastifyStatic from "@fastify/static";
 import fastifyMultipart from "@fastify/multipart";
@@ -163,7 +163,8 @@ export function createApp(deps: AppDeps): FastifyInstance {
 
   // ── M5 联真路由：项目/会话/阶段/资料库/知识库/系统 ──────
   app.register(fastifyMultipart, {
-    limits: { fileSize: 50 * 1024 * 1024 }, // 白皮书上限 50MB（契约 v1.4 口径）
+    // 上限口径收敛到契约（FILE_UPLOAD_LIMIT_MB），前端上传前预检读同一个数（变更表 #155）
+    limits: { fileSize: FILE_UPLOAD_LIMIT_MB * 1024 * 1024 },
   });
   registerUiRoutes(app, { db, dshClient, hub });
 

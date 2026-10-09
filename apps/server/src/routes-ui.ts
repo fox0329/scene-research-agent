@@ -24,6 +24,7 @@ import type {
 } from "@scene/contract";
 import {
   ANCHOR_TABLE_CODE,
+  FILE_UPLOAD_LIMIT_MB,
   FLOW_LAST_STEP,
   REPORT_KINDS,
   flowStepLabel,
@@ -34,6 +35,7 @@ import {
 import { alignmentWithBrief, anchorFixedRows, buildFlowStatus, type InfoRow } from "@scene/domain";
 import type { DbInstance } from "@scene/infra";
 import { scenarioLineContext } from "./scenario-lines.js";
+import { describeUploadFailure } from "./upload-limits.js";
 import { dedupeLibrary } from "./library-service.js";
 import {
   parseDocument,
@@ -276,7 +278,17 @@ export function registerUiRoutes(app: FastifyInstance, deps: UiRoutesDeps): void
     let file: Awaited<ReturnType<typeof request.file>>;
     try {
       file = await request.file();
-    } catch {
+    } catch (err) {
+      // 文件超上限（413）要单独说清楚：原来一律回「需要 multipart 表单」，
+      // 用户以为是自己传错了格式，其实只是文件太大（变更表 #155）
+      const tooLarge = describeUploadFailure(err, FILE_UPLOAD_LIMIT_MB);
+      if (tooLarge) {
+        return reply.code(413).send({
+          statusCode: 413,
+          code: "FILE_TOO_LARGE",
+          message: tooLarge,
+        });
+      }
       return badRequest(reply, "需要 multipart 表单（字段 file + product_line_id）");
     }
     if (!file) return badRequest(reply, "缺少上传文件（multipart 字段 file）");
@@ -301,7 +313,22 @@ export function registerUiRoutes(app: FastifyInstance, deps: UiRoutesDeps): void
       : ".bin";
     const jobId = `ingest-${Date.now()}-${++seq}`;
     const filePath = join(tmpdir(), `${jobId}${suffix}`);
-    const buffer = await file.toBuffer();
+    // 体积超限是在**读流**这一步抛的（`toBuffer()`），不在 `request.file()`：
+    // 只包住 request.file() 会漏掉这个 413，用户还是看到那句英文（变更表 #155）
+    let buffer: Buffer;
+    try {
+      buffer = await file.toBuffer();
+    } catch (err) {
+      const tooLarge = describeUploadFailure(err, FILE_UPLOAD_LIMIT_MB);
+      if (tooLarge) {
+        return reply.code(413).send({
+          statusCode: 413,
+          code: "FILE_TOO_LARGE",
+          message: tooLarge,
+        });
+      }
+      throw err;
+    }
     writeFileSync(filePath, buffer);
 
     const runId = `${jobId}#${seq}`;
