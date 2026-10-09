@@ -10,6 +10,7 @@
 export {
   gradeSource,
   gradeEvidence,
+  gradeAnalysisEvidence,
   verifyCitation,
 } from "./evidence.js";
 

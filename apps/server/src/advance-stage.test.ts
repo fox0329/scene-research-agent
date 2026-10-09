@@ -522,6 +522,24 @@ describe("createAdvanceStageCommand", () => {
       deps = { db, dshClient };
     });
 
+    it("证据分级由领域层派生且列/JSON 一致（变更表 #167）：材料提取→B、推断→C，都不落 D", async () => {
+      const cmd = createAdvanceStageCommand(deps);
+      await collectEvents(cmd.execute({ scenarioId: "sc-1", stage: 1 }));
+      const rows = db.stageDataRepo.list();
+      // 样本行带可定位出处「需求文档.pdf:5」→ AI提取 → B（间接有据）
+      const extracted = rows.find((r) => r.source_authority === "T3");
+      expect(extracted?.evidence_level).toBe("B");
+      expect(extracted?.row["evidence_level"]).toBe("B");
+      expect(extracted?.row["authority"]).toBe("T3");
+      // 分析行永不为 D（D 是材料入库的规则，用户定调 v1.35）
+      expect(rows.some((r) => r.evidence_level === "D")).toBe(false);
+      // 列与行 JSON 两处必须一致，不能"列说 B、JSON 说 C"
+      for (const r of rows) {
+        expect(r.row["evidence_level"]).toBe(r.evidence_level);
+        expect(r.row["authority"]).toBe(r.source_authority);
+      }
+    });
+
     it("应产出 progress → row... → completeness → summary → done 事件", async () => {
       const cmd = createAdvanceStageCommand(deps);
       const events = await collectEvents(

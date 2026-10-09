@@ -125,6 +125,12 @@ test("流程轴：阶段名一行 + 本步输出物一行，点第二行换中�
   await expect(outputs.filter({ hasText: "需求-能力对照" })).toBeInViewport();
   await expect(page.locator(".ws").evaluate((el) => el.scrollTop)).resolves.toBeGreaterThan(0);
 
+  // 场景锚（表1-1）的面板标题同样只留表名——用户复查时问「表1-1 的表头为什么还在」：
+  // `SchemaTable` 当天改了，`AnchorFoldPanel` 漏了（表号仍留在契约里做内部交叉引用，只是不上界面）
+  await page.locator(".flow-nodes .flow-node", { hasText: "场景定义" }).click();
+  await expect(page.locator(".ws .pnl-h h2").first()).toContainText("场景概述");
+  await expect(page.locator(".ws")).not.toContainText("表1-1");
+
   // 切阶段名 → 第二行换成那一步的输出物（第 6 步：价值与指标 / 试点与验收）
   await page.locator(".flow-nodes .flow-node", { hasText: "价值验证" }).click();
   await expect(page.locator(".flow-outputs .chip").filter({ hasText: "试点与验收" })).toBeVisible();

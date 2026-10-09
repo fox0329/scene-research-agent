@@ -1154,7 +1154,12 @@ export const TABLES: readonly TableDef[] = [
   ...TABLES_STAGE_3,
   ...TABLES_STAGE_4,
   ...TABLES_STAGE_5,
-].map((t) => ({ ...t, columns: [...t.columns, ...VERIFICATION_COLUMNS] }));
+].map((t) =>
+  // 表1-1（场景概述）例外：用户定调 v1.35（2026-10-09）「表1-1 只有项和内容两列，不需要核实」。
+  // 它是固定 6 行的画像概览，不是用来记录"这条信息核实过没有"的分析表；
+  // 附加两列会连带产生假问题——必填列校验按"核实两列必填"判它缺值，而界面上根本没这两列。
+  t.code === "表1-1" ? t : { ...t, columns: [...t.columns, ...VERIFICATION_COLUMNS] },
+);
 
 /** 信息表表号联合类型（由注册表派生，供数据层使用） */
 export type InfoTableCode = (typeof TABLES)[number]["code"];

@@ -11,6 +11,9 @@
  *  - 折叠/展开一定是 `<button>`，`aria-expanded` 正确（键盘可达）
  *  - **表头只放标题 + 该表的动作**：用户定调"中栏只重点显示场景概述这个表格，
  *    其他的都不要干扰"，所以解释性文案（属主说明、口径复述）不再出现在表头
+ *  - **标题里不带「表1-1」表号**（用户定调 2026-10-09：「表头只留表名，『表X-X』这个表号删掉
+ *    ——有名称就够了」。`SchemaTable` 当时就改了，这个面板漏了；用户复查时问
+ *    "表1-1 的表头为什么还在"）。表号仍留在契约里做内部交叉引用，只是不上界面
  */
 
 import React, { useId, useState } from "react";
@@ -42,7 +45,7 @@ export const AnchorFoldPanel: React.FC<AnchorFoldPanelProps> = ({
     <div className="pnl">
       <div className="pnl-h">
         <div>
-          <h2>表1-1 场景概述{editable ? "（可就地编辑）" : ""}</h2>
+          <h2>场景概述{editable ? "（可就地编辑）" : ""}</h2>
         </div>
         <div className="pnl-actions">
           <button

@@ -41,6 +41,7 @@ import {
   LAST_STAGE,
   checkStageCompleteness,
   gapsBrief,
+  gradeAnalysisEvidence,
   gradeSource,
   parseCitations,
   validateIncomingRows,
@@ -660,19 +661,29 @@ async function* executeAdvanceStage(
     const { source_type: declared, confirm_state: _ignored, ...fields } = row.fields;
     // 来源标记（变更表 #162）：模型声明优先，未声明按出处如实判定，不替模型声称"材料提取"
     const sourceType = resolveSourceType(declared ?? row.source_type, row.source);
+    // 来源权威性 / 证据分级只出自领域层（AGENTS §3.5：分级是判定，LLM 不进入判定路径）。
+    // 分析行按 A/B/C 三分（变更表 #167，用户定调 v1.35）——「D 不得入库」只管材料入库。
+    // 两处同步写：库里是列，行 JSON 里也有这两个字段（阶段小结读它），
+    // 只改一处就会出现"列说 C、JSON 说 B"（#166 的同一类问题）。
+    const authority = gradeSource(sourceType);
+    const evidenceLevel = gradeAnalysisEvidence(
+      sourceType,
+      parseCitations(row.source ?? "").length > 0,
+    );
+    const normalized: InfoRow = { ...fields, authority, evidence_level: evidenceLevel };
     const inserted = db.stageDataRepo.insert({
       scenario_id: scenarioId,
       stage,
       table_code: row.table_code as TableCode,
-      row: fields,
+      row: normalized,
       is_stale: false,
       source_type: sourceType,
       source: row.source,
       // 变更表 #162：来源权威性按 G-R1 的确定性映射派生（用户补充 T1 / 用户确认 T2 /
       // AI提取 T3 / AI推断 T4）。原来一律写死 T3，把"模型推断"伪装成"材料提取"，
       // 右栏的来源权威性列因此失去分辨力。
-      source_authority: gradeSource(sourceType),
-      evidence_level: "B",
+      source_authority: authority,
+      evidence_level: evidenceLevel,
     });
     writtenRows.push(inserted);
     yield emit({
@@ -680,7 +691,7 @@ async function* executeAdvanceStage(
       stage,
       tableCode: row.table_code,
       rowId: inserted.id,
-      fields,
+      fields: normalized,
     });
   }
 

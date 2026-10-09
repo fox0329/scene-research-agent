@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  gradeAnalysisEvidence,
   gradeSource,
   gradeEvidence,
   verifyCitation,
@@ -136,5 +137,28 @@ describe("verifyCitation", () => {
   it("协议残缺作废", () => {
     expect(verifyCitation("https://")).toBe(false);
     expect(verifyCitation("http:/example.com")).toBe(false);
+  });
+});
+
+describe("gradeAnalysisEvidence — 分析行的证据分级（变更表 #167，用户定调 v1.35）", () => {
+  it("用户说的：用户补充 A、用户确认 B", () => {
+    expect(gradeAnalysisEvidence("用户补充")).toBe("A");
+    expect(gradeAnalysisEvidence("用户确认")).toBe("B");
+  });
+
+  it("材料提取：有可定位出处 B（间接有据，与材料入库行同口径）；出处给不出来 C", () => {
+    expect(gradeAnalysisEvidence("AI提取", true)).toBe("B");
+    expect(gradeAnalysisEvidence("AI提取", false)).toBe("C");
+  });
+
+  it("AI 推断一律 C，且任何来源类型都产不出 D（「D 不得入库」只管材料入库）", () => {
+    expect(gradeAnalysisEvidence("AI推断")).toBe("C");
+    expect(gradeAnalysisEvidence("AI推断", true)).toBe("C");
+    const all = (["用户补充", "用户确认", "AI提取", "AI推断"] as const).flatMap((t) => [
+      gradeAnalysisEvidence(t),
+      gradeAnalysisEvidence(t, true),
+    ]);
+    expect(all).not.toContain("D");
+    expect(new Set(all)).toEqual(new Set(["A", "B", "C"]));
   });
 });

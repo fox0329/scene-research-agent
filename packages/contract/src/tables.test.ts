@@ -222,8 +222,13 @@ describe("表定义注册表 — 关键结构", () => {
     ]);
   });
 
-  it("每张表都带核实两列（v1.27：每条信息都要回答准不准·客不客观·为什么）", () => {
-    for (const t of TABLES) {
+  it("每张表都带核实两列（v1.27），但表1-1 例外（用户定调 v1.35：它只有项和内容两列，不需要核实）", () => {
+    // 例外要有据可查：表1-1 是固定 6 行的画像概览，附加核实列只会产生
+    // "必填列校验判它缺值、界面上根本没有这两列"的假问题
+    const anchor = TABLES.find((t) => t.code === "表1-1");
+    expect(anchor?.columns.some((c) => c.key === "verification_verdict")).toBe(false);
+    expect(anchor?.columns.some((c) => c.key === "verification")).toBe(false);
+    for (const t of TABLES.filter((x) => x.code !== "表1-1")) {
       const keys = t.columns.map((c) => c.key);
       const verdict = t.columns.find((c) => c.key === "verification_verdict");
       const explain = t.columns.find((c) => c.key === "verification");

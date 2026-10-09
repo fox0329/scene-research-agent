@@ -83,6 +83,42 @@ export function gradeEvidence(
 }
 
 /**
+ * 分析行的证据分级（G-R2 的 A/B/C 三分；用户定调 v1.35，2026-10-09）
+ *
+ * 「D 级不得入库」是**材料入库**的规则：M1–M5 是从资料里提取出来的东西，
+ * 无来源佐证的宣称必须删。**分析行不是**——G-R5 明确允许阶段 3 之后写推理，
+ * 用同一把尺子量就会得出"AI 推断 + 未核实 = D = 不许入库"，与 G-R5 直接打架
+ * （用户定调：「分析行是我们自己的推理产出，不该用同一把尺子量」，判断成立）。
+ *
+ * 所以分析行只用 A/B/C，**结构上产不出 D**：
+ *   用户补充 → A（一手信息）
+ *   用户确认 → B
+ *   AI 提取 + 有可定位出处 → B（间接有据，与材料入库行同口径）
+ *   AI 提取 + 出处给不出来 → C（按推断对待）
+ *   AI 推断 → C（架构推断）
+ * 「推断不许写成客户事实」不靠这一列，由确定性自检项「把推断写成客户事实」
+ * 「硬结论无依据」另行把关。
+ *
+ * @param sourceType - 数据来源标记
+ * @param hasLocatableSource - 出处是否可定位到 `文件名:页码`（由 `parseCitations` 判定）
+ */
+export function gradeAnalysisEvidence(
+  sourceType: SourceType,
+  hasLocatableSource = false,
+): EvidenceLevel {
+  if (sourceType === "用户补充") {
+    return "A";
+  }
+  if (sourceType === "用户确认") {
+    return "B";
+  }
+  if (sourceType === "AI提取") {
+    return hasLocatableSource ? "B" : "C";
+  }
+  return "C";
+}
+
+/**
  * 校验来源引用格式（G-R0 溯源铁律：格式不合法即作废）
  *
  * 合法格式二选一：
