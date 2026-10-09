@@ -17,8 +17,9 @@ import { join } from "node:path";
  *  ② 点第二行的某一项 → 中栏真的换成它（表 → 那张表的表格）；
  *  ③ 第二行在中栏滚动容器 `.ws` 外面 → 上下滚表格时它始终可见（用户要解决的正是这个）；
  *  ④ 中栏不再自己再来一行表名（上一版曾在表格上面压一层粘性表头，用户否掉了）；
- *  ⑤ 交付物这一步例外（变更表 #140）：两份交付物（解决方案 / 建设工作方案）的切换入口
- *     在**中栏顶部**行首（靠左），本步动作靠右，流程轴第二行在这一步不再画这两个 chip。
+ *  ⑤ 交付物这一步例外（变更表 #140 立、#147 改）：两份交付物（解决方案 / 建设工作方案）的切换入口
+ *     在**中栏顶部**（靠左），本步动作靠右；#147 起标题「交付物」独占第一行，这两组落到
+ *     **标题下面那一行**（对齐流程轴「步骤名 + 表名」的两行结构），流程轴第二行在这一步不再画 chip。
  */
 
 const LIVE = "http://127.0.0.1:46175";
@@ -144,10 +145,23 @@ test("交付物这一步：两份交付物在中栏顶部切换，流程轴第�
   await expect(chips.nth(1)).toHaveText("建设工作方案");
   await expect(chips.filter({ hasText: "解决方案" })).toHaveClass(/active/);
 
+  // 变更表 #147（用户定调 2026-10-08）：标题「交付物」独占**第一行**，两份交付物与动作在**标题下面那一行**
+  // （对齐流程轴「步骤名 + 表名」的两行结构，原来 #140 是把它们合成一行）
+  const title = page.locator(".ws .pnl-h h2", { hasText: "交付物" });
+  await expect(title).toBeVisible();
+  const headBox = (await page.locator(".ws .pnl-h").boundingBox())!;
+  const titleBox = (await title.boundingBox())!;
+  const row = page.locator(".ws .pnl-h-row");
+  await expect(row).toBeVisible();
+  const rowBox = (await row.boundingBox())!;
+  // 第一行是标题、第二行在它下面，且第二行里放着 chip 与动作
+  expect(titleBox.y + titleBox.height).toBeLessThanOrEqual(rowBox.y + 2);
+  await expect(row.locator('.pnl-actions[aria-label="交付物"]')).toHaveCount(1);
+  await expect(row.locator(".pnl-actions--end")).toHaveCount(1);
+
   // chip 靠左、动作靠右，两组**同一行**（不是掉到下一行，也不是挤成一团）
   const chipsGroup = page.locator('.ws [aria-label="交付物"]');
   const actions = page.locator(".ws .pnl-actions--end");
-  const headBox = (await page.locator(".ws .pnl-h").boundingBox())!;
   const actionsBox = (await actions.boundingBox())!;
   const chipsBox = (await chipsGroup.boundingBox())!;
   const midY = (b: { y: number; height: number }) => b.y + b.height / 2;

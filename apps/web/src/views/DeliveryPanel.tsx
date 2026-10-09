@@ -406,86 +406,91 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
 
   return (
     <div className="pnl">
-      {/* 变更表 #140（用户定调）：动作行与两份交付物的 chip 合成**中栏顶部一行**——
-          左边是这一份还是那一份（解决方案 / 建设工作方案，原来挂在流程轴第二行），
-          右边是本步动作（生成 / 编辑 / 导出 Word / 导出 PPT / 导出 Markdown）。
-          变更表 #140 补充：两组位置对调（chip 靠左、动作靠右） */}
-      <div className="pnl-h pnl-h--wrap">
-        {/* 两份交付物：放行首（用户定调「解决方案 和 工作方案放左边」）。名字取契约
-            `REPORT_KIND_LABEL`（与报告标题、导出文件名同源），`active` 高亮当前这一份，
-            点一下切份（切份丢弃草稿） */}
-        <div className="pnl-actions" role="group" aria-label="交付物">
-          {DELIVERY_OUTPUTS.map((o) => (
-            <button
-              key={o.key}
-              type="button"
-              className={`chip${tab === o.key ? " active" : ""}`}
-              title={deliveryHint(o.key)}
-              aria-pressed={tab === o.key}
-              onClick={() => handlePickReport(o.key)}
-            >
-              {o.label}
-            </button>
-          ))}
-        </div>
-        <div className="pnl-actions pnl-actions--end">
-          <button
-            className="btn primary"
-            type="button"
-            disabled={gen.running}
-            onClick={handleGenerate}
-          >
-            {gen.running
-              ? `撰写中… ${gen.elapsedLabel}`
-              : generated
-                ? "重新生成报告"
-                : "生成报告"}
-          </button>
-          {draft !== null ? (
-            <>
+      {/* 变更表 #140（用户定调）：两份交付物的 chip 与动作从流程轴第二行挪到中栏顶部，
+          左边是这一份还是那一份（解决方案 / 建设工作方案），右边是本步动作
+          （生成 / 编辑 / 导出 Word / 导出 PPT / 导出 Markdown）；#140 补充：chip 靠左、动作靠右。
+          变更表 #147（用户定调 2026-10-08）：**#140 的"合成一行"作废**——标题「交付物」独占第一行，
+          两份交付物与动作合并到标题**下面那一行**，对齐流程轴「步骤名 + 表名」的两行结构；
+          行内仍保持 chip 靠左、动作靠右 */}
+      <div className="pnl-h pnl-h--stack">
+        <h2>交付物</h2>
+        <div className="pnl-h-row">
+          {/* 两份交付物：放行首（用户定调「解决方案 和 工作方案放左边」）。名字取契约
+              `REPORT_KIND_LABEL`（与报告标题、导出文件名同源），`active` 高亮当前这一份，
+              点一下切份（切份丢弃草稿） */}
+          <div className="pnl-actions" role="group" aria-label="交付物">
+            {DELIVERY_OUTPUTS.map((o) => (
               <button
-                className="btn primary"
+                key={o.key}
                 type="button"
-                disabled={saving || draft.trim() === ""}
-                onClick={() => void handleSave()}
+                className={`chip${tab === o.key ? " active" : ""}`}
+                title={deliveryHint(o.key)}
+                aria-pressed={tab === o.key}
+                onClick={() => handlePickReport(o.key)}
               >
-                {saving ? "保存中…" : "保存"}
+                {o.label}
               </button>
-              <button className="btn" type="button" disabled={saving} onClick={() => setDraft(null)}>
-                取消
+            ))}
+          </div>
+          <div className="pnl-actions pnl-actions--end">
+            <button
+              className="btn primary"
+              type="button"
+              disabled={gen.running}
+              onClick={handleGenerate}
+            >
+              {gen.running
+                ? `撰写中… ${gen.elapsedLabel}`
+                : generated
+                  ? "重新生成报告"
+                  : "生成报告"}
+            </button>
+            {draft !== null ? (
+              <>
+                <button
+                  className="btn primary"
+                  type="button"
+                  disabled={saving || draft.trim() === ""}
+                  onClick={() => void handleSave()}
+                >
+                  {saving ? "保存中…" : "保存"}
+                </button>
+                <button className="btn" type="button" disabled={saving} onClick={() => setDraft(null)}>
+                  取消
+                </button>
+              </>
+            ) : (
+              <button
+                className="btn"
+                type="button"
+                disabled={!live || body === ""}
+                onClick={() => setDraft(body)}
+              >
+                编辑
               </button>
-            </>
-          ) : (
+            )}
             <button
               className="btn"
               type="button"
-              disabled={!live || body === ""}
-              onClick={() => setDraft(body)}
+              disabled={busyWord || busyPpt}
+              onClick={() => void pickDirThen("word")}
             >
-              编辑
+              {busyWord ? "导出中…" : "导出Word文档"}
             </button>
-          )}
-          <button
-            className="btn"
-            type="button"
-            disabled={busyWord || busyPpt}
-            onClick={() => void pickDirThen("word")}
-          >
-            {busyWord ? "导出中…" : "导出Word文档"}
-          </button>
-          {/* PPT（变更表 #141）：点一下全自动排中间页（5–10 页、无封面尾页）；等待期显示阶段文案 */}
-          <button
-            className="btn"
-            type="button"
-            disabled={busyPpt || busyWord}
-            title={pptPhase ?? "按 B 站蓝色模版排中间页：5–10 页，不要封面与尾页，突出问题、方案与价值"}
-            onClick={() => void pickDirThen("ppt")}
-          >
-            {busyPpt ? (pptPhase ?? "PPT 导出中…") : "导出PPT文档"}
-          </button>
-          <button className="btn" type="button" disabled={busy} onClick={() => void handleExport()}>
-            {busy ? "导出中…" : "导出 Markdown"}
-          </button>
+            {/* PPT（变更表 #141）：点一下全自动排中间页（5–10 页、无封面尾页）；等待期显示阶段文案 */}
+            <button
+              className="btn"
+              type="button"
+              disabled={busyPpt || busyWord}
+              title={pptPhase ?? "按 B 站蓝色模版排中间页：5–10 页，不要封面与尾页，突出问题、方案与价值"}
+              onClick={() => void pickDirThen("ppt")}
+            >
+              {busyPpt ? (pptPhase ?? "PPT 导出中…") : "导出PPT文档"}
+            </button>
+            <button className="btn" type="button" disabled={busy} onClick={() => void handleExport()}>
+              {busy ? "导出中…" : "导出 Markdown"}
+            </button>
+          </div>
         </div>
         {manualDir !== null ? (
           <div className="pnl-actions dir-row">

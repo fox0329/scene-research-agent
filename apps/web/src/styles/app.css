@@ -2185,9 +2185,30 @@ td.ed {
   gap: var(--s2);
 }
 
+/* 变更表 #147（用户定调 2026-10-08）：标题独占第一行，chip 与动作落到标题下面那一行
+   （对齐流程轴「步骤名 + 表名」的两行结构）。所以面板头改成纵向堆叠，第二行内部仍横向排 */
+.pnl-h--stack {
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--s2);
+}
+
+.pnl-h-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s2);
+}
+
 .pnl-h--wrap > .pnl-actions {
   flex-wrap: wrap;
   flex-shrink: 1;
+}
+
+.pnl-h--stack .pnl-h-row > .pnl-actions {
+  flex-wrap: wrap;
+  flex-shrink: 1;
+  min-width: 0;
 }
 
 /* 同一行里靠右的那一组（本步动作按钮）：吃掉左侧余量推到行末 */
