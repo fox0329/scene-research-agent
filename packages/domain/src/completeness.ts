@@ -79,10 +79,29 @@ export interface StageCompleteness {
 // ─── 取值判定 ──────────────────────────────────────────────
 
 /** 视为「空」的取值：null / undefined / 空串 / 纯空白 / 「未提供」 */
+/**
+ * 「（待研究）」这类**占位**不是信息（变更表 #171）
+ *
+ * 提示词要求模型"依据不足就写（待研究），不要空着不写"，于是占位会混进数据里。
+ * 判定空值时必须认它——否则"整份定义全是（待研究）"会被判成"已写出内容"，
+ * 第 1 步显示就绪、下游照跑（用户质问："没有场景定义，后面的流程怎么跑完的？"）。
+ *
+ * 判定法：剥掉**开头**的占位标记后，剩下的是空的或只接一个分隔符 → 就是占位。
+ * 这样「（待定）后签的补充协议已签」不会被误判为空（它是真信息）；
+ * 而模型带尾巴的写法「（待研究）——需先确定场景名称，才能框定…」照旧判空。
+ */
+// 交替项**长的在前**：「补充」必须排在「补」前面，否则「（待补充）」会被切成「（待补」+「充）」而漏判
+const PLACEHOLDER_HEAD = /^[（(]?\s*待(研究|补充|确认|补|定)\s*[）)]?/;
+const AFTER_PLACEHOLDER = /^[—\-－:：,，。.、]/;
+
 export function isEmptyValue(v: unknown): boolean {
   if (v === null || v === undefined) return true;
   const s = String(v).trim();
-  return s === "" || s === "未提供";
+  if (s === "" || s === "未提供" || s === "暂无") return true;
+  const head = PLACEHOLDER_HEAD.exec(s);
+  if (!head) return false;
+  const rest = s.slice(head[0].length).trim();
+  return rest === "" || AFTER_PLACEHOLDER.test(rest);
 }
 
 /** 必填判定：required 为真；条件必填（requiredWhen）不做机器判定，交由人工/提示词 */

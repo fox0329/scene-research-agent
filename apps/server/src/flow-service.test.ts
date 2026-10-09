@@ -71,6 +71,20 @@ describe("flow-service — 锁步与就绪", () => {
     expect(s.readyHint).toContain("采购特征");
   });
 
+  it("整份定义全是「（待研究）」占位 = 没写出画像（变更表 #171：占位不是信息）", () => {
+    const { db, scenarioId } = setup();
+    ensureAnchorRows(db, scenarioId, "智慧医院");
+    writeAnchorRows(db, scenarioId, [
+      { item: "场景边界", content: "（待研究）——需先确定场景名称，才能框定包含哪些场所/环节", source_type: "AI推断" },
+      { item: "生产对象", content: "（待研究）", source_type: "AI推断" },
+      { item: "核心生产系统", content: "待定：场景确定后按其工艺过程与配套安全、运维展开", source_type: "AI推断" },
+    ]);
+    const s = state(db, scenarioId, 1);
+    // 占位符不是信息：否则"空定义"会被判成"已写出 3 项"，界面显示就绪、下游照跑
+    expect(s.ready).toBe(false);
+    expect(s.readyHint).toContain("先说一句场景名称");
+  });
+
   it("第 1 步就绪 = 智能体写出业务画像（**不要求用户逐项确认**）", () => {
     const { db, scenarioId } = setup();
     ensureAnchorRows(db, scenarioId, "智慧水务");

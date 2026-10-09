@@ -160,13 +160,15 @@ export function anchorCompletion(rows: readonly AnchorRow[]): AnchorCompletion {
  * 这些**都不是信息**，不能用来覆盖已经写出来的真内容。
  */
 export function isPlaceholderAnchorContent(content: string): boolean {
-  const t = content.trim();
-  if (t === "" || t === "未提供") return true;
   /**
-   * 模型的习惯是**带尾巴**：「（待研究）——需先确定场景名称，才能框定包含哪些场所/环节」
-   * （实测就是这么覆盖掉智慧医院的场景定义的），所以用"包含"而不是"等于"来判定。
+   * 与全局判空同一口径（`isEmptyValue`）：空串 / 「未提供」/ 「暂无」/
+   * 以「（待研究）」「待定：…」这类占位**开头**的文本。
+   *
+   * 为什么必须认它：模型拿不出依据时会写占位（还可能带尾巴，实测出现过
+   * 「（待研究）——需先确定场景名称，才能框定包含哪些场所/环节」），
+   * 那一次点击就把智慧医院/智慧电力的场景定义整表洗掉了。
    */
-  return /[（(]\s*待(研究|定|补|确认)\s*[）)]/.test(t);
+  return isEmptyValue(content);
 }
 
 export function mergeAnchorRows(
