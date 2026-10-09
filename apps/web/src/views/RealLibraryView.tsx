@@ -500,6 +500,9 @@ const LEGACY_TEMP_NAME_RE = /^ingest-\d+-\d+\.[A-Za-z0-9]+$/;
  * 刻意**不用表格**：主表（M1-M5/O）的列语义是逐格编辑，而这里是"一条文件一行"的清单，
  * 用条目更像列表也更省横向空间（同 #149「右栏不用表格」的口径）。
  */
+/** 上传状态区（进度 / 跳过清单）的容器 id：头部固定高，状态不能待在头部（变更表 #157） */
+const LIB_UPLOAD_STATUS_ID = "lib-upload-status-slot";
+
 const LibraryMaterialsPanel: React.FC<{
   lineId: string;
   /** 行数据变化（入库/编辑/删行）后由父级 +1，触发本面板重取 */
@@ -903,23 +906,24 @@ export const RealLibraryView: React.FC<{
     ? Object.values(activeLine.row_counts).reduce((a, b) => a + b, 0)
     : 0;
   /**
-   * 删除资料库的可用条件（服务端还会再判"是否仍被活场景占用"，两处不冲突）：
-   * ① 空线——还有行就先删资料（"先删资料再删库"）；② 非通用库——通用库全场景共享，禁删。
+   * 删除资料库的可用条件（变更表 #157 修正）：只看"还有没有行"。
+   *
+   * 原来还加了"通用库禁删"（`scenario_id` 为空即禁），可库里没有"通用库"标记——用户自己
+   * 新建的库同样没场景，于是永远删不掉。真正该拦的是"还有行"（删了就把分析依据抽走）与
+   * "仍被活场景引用"，后者只有服务端知道（勾选集合不在前端），所以按钮先放开、
+   * 由服务端 409 给出准确原因（前端把它如实弹出来）。
    */
-  const isCommonLine = !activeLine?.scenario_id;
-  const canDeleteLine = Boolean(activeLine) && !isCommonLine && totalRows === 0;
+  const canDeleteLine = Boolean(activeLine) && totalRows === 0;
   const deleteLineHint = !activeLine
     ? "先选择一条资料库"
-    : isCommonLine
-      ? "通用资料库（所有场景共享）不能删除"
-      : totalRows > 0
-        ? `该资料库还有 ${totalRows} 行资料，先删资料再删库`
-        : "删除该资料库（不可恢复）";
+    : totalRows > 0
+      ? `该资料库还有 ${totalRows} 行资料，先删资料再删库`
+      : "删除该资料库（不可恢复；仍被场景引用的库会被服务端拦下并说明原因）";
 
   return (
     <>
       <div className="pgh">
-        <div style={{ display: "flex", alignItems: "center", gap: "var(--s3)" }}>
+        <div className="pgh-left">
           <div className="pgt">产品资料库</div>
           {lines.length > 0 ? (
             <>
@@ -957,6 +961,8 @@ export const RealLibraryView: React.FC<{
         <div className="pga">
           <MaterialUpload
             lineId={lineId}
+            /* 状态区搬到内容区顶部：头部固定 48px，进度条挤在这里会压到 Tab 栏（变更表 #157） */
+            statusSlotId={LIB_UPLOAD_STATUS_ID}
             onDone={() => {
               setReloadTick((t) => t + 1);
               summary.reload();
@@ -978,7 +984,11 @@ export const RealLibraryView: React.FC<{
         ))}
       </div>
 
-      <div className="ws">{renderBody()}</div>
+      <div className="ws">
+        {/* 上传进度 / 跳过清单的落点：放在可滚动的内容区里，多长都不挤头部 */}
+        <div id={LIB_UPLOAD_STATUS_ID} className="lib-upload-status" />
+        {renderBody()}
+      </div>
     </>
   );
 };

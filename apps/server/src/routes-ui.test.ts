@@ -1060,7 +1060,7 @@ describe("资料库路由", () => {
 
 describe("资料文件删除入口（变更表 #156）", () => {
   let h: Harness;
-  /** 场景专属库（可删）：通用库一律禁删，所以删除用例都用专属库 */
+  /** 专用库（0 行、无引用时一律可删；变更表 #157 起不再按"有没有场景"判） */
   let lineId: string;
   beforeEach(() => {
     h = makeHarness();
@@ -1237,8 +1237,8 @@ describe("资料文件删除入口（变更表 #156）", () => {
     expect(h.db.productRepo.getById(product.id)).toBeDefined();
   });
 
-  it("DELETE product-lines/:id：空线可删（连同悬空引用一起清）", async () => {
-    // 悬空引用：链接记录指向另一条线归属的场景（scenario 外键必须真实存在）
+  it("DELETE product-lines/:id：空库但被活场景当共享输入引用 → 409 并点名场景（#157）", async () => {
+    // 「拓维产品」就是这种：靠勾选集合被「智慧会议室」引用。空库也不许删——删了那个场景会少一份输入。
     const { scenarioId } = seedScenario(h.db, "链接来源场景");
     h.db.scenarioLinkedLineRepo.insert({
       scenario_id: scenarioId,
@@ -1250,12 +1250,10 @@ describe("资料文件删除入口（变更表 #156）", () => {
       method: "DELETE",
       url: `/api/v1/library/product-lines/${lineId}`,
     });
-    expect(res.statusCode).toBe(200);
-    expect(res.json()).toMatchObject({ deleted: true, name: "专属库", removed_links: 1 });
-    expect(h.db.productLineRepo.getById(lineId)).toBeUndefined();
-    expect(
-      h.db.scenarioLinkedLineRepo.list({ where: "product_line_id = ?", params: [lineId] }),
-    ).toHaveLength(0);
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error).toContain("链接来源场景");
+    expect(res.json().error).toContain("共享输入");
+    expect(h.db.productLineRepo.getById(lineId)).toBeDefined();
   });
 
   it("DELETE product-lines/:id：非空 → 409 说清还有几行；删完资料再删即通过", async () => {
@@ -1281,16 +1279,53 @@ describe("资料文件删除入口（变更表 #156）", () => {
     expect(ok.statusCode).toBe(200);
   });
 
-  it("DELETE product-lines/:id：通用库（scenario_id 为空）一律禁删并说清原因", async () => {
-    const common = h.db.productLineRepo.insert({ name: "拓维产品" }).id;
+  it("DELETE product-lines/:id：没有场景、没有行、没被引用的库**可以删**（变更表 #157 修正）", async () => {
+    // 用户「新建产品线」出来的库就是这种：scenario_id 为空。旧实现把它当"通用库"一律禁删，
+    // 于是用户自己建的库永远删不掉（真机实测踩到）。判据改成看风险：空且没人引用就放行。
+    const mine = h.db.productLineRepo.insert({ name: "我新建的库" }).id;
     const res = await h.app.inject({
       method: "DELETE",
-      url: `/api/v1/library/product-lines/${common}`,
+      url: `/api/v1/library/product-lines/${mine}`,
+    });
+    expect(res.statusCode).toBe(200);
+    expect(h.db.productLineRepo.getById(mine)).toBeUndefined();
+  });
+
+  it("DELETE product-lines/:id：仍被活场景引用为共享输入 → 409 并点名是哪个场景", async () => {
+    // 空库、没有归属关系，但被场景的勾选集合引用着（拓维产品就是这种：1282 行 + 被智慧会议室引用）
+    const shared = h.db.productLineRepo.insert({ name: "共享库" }).id;
+    const { scenarioId: alive } = seedScenario(h.db, "活场景");
+    h.db.scenarioLinkedLineRepo.insert({
+      scenario_id: alive,
+      product_line_id: shared,
+    } as never);
+    const res = await h.app.inject({
+      method: "DELETE",
+      url: `/api/v1/library/product-lines/${shared}`,
     });
     expect(res.statusCode).toBe(409);
-    expect(res.json().error).toContain("通用资料库");
-    expect(res.json().error).toContain("不能删除");
-    expect(h.db.productLineRepo.getById(common)).toBeDefined();
+    expect(res.json().error).toContain("活场景");
+    expect(res.json().error).toContain("共享输入");
+    expect(h.db.productLineRepo.getById(shared)).toBeDefined();
+  });
+
+  it("DELETE product-lines/:id：场景已在勾选集合里取消引用（excluded=1）→ 放行，悬空引用一并清掉", async () => {
+    const line = h.db.productLineRepo.insert({ name: "被取消引用的库" }).id;
+    const { scenarioId: optOut } = seedScenario(h.db, "取消了的场景");
+    h.db.scenarioLinkedLineRepo.insert({
+      scenario_id: optOut,
+      product_line_id: line,
+      excluded: 1,
+    } as never);
+    const res = await h.app.inject({
+      method: "DELETE",
+      url: `/api/v1/library/product-lines/${line}`,
+    });
+    expect(res.statusCode).toBe(200);
+    expect(h.db.productLineRepo.getById(line)).toBeUndefined();
+    expect(
+      h.db.scenarioLinkedLineRepo.list({ where: "product_line_id = ?", params: [line] }),
+    ).toHaveLength(0);
   });
 
   it("DELETE product-lines/:id：仍被活着的场景当归属库 → 409（不让场景挂空）", async () => {

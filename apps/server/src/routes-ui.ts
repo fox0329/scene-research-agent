@@ -1491,24 +1491,23 @@ function registerLibraryRoutes(app: FastifyInstance, deps: UiRoutesDeps) {
   /**
    * 删除产品线（资料库）（变更表 #156，用户原话「只能选择，不能删除」）
    *
-   * 只允许删**空线**，且通用库一律禁删——产品线被场景的 `product_line_id` 指着，
-   * 删掉一条还有行的库等于把别人的分析依据抽走，这类操作不该有一个"顺手点了就没了"的入口。
-   * 三道闸门各给一句能照着做的话（为什么不行 + 下一步怎么办），全部返回 409（与 404 区分：
-   * 库在，只是现在不能删）。
+   * 闸门按**数据风险**判，不按"这条库叫什么类型"判（变更表 #157 修正）：
+   * 原实现把 `scenario_id IS NULL` 一律当"通用库"禁删，可库里根本没有"通用库"这个标记——
+   * 用户自己「新建产品线」出来的库同样没有场景，于是**永远删不掉**（真机实测：
+   * 删「UI复现-临时」被拒，理由是"通用资料库，不能删除"）。
+   * 现在的判据只有两条，各自对应一种真实损失：
+   *   ① 还有行 → 删了就把别人的分析依据抽走；
+   *   ② 仍被活场景引用（`scenario.product_line_id` 归属，或 `scenario_linked_line` 未取消引用）
+   *      → 删了场景就没资料库/少一份共享输入。
+   * 空且没人引用的库（含用户新建的空库、指向已删场景的悬空库）可以删。
+   * 拒绝一律 409 并给一句能照着做的话（与 404 区分：库在，只是现在不能删）。
    */
   app.delete("/api/v1/library/product-lines/:id", async (request, reply) => {
     const { id } = request.params as { id: string };
     const line = db.productLineRepo.getById(id);
     if (!line) return notFound(reply, "产品线不存在");
 
-    // 闸门 1：通用资料库（scenario_id IS NULL，如「拓维产品」）是所有场景共享的输入，禁删
-    if (line.scenario_id === null || line.scenario_id === undefined) {
-      return reply.code(409).send({
-        error: `「${line.name}」是通用资料库（所有场景共享），不能删除；不要了请改名或改成场景专属库`,
-      });
-    }
-
-    // 闸门 2：还有行 → 先删资料（清单见「已导入资料」）
+    // 闸门 1：还有行 → 先删资料（清单见「已导入资料」）
     const rows = lineRowRefs(db, id);
     if (rows.length > 0) {
       return reply.code(409).send({
@@ -1516,11 +1515,24 @@ function registerLibraryRoutes(app: FastifyInstance, deps: UiRoutesDeps) {
       });
     }
 
-    // 闸门 3：仍被活着的场景当归属库用 → 删了场景就没有资料库（外键也会拦）
+    // 闸门 2：仍被活着的场景当**归属库**用 → 删了场景就没有资料库（外键也会拦）
     const usedBy = db.scenarioRepo.list({ where: "product_line_id = ?", params: [id] });
     if (usedBy.length > 0) {
       return reply.code(409).send({
         error: `该资料库仍是场景「${usedBy[0]!.name}」的归属库，先删除那个场景再删库`,
+      });
+    }
+
+    // 闸门 3：仍被活场景当**共享输入**引用（勾选集合里没被取消）→ 删了那个场景会少一份输入
+    const liveLinks = db.scenarioLinkedLineRepo
+      .list({ where: "product_line_id = ?", params: [id] })
+      .filter((l) => l.excluded !== 1 && Boolean(db.scenarioRepo.getById(l.scenario_id)));
+    if (liveLinks.length > 0) {
+      const names = liveLinks
+        .map((l) => db.scenarioRepo.getById(l.scenario_id)?.name ?? l.scenario_id)
+        .join("、");
+      return reply.code(409).send({
+        error: `该资料库仍被场景「${names}」引用为共享输入，先在那些场景的「本场景资料」里取消勾选再删库`,
       });
     }
 

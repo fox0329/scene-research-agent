@@ -1,4 +1,5 @@
-import React, { useCallback, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { api, ingestStream } from "../api";
 import { pickSupportedFiles, describeSkipped, splitOversizeFiles, describeOversize, describeLargeFiles } from "../constants";
 import { FILE_UPLOAD_LIMIT_MB } from "@scene/contract";
@@ -13,13 +14,27 @@ export const MaterialUpload: React.FC<{
   lineId: string;
   /** 入库完成后回调（刷新计数/汇总） */
   onDone?: () => void;
-}> = ({ lineId, onDone }) => {
+  /**
+   * 进度与提示的挂载目标（变更表 #157）。资料库中栏的头部是**固定 48px** 的一行，
+   * 进度条/跳过清单一出现就把这一行撑破、上下溢出压到 Tab 栏上（真机实测 .pga
+   * 26px→96px，溢出到 top −24 / bottom +72）。所以状态区不再留在头部，而是搬到
+   * 内容区顶部（可滚动，多长都不挤）。不给这个 id 时保持原样就地渲染——
+   * 项目工作台把本组件放在普通面板里，没有固定高度，不需要搬。
+   */
+  statusSlotId?: string;
+}> = ({ lineId, onDone, statusSlotId }) => {
   const { showToast } = useToast();
   const [progress, setProgress] = useState<string[]>([]);
   const [uploading, setUploading] = useState(false);
   const [skipNotice, setSkipNotice] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
   const dirRef = useRef<HTMLInputElement>(null);
+  /* 目标容器要等父级 DOM 提交后才存在，所以用 effect 解析一次，别在 render 里查 */
+  const [slot, setSlot] = useState<HTMLElement | null>(null);
+  useEffect(() => {
+    if (!statusSlotId) return;
+    setSlot(document.getElementById(statusSlotId));
+  }, [statusSlotId]);
 
   /** 批量上传：逐个解析入库，最后汇总每表行数 */
   const handleUploadFiles = useCallback(
@@ -105,6 +120,25 @@ export const MaterialUpload: React.FC<{
     }
   };
 
+  /* 状态区（跳过清单 + 入库进度）——挂到指定容器就挂过去，否则就地显示 */
+  const status = (
+    <>
+      {skipNotice && (
+        <div className="stale-banner" role="status">
+          <span className="badge warning">跳过清单</span>
+          {skipNotice}
+        </div>
+      )}
+      {progress.length > 0 && (
+        <div className="stale-banner" role="status">
+          <span className="badge primary">入库进度</span>
+          {progress[progress.length - 1]}
+        </div>
+      )}
+    </>
+  );
+  const renderStatus = () => (slot ? createPortal(status, slot) : status);
+
   return (
     <div className="material-upload">
       <input
@@ -141,18 +175,7 @@ export const MaterialUpload: React.FC<{
           {uploading ? "解析入库中…" : "上传文件夹"}
         </button>
       </div>
-      {skipNotice && (
-        <div className="stale-banner" role="status">
-          <span className="badge warning">跳过清单</span>
-          {skipNotice}
-        </div>
-      )}
-      {progress.length > 0 && (
-        <div className="stale-banner" role="status">
-          <span className="badge primary">入库进度</span>
-          {progress[progress.length - 1]}
-        </div>
-      )}
+      {renderStatus()}
     </div>
   );
 };

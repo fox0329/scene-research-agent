@@ -190,11 +190,35 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: var(--size-48);
-  padding: 0 var(--s5);
+  /* 固定高度改最小高度 + 允许换行（变更表 #157）：这一行原来是 `height` 写死 48px，
+     上传进度条/跳过清单一出现就把它撑破，内容上下对称溢出（实测 top −24 / bottom +72）
+     压到 Tab 栏上。改成 min-height 后即使将来有人往里塞东西，也只会把这一行"撑高"或换行，
+     不会再叠到别的区块上。 */
+  min-height: var(--size-48);
+  padding: var(--s1) var(--s5);
+  gap: var(--s2);
+  flex-wrap: wrap;
   background: var(--csr);
   border-bottom: 1px solid var(--cb);
   flex-shrink: 0;
+}
+
+/* 头部左侧一组（标题 + 库选择 + 动作 + 徽标）：窄屏自己换行，不挤压标题 */
+.pgh-left {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--s3);
+  min-width: 0;
+}
+
+/* 上传状态区：落在内容区顶部（可滚动），空的时候不占高度 */
+.lib-upload-status:empty {
+  display: none;
+}
+
+.lib-upload-status {
+  margin-bottom: var(--s3);
 }
 
 .pgt {
