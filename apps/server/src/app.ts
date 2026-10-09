@@ -32,6 +32,13 @@ export interface AppDeps {
   hub?: SseHub;
   /** web 构建产物目录；存在则同源托管并启用 SPA 回退（M5 单端口） */
   webDist?: string;
+  /**
+   * 单文件上传上限（MB），缺省读契约 `FILE_UPLOAD_LIMIT_MB`（300）
+   *
+   * 只给测试留的口子：超限行为（413 文案 + 不留半截临时文件）必须能用小体积请求验证，
+   * 不然每条用例都要造一个 300 MB 的 body。生产入口（index.ts）不传，口径仍由契约说了算。
+   */
+  uploadLimitMb?: number;
 }
 
 // ─── 应用工厂 ──────────────────────────────────────────────
@@ -162,11 +169,12 @@ export function createApp(deps: AppDeps): FastifyInstance {
   );
 
   // ── M5 联真路由：项目/会话/阶段/资料库/知识库/系统 ──────
+  const uploadLimitMb = deps.uploadLimitMb ?? FILE_UPLOAD_LIMIT_MB;
   app.register(fastifyMultipart, {
     // 上限口径收敛到契约（FILE_UPLOAD_LIMIT_MB），前端上传前预检读同一个数（变更表 #155）
-    limits: { fileSize: FILE_UPLOAD_LIMIT_MB * 1024 * 1024 },
+    limits: { fileSize: uploadLimitMb * 1024 * 1024 },
   });
-  registerUiRoutes(app, { db, dshClient, hub });
+  registerUiRoutes(app, { db, dshClient, hub, uploadLimitMb });
 
   // ── web 构建产物同源托管（单端口起完整应用，SPA 回退） ──
   if (deps.webDist && existsSync(deps.webDist)) {

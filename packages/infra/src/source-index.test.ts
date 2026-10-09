@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import Database from "better-sqlite3";
-import { createSourceLookup, ftsPhrase } from "./source-index.js";
+import { createSourceLookup, deleteSourceIndex, ftsPhrase } from "./source-index.js";
 
 /** 建一张和线上同构的 trigram FTS 表（schema 见 packages/infra/src/sql/001_init.sql） */
 function makeDb(): Database.Database {
@@ -60,5 +60,35 @@ describe("source-index — 来源真实性反查", () => {
     const l = createSourceLookup(db);
     expect(l.hasContent("ingest-1790179276611-30.pdf:10", "6T")).toBe(true);
     expect(l.hasContent("ingest-1790179276611-30.pdf:10", '"""')).toBe(true);
+  });
+});
+
+describe("source-index — 删行时清索引（变更表 #156）", () => {
+  let db: Database.Database;
+  beforeEach(() => {
+    db = makeDb();
+  });
+
+  it("删掉某行的索引后，它的来源不再被判「存在」（触发器只管插入/更新，没有 DELETE 触发器）", () => {
+    const l = createSourceLookup(db);
+    expect(l.hasSource("ingest-1790179276611-30.pdf:10")).toBe(true);
+    deleteSourceIndex(db, "m1");
+    expect(l.hasSource("ingest-1790179276611-30.pdf:10")).toBe(false);
+    expect(l.hasContent("ingest-1790179276611-30.pdf:10", "6 TOPS")).toBe(false);
+  });
+
+  it("只删目标行：同文件别的行、别的材料都不受影响", () => {
+    const l = createSourceLookup(db);
+    deleteSourceIndex(db, "m1");
+    expect(l.hasSource("ingest-1790179276611-30.pdf:11")).toBe(true);
+    expect(l.hasSource("ingest-1790179850820-50.pptx:14")).toBe(true);
+  });
+
+  it("空 id 是空操作（不误删整表）", () => {
+    const l = createSourceLookup(db);
+    deleteSourceIndex(db, "");
+    deleteSourceIndex(db, "   ");
+    expect(l.hasSource("ingest-1790179276611-30.pdf:10")).toBe(true);
+    expect(l.hasSource("ingest-1790179276611-30.pdf:11")).toBe(true);
   });
 });

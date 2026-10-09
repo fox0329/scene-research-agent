@@ -45,7 +45,7 @@ interface Harness {
   exportDir: string;
 }
 
-function makeHarness(promptEvents?: FollowEvent[]): Harness {
+function makeHarness(promptEvents?: FollowEvent[], uploadLimitMb?: number): Harness {
   const db = createDb(":memory:");
   const dsh = mockDshClient(promptEvents);
   const exportDir = mkdtempSync(join(tmpdir(), "scene-export-"));
@@ -56,7 +56,7 @@ function makeHarness(promptEvents?: FollowEvent[]): Harness {
     "providers.local.json",
   );
   const hub = createSseHub();
-  const app = createApp({ db, dshClient: dsh, hub });
+  const app = createApp({ db, dshClient: dsh, hub, uploadLimitMb });
   return { app, db, dsh, hub, exportDir };
 }
 
@@ -1052,6 +1052,294 @@ describe("资料库路由", () => {
   });
 });
 
+// ─── 资料文件清单与删除入口（变更表 #156） ─────────────────
+//
+// 用户原话「只能选择，不能删除」：这批用例盯的是"删对了没有、拦对了没有"。
+// 删除判定（文件名解析 / 全等匹配 / 聚合）在纯模块 library-materials.test.ts 里穷举，
+// 这里验证的是**路由接线**：取行范围、返回体、拦截文案、下游标脏。
+
+describe("资料文件删除入口（变更表 #156）", () => {
+  let h: Harness;
+  /** 场景专属库（可删）：通用库一律禁删，所以删除用例都用专属库 */
+  let lineId: string;
+  beforeEach(() => {
+    h = makeHarness();
+    lineId = h.db.productLineRepo.insert({
+      name: "专属库",
+      scenario_id: "scenario-gone",
+    } as never).id;
+  });
+
+  /** 造一行 M1（带来源标注，模拟 ingest 落库） */
+  function seedProduct(model: string, source: string | null) {
+    return h.db.productRepo.insert({
+      product_line_id: lineId,
+      model,
+      name: `${model} 产品`,
+      status: "在售",
+      launch_date: "2025-01-01",
+      position_desc: "—",
+      source_type: "AI提取",
+      source,
+    } as never);
+  }
+
+  function seedCapability(name: string, source: string | null) {
+    return h.db.capabilityRepo.insert({
+      product_line_id: lineId,
+      domain: "感知",
+      name,
+      description: "—",
+      maturity: "在研",
+      dependency: "—",
+      source_type: "AI提取",
+      source,
+    } as never);
+  }
+
+  const materials = async (id = lineId) =>
+    h.app.inject({ method: "GET", url: `/api/v1/library/materials?product_line_id=${id}` });
+
+  it("GET materials：空线返回 []，缺 product_line_id 400，未知库 404", async () => {
+    expect((await materials()).json()).toEqual([]);
+
+    const missing = await h.app.inject({ method: "GET", url: "/api/v1/library/materials" });
+    expect(missing.statusCode).toBe(400);
+    const nope = await materials("nope");
+    expect(nope.statusCode).toBe(404);
+  });
+
+  it("GET materials：按来源文件聚合，行数降序，行数之和 = 本库总行数", async () => {
+    seedProduct("A1", "方案.pptx:3");
+    seedProduct("A2", "方案.pptx:9");
+    seedCapability("B1", "认证.pdf:1");
+    seedCapability("手工补录", null);
+
+    const res = await materials();
+    expect(res.statusCode).toBe(200);
+    const groups = res.json() as {
+      file: string;
+      rows: number;
+      tables: Record<string, number>;
+      deletable: boolean;
+    }[];
+    // 行数降序：2 行的方案.pptx 在最前（行数相同的两条按文件名升序，不断言具体次序）
+    expect(groups[0]!.file).toBe("方案.pptx");
+    expect(new Set(groups.map((g) => g.file))).toEqual(
+      new Set(["方案.pptx", "认证.pdf", "（无来源标注）"]),
+    );
+    expect(groups[0]).toMatchObject({ rows: 2, tables: { M1: 2 }, deletable: true });
+    const cert = groups.find((g) => g.file === "认证.pdf")!;
+    expect(cert).toMatchObject({ rows: 1, tables: { M3: 1 }, deletable: true });
+    expect(groups.find((g) => g.file === "（无来源标注）")).toMatchObject({
+      rows: 1,
+      deletable: false,
+    });
+    expect(groups.reduce((s, g) => s + g.rows, 0)).toBe(4);
+  });
+
+  it("DELETE materials：只删这个文件的行，a.pdf 不吃 a.pdf.bak", async () => {
+    const keepBak = seedProduct("BAK", "a.pdf.bak:1");
+    const keepOtherLine = h.db.productRepo.insert({
+      product_line_id: h.db.productLineRepo.insert({ name: "另一条线" }).id,
+      model: "OTHER",
+      name: "别的库",
+      status: "在售",
+      launch_date: "2025-01-01",
+      position_desc: "—",
+      source_type: "AI提取",
+      source: "a.pdf:1",
+    } as never);
+    const del1 = seedProduct("A1", "a.pdf:1");
+    const del2 = seedCapability("A2", "a.pdf:7");
+    seedProduct("TARGET-BAK", "a.pdf.bak:2");
+
+    const res = await h.app.inject({
+      method: "DELETE",
+      url: `/api/v1/library/materials?product_line_id=${lineId}&file=${encodeURIComponent("a.pdf")}`,
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { deleted: number; tables: Record<string, number> };
+    expect(body.deleted).toBe(2);
+    expect(body.tables).toEqual({ M1: 1, M3: 1 });
+    // 该删的删了、不该删的一个没动
+    expect(h.db.productRepo.getById(del1.id)).toBeUndefined();
+    expect(h.db.capabilityRepo.getById(del2.id)).toBeUndefined();
+    expect(h.db.productRepo.getById(keepBak.id)).toBeDefined();
+    expect(h.db.productRepo.getById(keepOtherLine.id)).toBeDefined();
+    // 剩下的清单只剩 a.pdf.bak 两份
+    const left = (await materials()).json() as { file: string; rows: number }[];
+    expect(left.map((g) => g.file)).toEqual(["a.pdf.bak"]);
+    expect(left[0]!.rows).toBe(2);
+  });
+
+  it("DELETE materials：删完标下游待重算（与单元格编辑同一口径）", async () => {
+    const { scenarioId } = seedScenario(h.db, "删资料联动场景");
+    // 让场景挂到这条专属库上（scenariosOfLine 按场景的归属库判定）
+    h.db.scenarioRepo.update(scenarioId, { product_line_id: lineId } as never);
+    h.db.stageDataRepo.insert({
+      scenario_id: scenarioId,
+      stage: 3,
+      table_code: "表4-1",
+      row: {},
+      is_stale: false,
+    });
+    seedProduct("A1", "方案.pptx:1");
+
+    const res = await h.app.inject({
+      method: "DELETE",
+      url: `/api/v1/library/materials?product_line_id=${lineId}&file=${encodeURIComponent("方案.pptx")}`,
+    });
+    expect(res.json().stale_marked_stages).toEqual([3, 4]);
+    expect(h.db.stageDataRepo.listByScenarioStage(scenarioId, 3 as StageId)[0]!.is_stale).toBe(true);
+  });
+
+  it("DELETE materials：文件不在本库 → 404；无来源行不可按文件删 → 400", async () => {
+    seedProduct("A1", "方案.pptx:1");
+    const nope = await h.app.inject({
+      method: "DELETE",
+      url: `/api/v1/library/materials?product_line_id=${lineId}&file=${encodeURIComponent("没有这个.pdf")}`,
+    });
+    expect(nope.statusCode).toBe(404);
+    expect(nope.json().error).toContain("没有这个.pdf");
+
+    const noSource = await h.app.inject({
+      method: "DELETE",
+      url: `/api/v1/library/materials?product_line_id=${lineId}&file=${encodeURIComponent("（无来源标注）")}`,
+    });
+    expect(noSource.statusCode).toBe(400);
+    const noFile = await h.app.inject({
+      method: "DELETE",
+      url: `/api/v1/library/materials?product_line_id=${lineId}`,
+    });
+    expect(noFile.statusCode).toBe(400);
+  });
+
+  it("DELETE materials：产品行还有别的文件的规格 → 409 说清先删规格（不撞外键 500）", async () => {
+    const product = seedProduct("A1", "方案.pptx:1");
+    h.db.specParamRepo.insert({
+      product_id: product.id,
+      param_class: "接口",
+      param_name: "网口",
+      value: "2 路",
+      measured: "未提及",
+      source_type: "AI提取",
+      source: "别的资料.pdf:5",
+    } as never);
+
+    const res = await h.app.inject({
+      method: "DELETE",
+      url: `/api/v1/library/materials?product_line_id=${lineId}&file=${encodeURIComponent("方案.pptx")}`,
+    });
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error).toContain("1 条规格参数来自其它文件");
+    // 一个字节都没删
+    expect(h.db.productRepo.getById(product.id)).toBeDefined();
+  });
+
+  it("DELETE product-lines/:id：空线可删（连同悬空引用一起清）", async () => {
+    // 悬空引用：链接记录指向另一条线归属的场景（scenario 外键必须真实存在）
+    const { scenarioId } = seedScenario(h.db, "链接来源场景");
+    h.db.scenarioLinkedLineRepo.insert({
+      scenario_id: scenarioId,
+      product_line_id: lineId,
+      excluded: 0,
+    } as never);
+
+    const res = await h.app.inject({
+      method: "DELETE",
+      url: `/api/v1/library/product-lines/${lineId}`,
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ deleted: true, name: "专属库", removed_links: 1 });
+    expect(h.db.productLineRepo.getById(lineId)).toBeUndefined();
+    expect(
+      h.db.scenarioLinkedLineRepo.list({ where: "product_line_id = ?", params: [lineId] }),
+    ).toHaveLength(0);
+  });
+
+  it("DELETE product-lines/:id：非空 → 409 说清还有几行；删完资料再删即通过", async () => {
+    seedProduct("A1", "方案.pptx:1");
+    const blocked = await h.app.inject({
+      method: "DELETE",
+      url: `/api/v1/library/product-lines/${lineId}`,
+    });
+    expect(blocked.statusCode).toBe(409);
+    expect(blocked.json().error).toContain("还有 1 行资料");
+    expect(blocked.json().error).toContain("先删资料再删库");
+    expect(h.db.productLineRepo.getById(lineId)).toBeDefined();
+
+    // 按文件删干净后，删库放行
+    await h.app.inject({
+      method: "DELETE",
+      url: `/api/v1/library/materials?product_line_id=${lineId}&file=${encodeURIComponent("方案.pptx")}`,
+    });
+    const ok = await h.app.inject({
+      method: "DELETE",
+      url: `/api/v1/library/product-lines/${lineId}`,
+    });
+    expect(ok.statusCode).toBe(200);
+  });
+
+  it("DELETE product-lines/:id：通用库（scenario_id 为空）一律禁删并说清原因", async () => {
+    const common = h.db.productLineRepo.insert({ name: "拓维产品" }).id;
+    const res = await h.app.inject({
+      method: "DELETE",
+      url: `/api/v1/library/product-lines/${common}`,
+    });
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error).toContain("通用资料库");
+    expect(res.json().error).toContain("不能删除");
+    expect(h.db.productLineRepo.getById(common)).toBeDefined();
+  });
+
+  it("DELETE product-lines/:id：仍被活着的场景当归属库 → 409（不让场景挂空）", async () => {
+    // 场景专属库（scenario_id 非空，过第一道闸门）+ 0 行，但场景的归属库就是它
+    const owned = h.db.productLineRepo.insert({
+      name: "被场景占用的库",
+      scenario_id: "scenario-alive",
+    } as never).id;
+    h.db.scenarioRepo.insert({
+      name: "占用库的场景",
+      product_line_id: owned,
+      status: "进行中",
+      current_stage: 0,
+    } as never);
+
+    const res = await h.app.inject({
+      method: "DELETE",
+      url: `/api/v1/library/product-lines/${owned}`,
+    });
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error).toContain("占用库的场景");
+    expect(h.db.productLineRepo.getById(owned)).toBeDefined();
+  });
+
+  it("DELETE product-lines/:id：不存在 → 404", async () => {
+    const res = await h.app.inject({
+      method: "DELETE",
+      url: "/api/v1/library/product-lines/nope",
+    });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it("删除资料行同时清全文索引（否则已删材料的来源自检仍是假阳性）", async () => {
+    const product = seedProduct("A1", "方案.pptx:1");
+    expect(
+      h.db.db.prepare("SELECT 1 FROM source_fts WHERE ref_id = ?").get(product.id),
+    ).toBeDefined();
+
+    const res = await h.app.inject({
+      method: "DELETE",
+      url: `/api/v1/library/rows/M1/${product.id}`,
+    });
+    expect(res.statusCode).toBe(200);
+    expect(
+      h.db.db.prepare("SELECT 1 FROM source_fts WHERE ref_id = ?").get(product.id),
+    ).toBeUndefined();
+  });
+});
+
 // ─── 上传入库（HTTP 面） ───────────────────────────────────
 
 describe("上传入库路由", () => {
@@ -1117,12 +1405,108 @@ describe("上传入库路由", () => {
     expect(typeof res.json().ingest_job_id).toBe("string");
   });
 
+  /**
+   * 真实文件名 + 临时文件清理（变更表 #156）
+   *
+   * 两件事必须一起钉住：
+   * ① 落库来源写**材料真名**——上传落盘用的是临时名（`ingest-…`），只把路径交给 ingest 会
+   *    让模型照着抄，行的 source 全变成临时名（库里 474 条老数据就是这样，认不出是哪份材料）；
+   * ② 任务结束后临时件必须删——留着就是每次上传在盘上多压一份原文。
+   */
+  it("上传：模型看到的是材料真名；任务跑完临时文件不留在临时目录", async () => {
+    const line = h.db.productLineRepo.insert({ name: "L-real-name" });
+    const listIngestTmp = () => readdirSync(tmpdir()).filter((f) => f.startsWith("ingest-"));
+    const before = listIngestTmp();
+
+    // 用真能解析的样本 PDF（好让流程走到"调模型"这一步），但文件名用中文真名
+    const pdf = readFileSync(join(process.cwd(), "scripts/spike/s3/sample.pdf"));
+    const boundary = "----sceneRealNameBoundary";
+    const body = Buffer.concat([
+      Buffer.from(
+        [
+          `--${boundary}`,
+          'Content-Disposition: form-data; name="file"; filename="副本狄耐克鸿蒙智慧医院建设方案.pdf"',
+          "Content-Type: application/pdf",
+          "",
+          "",
+        ].join("\r\n"),
+      ),
+      pdf,
+      Buffer.from(`\r\n--${boundary}--\r\n`),
+    ]);
+    const res = await h.app.inject({
+      method: "POST",
+      url: `/api/v1/library/ingest?product_line_id=${line.id}`,
+      headers: { "content-type": `multipart/form-data; boundary=${boundary}` },
+      body,
+    });
+    expect(res.statusCode).toBe(200);
+
+    // 入库任务是后台跑的：等它真的调过模型
+    await vi.waitFor(() => expect(h.dsh.prompt).toHaveBeenCalled(), { timeout: 10_000 });
+    const [, promptArg] = (h.dsh.prompt as unknown as { mock: { calls: unknown[][] } }).mock
+      .calls[0]! as [unknown, { user: string }];
+    expect(promptArg.user).toContain("副本狄耐克鸿蒙智慧医院建设方案.pdf");
+    expect(promptArg.user).not.toContain("ingest-");
+
+    // 任务结束（成功或失败都算）后不许有**新增**的 ingest-* 残留。
+    // 只比"新增"不比全集：同文件里别的用例也起过后台入库任务，它们的 finally 会在
+    // 任意时刻删掉自己的临时件（这正是本次改动带来的行为），全集比对会互相打架。
+    await vi.waitFor(
+      () => expect(listIngestTmp().filter((f) => !before.includes(f))).toEqual([]),
+      { timeout: 10_000 },
+    );
+  }, 30_000);
+
   it("未知入库任务的 events → 404", async () => {
     const res = await h.app.inject({
       method: "GET",
       url: "/api/v1/library/ingest/nope/events",
     });
     expect(res.statusCode).toBe(404);
+  });
+
+  /**
+   * 超限（变更表 #156 真机踩到的坑）
+   *
+   * 流式落盘把 `toBuffer()` 换成了 `pipeline()`，而 `@fastify/multipart` 超限时**不会让
+   * pipeline 抛错**——它只把文件流截断并置 `truncated = true`（旧实现是 toBuffer 自己查这个
+   * 标记才抛的）。只看异常的话，320 MB 会被当成"上传成功"，写进去的是被截断的前 300 MB。
+   * 所以这条用例同时钉住三件事：中文 413、截断标记成 413、不留半截临时文件。
+   */
+  it("超过上限：中文 413 + 不留半截临时文件（pipeline 不报错，靠 truncated 标记兜住）", async () => {
+    const big = makeHarness(undefined, 1); // 上限压到 1 MB，用小 body 验证真行为
+    const line = big.db.productLineRepo.insert({ name: "L-oversize" });
+    const listIngestTmp = () => readdirSync(tmpdir()).filter((f) => f.startsWith("ingest-"));
+    // 上传前的快照（同一台机器上可能已有别的实例留下的 ingest-* 文件，不做绝对断言）
+    const before = listIngestTmp();
+
+    const boundary = "----sceneOversizeBoundary";
+    const body = [
+      `--${boundary}`,
+      'Content-Disposition: form-data; name="file"; filename="oversize.pdf"',
+      "Content-Type: application/pdf",
+      "",
+      "x".repeat(2 * 1024 * 1024),
+      `--${boundary}--`,
+      "",
+    ].join("\r\n");
+    const res = await big.app.inject({
+      method: "POST",
+      url: `/api/v1/library/ingest?product_line_id=${line.id}`,
+      headers: { "content-type": `multipart/form-data; boundary=${boundary}` },
+      body,
+    });
+
+    expect(res.statusCode).toBe(413);
+    const payload = res.json() as { code: string; message: string };
+    expect(payload.code).toBe("FILE_TOO_LARGE");
+    expect(payload.message).toContain("1 MB");
+    expect(payload.message).toContain("压缩");
+    // 没有 job_id：截断的文件一个字节都不能进 ingest
+    expect(payload).not.toHaveProperty("ingest_job_id");
+    // /tmp 不留垃圾
+    expect(listIngestTmp()).toEqual(before);
   });
 });
 

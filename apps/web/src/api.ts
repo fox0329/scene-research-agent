@@ -262,6 +262,27 @@ export interface ApiMaterialSources {
   linked: ApiProductLine[];
 }
 
+/** 本库已导入的一个资料文件（变更表 #156：按来源文件聚合） */
+export interface ApiMaterialFile {
+  /** 文件名（取不到来源标注时是「（无来源标注）」） */
+  file: string;
+  /** 该文件在本库落的总行数 */
+  rows: number;
+  /** 表号 → 行数 */
+  tables: Record<string, number>;
+  /** 能否按文件删除（无来源标注的那组不能，只能逐行删） */
+  deletable: boolean;
+}
+
+/** 按文件删除的结果（变更表 #156） */
+export interface ApiMaterialDeleteResult {
+  file: string;
+  deleted: number;
+  tables: Record<string, number>;
+  /** 被标为待重算的**阶段号**（有场景引用这个库时才非空） */
+  stale_marked_stages: number[];
+}
+
 /** 质量六维 + 完成度（领域层计算，契约 v1.4） */
 export interface ApiQualitySummary {
   quality: {
@@ -638,6 +659,27 @@ export const api = {
       method: "PATCH",
       body: { name },
     }),
+  /**
+   * 删除产品线（资料库）（变更表 #156）
+   *
+   * 只允许删空线、且通用库一律禁删；服务端返回 409 + 中文原因（前端把原因原样弹出来）。
+   */
+  deleteProductLine: (productLineId: string) =>
+    req<{ deleted: boolean; name: string; removed_links: number }>(
+      `/library/product-lines/${encodeURIComponent(productLineId)}`,
+      { method: "DELETE" },
+    ),
+  /** 本库已导入的资料文件清单（按来源文件聚合，行数降序） */
+  libraryMaterials: (productLineId: string) =>
+    req<ApiMaterialFile[]>(
+      `/library/materials?product_line_id=${encodeURIComponent(productLineId)}`,
+    ),
+  /** 按文件删除本库所有来自该文件的行（文件名全等匹配） */
+  deleteLibraryMaterial: (productLineId: string, file: string) =>
+    req<ApiMaterialDeleteResult>(
+      `/library/materials?product_line_id=${encodeURIComponent(productLineId)}&file=${encodeURIComponent(file)}`,
+      { method: "DELETE" },
+    ),
   /** 场景澄清（v1.12）：生成值得确认的问题发进对话 */
   clarifyScenario: (projectId: string) =>
     req<{

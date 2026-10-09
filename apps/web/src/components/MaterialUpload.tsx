@@ -1,6 +1,6 @@
 import React, { useCallback, useRef, useState } from "react";
 import { api, ingestStream } from "../api";
-import { pickSupportedFiles, describeSkipped, splitOversizeFiles, describeOversize } from "../constants";
+import { pickSupportedFiles, describeSkipped, splitOversizeFiles, describeOversize, describeLargeFiles } from "../constants";
 import { FILE_UPLOAD_LIMIT_MB } from "@scene/contract";
 import { useToast } from "./Toast";
 
@@ -93,7 +93,12 @@ export const MaterialUpload: React.FC<{
       // 体积预检放在发请求之前：超限文件当场说清"多大、上限多少、怎么办"，
       // 不让它走到服务端换回一句英文 413（变更表 #155）
       const { ok, oversize } = splitOversizeFiles(supported, FILE_UPLOAD_LIMIT_MB);
-      const notice = [describeSkipped(skippedNames), describeOversize(oversize, FILE_UPLOAD_LIMIT_MB)]
+      // 放行的大文件（≥200 MB）先给一句预期：解析要几分钟，不是卡住了（变更表 #156）
+      const notice = [
+        describeSkipped(skippedNames),
+        describeOversize(oversize, FILE_UPLOAD_LIMIT_MB),
+        describeLargeFiles(ok),
+      ]
         .filter(Boolean)
         .join("；");
       void handleUploadFiles(ok, notice);

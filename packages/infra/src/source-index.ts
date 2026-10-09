@@ -28,6 +28,20 @@ export function ftsPhrase(snippet: string): string | null {
   return `"${s.replace(/"/g, '""')}"`;
 }
 
+/**
+ * 删掉某一行业务数据的全文索引（变更表 #156）
+ *
+ * 为什么删行要管这个：`source_fts` 的写入靠触发器（001_init.sql），但**没有 DELETE 触发器**
+ * ——原来删一行，索引里那一行还在，`hasSource("xxx.pdf:12")` 对一份已经删掉的材料照样返回
+ * true（"来源真实性"自检给出假阳性）。加删除入口就必须把索引一起清掉，否则删得越干净、
+ * 自检越不准。按 `ref_id` 删（触发器写入的就是业务行 id）。
+ */
+export function deleteSourceIndex(db: Database.Database, refId: string): void {
+  const id = String(refId ?? "").trim();
+  if (!id) return;
+  db.prepare("DELETE FROM source_fts WHERE ref_id = ?").run(id);
+}
+
 export function createSourceLookup(db: Database.Database): SourceLookup {
   const hasSourceStmt = db.prepare("SELECT 1 FROM source_fts WHERE source = ? LIMIT 1");
   const hasContentStmt = db.prepare(

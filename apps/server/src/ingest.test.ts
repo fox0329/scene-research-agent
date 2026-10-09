@@ -473,6 +473,32 @@ describe("createIngestCommand", () => {
       expect(result.rowsInserted).toBe(5);
     });
   });
+
+  describe("真文件名（变更表 #156）", () => {
+    it("显式给 fileName → prompt 用材料真名，而不是临时落盘名", async () => {
+      const cmd = createIngestCommand(deps);
+      await cmd.execute({
+        filePath: "/var/folders/x/T/ingest-1791527249715-1.pptx",
+        productLineId: "pl1",
+        fileName: "副本狄耐克鸿蒙智慧医院建设方案.pptx",
+      });
+
+      const promptArg = (dshClient.prompt as unknown as { mock: { calls: unknown[][] } }).mock
+        .calls[0]![1] as { user: string };
+      expect(promptArg.user).toContain("副本狄耐克鸿蒙智慧医院建设方案.pptx");
+      // 临时名不许漏进模型（模型会照抄成行的来源标注 → 认不出是哪份材料）
+      expect(promptArg.user).not.toContain("ingest-1791527249715-1");
+    });
+
+    it("不给 fileName → 退回路径文件名（对话导入等场景本来就是真实路径）", async () => {
+      const cmd = createIngestCommand(deps);
+      await cmd.execute({ filePath: "/tmp/whitepaper.pdf", productLineId: "pl1" });
+
+      const promptArg = (dshClient.prompt as unknown as { mock: { calls: unknown[][] } }).mock
+        .calls[0]![1] as { user: string };
+      expect(promptArg.user).toContain("whitepaper.pdf");
+    });
+  });
 });
 
 describe("consumeDshPrompt", () => {

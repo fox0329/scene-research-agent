@@ -66,10 +66,13 @@
 |---|---|---|
 | GET | `/library/product-lines` | 产品线列表（含表计数） |
 | POST | `/library/product-lines` | 建产品线 |
-| POST | `/library/ingest` | 上传材料（multipart）→ 解析入表；返回 ingest_job_id，进度走 SSE `/library/ingest/{id}/events` |
+| POST | `/library/ingest` | 上传材料（multipart，单文件上限见 §四「上传上限」）→ **流式落盘**后解析入表（变更表 #156：不再整份读进内存）；返回 ingest_job_id，进度走 SSE `/library/ingest/{id}/events`。超限回中文 413（`{ statusCode: 413, code: "FILE_TOO_LARGE", message }`），任何失败路径都不留临时文件 |
 | GET | `/library/tables/{code}` | 读表（M1-M5/O*，code 如 `M1`、`O2`）；支持 `?product_line_id=` |
 | PATCH | `/library/rows/{code}/{rowId}` | 单元格编辑（body: `{ cell, value }`）；source_type 自动转 `用户确认`；**服务端内联触发失效计算**（markStale 依赖反查，技术方案 F3），无需单独调用 |
-| POST | `/library/rows/{code}` / DELETE `/{rowId}` | 增行 / 删行（标 `用户补充`）。**入口校验**：M1 必填 `model`、M2 必填 `product_id/param_name/value`、M3 `name`、M4/M5 `description`，缺了返回 400 并指明缺哪列；其余 NOT NULL 列按表给缺省值（M1 `status=待确认`、M2 `measured=未提及`、M3 `maturity=在研`、M4 `has_plan=未定`）。M2 无 `product_line_id` 列，按 `product_id` 归属 |
+| POST | `/library/rows/{code}` / DELETE `/{rowId}` | 增行 / 删行（标 `用户补充`；删行同时清 `source_fts` 索引）。**入口校验**：M1 必填 `model`、M2 必填 `product_id/param_name/value`、M3 `name`、M4/M5 `description`，缺了返回 400 并指明缺哪列；其余 NOT NULL 列按表给缺省值（M1 `status=待确认`、M2 `measured=未提及`、M3 `maturity=在研`、M4 `has_plan=未定`）。M2 无 `product_line_id` 列，按 `product_id` 归属 |
+| GET | `/library/materials?product_line_id=` | **本库导入过的资料文件**（变更表 #156）：按行来源（G-R0 `文件名:页码` 取**最后一个** `:` 前的文件名）聚合为 `{ file, rows, tables, deletable }[]`，行数降序、同数按文件名升序；空库 `[]`；无来源标注的行归「（无来源标注）」且 `deletable: false`（保证清单行数之和 = 本库总行数） |
+| DELETE | `/library/materials?product_line_id=&file=` | **按资料文件删**（变更表 #156）：删该文件来源的**全部行**（文件名**全等**比对，`a.pdf` 不吃 `a.pdf.bak`），返回 `{ file, deleted, tables, stale_marked_stages }` 并标记下游待重算。无来源标注 400、该文件不存在 404、删掉产品行会留下跨文件规格参数时 409。文件名含中文/空格时客户端必须 URL 编码（前端走 `encodeURIComponent`） |
+| DELETE | `/library/product-lines/{id}` | **删资料库**（变更表 #156）：**仅空库可删**，返回 `{ deleted: true, name, removed_links }`。三道门都是 409 并给出原因：通用库（`scenario_id IS NULL`，所有场景共享）一律禁删；还有 N 行「先删资料再删库」；仍是某活场景的归属库「先删除那个场景再删库」 |
 | GET | `/library/quality-summary?product_line_id=` | 六维总评 + 完成度检查 |
 
 ### 项目与阶段（advance-stage / sync-library）
@@ -134,7 +137,8 @@
 | 阶段面板 | `GET /projects/{id}/stages/{n}` 返回 `{ rows: StageData[], gates: QualityGate[], advice }`，advice 由领域层 gate 计算，LLM 不参与判定 |
 | 会话流式 | 发消息走 `POST /conversations/{id}/messages`，SSE 复用 §四 格式与事件中枢（同 advance）；断线补拉 `GET .../messages?after_id=` |
 | 静态托管 | server 同源托管 web 构建产物（`@fastify/static`，可用 `WEB_DIST` 覆盖路径）；单端口 46172 起完整应用 |
-| 上传 | `POST /library/ingest` 用 multipart（`@fastify/multipart`，单文件上限 50MB）；解析进度经 SSE `/library/ingest/{id}/events` |
+| 上传 | `POST /library/ingest` 用 multipart（`@fastify/multipart`，单文件上限见下条）；**流式落盘**（`pipeline` 写临时文件，超限时 multipart 只截断不报错，服务端查 `file.file.truncated` 兜住并回中文 413）；解析进度经 SSE `/library/ingest/{id}/events`；任务结束（成功或失败）都不在临时目录留文件；入库行的 `source` 写**材料真名**（变更表 #156：临时落盘名不再泄进来源标注） |
+| 上传上限（变更表 #156） | `packages/contract/src/ingest.ts` 的 `FILE_UPLOAD_LIMIT_MB = 300`——服务端 multipart 与前端上传前预检读**同一个常量**（前端超限不发请求、当场报体积）。50 MB 是早期「白皮书上限」，现行输入是整本解决方案 PPT，故提到 300 MB；`createApp({ uploadLimitMb })` 只给测试留小值口子，生产入口不传 |
 | 模型配置（v1.6） | 应用自持：登记表 `data/providers.local.json`（0600、`SCENE_PROVIDERS_FILE` 可覆盖路径）是 LLM 调用唯一配置源；不再读项目 `.dsh/settings.yaml`，环境变量密钥通道退役；v1.4 的 `GET/PUT /system/settings*` 由 `/system/providers*` 取代，密钥永不下发前端（仅掩码） |
 | 降级 | 模型未配置/链接不可达时：分析与会话端点返回流内 `error` 事件（不 500，文案含设置页指引）；纯 CRUD 端点不受影响，UI 可离线浏览真实已入库数据 |
 
@@ -359,3 +363,4 @@ interface DshClient {
 | v2.12 | 2026-10-04 | **阶段口径 8 → 7（0–6）：删阶段 6「总结沉淀」与表7-1**。`InfoStageId` 收窄为 `0..6`；交付物阶段 `7 → 6`；`consumedBy` 里的下游 `7` 全部改为 `6`；`stage_data` 不新增字段，存量迁移删掉 `stage=6` 的旧表7-1 行并把 `scenario.current_stage=7` 改为 `6`（`scripts/migrate-drop-stage6.mjs`，先快照）；老编号 7/8 的请求按阶段 6 处理。流程步 8 → 7（第 7 步 = 交付物）。变更表 #92 |
 | v2.13 | 2026-10-04 | **列级变更（随 04 v1.32 / 05 v0.12）：表5-1 删 `effort`；表4-1 `proof` 中栏 → 右栏**。① `表5-1 架构与接口` 去掉 `effort`「适配工作量」——工作量口径统一在 `表5-3` 的 `man_days`「人天」，同一份表里两处口径会打架（实测该列写的是「行业通例量级 3~8 人天/触点」，是编的量级）；② `表4-1 能力底账` 的 `proof`「证明材料」由中栏改到右栏补充——用户定调「来源、引用什么的可以放到右栏」，中栏只留「能力项 / 成熟度 / 限制条件」。**API 形状不变**：`row` 是 JSON、列即键，前端按注册表渲染（`slot` 变了，键仍在，存量数据不丢、不迁移）。新增自检项「中栏夹带出处」「中栏太长」：内容格里的文件名/页码/`ingest-*`/`（M5）`/「材料未提供」由确定性层搬进右栏 `source`。；③ 新增自检项「依据未落到事实」（依据列复述结论／行业套话，确定性识别）。变更表 #93 |
 | v2.14 | 2026-10-04 | **自检新增两条跨表校验（随 04 v1.33）**：「判定与能力底账矛盾」（表4-2／4-3／4-5／5-1 等中栏写「无／不支持 X」且该行判「不能碰／不参与」时，拿 **表4-1 能力底账的能力名**比对，命中即点名；**只比能力名、不比限制条件**）、「硬结论无依据」（`can_touch=不能碰` 且本行 `verification_verdict ∈ {无法核实, 有反证}` → 硬伤）。**API 与列结构不变**：这是生成期自检，不改 `stage_data` 形状。变更表 #94 |
+| v2.15 | 2026-10-09 | **上传上限 50 → 300 MB（改流式落盘）+ 资料文件/资料库删除入口（变更表 #156）**：① `FILE_UPLOAD_LIMIT_MB = 300`（服务端 multipart 与前端预检同源），`POST /library/ingest` 由 `toBuffer()` 改 `pipeline()` 流式落盘；**超限时 multipart 只截断不抛错**，服务端查 `file.file.truncated` 兜住回中文 413；任务结束（成功/失败）都删临时文件；入库行的 `source` 写材料**真名**（此前写的是临时落盘名 `ingest-…`，实测 474 行都认不出是哪份材料）。② 新增 `GET /library/materials?product_line_id=`（按来源文件聚合 `{file,rows,tables,deletable}[]`）、`DELETE /library/materials?product_line_id=&file=`（按文件名**全等**删该文件全部行，返回 `{file,deleted,tables,stale_marked_stages}`，删完标下游待重算）、`DELETE /library/product-lines/{id}`（**仅空库**；通用库 / 非空库 / 仍被活场景引用三种情况都是 409 + 中文原因）。③ 删行与删资料同时清 `source_fts` 索引（该表只有 INSERT/UPDATE 触发器，原先删行不清会让来源自检假阳性）。前端资料库页新增「已导入资料」页签与「删除资料库」按钮（不可删时 `disabled` + `title` 说明原因，二次确认写明删几行/哪些表/下游标记待重算） |

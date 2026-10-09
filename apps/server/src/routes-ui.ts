@@ -8,7 +8,8 @@
  */
 
 import type { FastifyInstance } from "fastify";
-import { writeFileSync, existsSync } from "node:fs";
+import { createWriteStream, existsSync, rmSync } from "node:fs";
+import { pipeline } from "node:stream/promises";
 import { join } from "node:path";
 import { tmpdir, homedir } from "node:os";
 import { randomUUID } from "node:crypto";
@@ -36,6 +37,12 @@ import { alignmentWithBrief, anchorFixedRows, buildFlowStatus, type InfoRow } fr
 import type { DbInstance } from "@scene/infra";
 import { scenarioLineContext } from "./scenario-lines.js";
 import { describeUploadFailure } from "./upload-limits.js";
+import {
+  NO_SOURCE_FILE_LABEL,
+  aggregateMaterials,
+  rowBelongsToFile,
+  type MaterialRowRef,
+} from "./library-materials.js";
 import { dedupeLibrary } from "./library-service.js";
 import {
   parseDocument,
@@ -46,6 +53,7 @@ import {
   setDefaultModel,
   checkProviderConnection,
   fetchProviderModels,
+  deleteSourceIndex,
 } from "@scene/infra";
 import type { ProviderModelEntry } from "@scene/infra";
 import type { SseHub } from "./sse-hub.js";
@@ -100,6 +108,8 @@ export interface UiRoutesDeps {
   db: DbInstance;
   dshClient: DshClient;
   hub: SseHub;
+  /** 单文件上传上限（MB）；缺省读契约，测试用小值验证 413 与临时文件清理 */
+  uploadLimitMb?: number;
 }
 
 /** 通用行（HTTP 层做动态列编辑时使用，字段按表 schema 异构） */
@@ -218,6 +228,8 @@ function reportKindOf(raw: unknown): ReportKind | undefined {
 
 export function registerUiRoutes(app: FastifyInstance, deps: UiRoutesDeps): void {
   const { db, dshClient, hub } = deps;
+  /** 上传上限：契约口径为准，测试可注入小值（见 AppDeps.uploadLimitMb） */
+  const uploadLimitMb = deps.uploadLimitMb ?? FILE_UPLOAD_LIMIT_MB;
   const ingestCmd = createIngestCommand({ db, dshClient, docParser: parseDocument });
   const converseCmd = createConverseCommand({
     db,
@@ -281,7 +293,7 @@ export function registerUiRoutes(app: FastifyInstance, deps: UiRoutesDeps): void
     } catch (err) {
       // 文件超上限（413）要单独说清楚：原来一律回「需要 multipart 表单」，
       // 用户以为是自己传错了格式，其实只是文件太大（变更表 #155）
-      const tooLarge = describeUploadFailure(err, FILE_UPLOAD_LIMIT_MB);
+      const tooLarge = describeUploadFailure(err, uploadLimitMb);
       if (tooLarge) {
         return reply.code(413).send({
           statusCode: 413,
@@ -313,13 +325,25 @@ export function registerUiRoutes(app: FastifyInstance, deps: UiRoutesDeps): void
       : ".bin";
     const jobId = `ingest-${Date.now()}-${++seq}`;
     const filePath = join(tmpdir(), `${jobId}${suffix}`);
-    // 体积超限是在**读流**这一步抛的（`toBuffer()`），不在 `request.file()`：
-    // 只包住 request.file() 会漏掉这个 413，用户还是看到那句英文（变更表 #155）
-    let buffer: Buffer;
+    // 流式落盘（变更表 #156）：上游 multipart 读多少写多少，165 MB 的 PPT 不再先攒成一个
+    // Buffer 全量驻留内存（旧实现 `toBuffer()` 在 50 MB 上限下勉强能过，300 MB 就会顶爆进程）。
     try {
-      buffer = await file.toBuffer();
+      await pipeline(file.file, createWriteStream(filePath));
+      // 真机实测（#156）踩到的坑：**超限时 pipeline 不报错**。`@fastify/multipart` 只在
+      // 文件流上置 `truncated = true` 并把 `FST_REQ_FILE_TOO_LARGE` 留给下一次 `file()`
+      // （旧的 `toBuffer()` 正因为自己读了 truncated 才抛）；只看异常会把"截断到上限的
+      // 半个文件"当上传成功入库。所以这里必须自己查这个标记。
+      if (file.file.truncated) {
+        throw Object.assign(new Error("request file too large"), {
+          code: "FST_REQ_FILE_TOO_LARGE",
+          statusCode: 413,
+        });
+      }
     } catch (err) {
-      const tooLarge = describeUploadFailure(err, FILE_UPLOAD_LIMIT_MB);
+      // 任何失败路径都不许在 /tmp 留半截文件：超限是流被截断、客户端断开是流没读完，
+      // 两者都只写成半个文件——留着只会让下次排查误以为"传上来了"
+      rmSync(filePath, { force: true });
+      const tooLarge = describeUploadFailure(err, uploadLimitMb);
       if (tooLarge) {
         return reply.code(413).send({
           statusCode: 413,
@@ -329,7 +353,6 @@ export function registerUiRoutes(app: FastifyInstance, deps: UiRoutesDeps): void
       }
       throw err;
     }
-    writeFileSync(filePath, buffer);
 
     const runId = `${jobId}#${seq}`;
     ingestRuns.set(jobId, runId);
@@ -545,7 +568,9 @@ async function* runIngestJob(
 ): AsyncIterable<FollowEvent> {
   yield { type: "progress", text: `解析 ${filename}` };
   try {
-    const result = await ingestCmd.execute({ filePath, productLineId });
+    // filename 是真名（file.filename），filePath 是临时落盘路径——两个都传：
+    // 落库的 source 必须写"材料叫什么"，不能写临时名（变更表 #156）
+    const result = await ingestCmd.execute({ filePath, productLineId, fileName: filename });
     yield {
       type: "done",
       rows_inserted: result.rowsInserted,
@@ -556,6 +581,10 @@ async function* runIngestJob(
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     yield { type: "error", message: `入库失败：${message}` };
+  } finally {
+    // 成功也要删：临时件只在解析/分类这段有用，留着就是每次上传在盘上多压一份原文
+    // （实测临时目录里积了 89 个 ingest-* 垃圾文件）。变更表 #156
+    rmSync(filePath, { force: true });
   }
 }
 
@@ -1299,6 +1328,62 @@ function registerLibraryRoutes(app: FastifyInstance, deps: UiRoutesDeps) {
     return spec.repo(db).list({ where, params, orderBy: "created_at ASC" });
   });
 
+  /**
+   * 本库已导入的资料文件清单（变更表 #156）
+   *
+   * 用户原话「只能选择，不能删除」——先把"有哪些文件、各落了多少行"摆出来，
+   * 才谈得上按文件删。聚合与匹配是纯函数（`library-materials.ts`，可单测）：
+   * 来源 `文件名:页码` 取最后一个冒号前的部分当文件名，**全等**归组（`a.pdf` 不吃 `a.pdf.bak`）。
+   */
+  app.get("/api/v1/library/materials", async (request, reply) => {
+    const lineId = String(
+      (request.query as { product_line_id?: unknown } | undefined)?.product_line_id ?? "",
+    ).trim();
+    if (!lineId) return badRequest(reply, "需要 product_line_id");
+    if (!db.productLineRepo.getById(lineId)) return notFound(reply, `产品线 ${lineId} 不存在`);
+    return aggregateMaterials(lineRowRefs(db, lineId));
+  });
+
+  /**
+   * 按文件删除（变更表 #156）：删掉本库中来源属于该文件的**所有行**
+   *
+   * 一处必须守住的边界：M1 产品行被删时，它的规格参数（M2）可能来自**别的文件**——
+   * `spec_param.product_id` 是外键，硬删会撞 FK 报 500。这时不猜用户想删什么，
+   * 直接说清"还剩几条规格来自其它文件，先删它们"，让用户决定。
+   */
+  app.delete("/api/v1/library/materials", async (request, reply) => {
+    const query = (request.query ?? {}) as { product_line_id?: unknown; file?: unknown };
+    const lineId = String(query.product_line_id ?? "").trim();
+    const file = String(query.file ?? "").trim();
+    if (!lineId) return badRequest(reply, "需要 product_line_id");
+    if (!file) return badRequest(reply, "需要 file（要删除的来源文件名）");
+    if (file === NO_SOURCE_FILE_LABEL) {
+      return badRequest(reply, "无来源标注的行不是导入的资料文件，请逐行删除");
+    }
+    if (!db.productLineRepo.getById(lineId)) return notFound(reply, `产品线 ${lineId} 不存在`);
+
+    const targets = lineRowRefs(db, lineId).filter((r) => rowBelongsToFile(r.source, file));
+    if (targets.length === 0) {
+      return notFound(reply, `该资料库没有来源为「${file}」的资料`);
+    }
+    const blocked = specRowsBlockingProductDelete(db, targets);
+    if (blocked > 0) {
+      return reply.code(409).send({
+        error: `该文件的产品行还有 ${blocked} 条规格参数来自其它文件，先删掉那些规格再删本文件`,
+      });
+    }
+
+    const tables: Record<string, number> = {};
+    for (const row of targets) {
+      LIBRARY_TABLES[row.code]!.repo(db).deleteById(row.id);
+      deleteSourceIndex(db.db, row.id);
+      tables[row.code] = (tables[row.code] ?? 0) + 1;
+    }
+    // 顺手标下游待重算（与单元格编辑/去重同一口径）：删了材料，已生成的分析就不再可信
+    const staleMarked = markLineStale(db, lineId, [...new Set(targets.map((r) => r.code))]);
+    return { file, deleted: targets.length, tables, stale_marked_stages: staleMarked };
+  });
+
   app.patch("/api/v1/library/rows/:code/:rowId", async (request, reply) => {
     const { code, rowId } = request.params as { code: string; rowId: string };
     const spec = LIBRARY_TABLES[code];
@@ -1361,6 +1446,9 @@ function registerLibraryRoutes(app: FastifyInstance, deps: UiRoutesDeps) {
     if (!spec) return badRequest(reply, `表编号非法: ${code}`);
     const ok = spec.repo(db).deleteById(rowId);
     if (!ok) return notFound(reply, `${code} 表行 ${rowId} 不存在`);
+    // 索引跟着业务行一起走（变更表 #156）：触发器只加了 INSERT/UPDATE，
+    // 不清索引的话"来源真实性"自检会对已删材料给出假阳性
+    deleteSourceIndex(db.db, rowId);
     markDependentStale(db, code, rowId);
     return { deleted: true };
   });
@@ -1400,6 +1488,52 @@ function registerLibraryRoutes(app: FastifyInstance, deps: UiRoutesDeps) {
     return updated;
   });
 
+  /**
+   * 删除产品线（资料库）（变更表 #156，用户原话「只能选择，不能删除」）
+   *
+   * 只允许删**空线**，且通用库一律禁删——产品线被场景的 `product_line_id` 指着，
+   * 删掉一条还有行的库等于把别人的分析依据抽走，这类操作不该有一个"顺手点了就没了"的入口。
+   * 三道闸门各给一句能照着做的话（为什么不行 + 下一步怎么办），全部返回 409（与 404 区分：
+   * 库在，只是现在不能删）。
+   */
+  app.delete("/api/v1/library/product-lines/:id", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const line = db.productLineRepo.getById(id);
+    if (!line) return notFound(reply, "产品线不存在");
+
+    // 闸门 1：通用资料库（scenario_id IS NULL，如「拓维产品」）是所有场景共享的输入，禁删
+    if (line.scenario_id === null || line.scenario_id === undefined) {
+      return reply.code(409).send({
+        error: `「${line.name}」是通用资料库（所有场景共享），不能删除；不要了请改名或改成场景专属库`,
+      });
+    }
+
+    // 闸门 2：还有行 → 先删资料（清单见「已导入资料」）
+    const rows = lineRowRefs(db, id);
+    if (rows.length > 0) {
+      return reply.code(409).send({
+        error: `该资料库还有 ${rows.length} 行资料，先删资料再删库`,
+      });
+    }
+
+    // 闸门 3：仍被活着的场景当归属库用 → 删了场景就没有资料库（外键也会拦）
+    const usedBy = db.scenarioRepo.list({ where: "product_line_id = ?", params: [id] });
+    if (usedBy.length > 0) {
+      return reply.code(409).send({
+        error: `该资料库仍是场景「${usedBy[0]!.name}」的归属库，先删除那个场景再删库`,
+      });
+    }
+
+    // 悬空的引用记录（指向已删场景/已显式取消引用）跟着库一起清，否则外键会拦
+    const links = db.scenarioLinkedLineRepo.list({
+      where: "product_line_id = ?",
+      params: [id],
+    });
+    for (const link of links) db.scenarioLinkedLineRepo.deleteById(link.id);
+    db.productLineRepo.deleteById(id);
+    return { deleted: true, name: line.name, removed_links: links.length };
+  });
+
   // 六维总评 + 完成度（领域层计算）
   app.get("/api/v1/library/quality-summary", async (request, reply) => {
     const query = request.query as { product_line_id?: string };
@@ -1429,6 +1563,51 @@ function registerLibraryRoutes(app: FastifyInstance, deps: UiRoutesDeps) {
 }
 
 /**
+ * 一条产品线下的**所有资料行**（跨 11 张库表），带表号与来源标注（变更表 #156）
+ *
+ * 范围与 `GET /library/product-lines` 的 `row_counts`、`DELETE /library/product-lines/:id`
+ * 的"空线"判定**同一个集合**（都是 `LIBRARY_TABLES`），否则会出现"清单说 0 行、删库说还有 3 行"
+ * 这种自相矛盾。M2 无 `product_line_id` 列，由 `lineFilter` 的子查询按产品归属。
+ */
+/** 库表行引用 + 必定存在的行 id（删除入口要用；聚合用的裸类型不带 id） */
+type LineRowRef = MaterialRowRef & { id: string };
+
+function lineRowRefs(db: DbInstance, productLineId: string): LineRowRef[] {
+  const refs: LineRowRef[] = [];
+  for (const [code, spec] of Object.entries(LIBRARY_TABLES)) {
+    const { where, params } = lineFilter(spec, productLineId);
+    for (const row of spec.repo(db).list({ where, params })) {
+      const r = row as unknown as Record<string, unknown>;
+      refs.push({ code, id: String(r["id"] ?? ""), source: r["source"] });
+    }
+  }
+  return refs;
+}
+
+/**
+ * 要删的 M1 产品行里，有多少规格参数（M2）来自**别的文件**
+ *
+ * 为什么必须拦：`spec_param.product_id` 是外键，删掉产品行会留下悬空规格 → SQLite 直接报错
+ * （用户看到 500）。而那些规格是别的文件带进来的，不能跟着一起删。返回 0 才允许继续。
+ */
+function specRowsBlockingProductDelete(db: DbInstance, targets: LineRowRef[]): number {
+  const products = targets.filter((t) => t.code === "M1" && t.id);
+  if (products.length === 0) return 0;
+  const targetIds = new Set(targets.filter((t) => t.code === "M2").map((t) => t.id));
+  let blocked = 0;
+  for (const product of products) {
+    const specs = db.specParamRepo.list({
+      where: "product_id = ?",
+      params: [product.id],
+    }) as unknown as Record<string, unknown>[];
+    for (const spec of specs) {
+      if (!targetIds.has(String(spec["id"]))) blocked += 1;
+    }
+  }
+  return blocked;
+}
+
+/**
  * 资料行 → 它所属的产品线 id
  *
  * 为什么不能只查 `product` / `optional_material`：那两个 `getById` 只对 M1 产品行与 O*
@@ -1440,7 +1619,7 @@ function registerLibraryRoutes(app: FastifyInstance, deps: UiRoutesDeps) {
 function resolveProductLineId(db: DbInstance, code: string, rowId: string): string | undefined {
   const spec = LIBRARY_TABLES[code];
   if (!spec) return undefined;
-  const row = spec.repo(db).getById(rowId) as Record<string, unknown> | undefined;
+  const row = spec.repo(db).getById(rowId) as unknown as Record<string, unknown> | undefined;
   if (!row) return undefined;
   const direct = row["product_line_id"];
   if (typeof direct === "string" && direct) return direct;

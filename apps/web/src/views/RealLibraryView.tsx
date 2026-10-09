@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   api,
+  type ApiMaterialFile,
   type ApiProductLine,
   type ApiQualitySummary,
 } from "../api";
@@ -471,6 +472,138 @@ const TablePanel: React.FC<TablePanelProps> = ({
   );
 };
 
+/* ═══ 本库已导入的资料（按文件删，变更表 #156） ═══ */
+
+/** 表号 → 行数 的紧凑文案（如 `M1×3、O1×1`） */
+function tablesSummary(tables: Record<string, number>): string {
+  return Object.entries(tables)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([code, n]) => `${code}×${n}`)
+    .join("、");
+}
+
+/**
+ * 早期上传落库的是临时文件名（`ingest-<时间戳>-<序号>.<ext>`）
+ *
+ * 与服务端 `isLegacyTempSource` 同口径：前端只用来决定"要不要给一句说明"，
+ * 判定本身不参与删除（删除永远按全等文件名走服务端）。
+ */
+const LEGACY_TEMP_NAME_RE = /^ingest-\d+-\d+\.[A-Za-z0-9]+$/;
+
+/**
+ * 本库已导入的资料文件清单（文件名 + 行数，逐项可删）
+ *
+ * 为什么单独一个面板：用户原话「只能选择，不能删除」——原来的资料区只能看行、不能按来源
+ * 清一份材料。这里按来源文件聚合（服务端算，口径与 ingest 的 `文件名:页码` 同源），
+ * 一次把一份材料在整个库里落的所有行删掉。
+ *
+ * 刻意**不用表格**：主表（M1-M5/O）的列语义是逐格编辑，而这里是"一条文件一行"的清单，
+ * 用条目更像列表也更省横向空间（同 #149「右栏不用表格」的口径）。
+ */
+const LibraryMaterialsPanel: React.FC<{
+  lineId: string;
+  /** 行数据变化（入库/编辑/删行）后由父级 +1，触发本面板重取 */
+  reloadTick: number;
+  onChanged: () => void;
+}> = ({ lineId, reloadTick, onChanged }) => {
+  const { showToast } = useToast();
+  const { status, data, error, reload } = useAsync(
+    () => api.libraryMaterials(lineId),
+    [lineId, reloadTick],
+  );
+
+  const items = data ?? [];
+  const totalRows = items.reduce((sum, g) => sum + g.rows, 0);
+  const hasLegacyNames = items.some((g) => LEGACY_TEMP_NAME_RE.test(g.file));
+
+  const handleDeleteFile = useCallback(
+    async (item: ApiMaterialFile) => {
+      // 二次确认说清三件事：删哪个文件、删多少行、不可恢复。
+      // 下游待重算只在"这份资料真被场景分析用过"时才发生，所以写成条件句、不打包票。
+      const ok = window.confirm(
+        `删除资料文件「${item.file}」？\n\n将从本库删除它的 ${item.rows} 行资料（${tablesSummary(item.tables)}），删掉后不可恢复。\n若这些资料已被某个场景的分析用过，对应阶段会被标记为待重算。`,
+      );
+      if (!ok) return;
+      try {
+        const r = await api.deleteLibraryMaterial(lineId, item.file);
+        showToast(`已删除「${r.file}」${r.deleted} 行`);
+        reload();
+        onChanged();
+      } catch (err: unknown) {
+        showToast(`删除失败：${err instanceof Error ? err.message : String(err)}`);
+      }
+    },
+    [lineId, reload, onChanged, showToast],
+  );
+
+  if (status === "loading") {
+    return (
+      <div className="pnl">
+        <div className="pnl-h"><div><h2>本库已导入的资料</h2><p>加载中…</p></div></div>
+        <div className="pnl-b"><div className="loading-strip" role="status" aria-label="加载中" /></div>
+      </div>
+    );
+  }
+
+  if (status === "error") {
+    return (
+      <div className="pnl">
+        <div className="pnl-h">
+          <div><h2>本库已导入的资料</h2><p>加载失败</p></div>
+          <button className="btn" type="button" onClick={reload}>重试</button>
+        </div>
+        <div className="pnl-b"><div className="empty-state"><div className="empty-state-title">加载失败</div><div className="empty-state-desc">{error}</div></div></div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="pnl">
+      <div className="pnl-h">
+        <div>
+          <h2>本库已导入的资料</h2>
+          <p>按来源文件聚合；删除即删掉该文件在本库落的全部行</p>
+        </div>
+        <span className="badge success">{items.length} 个文件 · {totalRows} 行</span>
+      </div>
+      <div className="pnl-b">
+        {items.length === 0 ? (
+          <div className="empty-state">
+            <div className="empty-state-title">本库还没有导入资料</div>
+            <div className="empty-state-desc">上传材料解析入库后，这里按文件列出各自的名称与行数</div>
+          </div>
+        ) : (
+          <ul className="mat-list">
+            {items.map((item) => (
+              <li className="mat-item" key={item.file}>
+                <span className="mat-name" title={item.file}>{item.file}</span>
+                <span className="mat-meta">
+                  {item.rows} 行
+                  {tablesSummary(item.tables) ? `（${tablesSummary(item.tables)}）` : ""}
+                </span>
+                {item.deletable ? (
+                  <button className="btn btn-sm" type="button" onClick={() => void handleDeleteFile(item)}>
+                    删除
+                  </button>
+                ) : (
+                  <span className="badge warning" title="手工补录的行没有来源标注，只能逐行删除">
+                    逐行删
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+        {hasLegacyNames && (
+          <div className="mat-note">
+            带 ingest- 数字的是早期上传留下的临时文件名（当时没记原始名，无法还原），按行数与所属表可以判断是哪一批材料。
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
 /* ═══ 质量总评面板 ═══ */
 
 const RATING_BADGE: Record<string, string> = { pass: "success", warn: "warning", fail: "error" };
@@ -539,10 +672,11 @@ const QualityRealPanel: React.FC<{ summary: ApiQualitySummary }> = ({ summary })
 
 /* ═══ 视图主体 ═══ */
 
-type TabKey = "quality" | "M1" | "M2" | "M3" | "M4" | "M5" | "O" | "reminder";
+type TabKey = "quality" | "materials" | "M1" | "M2" | "M3" | "M4" | "M5" | "O" | "reminder";
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: "quality", label: "质量总评" },
+  { key: "materials", label: "已导入资料" },
   ...M_TABS.map((t) => ({ key: t.code as TabKey, label: t.label })),
   { key: "O", label: "O 可选材料" },
   { key: "reminder", label: "补充提醒" },
@@ -603,6 +737,29 @@ export const RealLibraryView: React.FC<{
     }
   }, [lines, lineId, onChanged, showToast]);
 
+  /**
+   * 删除资料库（产品线）（变更表 #156）
+   *
+   * 入口只对「可删」的库可用（空线 + 非通用库）；真正的闸门在服务端（非空 409、通用库 409、
+   * 仍被活场景占用 409），前端把服务端给的中文原因原样弹出来，不自己编。
+   */
+  const handleDeleteLine = useCallback(async () => {
+    const cur = lines.find((l) => l.id === lineId);
+    if (!cur) return;
+    const ok = window.confirm(
+      `删除资料库「${cur.name}」？\n\n该库当前 0 行资料，删掉后不可恢复。`,
+    );
+    if (!ok) return;
+    try {
+      await api.deleteProductLine(lineId);
+      showToast(`资料库「${cur.name}」已删除`);
+      // 删完刷新产品线快照（选中项由 useEffect 兜底落到第一条）
+      onChanged?.();
+    } catch (err: unknown) {
+      showToast(`删除失败：${err instanceof Error ? err.message : String(err)}`);
+    }
+  }, [lines, lineId, onChanged, showToast]);
+
   /** O 可选材料当前查看的类别（六类共用面板） */
   const [oPick, setOPick] = useState<string>("O1");
 
@@ -643,6 +800,18 @@ export const RealLibraryView: React.FC<{
           );
         }
         return <QualityRealPanel summary={summary.data} />;
+      case "materials":
+        return (
+          <LibraryMaterialsPanel
+            lineId={lineId}
+            reloadTick={reloadTick}
+            onChanged={() => {
+              setReloadTick((t) => t + 1);
+              summary.reload();
+              onChanged?.();
+            }}
+          />
+        );
       case "O":
         return (
           <TablePanel
@@ -733,6 +902,19 @@ export const RealLibraryView: React.FC<{
   const totalRows = activeLine?.row_counts
     ? Object.values(activeLine.row_counts).reduce((a, b) => a + b, 0)
     : 0;
+  /**
+   * 删除资料库的可用条件（服务端还会再判"是否仍被活场景占用"，两处不冲突）：
+   * ① 空线——还有行就先删资料（"先删资料再删库"）；② 非通用库——通用库全场景共享，禁删。
+   */
+  const isCommonLine = !activeLine?.scenario_id;
+  const canDeleteLine = Boolean(activeLine) && !isCommonLine && totalRows === 0;
+  const deleteLineHint = !activeLine
+    ? "先选择一条资料库"
+    : isCommonLine
+      ? "通用资料库（所有场景共享）不能删除"
+      : totalRows > 0
+        ? `该资料库还有 ${totalRows} 行资料，先删资料再删库`
+        : "删除该资料库（不可恢复）";
 
   return (
     <>
@@ -756,6 +938,15 @@ export const RealLibraryView: React.FC<{
               </select>
               <button className="btn btn-sm" type="button" onClick={() => void handleRenameLine()}>
                 重命名
+              </button>
+              <button
+                className="btn btn-sm"
+                type="button"
+                disabled={!canDeleteLine}
+                title={deleteLineHint}
+                onClick={() => void handleDeleteLine()}
+              >
+                删除资料库
               </button>
             </>
           ) : (

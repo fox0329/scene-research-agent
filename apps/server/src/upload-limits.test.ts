@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { describeUploadFailure } from "./upload-limits.js";
+import { describeUploadFailure, tooLargeMessage } from "./upload-limits.js";
 
 describe("上传失败成因翻译（变更表 #155）", () => {
   it("multipart 的 FST_REQ_FILE_TOO_LARGE → 点名上限，不猜文件大小", () => {
@@ -21,5 +21,13 @@ describe("上传失败成因翻译（变更表 #155）", () => {
     expect(describeUploadFailure(new Error("boom"), 50)).toBeNull();
     expect(describeUploadFailure({ code: "FST_INVALID_MULTIPART_CONTENT_TYPE" }, 50)).toBeNull();
     expect(describeUploadFailure(null, 50)).toBeNull();
+  });
+
+  it("新上限口径（变更表 #156：300 MB）在异常路径与截断路径上同一句话", () => {
+    const fromError = describeUploadFailure({ statusCode: 413 }, 300);
+    expect(fromError).toBe(tooLargeMessage(300));
+    expect(fromError).toContain("300 MB");
+    // 截断标记路径（pipeline 不报错时）复用同一句，避免两处文案漂移
+    expect(tooLargeMessage(300)).toBe(fromError);
   });
 });

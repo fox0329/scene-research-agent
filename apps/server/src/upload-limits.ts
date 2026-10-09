@@ -1,5 +1,5 @@
 /**
- * 上传失败的成因翻译（变更表 #155）
+ * 上传失败的成因翻译（变更表 #155；#156 起兼作"截断标记"的同一句话）
  *
  * `@fastify/multipart` 在超过 `limits.fileSize` 时抛出 `FST_REQ_FILE_TOO_LARGE`（英文
  * `request file too large`）。原来这个异常被当成"表单不合法"兜住，用户看到的是
@@ -7,11 +7,17 @@
  * 这里把它翻成人话，并且**只说上限、不猜文件大小**（multipart 到这一步已经把流截断了，
  * 服务端拿不到真实体积；精确体积由前端上传前预检给出）。
  */
+
+/** 超限的中文说明（异常路径与"截断标记"路径共用同一句，避免两处文案漂移） */
+export function tooLargeMessage(limitMb: number): string {
+  return `文件超过上传上限 ${limitMb} MB：请先压缩或按章节拆分后再上传`;
+}
+
 export function describeUploadFailure(err: unknown, limitMb: number): string | null {
   const code = (err as { code?: unknown } | null)?.code;
   const status = (err as { statusCode?: unknown } | null)?.statusCode;
   if (code === "FST_REQ_FILE_TOO_LARGE" || status === 413) {
-    return `文件超过上传上限 ${limitMb} MB：请先压缩或按章节拆分后再上传`;
+    return tooLargeMessage(limitMb);
   }
   return null;
 }

@@ -2599,3 +2599,46 @@ td.ed {
   color: var(--tl);
   line-height: 1.6;
 }
+
+/* 本库已导入的资料：一条文件一行（文件名 + 行数 + 删除），全走 Token（变更表 #156） */
+.mat-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.mat-item {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  padding: var(--s25) 0;
+  border-top: 1px solid var(--cb);
+}
+
+.mat-item:first-child {
+  border-top: none;
+}
+
+.mat-name {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--ts);
+  font-weight: var(--fm2);
+  color: var(--ct);
+  overflow-wrap: anywhere;
+}
+
+.mat-meta {
+  flex-shrink: 0;
+  font-size: var(--txs);
+  color: var(--ct2);
+  white-space: nowrap;
+}
+
+/* 历史临时名说明（变更表 #156）：一句客观说明，不做成告警 */
+.mat-note {
+  margin-top: var(--s3);
+  font-size: var(--t2x);
+  color: var(--ct2);
+  line-height: 1.6;
+}

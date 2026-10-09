@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { describeOversize, describeSkipped, pickSupportedFiles, splitOversizeFiles } from "./constants.js";
+import {
+  LARGE_FILE_HINT_MB,
+  describeLargeFiles,
+  describeOversize,
+  describeSkipped,
+  pickSupportedFiles,
+  splitOversizeFiles,
+} from "./constants.js";
 
 /** 造一个指定 MB 的假 File（不真分配内存，只给 size） */
 function fakeFile(name: string, mb: number): File {
@@ -58,5 +65,27 @@ describe("上传前体积预检（变更表 #155）", () => {
     expect(ok).toHaveLength(0);
     expect(oversize).toHaveLength(1);
     expect(describeSkipped(skippedNames)).toContain("不支持的文件");
+  });
+});
+
+describe("大文件提示（变更表 #156：上限提到 300 MB 后的预期管理）", () => {
+  it("大文件提示线是 200 MB，正好到线也给提示（不让用户以为卡死）", () => {
+    expect(LARGE_FILE_HINT_MB).toBe(200);
+    const msg = describeLargeFiles([fakeFile("副本狄耐克鸿蒙智慧医院建设方案.pptx", 165), fakeFile("大.pptx", 200)]);
+    expect(msg).toContain("解析可能需要几分钟");
+    expect(msg).toContain("大.pptx");
+    expect(msg).not.toContain("副本狄耐克");
+  });
+
+  it("没有大文件时不给提示（不打扰正常上传）", () => {
+    expect(describeLargeFiles([fakeFile("小.pptx", 1)])).toBe("");
+    expect(describeLargeFiles([])).toBe("");
+  });
+
+  it("超过 3 个大文件只列前 3 个并给总数", () => {
+    const msg = describeLargeFiles([1, 2, 3, 4].map((i) => fakeFile(`大${i}.pptx`, 200 + i)));
+    expect(msg).toContain("大1.pptx");
+    expect(msg).not.toContain("大4.pptx");
+    expect(msg).toContain("等 4 个");
   });
 });

@@ -64,3 +64,25 @@ export function describeOversize(
   const more = oversize.length > 3 ? ` 等 ${oversize.length} 个` : "";
   return `已跳过 ${oversize.length} 个超过 ${limitMb} MB 上限的文件：${shown}${more}——请压缩或按章节拆分后再上传`;
 }
+
+/**
+ * 大文件提示的触发线（MB）：上限提到 300 MB 后（变更表 #156），200 MB 以上的材料解析
+ * 可能要几分钟——用户会以为界面卡死。这里只给一句预期，不拦、不拆、不改上限。
+ */
+export const LARGE_FILE_HINT_MB = 200;
+
+/**
+ * 放行的大文件 → 一句"要等一会儿"的预期（没有大文件返回 ""，不打扰正常上传）
+ *
+ * @param files 通过预检、即将上传的文件
+ */
+export function describeLargeFiles(files: Pick<File, "name" | "size">[]): string {
+  const large = files.filter((f) => f.size / 1024 / 1024 >= LARGE_FILE_HINT_MB);
+  if (large.length === 0) return "";
+  const shown = large
+    .slice(0, 3)
+    .map((f) => `${f.name}（${(f.size / 1024 / 1024).toFixed(0)} MB）`)
+    .join("、");
+  const more = large.length > 3 ? ` 等 ${large.length} 个` : "";
+  return `文件较大，解析可能需要几分钟，请勿关闭页面：${shown}${more}`;
+}

@@ -46,6 +46,15 @@ export interface IngestDeps {
 export interface IngestOpts {
   filePath: string;
   productLineId: string;
+  /**
+   * 材料的**真实文件名**（G-R0 溯源与"按文件删"都靠它，变更表 #156）
+   *
+   * 为什么必须显式传：上传路由落盘用的是临时名（`ingest-<ts>-<n>.pptx`），而
+   * `basename(filePath)` 拿到的是这个临时名——模型照着 prompt 抄，于是行上的 source 变成
+   * `ingest-1790179606669-44.docx:10`，谁都认不出这是哪份材料（实测库里 474 条全这样）。
+   * 缺省仍取 filePath 的 basename（对话导入等场景本来就是真实路径）。
+   */
+  fileName?: string;
 }
 
 /** ingest 返回结果 */
@@ -174,7 +183,8 @@ async function executeIngest(
 
   // 1. 解析文件
   const parseResult = await docParser(filePath);
-  const fileName = basename(filePath);
+  // 真实文件名优先（上传路由传进来）；没有才退回路径的文件名
+  const fileName = opts.fileName?.trim() || basename(filePath);
 
   // 2. 组 user prompt
   const userPrompt = buildUserPrompt(fileName, parseResult);
