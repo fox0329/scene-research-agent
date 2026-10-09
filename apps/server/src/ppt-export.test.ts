@@ -127,10 +127,9 @@ function readLog(log: string): LogRecord[] {
 // ─── 场景与 DSH 桩 ─────────────────────────────────────────
 
 function seed(db: DbInstance, name = "PPT 场景"): { scenarioId: string; scenario: ReturnType<DbInstance["scenarioRepo"]["insert"]> } {
-  const line = db.productLineRepo.insert({ name: "默认产品线" });
+  db.productLineRepo.insert({ name: "默认产品线" });
   const scenario = db.scenarioRepo.insert({
     name,
-    product_line_id: line.id,
     status: "进行中",
     current_stage: 0,
   });

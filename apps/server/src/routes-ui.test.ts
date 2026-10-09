@@ -68,7 +68,6 @@ function seedScenario(db: DbInstance, name = "测试项目"): {
   const line = db.productLineRepo.insert({ name: "默认产品线" });
   const scenario = db.scenarioRepo.insert({
     name,
-    product_line_id: line.id,
     status: "进行中",
     current_stage: 0,
   });
@@ -99,7 +98,8 @@ describe("项目路由", () => {
     expect(res.json().error).toContain("不能为空");
   });
 
-  it("POST /projects 无产品线时自动建默认产品线", async () => {
+  it("POST /projects：只建场景、**不建**私有库（v3.0 按需创建，变更表 #160）", async () => {
+    const before = h.db.productLineRepo.list().length;
     const res = await h.app.inject({
       method: "POST",
       url: "/api/v1/projects",
@@ -109,17 +109,41 @@ describe("项目路由", () => {
     const body = res.json();
     expect(body.name).toBe("新场景");
     expect(body.status).toBe("进行中");
-    expect(body.product_line_id).toBeTruthy();
-    expect(h.db.productLineRepo.getById(body.product_line_id)).toBeDefined();
+    // 不再自动建库：库里一条新线都没有，own_line_id 明确为 null
+    expect(h.db.productLineRepo.list().length).toBe(before);
+    expect(body.own_line_id).toBeNull();
   });
 
-  it("POST /projects 未知产品线 → 404", async () => {
-    const res = await h.app.inject({
+  it("POST /projects/:id/own-line：按需建私有库、幂等；建完列表接口能看见", async () => {
+    const created = await h.app.inject({
       method: "POST",
       url: "/api/v1/projects",
-      payload: { name: "x", product_line_id: "nope" },
+      payload: { name: "按需建库场景" },
     });
-    expect(res.statusCode).toBe(404);
+    const id = created.json().id as string;
+
+    const first = await h.app.inject({ method: "POST", url: `/api/v1/projects/${id}/own-line` });
+    expect(first.statusCode).toBe(200);
+    expect(first.json().created).toBe(true);
+    const lineId = first.json().own_line_id as string;
+    expect(lineId).toBeTruthy();
+    // 关系落在 product_line.scenario_id 上（单一属主）
+    expect(h.db.productLineRepo.getById(lineId)!.scenario_id).toBe(id);
+
+    // 幂等：再调一次不会多出一条
+    const again = await h.app.inject({ method: "POST", url: `/api/v1/projects/${id}/own-line` });
+    expect(again.json().own_line_id).toBe(lineId);
+    // created 要如实：第二次是"本来就有"，不能骗前端说又建了一个
+    expect(again.json().created).toBe(false);
+    expect(
+      h.db.productLineRepo.list({ where: "scenario_id = ?", params: [id] }),
+    ).toHaveLength(1);
+
+    const lines = await h.app.inject({
+      method: "GET",
+      url: `/api/v1/projects/${id}/material-sources`,
+    });
+    expect(lines.json().own.id).toBe(lineId);
   });
 
   it("GET /projects 带 stale_count", async () => {
@@ -833,7 +857,6 @@ describe("资料库路由", () => {
     // 场景与资料行同产品线，才能按产品线归属联动标脏
     const scenario = h.db.scenarioRepo.insert({
       name: "联动场景",
-      product_line_id: plId,
       status: "进行中",
       current_stage: 0,
     });
@@ -860,13 +883,11 @@ describe("资料库路由", () => {
     const global = h.db.productLineRepo.insert({ name: "通用产品库" });
     const a = h.db.scenarioRepo.insert({
       name: "场景A",
-      product_line_id: plId,
       status: "进行中",
       current_stage: 4,
     });
     const b = h.db.scenarioRepo.insert({
       name: "场景B（显式排除通用库）",
-      product_line_id: plId,
       status: "进行中",
       current_stage: 4,
     });
@@ -918,7 +939,6 @@ describe("资料库路由", () => {
     const p = seedProduct();
     const scenario = h.db.scenarioRepo.insert({
       name: "规格联动场景",
-      product_line_id: plId,
       status: "进行中",
       current_stage: 4,
     });
@@ -954,7 +974,6 @@ describe("资料库路由", () => {
     /* 变更表 #105 前这条用的是 表5-5 → 阶段 5、6；表删了，改用仍在的 表2-2 */
     const scenario = h.db.scenarioRepo.insert({
       name: "要素联动场景",
-      product_line_id: plId,
       status: "进行中",
       current_stage: 4,
     });
@@ -1175,8 +1194,8 @@ describe("资料文件删除入口（变更表 #156）", () => {
 
   it("DELETE materials：删完标下游待重算（与单元格编辑同一口径）", async () => {
     const { scenarioId } = seedScenario(h.db, "删资料联动场景");
-    // 让场景挂到这条专属库上（scenariosOfLine 按场景的归属库判定）
-    h.db.scenarioRepo.update(scenarioId, { product_line_id: lineId } as never);
+    // 让场景挂到这条专属库上（v3.0：关系在 product_line.scenario_id 这一侧）
+    h.db.productLineRepo.update(lineId, { scenario_id: scenarioId } as never);
     h.db.stageDataRepo.insert({
       scenario_id: scenarioId,
       stage: 3,
@@ -1379,26 +1398,29 @@ describe("资料文件删除入口（变更表 #156）", () => {
     ).toHaveLength(0);
   });
 
-  it("DELETE product-lines/:id：仍被活着的场景当归属库 → 409（不让场景挂空）", async () => {
-    // 场景专属库（scenario_id 非空，过第一道闸门）+ 0 行，但场景的归属库就是它
-    const owned = h.db.productLineRepo.insert({
-      name: "被场景占用的库",
-      scenario_id: "scenario-alive",
-    } as never).id;
-    h.db.scenarioRepo.insert({
-      name: "占用库的场景",
-      product_line_id: owned,
+  it("DELETE product-lines/:id：空私有库可以删，场景还在（v3.0 变更表 #160）", async () => {
+    // 关系在 product_line.scenario_id 这一侧，删库不需要回头改场景，所以场景活着也删得掉
+    const scenario = h.db.scenarioRepo.insert({
+      name: "要清掉私有库的场景",
       status: "进行中",
       current_stage: 0,
     } as never);
+    const owned = h.db.productLineRepo.insert({
+      name: "要清掉私有库的场景·专属资料",
+      scenario_id: scenario.id,
+    } as never).id;
 
     const res = await h.app.inject({
       method: "DELETE",
       url: `/api/v1/library/product-lines/${owned}`,
     });
-    expect(res.statusCode).toBe(409);
-    expect(res.json().error).toContain("占用库的场景");
-    expect(h.db.productLineRepo.getById(owned)).toBeDefined();
+    expect(res.statusCode).toBe(200);
+    expect(h.db.productLineRepo.getById(owned)).toBeUndefined();
+    // 场景还在，只是回到"没有私有库"的状态
+    expect(h.db.scenarioRepo.getById(scenario.id)).toBeDefined();
+    expect(
+      h.db.productLineRepo.list({ where: "scenario_id = ?", params: [scenario.id] }),
+    ).toHaveLength(0);
   });
 
   it("DELETE product-lines/:id：不存在 → 404", async () => {

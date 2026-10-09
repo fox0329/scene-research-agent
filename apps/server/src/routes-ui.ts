@@ -12,7 +12,6 @@ import { createWriteStream, existsSync, rmSync } from "node:fs";
 import { pipeline } from "node:stream/promises";
 import { join } from "node:path";
 import { tmpdir, homedir } from "node:os";
-import { randomUUID } from "node:crypto";
 import type {
   Conversation,
   DshClient,
@@ -35,7 +34,12 @@ import {
 } from "@scene/contract";
 import { alignmentWithBrief, anchorFixedRows, buildFlowStatus, type InfoRow } from "@scene/domain";
 import type { DbInstance } from "@scene/infra";
-import { scenarioLineContext } from "./scenario-lines.js";
+import {
+  ensureOwnLine,
+  ownLineIdOf,
+  ownLineOf,
+  scenarioLineContext,
+} from "./scenario-lines.js";
 import { describeUploadFailure } from "./upload-limits.js";
 import {
   NO_SOURCE_FILE_LABEL,
@@ -602,6 +606,8 @@ function registerProjectRoutes(app: FastifyInstance, deps: UiRoutesDeps) {
     }
     return scenarios.map((s) => ({
       ...s,
+      // 私有库是按需创建的（v3.0）：可能还没有——前端据此决定"直接上传"还是"先建库再上传"
+      own_line_id: ownLineIdOf(db, s.id),
       stale_count: staleCount.get(s.id) ?? 0,
       // v1.5 左栏场景列表显示「第 n/8 步」：只按完成记录推导，不做逐表就绪判定（列表要轻）
       flow: (() => {
@@ -636,25 +642,16 @@ function registerProjectRoutes(app: FastifyInstance, deps: UiRoutesDeps) {
     // 场景描述（分析锚 v1.11）：客户/行业、问题、目标与边界
     const description = String(body.description ?? "").trim().slice(0, 4000);
 
-    // v1.10：每个场景自动带一条专属资料库（场景内上传落这里，删除场景时资料保留）；
-    // 显式传 product_line_id 时沿用该库（高级用法，不标专属归属）
-    let productLineId = String(body.product_line_id ?? "").trim();
-    const ownLine = !productLineId;
-    if (ownLine) {
-      productLineId = createOwnLineForScenario(db, name);
-    } else if (!db.productLineRepo.getById(productLineId)) {
-      return notFound(reply, `产品线 ${productLineId} 不存在`);
-    }
+    /* v3.0（变更表 #160，用户定调）：新建场景**不再**自动建私有库——私有库按需创建
+       （场景里第一次上传材料时建），空私有库可删，删掉就回到"只用通用库"的状态。
+       想直接用某个已有库，走"引用通用库"（默认全部引用，可在「本场景资料」里取消勾选）。
+       旧客户端若还传 product_line_id，一律忽略（该字段已从契约删除）。 */
     const scenario = db.scenarioRepo.insert({
       name,
       description: description || null,
-      product_line_id: productLineId,
       status: "进行中",
       current_stage: 0,
     });
-    if (ownLine) {
-      db.productLineRepo.update(productLineId, { scenario_id: scenario.id } as never);
-    }
 
     // 场景诉求（第一输入）：有诉求才落库；同时建表1-1 锚骨架，用户进阶段 1 即可逐格确认
     const intent = String(body.intent ?? "").trim();
@@ -670,7 +667,9 @@ function registerProjectRoutes(app: FastifyInstance, deps: UiRoutesDeps) {
       });
     }
     ensureAnchorRows(db, scenario.id, name);
-    return scenario;
+    /* 新建场景没有私有库（v3.0 按需创建），但字段要**明确**给出 null：
+       前端靠它区分"还没有私有库，上传前先建"与"字段缺失（旧后端）" */
+    return { ...scenario, own_line_id: null };
   });
 
   // ─── 场景诉求（第一输入） ──────────────────────────────
@@ -811,7 +810,22 @@ function registerProjectRoutes(app: FastifyInstance, deps: UiRoutesDeps) {
     const linked = db.productLineRepo
       .list({ where: "scenario_id IS NULL", orderBy: "created_at ASC" })
       .filter((l) => !excluded.has(l.id));
-    return { own: db.productLineRepo.getById(scenario.product_line_id), linked };
+    // own 可能为 null（本场景还没有私有库，v3.0 按需创建）
+    return { own: ownLineOf(db, scenario.id) ?? null, linked };
+  });
+
+  /**
+   * 确保本场景的私有库存在（v3.0，变更表 #160）——幂等
+   *
+   * 私有库按需创建：场景里第一次上传材料时由前端先调这个接口，拿到 line id 再上传。
+   * 读路径（列表 / 分析 / 汇总）**不用**它，一律用 `ownLineOf`，避免"到处都在建空库"。
+   */
+  app.post("/api/v1/projects/:id/own-line", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const scenario = db.scenarioRepo.getById(id);
+    if (!scenario) return notFound(reply, `场景 ${id} 不存在`);
+    const { line, created } = ensureOwnLine(db, scenario);
+    return { own_line_id: line.id, own_line: line, created };
   });
 
   app.put("/api/v1/projects/:id/material-sources", async (request, reply) => {
@@ -876,7 +890,7 @@ function registerProjectRoutes(app: FastifyInstance, deps: UiRoutesDeps) {
     }
     const updated = db.scenarioRepo.update(id, patch as never);
     if (!updated) return notFound(reply, `场景 ${id} 不存在`);
-    return updated;
+    return { ...updated, own_line_id: ownLineIdOf(db, id) };
   });
 
   app.delete("/api/v1/projects/:id", async (request, reply) => {
@@ -1043,17 +1057,6 @@ function registerProjectRoutes(app: FastifyInstance, deps: UiRoutesDeps) {
     }
     return { ...updated, stale_marked_stages: downstream };
   });
-}
-
-/** 为场景创建专属资料库（v1.10）；名称唯一，重名自动加短后缀 */
-function createOwnLineForScenario(db: UiRoutesDeps["db"], scenarioName: string): string {
-  let lineName = `${scenarioName}·专属资料`;
-  const taken = new Set(db.productLineRepo.list().map((l) => l.name));
-  if (taken.has(lineName)) {
-    lineName = `${lineName}-${randomUUID().slice(0, 4)}`;
-  }
-  const line = db.productLineRepo.insert({ name: lineName });
-  return line.id;
 }
 
 /** 删场景：手动级联（无外键级联），知识库条目保留；引用关联清理，专属库及其资料保留 */
@@ -1522,14 +1525,6 @@ function registerLibraryRoutes(app: FastifyInstance, deps: UiRoutesDeps) {
     if (rows.length > 0) {
       return reply.code(409).send({
         error: `该资料库还有 ${rows.length} 行资料，先删资料再删库`,
-      });
-    }
-
-    // 闸门 2：仍被活着的场景当**归属库**用 → 删了场景就没有资料库（外键也会拦）
-    const usedBy = db.scenarioRepo.list({ where: "product_line_id = ?", params: [id] });
-    if (usedBy.length > 0) {
-      return reply.code(409).send({
-        error: `该资料库仍是场景「${usedBy[0]!.name}」的归属库，先删除那个场景再删库`,
       });
     }
 

@@ -228,7 +228,6 @@ function createMockDb(opts: {
   const scenario: Scenario = {
     id: "sc-1",
     name: "测试场景",
-    product_line_id: "pl-1",
     status: "进行中",
     current_stage: 0,
     created_at: new Date().toISOString(),

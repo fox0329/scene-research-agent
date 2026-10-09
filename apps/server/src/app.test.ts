@@ -187,7 +187,6 @@ function seedScenario(
   repo.store.push({
     id: "sc-1",
     name: "测试项目",
-    product_line_id: "pl-1",
     status: "进行中",
     current_stage: 0,
     created_at: "2026-09-01T00:00:00.000Z",

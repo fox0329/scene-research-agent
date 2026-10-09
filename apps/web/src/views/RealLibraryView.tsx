@@ -760,8 +760,13 @@ export const RealLibraryView: React.FC<{
       showToast(`「${cur.name}」还有 ${rows} 行资料，先删资料再删库`);
       return;
     }
+    /* 空私有库可删（v3.0，变更表 #160）：删掉后该场景回到"只用基础库"的状态，
+       下次在场景里上传材料时会自动再建一个——所以确认文案说清楚"不丢资料"。 */
     const ok = window.confirm(
-      `删除资料库「${cur.name}」？\n\n该库当前 0 行资料，删掉后不可恢复。`,
+      `删除资料库「${cur.name}」？\n\n该库当前 0 行资料，删掉后不可恢复。` +
+        (cur.scenario_id
+          ? "\n如果它是某个场景的私有库，该场景会回到只用基础库的状态；下次在场景里上传材料时会自动重建。"
+          : ""),
     );
     if (!ok) return;
     try {

@@ -161,7 +161,8 @@ CREATE TABLE IF NOT EXISTS scenario (
   name             TEXT NOT NULL,
   -- 场景描述（分析锚 v1.11）
   description      TEXT,
-  product_line_id  TEXT NOT NULL REFERENCES product_line(id),
+  -- v3.0（变更表 #160）：原来的 product_line_id NOT NULL REFERENCES product_line(id) 已退休。
+  -- 私有库改为按需创建、可删，关系只存在 product_line.scenario_id 上（一处属主）。
   status           TEXT NOT NULL CHECK (status IN ('进行中','已完成','已归档')),
   current_stage    INTEGER NOT NULL CHECK (current_stage BETWEEN 0 AND 8),
   created_at       TEXT NOT NULL,

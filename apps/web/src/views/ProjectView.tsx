@@ -177,6 +177,22 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
     stale.reload();
   }, [onProjectsChanged, stale]);
 
+  /** v3.0：按需创建本场景私有库（幂等）；建完刷新项目，上传入口随即出现 */
+  const handleCreateOwnLine = useCallback(async () => {
+    setCreatingLine(true);
+    try {
+      const r = await api.ensureOwnLine(project.id);
+      showToast(r.created ? `已为本场景创建私有资料库「${r.own_line.name}」` : "本场景私有资料库已存在");
+      handleDataChanged();
+    } catch (err: unknown) {
+      showToast(`创建失败：${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setCreatingLine(false);
+    }
+  }, [project.id, showToast, handleDataChanged]);
+
+  const [creatingLine, setCreatingLine] = useState(false);
+
   /**
    * 分析收尾（onDone / onSettled）后横幅也必须重取
    *
@@ -533,8 +549,18 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
             </div>
           </div>
           <div className="pnl-b">
-            {live && project.product_line_id ? (
-              <MaterialUpload lineId={project.product_line_id} onDone={handleDataChanged} />
+            {live && project.own_line_id ? (
+              <MaterialUpload lineId={project.own_line_id} onDone={handleDataChanged} />
+            ) : live ? (
+              /* v3.0：私有库按需创建——第一次上传时才建，不建空库（变更表 #160） */
+              <div className="model-discover-row">
+                <button className="btn" type="button" disabled={creatingLine} onClick={() => void handleCreateOwnLine()}>
+                  {creatingLine ? "创建中" : "上传本场景材料"}
+                </button>
+                <span className="brief-hint">
+                  还没有本场景私有库；第一次上传材料时会自动建一个，空库也可以随时删掉
+                </span>
+              </div>
             ) : (
               <div className="model-discover-row">
                 <button
@@ -544,7 +570,7 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
                 >
                   上传文件
                 </button>
-                <span className="brief-hint">演示模式不上传入库；连接后端后落到本场景专属库</span>
+                <span className="brief-hint">演示模式不上传入库；连接后端后落到本场景私有库</span>
               </div>
             )}
             {/* 引用通用资料库（v1.11）：原先常驻页头的「资料来源」条搬到这里，
@@ -552,7 +578,7 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
             {live ? (
               <MaterialSourcesBar
                 projectId={project.id}
-                ownLineId={project.product_line_id}
+                ownLineId={project.own_line_id ?? undefined}
                 onChanged={handleDataChanged}
               />
             ) : null}

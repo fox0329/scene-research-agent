@@ -125,10 +125,9 @@ interface Harness {
 
 function makeHarness(): Harness {
   const db = createDb(":memory:");
-  const line = db.productLineRepo.insert({ name: "测试产品线" });
+  db.productLineRepo.insert({ name: "测试产品线" });
   const scenario = db.scenarioRepo.insert({
     name: "智慧会议室",
-    product_line_id: line.id,
     status: "进行中",
     current_stage: 6,
   });
@@ -595,10 +594,9 @@ describe("交付物报告生成（两份：模型撰写 + 确定性校验）", (
 
   it("还没有任何表格数据 → 直接报错，不去调用模型", async () => {
     const empty = createDb(":memory:");
-    const line = empty.productLineRepo.insert({ name: "空线" });
+    empty.productLineRepo.insert({ name: "空线" });
     const sc = empty.scenarioRepo.insert({
       name: "空场景",
-      product_line_id: line.id,
       status: "进行中",
       current_stage: 6,
     });

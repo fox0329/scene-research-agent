@@ -206,8 +206,14 @@ export interface Scenario {
   name: string;
   /** 场景描述（分析锚，v1.11）：客户/行业、要解决的问题、目标与边界——全部阶段提示词强制围绕它 */
   description?: string | null;
-  /** 场景专属资料库（product_line，v1.10 起每个场景自动带一条；引用的通用库见 scenario_linked_line） */
-  product_line_id: string;
+  /**
+   * 本场景的私有资料库**不在这里**（v3.0，变更表 #160）
+   *
+   * 场景与库的关系只存在一处：`product_line.scenario_id`——非空即"该场景的私有库"。
+   * 私有库**按需创建**（场景里第一次上传材料时建）、**可删**（删掉就回到只用基础库的状态），
+   * 所以场景身上不再挂一个必有的库。分析时用到的库 = 私有库（可能没有）+ 未被取消引用的通用库，
+   * 见 `scenario_linked_line`。
+   */
   status: "进行中" | "已完成" | "已归档";
   current_stage: StageId;
   created_at: string;
@@ -318,7 +324,13 @@ export interface CreateProductLineRequest {
 /** 场景创建请求 */
 export interface CreateScenarioRequest {
   name: string;
-  product_line_id: string;
+  /**
+   * 场景描述（客户/行业、要解决的问题、目标与边界）
+   *
+   * v3.0 起**不再**接受 `product_line_id`：新建场景不建库，私有库在第一次上传材料时按需创建；
+   * 想直接用某个已有库，走「引用通用库」（`scenario_linked_line`，默认全部引用）。
+   */
+  description?: string | null;
 }
 
 /** 场景级覆盖创建请求 */

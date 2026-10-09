@@ -783,9 +783,8 @@ export function collectUpstreamData(
   const annotate = <T extends object>(rows: T[]): (T & { data_scope: string })[] =>
     rows.map((r) => ({
       ...r,
-      data_scope: scopeOf(
-        String((r as { product_line_id?: string }).product_line_id ?? ownLine),
-      ),
+      // v3.0：私有库可能还没有（按需创建）→ 场景级行（无 product_line_id）落到"主库"
+      data_scope: scopeOf(String((r as { product_line_id?: string }).product_line_id ?? ownLine ?? "")),
     }));
 
   /**

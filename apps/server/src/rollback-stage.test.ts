@@ -62,7 +62,6 @@ function scenario(overrides: Partial<Scenario>): Scenario {
   return {
     id: "sc-1",
     name: "项目",
-    product_line_id: "pl-1",
     status: "进行中",
     current_stage: 4,
     created_at: "",

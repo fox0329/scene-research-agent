@@ -17,6 +17,7 @@ import {
   ANCHOR_TABLE_CODE,
   type AnchorRow,
   type DshClient,
+  type ProductLine,
   type Scenario,
   type ScenarioBrief,
   type SessionHandle,
@@ -29,6 +30,7 @@ import {
   descriptionFromAnchor,
   mergeAnchorRows,
 } from "@scene/domain";
+import { ownLineOf } from "./scenario-lines.js";
 
 /** 起草结果 */
 export interface AnchorDraftOutcome {
@@ -282,7 +284,7 @@ export async function draftAnchor(
   let usedLlm = false;
 
   const hints = briefDraftHints(brief);
-  const materialSummary = summarizeMaterials(db, scenario.product_line_id);
+  const materialSummary = summarizeMaterials(db, ownLineOf(db, scenario.id));
   const itemList = anchorFixedRows()
     .map((r) => `- ${r.label}${r.required ? "（必填）" : ""}`)
     .join("\n");
@@ -351,13 +353,13 @@ export async function draftAnchor(
 }
 
 /** 资料库摘要（起草输入：我们能用什么材料认识这个场景） */
-function summarizeMaterials(db: DbInstance, productLineId: string): string {
+function summarizeMaterials(db: DbInstance, ownLine: ProductLine | undefined): string {
   const counts: string[] = [];
   const n = (code: string): number =>
     db.stageDataRepo.list({ where: "table_code = ?", params: [code] }).length;
   const lines: string[] = [];
-  const line = db.productLineRepo.getById(productLineId);
-  if (line) lines.push(`资料库：${line.name}`);
+  // v3.0：还没建私有库（没上传过本场景材料）时不写"资料库："这一行，别让模型以为有
+  if (ownLine) lines.push(`本场景私有资料库：${ownLine.name}`);
   for (const code of ["M1", "M2", "M3", "M4", "M5"]) {
     const c = n(code);
     if (c > 0) counts.push(`${code} ${c} 行`);

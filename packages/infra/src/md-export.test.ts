@@ -55,7 +55,6 @@ function makeInput(): DeliverableInput {
     scenario: {
       id: "s1",
       name: "智慧水务",
-      product_line_id: "pl-iot",
       status: "进行中",
       current_stage: 6 as never,
       created_at: "2026-09-01",
@@ -387,7 +386,6 @@ describe("exportDeliverables — 空数据", () => {
       scenario: {
         id: "s2",
         name: "空场景",
-        product_line_id: "pl",
         status: "进行中",
         current_stage: 0 as never,
         created_at: "2026-09-01",
@@ -598,7 +596,6 @@ describe("exportDeliverables — <场景>建设工作方案（变更表 #137）"
       scenario: {
         id: "s3",
         name: "空场景",
-        product_line_id: "pl",
         status: "进行中",
         current_stage: 0 as never,
         created_at: "2026-09-01",

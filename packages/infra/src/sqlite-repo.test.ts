@@ -5,6 +5,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import Database from "better-sqlite3";
 import { createDb, sourceSearch, type DbInstance } from "./sqlite-repo.js";
 import { mkdtempSync, rmSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -312,16 +313,14 @@ describe("stageDataRepo markStale / deleteByScenarioStage（多场景隔离）",
 
   beforeEach(() => {
     instance = createDb(":memory:");
-    const pl = instance.productLineRepo.insert({ name: "产品线" } as never);
+    instance.productLineRepo.insert({ name: "产品线" } as never);
     scenarioA = instance.scenarioRepo.insert({
       name: "场景A",
-      product_line_id: pl.id,
       status: "进行中",
       current_stage: 3,
     } as never).id;
     scenarioB = instance.scenarioRepo.insert({
       name: "场景B",
-      product_line_id: pl.id,
       status: "进行中",
       current_stage: 3,
     } as never).id;
@@ -399,5 +398,79 @@ describe("stageDataRepo markStale / deleteByScenarioStage（多场景隔离）",
     expect(instance.qualityGateRepo.deleteByScenarioStage(scenarioA, 1)).toBe(1);
     expect(instance.qualityGateRepo.listByScenarioStage(scenarioA, 1)).toHaveLength(0);
     expect(instance.qualityGateRepo.listByScenarioStage(scenarioB, 1)).toHaveLength(1);
+  });
+});
+
+describe("存量库升级：scenario 去掉 product_line_id（v3.0，变更表 #160）", () => {
+  let dir: string;
+  let dbPath: string;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "scene-mig-"));
+    dbPath = join(dir, "old.db");
+    /* 造一个"老库"：带 product_line_id 非空外键的 scenario（就是升级前的真实结构），
+       外加一张指向它的子表，用来证明重建后子表的外键仍然指着 scenario。 */
+    const old = new Database(dbPath);
+    old.exec(`
+      CREATE TABLE product_line (
+        id TEXT PRIMARY KEY, name TEXT NOT NULL UNIQUE, scenario_id TEXT,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+      );
+      CREATE TABLE scenario (
+        id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT,
+        product_line_id TEXT NOT NULL REFERENCES product_line(id),
+        status TEXT NOT NULL CHECK (status IN ('进行中','已完成','已归档')),
+        current_stage INTEGER NOT NULL CHECK (current_stage BETWEEN 0 AND 8),
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+      );
+      CREATE TABLE scenario_step (
+        scenario_id TEXT NOT NULL REFERENCES scenario(id), step INTEGER NOT NULL,
+        completed_at TEXT NOT NULL, PRIMARY KEY (scenario_id, step)
+      );
+      INSERT INTO product_line VALUES ('pl-private','老场景·专属资料','sc-1','2026-01-01','2026-01-01');
+      INSERT INTO product_line VALUES ('pl-common','拓维产品',NULL,'2026-01-01','2026-01-01');
+      INSERT INTO scenario VALUES ('sc-1','老场景',NULL,'pl-private','进行中',1,'2026-01-01','2026-01-01');
+      INSERT INTO scenario_step VALUES ('sc-1',1,'2026-01-01');
+    `);
+    old.close();
+  });
+
+  afterEach(() => rmSync(dir, { recursive: true, force: true }));
+
+  it("迁移后：列没了、数据在、子表外键还指着 scenario、库归属关系不丢", () => {
+    const instance = createDb(dbPath);
+    const cols = (instance.db.pragma("table_info(scenario)") as { name: string }[]).map((c) => c.name);
+    expect(cols).not.toContain("product_line_id");
+    expect(cols).toContain("description");
+    expect(cols).toContain("current_stage");
+
+    // 场景数据一字未丢
+    const sc = instance.scenarioRepo.getById("sc-1");
+    expect(sc).toBeDefined();
+    expect(sc!.name).toBe("老场景");
+    expect((sc as unknown as Record<string, unknown>)["description"]).toBeNull();
+
+    // 子表照样能读写、外键仍然指向 scenario（没被 RENAME 带歪）
+    expect(instance.scenarioStepRepo.completedSteps("sc-1")).toEqual([1]);
+    instance.scenarioStepRepo.complete("sc-1", 2);
+    expect(instance.scenarioStepRepo.completedSteps("sc-1")).toEqual([1, 2]);
+
+    // 私有库关系存在 product_line.scenario_id 上，重建 scenario 不影响它
+    expect(
+      instance.productLineRepo.list({ where: "scenario_id = ?", params: ["sc-1"] }).map((l) => l.id),
+    ).toEqual(["pl-private"]);
+
+    // 全库外键干净
+    expect(instance.db.pragma("foreign_key_check")).toHaveLength(0);
+    instance.db.close();
+  });
+
+  it("已经是新结构的库再跑一次迁移：幂等，不重建也不报错", () => {
+    const first = createDb(dbPath);
+    first.db.close();
+    const again = createDb(dbPath);
+    expect(again.scenarioRepo.getById("sc-1")!.name).toBe("老场景");
+    expect(again.db.pragma("foreign_key_check")).toHaveLength(0);
+    again.db.close();
   });
 });

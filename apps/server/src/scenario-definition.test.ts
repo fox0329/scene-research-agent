@@ -43,11 +43,10 @@ function mockDsh(text: string): DshClient {
 
 function setup(): { db: DbInstance; scenarioId: string } {
   const db = createDb(":memory:");
-  const line = db.productLineRepo.insert({ name: "感知与控制" });
+  db.productLineRepo.insert({ name: "感知与控制" });
   const sc = db.scenarioRepo.insert({
     name: "智慧水务",
     description: null,
-    product_line_id: line.id,
     status: "进行中",
     current_stage: 0,
   });

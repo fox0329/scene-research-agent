@@ -39,7 +39,6 @@ function setup() {
   const sc = db.scenarioRepo.insert({
     name: "智慧水务",
     description: null,
-    product_line_id: own.id,
     status: "进行中",
     current_stage: 1,
   });

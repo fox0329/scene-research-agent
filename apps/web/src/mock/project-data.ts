@@ -35,8 +35,12 @@ export type Project = {
   productLine: string;
   /** 场景描述（分析锚 v1.11） */
   description?: string;
-  /** 场景专属资料库 id（联真模式 v1.10：场景内上传落这里） */
-  product_line_id?: string;
+  /**
+   * 本场景私有库 id（v3.0，变更表 #160：按需创建、可删）
+   *
+   * null/undefined = 本场景还没有私有库（第一次上传材料时才建）；`productLine` 是它的名字。
+   */
+  own_line_id?: string | null;
   /**
    * 流程进度（v1.5：左栏显示「第 n/8 步」）
    *

@@ -36,7 +36,6 @@ function seed(): { db: DbInstance; scenarioId: string; lineId: string } {
   const sc = db.scenarioRepo.insert({
     name: "智慧水务",
     description: null,
-    product_line_id: line.id,
     status: "进行中",
     current_stage: 1,
   });

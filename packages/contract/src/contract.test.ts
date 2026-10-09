@@ -223,7 +223,7 @@ describe("@scene/contract 产品资料库接口", () => {
 describe("@scene/contract 场景分析接口", () => {
   it("Scenario status 三态 + current_stage", () => {
     const v: Scenario = {
-      id: "s1", name: "智慧会议室", product_line_id: "pl1",
+      id: "s1", name: "智慧会议室",
       status: "进行中", current_stage: 2, created_at: "", updated_at: "",
     };
     expect(v.current_stage).toBe(2);

@@ -46,7 +46,8 @@
 
 ### 第二层 · 场景分析项目（6 表）
 
-**scenario**：`id, name, product_line_id, status(进行中/已完成/已归档), current_stage(0-8), created_at, updated_at`
+**scenario**：`id, name, description, status(进行中/已完成/已归档), current_stage(0-8), created_at, updated_at`
+　（v2.16 起**没有 `product_line_id`**：私有库关系在 `product_line.scenario_id` 这一侧，按需创建、可删；旧客户端传该字段会被忽略）
 
 **scenario_material**（场景级覆盖，不写资料库）：`id, scenario_id, ref_table, ref_id, override_value(JSON), reason, + 通用列`　唯一键：`(scenario_id, ref_table, ref_id)`
 
@@ -121,7 +122,8 @@
 | POST | `/library/product-lines/{id}/dedupe-products` | 资料库去重（v1.34 起同时清规格）：① 同型号产品行合并（**「在售」优先于「待确认」**，同状态留创建更早的；缺位字段补全、规格归并到保留行）；② 同产品内规格去重——完全相同留一条、一个值包含另一个的**留更完整那句**、值互相冲突的（如工作温度两个值）**不合并**；判定在领域层 `library-dedupe`（可单测、幂等）；返回 `{ groups, products_removed, specs_moved, specs_removed, spec_exact_groups, spec_near_groups, merged }` |
 | — | ingest 写入路径 | 同一把尺子：M1 按归一型号（去空白 + 大写）**匹配已有产品**，匹配上就并入（补缺位字段）不新建行；M2 走 upsert——完全相同不重写、新材料更完整则覆盖库里那条、值冲突并存。**这是"重复行"的根因修复**（旧实现每批材料都新建产品行） |
 
-| GET | `/projects/{id}/material-sources` | 场景资料来源（v2.8 起入口在「本场景资料」面板内）：`{ own, linked }`——专属库 + 引用的通用库。**v2.9：`linked` = 通用库里没被取消的那些，因此新建场景默认就是全引用** |
+| GET | `/projects/{id}/material-sources` | 场景资料来源（v2.8 起入口在「本场景资料」面板内）：`{ own, linked }`——私有库 + 引用的通用库。**v2.9：`linked` = 通用库里没被取消的那些，因此新建场景默认就是全引用**；**v2.16：`own` 可为 `null`**（本场景还没有私有库） |
+| POST | `/projects/{id}/own-line` | **v2.16**：确保本场景私有库存在（幂等），首次上传材料前调用；返回 `{ own_line_id, own_line, created }` |
 | PUT | `/projects/{id}/material-sources` | 设置引用的通用库（v1.10）：`{ linked_line_ids }`；专属库不可被引用 400 |
 
 ### 联真实现口径（v1.4 登记，M5-T5.1）
@@ -363,4 +365,5 @@ interface DshClient {
 | v2.12 | 2026-10-04 | **阶段口径 8 → 7（0–6）：删阶段 6「总结沉淀」与表7-1**。`InfoStageId` 收窄为 `0..6`；交付物阶段 `7 → 6`；`consumedBy` 里的下游 `7` 全部改为 `6`；`stage_data` 不新增字段，存量迁移删掉 `stage=6` 的旧表7-1 行并把 `scenario.current_stage=7` 改为 `6`（`scripts/migrate-drop-stage6.mjs`，先快照）；老编号 7/8 的请求按阶段 6 处理。流程步 8 → 7（第 7 步 = 交付物）。变更表 #92 |
 | v2.13 | 2026-10-04 | **列级变更（随 04 v1.32 / 05 v0.12）：表5-1 删 `effort`；表4-1 `proof` 中栏 → 右栏**。① `表5-1 架构与接口` 去掉 `effort`「适配工作量」——工作量口径统一在 `表5-3` 的 `man_days`「人天」，同一份表里两处口径会打架（实测该列写的是「行业通例量级 3~8 人天/触点」，是编的量级）；② `表4-1 能力底账` 的 `proof`「证明材料」由中栏改到右栏补充——用户定调「来源、引用什么的可以放到右栏」，中栏只留「能力项 / 成熟度 / 限制条件」。**API 形状不变**：`row` 是 JSON、列即键，前端按注册表渲染（`slot` 变了，键仍在，存量数据不丢、不迁移）。新增自检项「中栏夹带出处」「中栏太长」：内容格里的文件名/页码/`ingest-*`/`（M5）`/「材料未提供」由确定性层搬进右栏 `source`。；③ 新增自检项「依据未落到事实」（依据列复述结论／行业套话，确定性识别）。变更表 #93 |
 | v2.14 | 2026-10-04 | **自检新增两条跨表校验（随 04 v1.33）**：「判定与能力底账矛盾」（表4-2／4-3／4-5／5-1 等中栏写「无／不支持 X」且该行判「不能碰／不参与」时，拿 **表4-1 能力底账的能力名**比对，命中即点名；**只比能力名、不比限制条件**）、「硬结论无依据」（`can_touch=不能碰` 且本行 `verification_verdict ∈ {无法核实, 有反证}` → 硬伤）。**API 与列结构不变**：这是生成期自检，不改 `stage_data` 形状。变更表 #94 |
+| v2.16 | 2026-10-09 | **场景私有库改「按需创建 + 可删」：`scenario.product_line_id` 退役（变更表 #160）**：① **契约**：`Scenario.product_line_id` 与 `CreateScenarioRequest.product_line_id` **删除**（旧客户端传了忽略、不报错）；场景↔私有库的关系只留一处属主 = **`product_line.scenario_id`**（非空即"该场景的私有库"）。② **schema**：`scenario` 表去掉 `product_line_id`（原为 `NOT NULL REFERENCES product_line(id)`）；新库由 `sql/001_init.sql` 直接建新结构，存量库由 `runMigrations` 按 SQLite 官方流程**整表重建**（`PRAGMA foreign_keys=OFF` 在事务外 → 事务内建新表/搬列/DROP/RENAME → 开回外键 → `foreign_key_check` 自证干净），幂等。③ **API**：新增 `POST /projects/{id}/own-line`（幂等，确保本场景私有库存在，首次上传材料前由前端调用，返回 `{own_line_id, own_line, created}`）；`GET /projects`、`POST /projects`、`PATCH /projects/{id}` 响应新增**派生字段** `own_line_id`（可能为 `null`）；`GET /projects/{id}/material-sources` 的 `own` 可为 `null`。④ **删除资料库**：去掉"仍是场景归属库 → 409"这条闸门——关系在库这一侧，删库不再需要回头改场景；剩下的闸门是"还有 N 行"与"仍被活场景引用为共享输入"。 |
 | v2.15 | 2026-10-09 | **上传上限 50 → 300 MB（改流式落盘）+ 资料文件/资料库删除入口（变更表 #156）**：① `FILE_UPLOAD_LIMIT_MB = 300`（服务端 multipart 与前端预检同源），`POST /library/ingest` 由 `toBuffer()` 改 `pipeline()` 流式落盘；**超限时 multipart 只截断不抛错**，服务端查 `file.file.truncated` 兜住回中文 413；任务结束（成功/失败）都删临时文件；入库行的 `source` 写材料**真名**（此前写的是临时落盘名 `ingest-…`，实测 474 行都认不出是哪份材料）。② 新增 `GET /library/materials?product_line_id=`（按来源文件聚合 `{file,rows,tables,deletable}[]`）、`DELETE /library/materials?product_line_id=&file=`（按文件名**全等**删该文件全部行，返回 `{file,deleted,tables,stale_marked_stages}`，删完标下游待重算）、`DELETE /library/product-lines/{id}`（**仅空库**；通用库 / 非空库 / 仍被活场景引用三种情况都是 409 + 中文原因）。③ 删行与删资料同时清 `source_fts` 索引（该表只有 INSERT/UPDATE 触发器，原先删行不清会让来源自检假阳性）。前端资料库页新增「已导入资料」页签与「删除资料库」按钮（不可删时 `disabled` + `title` 说明原因，二次确认写明删几行/哪些表/下游标记待重算） |

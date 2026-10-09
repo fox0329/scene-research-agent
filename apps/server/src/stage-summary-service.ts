@@ -27,6 +27,7 @@ import {
   type StageCompleteness,
 } from "@scene/domain";
 import { readAnchorRows, readBrief } from "./scenario-anchor.js";
+import { ownLineOf } from "./scenario-lines.js";
 
 /**
  * 阶段编号归一：旧编号 8（交付物）合并为 7
@@ -116,7 +117,8 @@ export function generateStageSummary(
     rowsByTable,
     ...(tableCodes ? { tableCodes } : {}),
   });
-  const productLine = db.productLineRepo.getById(scenario.product_line_id);
+  // v3.0：私有库按需创建，可能还没有 → 名字留空，不给模型编一个库名
+  const productLine = ownLineOf(db, scenario.id);
   const markdown = buildStageSummary({
     stage: id,
     scenarioName: scenario.name,

@@ -126,6 +126,50 @@ function runMigrations(db: Database.Database): void {
   if (!linkCols.some((c) => c.name === "excluded")) {
     db.exec("ALTER TABLE scenario_linked_line ADD COLUMN excluded INTEGER NOT NULL DEFAULT 0");
   }
+  // v3.0（变更表 #160）：场景私有库改为「按需创建 + 可删」，关系只存在 product_line.scenario_id
+  // 上，`scenario.product_line_id`（非空外键）退休。SQLite 改不掉 NOT NULL，只能整表重建。
+  if (scCols.some((c) => c.name === "product_line_id")) {
+    rebuildScenarioWithoutOwnLine(db);
+  }
+}
+
+/**
+ * 整表重建 `scenario`，去掉 `product_line_id` 列（SQLite 不支持 DROP NOT NULL）
+ *
+ * 按 SQLite 官方推荐的流程：**关外键 → 事务内重建 → 回来再开外键 → 校验**。
+ * 为什么必须在这个顺序：外键开着时 DROP/RENAME 会被子表拦下；`PRAGMA foreign_keys`
+ * 又不能改在事务里，所以开关必须在事务外。
+ * 数据只搬 7 列（其余列与子表**一个字节都不动**）：`product_line.scenario_id` 上原有的
+ * "私有库"关系因此天然保留——存量场景的私有库升级后照旧认得出来。
+ */
+function rebuildScenarioWithoutOwnLine(db: Database.Database): void {
+  const fkWasOn = (db.pragma("foreign_keys", { simple: true }) as number) === 1;
+  db.pragma("foreign_keys = OFF");
+  try {
+    db.transaction(() => {
+      db.exec(`CREATE TABLE scenario_rebuild (
+  id               TEXT PRIMARY KEY,
+  name             TEXT NOT NULL,
+  description      TEXT,
+  status           TEXT NOT NULL CHECK (status IN ('进行中','已完成','已归档')),
+  current_stage    INTEGER NOT NULL CHECK (current_stage BETWEEN 0 AND 8),
+  created_at       TEXT NOT NULL,
+  updated_at       TEXT NOT NULL
+)`);
+      db.exec(`INSERT INTO scenario_rebuild
+  (id, name, description, status, current_stage, created_at, updated_at)
+  SELECT id, name, description, status, current_stage, created_at, updated_at FROM scenario`);
+      db.exec("DROP TABLE scenario");
+      db.exec("ALTER TABLE scenario_rebuild RENAME TO scenario");
+    })();
+  } finally {
+    if (fkWasOn) db.pragma("foreign_keys = ON");
+  }
+  // 重建后必须自证没留下悬空外键：有就当场炸，别带着坏库继续跑
+  const broken = db.pragma("foreign_key_check") as unknown[];
+  if (broken.length > 0) {
+    throw new Error(`scenario 表重建后外键校验失败（${broken.length} 处），已停止启动`);
+  }
 }
 
 // ─── 场景流程步仓库（v1.5 逐页推进） ────────────────────────

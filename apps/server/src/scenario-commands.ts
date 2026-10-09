@@ -21,6 +21,7 @@ import { exportDeliverables, exportFileName } from "@scene/infra";
 import { collectStageSummaries } from "./stage-summary-service.js";
 import { createAdvanceStageCommand } from "./advance-stage.js";
 import { requestScenarioClarify } from "./scenario-clarify.js";
+import { ownLineIdOf } from "./scenario-lines.js";
 
 /** 解析出的命令 */
 export interface ParsedCommand {
@@ -151,7 +152,13 @@ export async function executeAppCommand(
     }
 
     case "dedupe_products": {
-      const r = dedupeProducts(db, scenario.product_line_id);
+      /* v3.0：私有库按需创建，可能还没有。没有私有库 = 本场景没上传过产品资料，
+         去重只针对本场景私有库（不碰共享库），所以这里如实说"没得可去重"。 */
+      const ownLineId = ownLineIdOf(db, scenario.id);
+      if (!ownLineId) {
+        return "【执行结果】本场景还没有私有资料库（第一次上传材料时会自动创建），没有需要去重的产品。";
+      }
+      const r = dedupeProducts(db, ownLineId);
       return `【执行结果】产品去重完成：合并 ${r.groups} 组，删除 ${r.productsRemoved} 条重复产品，归并 ${r.specsMoved} 行规格参数。`;
     }
 

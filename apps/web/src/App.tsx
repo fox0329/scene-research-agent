@@ -39,13 +39,13 @@ function mapApiProject(
     id: p.id,
     name: p.name,
     description: p.description ?? "",
-    product_line_id: p.product_line_id,
+    own_line_id: p.own_line_id ?? null,
     stage: p.current_stage,
     status:
       p.flow?.finished || p.current_stage >= 8 || p.status === "已完成" || p.status === "已归档"
         ? "done"
         : "active",
-    productLine: lineNames.get(p.product_line_id) ?? "",
+    productLine: (p.own_line_id && lineNames.get(p.own_line_id)) || "",
     /* 流程进度（v1.5）：后端旧版本可能没有 flow 字段 → 可选，缺失即不显示 */
     ...(p.flow ? { flow: p.flow } : {}),
     conversations: conversations.map((c) => ({ id: c.id, name: c.title })),

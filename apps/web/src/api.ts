@@ -20,7 +20,11 @@ export interface ApiProject {
   name: string;
   /** 场景描述（分析锚 v1.11）：客户/行业、问题、目标与边界 */
   description?: string | null;
-  product_line_id: string;
+  /**
+   * 本场景私有库 id；**还没有私有库时为 null**（v3.0，变更表 #160：私有库按需创建、可删）。
+   * 缺失（undefined）表示后端版本较旧，按"没有"处理并在上传前先调 ensureOwnLine。
+   */
+  own_line_id?: string | null;
   status: ProjectStatusApi;
   current_stage: number;
   created_at: string;
@@ -629,6 +633,12 @@ export const api = {
     ),
 
   productLines: () => req<ApiProductLine[]>("/library/product-lines"),
+  /** 确保本场景私有库存在（幂等）：场景里第一次上传材料前调用，返回私有库 id */
+  ensureOwnLine: (projectId: string) =>
+    req<{ own_line_id: string; own_line: ApiProductLine; created: boolean }>(
+      `/projects/${encodeURIComponent(projectId)}/own-line`,
+      { method: "POST" },
+    ),
   createProductLine: (name: string) =>
     req<ApiProductLine>("/library/product-lines", { method: "POST", body: { name } }),
 
