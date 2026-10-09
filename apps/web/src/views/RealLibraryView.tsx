@@ -749,6 +749,14 @@ export const RealLibraryView: React.FC<{
   const handleDeleteLine = useCallback(async () => {
     const cur = lines.find((l) => l.id === lineId);
     if (!cur) return;
+    // 变更表 #158：按钮原来在"不可删"时是 disabled——用户点它**毫无反应**，
+    // 只能靠 title 猜到原因（真机反馈「点击删除资料库目前是没有反应的」）。
+    // 改成永远可点，点了先把"为什么现在不能删"说清楚。
+    const rows = cur.row_counts ? Object.values(cur.row_counts).reduce((a, b) => a + b, 0) : 0;
+    if (rows > 0) {
+      showToast(`「${cur.name}」还有 ${rows} 行资料，先删资料再删库`);
+      return;
+    }
     const ok = window.confirm(
       `删除资料库「${cur.name}」？\n\n该库当前 0 行资料，删掉后不可恢复。`,
     );
@@ -913,7 +921,8 @@ export const RealLibraryView: React.FC<{
    * "仍被活场景引用"，后者只有服务端知道（勾选集合不在前端），所以按钮先放开、
    * 由服务端 409 给出准确原因（前端把它如实弹出来）。
    */
-  const canDeleteLine = Boolean(activeLine) && totalRows === 0;
+  /* 只有"没选库"才禁用——其余情况一律可点，点了给明确回应（变更表 #158） */
+  const canDeleteLine = Boolean(activeLine);
   const deleteLineHint = !activeLine
     ? "先选择一条资料库"
     : totalRows > 0

@@ -27,6 +27,12 @@ export const MaterialUpload: React.FC<{
   const [progress, setProgress] = useState<string[]>([]);
   const [uploading, setUploading] = useState(false);
   const [skipNotice, setSkipNotice] = useState("");
+  /**
+   * 完成态（变更表 #158）：进度条里的【完成】汇总原来是"发出去就不管"，只能靠刷新页面消失
+   * （用户：「这个提示完成了，不应该消失吗？非得要页面刷新才能消失」）。这里给完成态加一个
+   * 自动收起：留 8 秒给人读完每表行数，然后自己清掉；任何时候也能点「关闭」立刻收起。
+   */
+  const [finished, setFinished] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const dirRef = useRef<HTMLInputElement>(null);
   /* 目标容器要等父级 DOM 提交后才存在，所以用 effect 解析一次，别在 render 里查 */
@@ -35,6 +41,21 @@ export const MaterialUpload: React.FC<{
     if (!statusSlotId) return;
     setSlot(document.getElementById(statusSlotId));
   }, [statusSlotId]);
+  /* 完成汇总自动收起；出错时**不**自动收（错误要留给人看） */
+  useEffect(() => {
+    if (!finished || uploading) return;
+    const timer = setTimeout(() => {
+      setProgress([]);
+      setFinished(false);
+    }, 8000);
+    return () => clearTimeout(timer);
+  }, [finished, uploading]);
+
+  const dismissStatus = useCallback(() => {
+    setProgress([]);
+    setSkipNotice("");
+    setFinished(false);
+  }, []);
 
   /** 批量上传：逐个解析入库，最后汇总每表行数 */
   const handleUploadFiles = useCallback(
@@ -46,6 +67,7 @@ export const MaterialUpload: React.FC<{
       }
       if (files.length === 0) return;
       setUploading(true);
+      setFinished(false);
       setProgress([`共 ${files.length} 个文件，开始解析入库…`]);
       let totalRows = 0;
       let failed = 0;
@@ -90,6 +112,7 @@ export const MaterialUpload: React.FC<{
             `【完成】${files.length} 个文件 · 共入库 ${totalRows} 行${countsStr ? `（${countsStr}）` : ""}${failed ? ` · 失败 ${failed} 个` : ""}`,
           ].slice(-8),
         );
+        setFinished(true);
         showToast(`解析完成：入库 ${totalRows} 行${countsStr ? `（${countsStr}）` : ""}`);
         onDone?.();
       } finally {
@@ -127,12 +150,20 @@ export const MaterialUpload: React.FC<{
         <div className="stale-banner" role="status">
           <span className="badge warning">跳过清单</span>
           {skipNotice}
+          <button className="btn btn-sm" type="button" onClick={dismissStatus}>
+            关闭
+          </button>
         </div>
       )}
       {progress.length > 0 && (
         <div className="stale-banner" role="status">
-          <span className="badge primary">入库进度</span>
+          <span className="badge primary">{uploading ? "入库进度" : "入库结果"}</span>
           {progress[progress.length - 1]}
+          {!uploading && (
+            <button className="btn btn-sm" type="button" onClick={dismissStatus}>
+              关闭
+            </button>
+          )}
         </div>
       )}
     </>
