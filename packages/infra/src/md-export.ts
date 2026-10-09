@@ -46,7 +46,7 @@ import {
   type ReportKind,
   type StageData,
 } from "@scene/contract";
-import { repairProseHeads } from "@scene/domain";
+import { hasCustomerBaseline, repairProseHeads } from "@scene/domain";
 
 // ─── 覆盖留档 ──────────────────────────────────────────────
 
@@ -281,8 +281,15 @@ function chapterLead(chapter: ReportChapter, stageData: readonly StageData[]): s
   const gaps = countRows(stageData, "表3-8");
   const participate = valuesOf(stageData, "表4-2", "can_touch");
   const benefits = countRows(stageData, "表6-1");
+  /**
+   * 有基线的条数按 `hasCustomerBaseline` 算（不是"非空"）
+   *
+   * 真机事实（变更表 #153）：基线列里全是「未提供（本客户材料未含）」这类补白，
+   * 按"非空"数出来是"条条有基线"——把缺口说成了成绩。写"未提供"就必须如实数成没有基线，
+   * 否则这条导语本身就是在编。
+   */
   const withBaseline = stageData.filter(
-    (r) => r.table_code === "表6-1" && !blank(r.row["baseline"]),
+    (r) => r.table_code === "表6-1" && hasCustomerBaseline(r.row["baseline"]),
   ).length;
   switch (chapter.key) {
     case "status":
@@ -317,8 +324,19 @@ function renderBlock(
   const rows = stageData.filter((r) => r.table_code === block.code);
   if (rows.length === 0) return "";
 
-  const all = middleColumns(t).filter((c) => c.key !== t.groupBy);
-  const cols = block.cols ? all.filter((c) => block.cols!.includes(c.key)) : all;
+  /**
+   * 取列：**显式列出的 key 从全部列里取，不按中栏/右栏过滤**（变更表 #153）
+   *
+   * 章节映射（`REPORT_CHAPTERS` 的 `cols`）声明的是"这一章要讲这张表的哪几个侧面"，
+   * 与列在界面上摆哪一栏无关。第 5 阶段表6-1 的「基线」已挪到右栏补充说明——
+   * 若这里仍按 `middleColumns` 过滤，报告的价值章就会**静默丢掉基线**（用户看不到基线，
+   * 也看不到"基线未提供"的如实说明），所以这里改按映射里写明的 key 取。
+   * 没写 `cols` 时才退回"该表全部中栏列"（其余表的老口径不变）。
+   */
+  const midCols = middleColumns(t).filter((c) => c.key !== t.groupBy);
+  const cols = block.cols
+    ? t.columns.filter((c) => c.key !== t.groupBy && block.cols!.includes(c.key))
+    : midCols;
   const label = (key: string): string => cols.find((c) => c.key === key)?.label ?? key;
 
   const out: string[] = [`### ${block.heading}`, ""];

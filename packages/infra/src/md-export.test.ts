@@ -311,6 +311,56 @@ describe("exportDeliverables — 只渲染中栏（对外口径）", () => {
   });
 });
 
+describe("报告装配 — 表6-1「基线」挪到右栏补充后仍取得到（变更表 #153）", () => {
+  /* 这一组是本次变更的**防回归重点**：基线从 `mid` 改成 `sup` 之后，
+     装配若按「中栏列」过滤（旧实现是 `middleColumns(t).filter(block.cols)`），
+     报告的价值章就会**静默丢掉基线**——用户既看不到基线，也看不到"基线未提供"的如实说明。
+     现在 `renderBlock` 按映射里写明的 key 从**全部列**里取，这里证明取得到。 */
+
+  const baselineCell = "18%"; // makeInput() 里 表6-1 的基线
+
+  it("solution：价值章素材仍带「基线」列，且基线原文出现", () => {
+    const value = reportChapterDigest("solution", makeInput().stageData, { full: true })
+      .find((d) => d.key === "value");
+    expect(value, "价值章必须存在").toBeDefined();
+    expect(value!.markdown).toContain("| 收益 | 对应指标 | 基线 | 预期改善 | 怎么测 |");
+    expect(value!.markdown).toContain(baselineCell);
+  });
+
+  it("construction：两处映射（建设目标 / 建设内容）都取得到基线", () => {
+    const digests = reportChapterDigest("construction", makeConstructionInput().stageData, { full: true });
+    for (const key of ["goals", "content"]) {
+      const chapter = digests.find((d) => d.key === key);
+      expect(chapter, key).toBeDefined();
+      expect(chapter!.markdown, key).toContain("基线");
+      expect(chapter!.markdown, key).toContain(baselineCell);
+    }
+  });
+
+  it("基线写「未提供（本客户材料未含）」时带进报告（如实说明，不是静默丢列）", () => {
+    const input = makeInput();
+    const stageData = input.stageData.map((r) =>
+      r.table_code === "表6-1" ? { ...r, row: { ...r.row, baseline: "未提供（本客户材料未含）" } } : r,
+    );
+    const value = reportChapterDigest("solution", stageData, { full: true }).find((d) => d.key === "value");
+    expect(value!.markdown).toContain("未提供（本客户材料未含）");
+  });
+
+  it("导语按「本客户基线」口径计数：全是未提供就写 0 条（不把缺口说成成绩）", () => {
+    const input = makeInput();
+    const stageData = input.stageData.map((r) =>
+      r.table_code === "表6-1" ? { ...r, row: { ...r.row, baseline: "未提供（本客户材料未含）" } } : r,
+    );
+    const value = reportChapterDigest("solution", stageData).find((d) => d.key === "value");
+    expect(value!.markdown).toContain("1 条收益对应指标已经写清；其中 0 条有基线。");
+  });
+
+  it("有真基线时导语照实计 1 条", () => {
+    const value = reportChapterDigest("solution", makeInput().stageData).find((d) => d.key === "value");
+    expect(value!.markdown).toContain("其中 1 条有基线。");
+  });
+});
+
 describe("exportDeliverables — 不给决策建议（核心约束）", () => {
   it("报告不含建议档位与结论性措辞", async () => {
     const report = await exportDeliverables(makeInput(), "solution");

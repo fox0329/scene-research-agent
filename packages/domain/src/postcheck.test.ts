@@ -9,9 +9,11 @@ import {
   hasMidCitation,
   MID_CELL_MAX_CHARS,
   summarizePostcheck,
+  hasCustomerBaseline,
   type PostcheckRow,
   type SourceLookup,
 } from "./postcheck.js";
+import { TABLES_BY_CODE, middleColumns } from "@scene/contract";
 
 /** 假材料库：只有这两页，且只含给定文字 */
 const fakeLookup = (pages: Record<string, string[]>): SourceLookup => ({
@@ -224,6 +226,76 @@ describe("postcheck — 有价值（价值类表要可验证）", () => {
       lookup: fakeLookup({ "ingest-1.pdf:10": ["12000"] }),
     });
     expect(f.find((x) => x.kind === "价值不可验证")).toBeUndefined();
+  });
+
+  it("「行业通例：…本客户实测值未提供」也算没有本客户基线（补白不许糊过去）", () => {
+    const f = runDeterministicPostcheck({
+      rows: [
+        {
+          tableCode: "表6-1",
+          rowId: "v4",
+          label: "效率提升",
+          row: {
+            metric: "会议时长",
+            baseline: "行业通例：平均缩短 20%，本客户实测值未提供",
+            verification_verdict: "行业通例",
+          },
+          source: "行业通例（模型知识）",
+          sourceType: "AI推断",
+        },
+      ],
+      lookup: fakeLookup({}),
+    });
+    expect(f.find((x) => x.kind === "价值不可验证")?.detail).toContain("基线");
+  });
+
+  it("判据按列 key 读、与栏位无关：基线挪到右栏补充说明后照样报（变更表 #153）", () => {
+    /* 基线现在是右栏补充列（不占中栏列预算）。`isValueTable` 认的是表定义的
+       metric/baseline 两个 key，`runDeterministicPostcheck` 从行数据取值——
+       两者都不经过 `middleColumns`，所以挪栏位不改变这条判据。 */
+    const t = TABLES_BY_CODE["表6-1"]!;
+    expect(t.columns.map((c) => c.key)).toContain("baseline");
+    expect(middleColumns(t).map((c) => c.key)).not.toContain("baseline");
+    const f = runDeterministicPostcheck({
+      rows: [
+        {
+          tableCode: "表6-1",
+          rowId: "v5",
+          label: "省电",
+          row: { metric: "kWh/月", baseline: "未提供（本客户材料未含）", verification_verdict: "行业通例" },
+          source: "行业通例（模型知识）",
+          sourceType: "AI推断",
+        },
+      ],
+      lookup: fakeLookup({}),
+    });
+    expect(f.find((x) => x.kind === "价值不可验证")).toBeTruthy();
+  });
+});
+
+describe("postcheck — hasCustomerBaseline（有/没有本客户基线的唯一判据）", () => {
+  it("有真基线：数字、带口径的数值都算", () => {
+    for (const v of ["12000", "18%", "18%（2024 年台账）", "日均 120 单"]) {
+      expect(hasCustomerBaseline(v), v).toBe(true);
+    }
+  });
+
+  it("没有基线：空值、纯补白、补白加括注、「行业通例 + 未提供」都算没有", () => {
+    for (const v of [
+      "",
+      "   ",
+      null,
+      undefined,
+      "未提供",
+      "暂无",
+      "未知",
+      "—",
+      "未提供（本客户材料未含）",
+      "行业通例：平均缩短 20%，本客户实测值未提供",
+      "待补",
+    ]) {
+      expect(hasCustomerBaseline(v), String(v)).toBe(false);
+    }
   });
 });
 

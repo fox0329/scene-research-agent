@@ -126,6 +126,30 @@ function isValueTable(code: string): boolean {
 /** 基线列的"空"值：这些等于没有基线 */
 const EMPTY_BASELINE: readonly string[] = ["", "未提供", "暂无", "无", "未给出", "未知", "行业通例", "-", "—"];
 
+/**
+ * "本客户基线拿不到"的补白写法：出现这些词就等于没有真基线
+ *
+ * 为什么不能只比 `EMPTY_BASELINE`：真机上还有「行业通例：目标达成率提升 20%，
+ * 本客户实测值未提供」这种——耍个花招补一句"未提供"就让判据失效，等于形同虚设。
+ * 括注先剥掉（`未提供（本客户材料未含）` → `未提供`），剩下的正文里出现这些词同样算没基线。
+ */
+const NO_BASELINE_PATTERNS: readonly RegExp[] = [/未提供/, /未给出/, /暂无/, /待补/];
+
+/**
+ * 这一行有没有**本客户基线**（G-R8「价值主张必须有指标 + 本客户基线」的唯一判据）
+ *
+ * 一处判据三处共用，避免口径漂移：① 自检「价值不可验证」；② 报告「价值」章导语的
+ * 「其中 N 条有基线」（不许把"未提供"数成有基线）；③ 完整度「无基线行强制标 C 级假设」
+ * 说明的是同一件事。**按列 key 取值，与列摆在中栏还是右栏无关**（变更表 #153）。
+ */
+export function hasCustomerBaseline(value: unknown): boolean {
+  const text = String(value ?? "").trim();
+  if (text === "") return false;
+  const bare = text.replace(/[（(][^）)]*[）)]/g, "").trim();
+  if (EMPTY_BASELINE.includes(bare)) return false;
+  return !NO_BASELINE_PATTERNS.some((re) => re.test(bare));
+}
+
 /** 判为"行情类"的核实结论：这些结论下行文不能写成本客户事实 */
 const GENERAL_VERDICTS: readonly string[] = ["行业通例", "无法核实", "未核", ""];
 
@@ -599,7 +623,8 @@ export function runDeterministicPostcheck(input: PostcheckInput): PostcheckFindi
       // 「未提供（本客户材料未含）」这类**说明性写法**同样是"没有本客户基线"：
       // 模型只要在基线上补一句"未提供"就能让检查通过的话，这条判据就形同虚设——
       // 用户要看到的恰恰是"这条收益没有本客户基线，所以不可验证"。
-      if (EMPTY_BASELINE.includes(baseline.replace(/[（(][^）)]*[）)]/g, "").trim())) {
+      // 判据统一走 `hasCustomerBaseline`（与报告导语、完整度规则同源）。
+      if (!hasCustomerBaseline(baseline)) {
         missing.push(`基线（现为「${baseline || "空"}」）`);
       }
       if (missing.length > 0) {

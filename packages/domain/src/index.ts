@@ -239,6 +239,7 @@ export {
   keyPhrases,
   splitMidCitations,
   hasMidCitation,
+  hasCustomerBaseline,
   MID_CELL_MAX_CHARS,
 } from "./postcheck.js";
 export type {

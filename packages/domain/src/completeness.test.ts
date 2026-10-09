@@ -105,6 +105,38 @@ describe("completeness — 单表规则", () => {
     expect(r.gaps.some((x) => x.kind === "缺必填列" && x.column === "link")).toBe(true);
   });
 
+  it("表6-1「基线」挪到右栏补充列后仍是必填：空着照样报缺（变更表 #153）", () => {
+    /* 完整度按**列定义**判必填，不看列摆在中栏还是右栏——
+       基线挪栏位是为了不占中栏列预算，不是为了放开必填（G-R7 必填优先）。 */
+    const r = checkStageCompleteness({
+      stage: 5,
+      rowsByTable: {
+        "表6-1": [
+          row({
+            benefit: "降低漏损",
+            metric: "漏损率",
+            baseline: "", // 空着 → 缺必填列
+            expected: "12%",
+            how_to_measure: "分区计量",
+            user_feeling: "水费下降",
+          }),
+          row({
+            benefit: "减少巡线工时",
+            metric: "人工工时",
+            baseline: "未提供", // 补白也算空（isEmptyValue）
+            expected: "省 30%",
+            how_to_measure: "工单口径",
+            user_feeling: "巡线员少跑腿",
+          }),
+        ],
+      },
+    });
+    const g = r.gaps.find((x) => x.kind === "缺必填列" && x.column === "baseline");
+    expect(g, "基线列必须仍在必填列检查范围内").toBeDefined();
+    expect(g?.detail).toContain("基线");
+    expect(g?.count).toBe(2);
+  });
+
   it("覆盖度：min-rows（表1-2 业务环节 ≥3）", () => {
     const r = checkStageCompleteness({
       stage: 1,

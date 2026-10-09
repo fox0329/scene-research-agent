@@ -20,6 +20,7 @@ import {
   pinnedTables,
   tableDef,
   stageDef,
+  reportChapters,
 } from "./tables.js";
 
 describe("表定义注册表 — 完整性", () => {
@@ -324,8 +325,7 @@ describe("表定义注册表 — 枚举", () => {
   });
 });
 
-describe("dependsOnTables — 本步内的真实依赖（按表并发的调度依据）", () => {
-  it("只对确有其事的表声明依赖（不为了稳而随手加，会把并发收益吃光）", () => {
+describe("dependsOnTables — 本步内的真实依赖（按表并发的调度依据）", () => {  it("只对确有其事的表声明依赖（不为了稳而随手加，会把并发收益吃光）", () => {
     // 要素清单 → 分层架构/要素间关系（架构与关系都引用要素名）
     expect(tableDef("表2-3")?.dependsOnTables).toEqual(["表2-2"]);
     expect(tableDef("表2-4")?.dependsOnTables).toEqual(["表2-2"]);
@@ -343,6 +343,71 @@ describe("dependsOnTables — 本步内的真实依赖（按表并发的调度�
           tableDef(dep)!.stage,
           `${t.code} 跨阶段依赖 ${dep}：应改由上游上下文提供`,
         ).toBe(t.stage);
+      }
+    }
+  });
+});
+
+describe("表6-1 价值与指标 — 基线归右栏补充说明（变更表 #153）", () => {
+  const t = tableDef("表6-1");
+
+  it("基线是右栏补充列：中栏只剩 5 列；key / 表头 / 必填 / 长文本都不许变", () => {
+    /* 为什么挪：真机两个项目 19 行里 19 行的基线都是「未提供」——required 的长文本白占中栏一列。
+       key `baseline` 不许改：章节映射、完整度规则、PPT 与报告都按这个名字取。 */
+    expect(middleColumns(t).map((c) => c.key)).toEqual([
+      "benefit",
+      "metric",
+      "expected",
+      "how_to_measure",
+      "user_feeling",
+    ]);
+    expect(middleColumns(t).map((c) => c.key)).not.toContain("baseline");
+    expect(supplementColumns(t).map((c) => c.key)).toContain("baseline");
+    const baseline = t.columns.find((c) => c.key === "baseline");
+    expect(baseline, "baseline 列必须还在（只是换栏位）").toBeDefined();
+    expect(baseline?.label).toBe("基线");
+    expect(baseline?.slot).toBe("右栏补充");
+    expect(baseline?.required, "仍是必填：拿不到就如实写「未提供」并降 C 级假设").toBe(true);
+    expect(baseline?.type).toBe("longText");
+  });
+
+  it("完整度两条规则原文不变（baseline 非空 / 无基线行强制标 C 级假设）", () => {
+    expect(t.completeness).toContain("baseline/how_to_measure/user_feeling 非空");
+    expect(t.completeness).toContain("无基线行强制标 C 级假设");
+  });
+
+  it("章节映射把 baseline 列在表里（solution 一处 / construction 两处），且两处都取得到", () => {
+    const hits: Array<{ kind: string; chapter: string; cols: readonly string[] }> = [];
+    for (const kind of ["solution", "construction"] as const) {
+      for (const chapter of reportChapters(kind)) {
+        for (const b of chapter.blocks) {
+          if (b.code === "表6-1" && b.cols) hits.push({ kind, chapter: chapter.key, cols: b.cols });
+        }
+      }
+    }
+    expect(hits.map((h) => `${h.kind}/${h.chapter}`)).toEqual([
+      "solution/value",
+      "construction/goals",
+      "construction/content",
+    ]);
+    for (const h of hits) expect(h.cols, `${h.kind}/${h.chapter}`).toContain("baseline");
+  });
+
+  it("所有章节映射声明的列都能在表里解到（含右栏补充列）——否则报告会静默丢列", () => {
+    /* 防回归（变更表 #153）：装配层 `renderBlock` 按映射里显式写明的 key 取列（不按中栏/右栏过滤）。
+       这条用例守住"映射里写的 key 一定存在于表定义"，任何一侧改坏都会在这里被点名。 */
+    for (const kind of ["solution", "construction"] as const) {
+      for (const chapter of reportChapters(kind)) {
+        for (const b of chapter.blocks) {
+          // tableDef 对未知表号直接抛错——映射里写错表号这条用例立刻红
+          const def = tableDef(b.code);
+          for (const key of b.cols ?? []) {
+            expect(
+              def.columns.map((c) => c.key),
+              `${kind}/${chapter.key} · ${b.code} 的列 ${key}`,
+            ).toContain(key);
+          }
+        }
       }
     }
   });

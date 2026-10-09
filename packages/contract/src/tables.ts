@@ -1075,7 +1075,19 @@ const TABLES_STAGE_5: readonly TableDef[] = [
     columns: [
       mid("benefit", "收益", { required: true, type: "longText", truncate: TRUNCATE_DEFAULT }),
       mid("metric", "对应指标", { required: true }),
-      mid("baseline", "基线", { required: true, type: "longText", truncate: TRUNCATE_DEFAULT }),
+      /* 基线归**右栏补充说明**（变更表 #153，用户选定）：客户基线在调研阶段通常拿不到，
+         真机两个项目 19 行里 19 行都是「未提供」——一个 required 的长文本列白占中栏。
+         挪位后三件事**都不受影响**（判据一律按列 key `baseline` 读，与栏位无关）：
+           ① G-R8「价值主张必须有指标 + 本客户基线」的落点（`postcheck.ts` 按 key 取值）；
+           ② 完整度「baseline/how_to_measure/user_feeling 非空」与「无基线行强制标 C 级假设」
+              （`completeness.ts` 按列定义判必填；规则原文见本表 completeness）；
+           ③ 报告「价值」章的映射列（`REPORT_CHAPTERS` 的 `cols` 含 baseline，装配按 key 取——
+              见 `packages/infra/src/md-export.ts` 的 `renderBlock`：显式列出的 key 从**全部列**里取，
+              不按中栏/右栏过滤，否则挪到右栏的报告就再也看不到基线）。
+         `required` 保留：拿不到就如实写「未提供（本客户材料未含）」并标 C 级假设，不许填行情数字冒充。
+         不传 `truncate`：它只服务中栏单行单元格的截断（`TableColumn.truncate` 的定义），
+         右栏是「可增高多行编辑器」，长文本全文显示，截断在这里没有落点。 */
+      sup("baseline", "基线", { required: true, type: "longText" }),
       mid("expected", "预期改善", { required: true, type: "longText", truncate: TRUNCATE_DEFAULT }),
       mid("how_to_measure", "怎么测", { required: true, type: "longText", truncate: TRUNCATE_DEFAULT }),
       mid("user_feeling", "用户感受", { required: true, type: "longText", truncate: TRUNCATE_DEFAULT, note: "必须用客户语言" }),
