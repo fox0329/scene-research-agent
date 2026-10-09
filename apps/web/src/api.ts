@@ -549,10 +549,16 @@ export const api = {
       `/projects/${encodeURIComponent(id)}/deliverables/${kind}`,
       { method: "PUT", body: { markdown } },
     ),
-  /** 弹系统对话框选导出文件夹（变更表 #133）；取消会抛错或回 `dir: null`，调用方回退到手填路径 */
-  pickExportFolder: (id: string) =>
+  /**
+   * 弹系统对话框选导出文件夹（变更表 #133）；取消会抛错或回 `dir: null`，调用方回退到手填路径
+   *
+   * `startIn` 是对话框的默认起点（变更表 #151：上次成功导出的目录，按项目记在 localStorage）；
+   * 服务端只接受过得了 `assertExportDir` 的目录，给不了就退回系统默认位置。
+   */
+  pickExportFolder: (id: string, startIn?: string) =>
     req<{ dir: string | null }>(`/projects/${encodeURIComponent(id)}/deliverables/pick-folder`, {
       method: "POST",
+      body: { startIn },
     }),
   /** 按模版把报告写成 Word 落到指定文件夹 */
   exportDocx: (id: string, dir: string) =>

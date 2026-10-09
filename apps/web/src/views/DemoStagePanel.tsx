@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   tablesOfStage,
   tableDef,
@@ -8,7 +8,11 @@ import {
 } from "@scene/contract";
 import { buildStageSummary, checkStageCompleteness, type InfoRow } from "@scene/domain";
 import { SchemaTable, tableBlocks, tableCategories } from "../components/SchemaTable";
-import type { StageSnapshot, SupplementTable } from "../components/stage-snapshot";
+import type {
+  RowLinkOrigin,
+  StageSnapshot,
+  SupplementTable,
+} from "../components/stage-snapshot";
 import type { ApiCompleteness } from "../api";
 import { DEMO_ROWS, demoStageSummary } from "../mock/demo-flow";
 
@@ -75,6 +79,18 @@ export const DemoStagePanel: React.FC<DemoStagePanelProps> = ({
   useEffect(() => {
     onTableChange?.(activeTable, block);
   }, [activeTable, block, onTableChange]);
+
+  /* 中栏 ↔ 右栏的行联动（变更表 #150）：与联真同口径（同一个 rowId 双向高亮 + 发起方防抖） */
+  const [activeRowId, setActiveRowId] = useState<string | null>(null);
+  const [activeRowOrigin, setActiveRowOrigin] = useState<RowLinkOrigin | null>(null);
+  const focusRow = useCallback((rowId: string, origin: RowLinkOrigin) => {
+    setActiveRowId(rowId);
+    setActiveRowOrigin(origin);
+  }, []);
+  useEffect(() => {
+    setActiveRowId(null);
+    setActiveRowOrigin(null);
+  }, [stage, stepId, activeTable, block, category]);
 
   const categories = useMemo(
     () => (activeTable ? tableCategories(activeTable) : []),
@@ -152,6 +168,8 @@ export const DemoStagePanel: React.FC<DemoStagePanelProps> = ({
       summary,
       summaryLoading: false,
       activeTable,
+      activeRowId,
+      activeRowOrigin,
       supplements,
       onRefreshSummary: () => undefined,
       // 演示态的补充说明/核实同样可编辑（与联真同口径：逐格可编辑，只改本地内存）
@@ -161,8 +179,9 @@ export const DemoStagePanel: React.FC<DemoStagePanelProps> = ({
         if (Number.isNaN(idx)) return;
         handleDemoEdit(activeTable, idx, cell, value);
       },
+      onRowFocus: focusRow,
     };
-  }, [stage, stepId, completeness, summary, activeTable, supplementsKey(activeTable, category), rowsByTable, id]);
+  }, [stage, stepId, completeness, summary, activeTable, activeRowId, activeRowOrigin, focusRow, supplementsKey(activeTable, category), rowsByTable, id]);
 
   useEffect(() => {
     onStageSnapshot?.(snapshot);
@@ -208,6 +227,9 @@ export const DemoStagePanel: React.FC<DemoStagePanelProps> = ({
                   const index = Number(rowId.split("-").pop());
                   if (Number.isFinite(index)) handleDemoEdit(activeTable, index, cell, value);
                 }}
+                activeRowId={activeRowId}
+                revealActiveRow={activeRowOrigin === "right"}
+                onRowFocus={(rowId) => focusRow(rowId, "mid")}
               />
             ) : null}
             {activeDef ? (

@@ -170,9 +170,13 @@ export const AnchorStepPanel: React.FC<AnchorStepPanelProps> = ({
       summary,
       summaryLoading,
       activeTable: "表1-1",
+      // 第 1 步（表1-1）没有对应的右栏条目 → 不参与行联动
+      activeRowId: null,
+      activeRowOrigin: null,
       supplements: [],
       onRefreshSummary: () => void loadSummary(true),
       onSupplementChange: () => undefined,
+      onRowFocus: () => undefined,
     };
   }, [summary, summaryLoading, loadSummary]);
 

@@ -80,9 +80,13 @@ export const DemoFirstStep: React.FC<DemoFirstStepProps> = ({
       summary: demoStageSummary(1, 1),
       summaryLoading: false,
       activeTable: "表1-1",
+      // 第 1 步没有对应的右栏条目（没有补充说明列）→ 不参与行联动
+      activeRowId: null,
+      activeRowOrigin: null,
       supplements: [],
       onRefreshSummary: () => undefined,
       onSupplementChange: () => undefined,
+      onRowFocus: () => undefined,
     }),
     [flow],
   );

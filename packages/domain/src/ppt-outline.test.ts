@@ -1,5 +1,5 @@
 /**
- * @scene/domain — PPT 大纲校验测试（变更表 #141 立、#142 升、#144 升、#146 升）
+ * @scene/domain — PPT 大纲校验测试（变更表 #141 立、#142 升、#144 升、#146 升、#151 升）
  *
  * 覆盖全部判定分支：合法 / 页数越界 clamp / 非法页丢弃 / 缺布局与旧布局名 /
  * 各字段超限截断（且不许把页删空）/ 布局回落（网格不足 3 块 → 要点清单）/ 禁用词 /
@@ -9,6 +9,10 @@
  * 变更表 #146 追加**大纲质量判据** `checkPptOutlineQuality` 的逐条正反例：
  * 观点型标题 / 记忆点 / 信息量（含版式容量）/ **数字不在正文** / **两页重复** /
  * 叙事顺序 / 自包含 / 图标与版式成套。
+ *
+ * 变更表 #151 再加两条：④ 的**中文数字**（三成 / 两倍 / 三分之一 / 百分之三十 都算数字，
+ * 一致 / 统一 / 一起 / 一线 / 十分 / 万元 一律不误报）与 ⑧ 的**图标重复**（同页两个元素
+ * 同一个图标要报；「图标数 ≥ 元素数」结构上必然成立，不单列）。
  */
 
 import { describe, it, expect } from "vitest";
@@ -850,8 +854,15 @@ const G_LINE_A = [
   "按天核对数据",
 ];
 const G_LINE_B = ["当场留痕", "到人可查", "有据可依", "口径唯一", "边界清楚", "接口明确", "差异可查"];
+/** 网格要点四块的图标（变更表 #151：同页不许重复，所以四块四个名字） */
+const BLOCK_ICONS = ["file-text", "checkup-list", "database", "clock"] as const;
 
-/** 一页**判据合格**的网格要点页（20 条短句、标题是观点、有记忆点、内容按页号互不相同） */
+/**
+ * 一页**判据合格**的网格要点页（20 条短句、标题是观点、有记忆点、内容按页号互不相同）
+ *
+ * 每块给**不同**的图标（变更表 #151 的「图标重复」判据：同页两个元素同一个图标要报），
+ * 页图标也不与块图标重样。
+ */
 function okPage(i: number, over: Partial<PptPage> = {}): PptPage {
   const at = (k: number): number => i * 4 + k;
   return {
@@ -863,7 +874,7 @@ function okPage(i: number, over: Partial<PptPage> = {}): PptPage {
     blocks: [0, 1, 2, 3].map((k) => ({
       head: G_HEADS[at(k) % G_HEADS.length]!,
       note: `${G_NOTE_A[at(k) % G_NOTE_A.length]!}${G_NOTE_B[at(k) % G_NOTE_B.length]!}`,
-      icon: "file-text",
+      icon: BLOCK_ICONS[k % BLOCK_ICONS.length]!,
       lines: [0, 1, 2].map(
         (j) => `${G_LINE_A[(at(k) * 3 + j) % G_LINE_A.length]!}${G_LINE_B[(at(k) * 3 + j) % G_LINE_B.length]!}`,
       ),
@@ -920,7 +931,12 @@ describe("checkPptOutlineQuality — 合格基线与版式容量", () => {
   });
 
   it("结构上到不了 12 条的版式按「写满」算（数据卡片 4 张 = 8 条就合格）", () => {
-    const cards = [0, 1, 2, 3].map((k) => ({ value: `${k + 1} 张`, label: G_HEADS[k]!, icon: "chart-bar" }));
+    const cards = [0, 1, 2, 3].map((k) => ({
+      value: `${k + 1} 张`,
+      label: G_HEADS[k]!,
+      // 四张各一个图标（变更表 #151：同页图标不许重复）
+      icon: ["chart-bar", "trending-up", "target", "gauge"][k]!,
+    }));
     const issues = checkPptOutlineQuality(deckWith(0, { layout: "数据卡片", blocks: [], cards }), MD);
     expect(codesOf(issues, "信息量不足")).toEqual([]);
     // 但只给 3 张（6 条 < 8 条）就要报
@@ -1024,6 +1040,162 @@ describe("checkPptOutlineQuality — ④ 数字只许来自报告正文（防编
     expect(noEight[0]!.detail).toContain("8");
     const withEight = checkPptOutlineQuality({ pages: [page] }, "全部只用八个环节跑完全流程。");
     expect(codesOf(withEight, "数字不在正文")).toEqual([]);
+  });
+});
+
+/**
+ * 一页只放一句被测文本（其余字段一个数字都没有），返回被判「数字不在正文」的数字串
+ *
+ * 变更表 #151 的用例都走这里：正例看"哪几个中文数字被当成了数字"，反例看"有没有误判"。
+ */
+function cnTokensOf(text: string, md: string): string[] {
+  const base = okPage(0, {
+    kicker: "小节",
+    title: "硬规则管住现场",
+    subtitle: "做法写进系统",
+    highlight: "一句话结论",
+  });
+  base.blocks = base.blocks.map((b, k) => ({ ...b, lines: k === 0 ? [text] : ["照单派发任务"] }));
+  return checkPptOutlineQuality({ pages: [base] }, md)
+    .filter((i) => i.code === "数字不在正文")
+    .map((i) => /「([^」]+)」/.exec(i.detail)?.[1] ?? "");
+}
+
+describe("checkPptOutlineQuality — ④ 数字可溯源：中文数字也算数字（变更表 #151）", () => {
+  /** 正例：大纲里这些写法都要被当成数字（正文没写就报、写了就放行） */
+  const NUMERIC = [
+    "三成",
+    "五类",
+    "十二项",
+    "三十个",
+    "两倍",
+    "三倍",
+    "半小时",
+    "三分之一",
+    "百分之三十",
+  ] as const;
+
+  it("九种中文数字写法都算数字（正文里没有 → 一律报，且点名是哪个数字）", () => {
+    for (const token of NUMERIC) {
+      const hits = cnTokensOf(`现场按${token}推进`, "正文里没有任何数字。");
+      expect(hits, token).toContain(token);
+    }
+  });
+
+  it("正文里写了同一句中文数字 → 一律放行", () => {
+    for (const token of NUMERIC) {
+      expect(cnTokensOf(`现场按${token}推进`, `报告正文：现场按${token}推进。`), token).toEqual([]);
+    }
+  });
+
+  it("正文写阿拉伯数字也认（三成 ↔ 3成、十二项 ↔ 12项、两倍 ↔ 2倍、三十个 ↔ 30个）", () => {
+    expect(cnTokensOf("现场按三成推进", "现场按 3成推进。")).toEqual([]);
+    expect(cnTokensOf("落实十二项措施", "落实12项措施。")).toEqual([]);
+    expect(cnTokensOf("效率提升两倍", "效率提升 2 倍。")).toEqual([]);
+    expect(cnTokensOf("留下三十个点位", "留下 30 个点位。")).toEqual([]);
+  });
+
+  it("分数与百分比：三分之一 ↔ 1/3 或 3分之一，百分之三十 ↔ 30% 或 百分之30", () => {
+    expect(cnTokensOf("工期缩短三分之一", "工期缩短 1/3。")).toEqual([]);
+    expect(cnTokensOf("工期缩短三分之一", "工期缩短 3分之一。")).toEqual([]);
+    expect(cnTokensOf("覆盖百分之三十的现场", "覆盖 30% 的现场。")).toEqual([]);
+    expect(cnTokensOf("覆盖百分之三十的现场", "覆盖百分之30的现场。")).toEqual([]);
+    expect(cnTokensOf("覆盖百分之三十的现场", "覆盖百分之三十的现场。")).toEqual([]);
+  });
+
+  it("光杆数字只认规范写法（十二 / 三十 / 三十五 / 一百二十 都算数）", () => {
+    for (const token of ["十二", "三十", "三十五", "一百二十"] as const) {
+      expect(cnTokensOf(`留下${token}点位`, "正文里没有这个数。"), token).toContain(token);
+      expect(cnTokensOf(`留下${token}点位`, `留下${token}个点位。`), token).toEqual([]);
+    }
+  });
+
+  it("反向宽容：正文写「百分之三十」也能兜住大纲里的 30", () => {
+    expect(cnTokensOf("目标省 30% 工时", "目标省百分之三十的工时。")).toEqual([]);
+  });
+
+  it("detail 与阿拉伯数字同一条口径（同一个问题码、同一句话）", () => {
+    const page = okPage(0, {
+      kicker: "小节",
+      title: "硬规则管住现场",
+      subtitle: "做法写进系统",
+      highlight: "一句话结论",
+    });
+    page.blocks[0]!.lines = ["节省 47% 的巡检工时"];
+    page.blocks[1]!.lines = ["效率提升两倍"];
+    const issues = checkPptOutlineQuality({ pages: [page] }, "正文里没有数字。");
+    const arabic = issues.find((i) => i.code === "数字不在正文" && i.detail.includes("47"));
+    const chinese = issues.find((i) => i.code === "数字不在正文" && i.detail.includes("两倍"));
+    for (const hit of [arabic, chinese]) {
+      expect(hit).toBeDefined();
+      expect(hit!.detail).toContain("在报告正文里找不到");
+      expect(hit!.detail).toContain("不许换算、加总、估");
+    }
+  });
+
+  /**
+   * 反例（**宁可漏判也不误报**）：这些常见词一个都不许被当成数字
+   *
+   * 靠的是"后面必须跟量词 / 成 / 倍 / 分之"这条语境门槛，不是词表：`一致` / `统一` / `一起` /
+   * `一线` / `十分` / `万元` / `千万` / `百般` / `一度` / `进一步` / `一个` 全都没有
+   * "数字 + 单位"的结构，所以连进判定的机会都没有。
+   */
+  const NOT_NUMERIC = [
+    "口径一致",
+    "标准统一",
+    "一起上线",
+    "一线品牌",
+    "十分重视",
+    "金额以万元计",
+    "千万不要断电",
+    "百般刁难",
+    "一成不变",
+    "设备一度中断",
+    "进一步压缩工期",
+    "搭一个平台",
+    "一次说清",
+    "百万级设备",
+    "千米之外",
+    "两全其美",
+    "五花八门",
+  ] as const;
+
+  it("常见写法一律不报（一致 / 统一 / 一起 / 一线 / 十分 / 万元 / 千万 / 百般 …）", () => {
+    for (const text of NOT_NUMERIC) {
+      expect(cnTokensOf(text, "正文里没有任何数字。"), text).toEqual([]);
+    }
+  });
+
+  it("单独一个「一」不算数（一个 / 一次 / 一条 / 一处 / 第一类 都是口头语）", () => {
+    for (const text of ["一个平台", "一次说清", "一条规则", "一处录入台账", "第一类风险"]) {
+      expect(cnTokensOf(text, "正文里没有数字。"), text).toEqual([]);
+    }
+  });
+
+  it("光杆的 十 / 百 / 千 / 万 只是单位词，不算数字（万元 / 百米 / 千米 / 千万 / 百万 都不报）", () => {
+    for (const text of ["金额以万元计", "百米之外", "千米之外", "千万不要断电", "百万级设备"]) {
+      expect(cnTokensOf(text, "正文里没有数字。"), text).toEqual([]);
+    }
+    // 但真的带数字的量词写法照报（十分钟 / 十项 / 三十万台）
+    expect(cnTokensOf("十分钟到场", "正文里没有数字。")).toContain("十分钟");
+    expect(cnTokensOf("十项措施", "正文里没有数字。")).toContain("十项");
+    expect(cnTokensOf("三十万台设备", "正文里没有数字。")).toContain("三十万台");
+  });
+
+  it("问题码仍是 `数字不在正文`（中文数字没有新码，口径与阿拉伯数字同一条）", () => {
+    for (const token of ["三成", "两倍", "三分之一"] as const) {
+      const hits = cnTokensOf(`现场按${token}推进`, "正文里没有数字。");
+      expect(hits, token).toContain(token);
+    }
+    const page = okPage(0, {
+      kicker: "小节",
+      title: "硬规则管住现场",
+      subtitle: "做法写进系统",
+      highlight: "一句话结论",
+    });
+    page.blocks[0]!.lines = ["现场按三成推进"];
+    const issues = checkPptOutlineQuality({ pages: [page] }, "正文里没有数字。");
+    expect([...new Set(issues.map((i) => i.code))]).toEqual(["数字不在正文"]);
   });
 });
 
@@ -1248,5 +1420,61 @@ describe("checkPptOutlineQuality — ⑧ 图标与版式成套", () => {
     );
     expect(codesOf(issues, "版式与字段不成套")).toEqual([5]);
     expect(issues.find((i) => i.code === "版式与字段不成套")!.detail).toContain("没给合规 table");
+  });
+
+  it("同一页两个块用同一个图标 → 图标重复（detail 点名页码与图标名）", () => {
+    const page = okPage(0);
+    page.blocks[1]!.icon = page.blocks[0]!.icon;
+    const issues = checkPptOutlineQuality({ pages: [page] }, MD).filter((i) => i.code === "图标重复");
+    expect(issues).toHaveLength(1);
+    expect(issues[0]!.page).toBe(1);
+    expect(issues[0]!.detail).toContain("第 1 页");
+    expect(issues[0]!.detail).toContain(`「${page.blocks[0]!.icon}」`);
+    expect(issues[0]!.detail).toContain("用了 2 次");
+  });
+
+  it("同页四个块全用同一个图标 → 只报一条，detail 写清用了 4 次", () => {
+    const page = okPage(0);
+    for (const b of page.blocks) b.icon = "file-text";
+    const issues = checkPptOutlineQuality({ pages: [page] }, MD).filter((i) => i.code === "图标重复");
+    expect(issues).toHaveLength(1);
+    expect(issues[0]!.detail).toContain("「file-text」用了 4 次");
+  });
+
+  it("页图标与块图标撞了也要报（页图标也是这一页的图标）", () => {
+    const page = okPage(0);
+    page.blocks[2]!.icon = page.icon;
+    expect(codesOf(checkPptOutlineQuality({ pages: [page] }, MD), "图标重复")).toEqual([1]);
+  });
+
+  it("同页每个块 / 栏 / 阶段 / 层 / 卡片 / 表列各一个不同图标 → 不报", () => {
+    expect(codesOf(checkPptOutlineQuality(okDeck(), MD), "图标重复")).toEqual([]);
+    // 表头列与页图标、列间都不许撞：四列四个名字，页图标是第五个
+    const table = okPage(0, {
+      blocks: [],
+      table: {
+        head: ["阶段", "做什么", "谁负责", "验收"],
+        icons: ["route", "users", "gauge", "circle-check"],
+        rows: [["样板层", "装齐终端并贴码", "运维班", "第 1 周"]],
+      },
+    });
+    expect(codesOf(checkPptOutlineQuality({ pages: [table] }, MD), "图标重复")).toEqual([]);
+  });
+
+  it("一页 4 块共用兜底图标 → 报「图标重复」（变更表 #151 的判据分工，不是「图标不足」）", () => {
+    // 「每页图标数 ≥ 元素数」不单列：`iconOf` 会给每个元素兜一个图标（`presentation`），
+    // 渲染层还会画页图标与结论带 bulb，那条线结构上必然成立；重复用兜底图标才是真问题
+    const parsed = parsePptOutline(
+      JSON.stringify({
+        pages: [
+          page({
+            blocks: [0, 1, 2, 3].map((k) => ({ head: G_HEADS[k]!, note: "", lines: ["逐台贴码登记"] })),
+          }),
+        ],
+      }),
+    );
+    const parsedPage = parsed.outline!.pages[0]!;
+    expect(parsedPage.blocks.every((b) => b.icon === PPT_DEFAULT_ICON)).toBe(true);
+    expect(codesOf(checkPptOutlineQuality({ pages: [parsedPage] }, MD), "图标重复")).toEqual([1]);
   });
 });

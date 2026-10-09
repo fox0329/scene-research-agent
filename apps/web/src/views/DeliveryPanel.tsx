@@ -40,6 +40,7 @@ import {
 } from "../api";
 import { useStageAnalysis } from "../hooks/useStageAnalysis";
 import { renderMarkdown } from "../components/StageRightPanel";
+import { forgetExportDir, loadExportDir, saveExportDir } from "../components/export-dir-memory";
 import { DELIVERY_OUTPUTS, DELIVERY_OUTPUT_HINT } from "../components/step-outputs";
 import { DELIVERY_ROW_ID } from "../components/FlowRail";
 import type { StageSnapshot } from "../components/stage-snapshot";
@@ -298,6 +299,8 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
         const r = await api.exportDocx(projectId, dir);
         const all = [...r.files, ...r.unchanged];
         setDocxPaths(all);
+        // 变更表 #151：真的写出过文件才记这个目录（抛错与取消都走不到这里）
+        if (all.length > 0) saveExportDir(projectId, dir);
         // 一次两份：toast 回显写出的文件路径（全都没改动时说清是"已是最新"）
         const head =
           r.files.length > 0
@@ -342,6 +345,9 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
         const r = await api.exportPptx(projectId, dir, tab, run);
         const all = [...r.files, ...r.unchanged];
         if (all.length > 0) setPptPaths(all);
+        // 变更表 #151：PPT 导出失败也只回 notice（不抛错），所以按"有没有产物"记目录——
+        // `all.length === 0`（PPT 未导出）不算成功，不许覆盖上次的目录
+        if (all.length > 0) saveExportDir(projectId, dir);
         const head =
           all.length === 0
             ? "PPT 未导出"
@@ -379,12 +385,13 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
       setBusy(true);
       let dir: string | null = null;
       try {
-        dir = (await api.pickExportFolder(projectId)).dir;
+        // 变更表 #151：上次成功导出的目录作为系统对话框的默认起点（服务端仍会再校验一遍）
+        dir = (await api.pickExportFolder(projectId, loadExportDir(projectId) || undefined)).dir;
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err);
         showToast(message);
-        // 取消就不打扰；弹不出对话框（非 macOS / 无权限）才回退到手填路径
-        if (!message.includes("取消")) setManualDir((cur) => cur ?? "");
+        // 取消就不打扰；弹不出对话框（非 macOS / 无权限）才回退到手填路径——手填那行预填上次的目录
+        if (!message.includes("取消")) setManualDir((cur) => cur ?? loadExportDir(projectId));
       } finally {
         setBusy(false);
       }
@@ -407,9 +414,13 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
       summary: deliveryNote(flow, mdPaths, docxPaths, pptPaths),
       summaryLoading: false,
       activeTable: null,
+      // 交付物步没有信息表，也就没有可联动的行（右栏只有阶段总结一个 Tab）
+      activeRowId: null,
+      activeRowOrigin: null,
       supplements: [],
       onRefreshSummary: () => void loadReports(),
       onSupplementChange: () => undefined,
+      onRowFocus: () => undefined,
     }),
     [flow, mdPaths, docxPaths, pptPaths, loadReports],
   );
@@ -525,7 +536,7 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
       )}
 
       {/* 手填导出目录那一行（变更表 #133）：只在弹不出系统对话框、用户手动导出时出现，
-          属于面板局部，留在中栏 */}
+          属于面板局部，留在中栏。变更表 #151：打开时预填上次成功导出的目录（按项目记） */}
       {manualDir !== null ? (
         <div className="pnl-h">
           <div className="pnl-actions dir-row">
@@ -535,7 +546,12 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
               value={manualDir}
               placeholder="文件夹绝对路径，例如 /Users/you/Documents/报告"
               aria-label="导出文件夹路径"
-              onChange={(e) => setManualDir(e.target.value)}
+              onChange={(e) => {
+                const next = e.target.value;
+                setManualDir(next);
+                // 用户自己把这一行清空 = 以用户为准：忘掉记忆，下次不再拿旧值兜他
+                if (next.trim() === "") forgetExportDir(projectId);
+              }}
             />
             <button
               className="btn"

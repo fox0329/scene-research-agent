@@ -387,9 +387,14 @@ td:last-child {
   user-select: none;
 }
 
-/* 选中行（右栏详情联动） */
+/* 选中行（右栏详情联动 / 变更表 #150 中栏 ↔ 右栏行联动）：底色 + 首格左侧强调条 */
 tr.sel td {
   background: rgba(var(--cp-rgb), 0.1);
+}
+
+/* 强调条画在首格的 padding 里（单元格本身有内边距），不压字、不改变任何列宽 */
+tr.sel td:first-child {
+  box-shadow: inset var(--s05) 0 0 0 var(--cp);
 }
 
 /* 溯源徽标列（原来源四列合一，详情在右栏） */
@@ -2061,6 +2066,34 @@ td.ed {
 .verify-verdict.warn { color: var(--cw-h); border-color: var(--cw); background: var(--cw-s); }
 /* 长文本随内容增高（AutoGrowTextarea），不用 resize 手柄 */
 .verify-text { line-height: 1.5; }
+
+/* ─────────────────────────────────────────────────────────────
+   中栏 ↔ 右栏行联动（变更表 #150）：当前行 / 当前条目同源高亮
+   同一 rowId 的补充说明条目与核实条一起亮；强调条画在左槽（::before 绝对定位，
+   不占位、不改动条目复排），所以高亮出现与消失都不会让内容跳动。
+   ───────────────────────────────────────────────────────────── */
+
+.supp-item,
+.verify-item {
+  position: relative;
+}
+
+.supp-item--active,
+.verify-item--active {
+  background: var(--cp-s);
+  border-radius: var(--r2);
+}
+
+.supp-item--active::before,
+.verify-item--active::before {
+  content: "";
+  position: absolute;
+  left: calc(-1 * var(--s3));
+  top: 0;
+  bottom: 0;
+  width: var(--s05);
+  background: var(--cp);
+}
 
 /* ─────────────────────────────────────────────────────────────
    场景诉求对话框（第一输入，三步走）

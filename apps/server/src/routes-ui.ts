@@ -52,7 +52,7 @@ import { getReports, saveReportFile, writeReportFiles } from "./report-service.j
 import { exportReportDocx } from "./docx-export.js";
 import { exportReportPptx } from "./ppt-export.js";
 import { closePptRun, ensurePptRun, pptRunId } from "./ppt-progress.js";
-import { assertExportDir, pickFolder } from "./folder-picker.js";
+import { assertExportDir, pickFolder, safeStartDir } from "./folder-picker.js";
 import { createConverseCommand, type ChatImportOutcome } from "./converse.js";
 import { requestScenarioClarify } from "./scenario-clarify.js";
 import { makeSourceLookup, runPostcheck } from "./postcheck-pass.js";
@@ -407,12 +407,21 @@ export function registerUiRoutes(app: FastifyInstance, deps: UiRoutesDeps): void
     return saveReportFile(scenario, kind as ReportKind, body.markdown);
   });
 
-  /** 弹系统对话框让用户选导出文件夹（变更表 #133）；取消返回 409，界面回退到手填路径 */
+  /**
+   * 弹系统对话框让用户选导出文件夹（变更表 #133）；取消返回 409，界面回退到手填路径
+   *
+   * body 可选 `{startIn}`（变更表 #151）：对话框的默认起点＝这个项目上次成功导出的目录。
+   * **记忆值也要过同一道校验**（`assertExportDir`：主目录下、存在、可写、非敏感目录）——
+   * 校验不过（目录被删 / 移走 / 手改过 localStorage）就静默退回系统默认位置，绝不让
+   * 一个坏路径把对话框弄弹不出来。
+   */
   app.post("/api/v1/projects/:id/deliverables/pick-folder", async (request, reply) => {
     const { id } = request.params as { id: string };
     const scenario = db.scenarioRepo.getById(id);
     if (!scenario) return notFound(reply, `场景 ${id} 不存在`);
-    const picked = await pickFolder(`把「${scenario.name}」的报告导出到哪个文件夹？`);
+    const body = (request.body ?? {}) as { startIn?: unknown };
+    const startIn = safeStartDir(body.startIn);
+    const picked = await pickFolder(`把「${scenario.name}」的报告导出到哪个文件夹？`, startIn);
     if (!picked.dir) return reply.code(409).send({ error: picked.reason ?? "未选择文件夹" });
     return { dir: picked.dir };
   });

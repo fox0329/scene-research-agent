@@ -26,17 +26,40 @@ export interface FolderPickResult {
   reason?: string;
 }
 
-/** 弹系统「选择文件夹」对话框；取消返回 null，非 macOS 抛错由路由转成 501 */
-export async function pickFolder(prompt = "选择导出报告的文件夹"): Promise<FolderPickResult> {
+/** AppleScript 字符串字面量里的转义（反斜杠与双引号）——路径或场景名里带上它们就不会把脚本写坏 */
+function appleString(value: string): string {
+  return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+
+/**
+ * 「选择文件夹」那一条 AppleScript（变更表 #151 抽成纯函数，便于单测转义）
+ *
+ * `startIn` 非空时写成 `default location POSIX file "…"`——对话框打开就停在上次导出的目录，
+ * 用户不用每次从头点。**调用方必须先过 `assertExportDir`**：给一个不存在的路径，
+ * osascript 会直接报错（对话框弹不出来，用户被逼去手填）。
+ */
+export function folderPickScript(prompt: string, startIn?: string | null): string {
+  const head = `POSIX path of (choose folder with prompt "${appleString(prompt)}"`;
+  if (startIn === undefined || startIn === null || startIn === "") return `${head})`;
+  return `${head} default location POSIX file "${appleString(startIn)}")`;
+}
+
+/**
+ * 弹系统「选择文件夹」对话框；取消返回 null，非 macOS 抛错由路由转成 501
+ *
+ * `startIn` 见 `folderPickScript`（默认起点；调用方负责先校验它是不是合法的导出目录）。
+ */
+export async function pickFolder(
+  prompt = "选择导出报告的文件夹",
+  startIn?: string | null,
+): Promise<FolderPickResult> {
   if (process.platform !== "darwin") {
     return { dir: null, reason: "当前系统不支持弹出文件夹对话框，请直接填写路径" };
   }
   try {
-    const { stdout } = await run(
-      "osascript",
-      ["-e", `POSIX path of (choose folder with prompt "${prompt}")`],
-      { timeout: 120_000 },
-    );
+    const { stdout } = await run("osascript", ["-e", folderPickScript(prompt, startIn)], {
+      timeout: 120_000,
+    });
     const dir = stdout.trim();
     return { dir: dir === "" ? null : dir };
   } catch (err: unknown) {
@@ -65,4 +88,20 @@ export function assertExportDir(input: string): string {
     throw new Error(`目录不可写：${dir}`);
   }
   return dir;
+}
+
+/**
+ * 记忆里的目录能不能当对话框的默认起点（变更表 #151）
+ *
+ * **记忆值也要过同一道校验**——导出的安全边界只此一处（`assertExportDir`），记忆不是授权：
+ * 目录被删 / 被移走 / localStorage 被手改过，都当"没记过"（返回 null，对话框退回系统默认位置），
+ * 绝不让一个坏路径把对话框弄成弹不出来。
+ */
+export function safeStartDir(input: unknown): string | null {
+  if (typeof input !== "string" || input.trim() === "") return null;
+  try {
+    return assertExportDir(input);
+  } catch {
+    return null;
+  }
 }

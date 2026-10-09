@@ -41,6 +41,16 @@ export interface SchemaTableProps {
   category?: string;
   /** 单元格编辑（行 id + 列字段 + 新值） */
   onCellChange?: (rowId: string, cell: string, value: string) => void;
+  /**
+   * 当前行（rowId，变更表 #150）：中栏这一行与右栏 Tab① 的对应条目同源高亮
+   *
+   * 受控——由阶段面板持有；换表/换块时面板清空，上一张表的高亮不会带过来。
+   */
+  activeRowId?: string | null;
+  /** 行被点击或行内单元格获得焦点时上报（父级据此把右栏条目高亮并滚进可视） */
+  onRowFocus?: (rowId: string) => void;
+  /** 把当前行滚进可视：只在联动由右栏发起时为 true（发起方自己不动，避免两边互滚） */
+  revealActiveRow?: boolean;
   readOnly?: boolean;
 }
 
@@ -185,7 +195,17 @@ export function AnchorTable({
  * - 普通表 → 限制在中栏列内渲染
  */
 export function SchemaTable(props: SchemaTableProps): React.ReactElement | null {
-  const { tableCode, rows, block, category, onCellChange, readOnly } = props;
+  const {
+    tableCode,
+    rows,
+    block,
+    category,
+    onCellChange,
+    activeRowId,
+    onRowFocus,
+    revealActiveRow,
+    readOnly,
+  } = props;
   const def = useMemo(() => tableDef(tableCode), [tableCode]);
 
   if (!def) {
@@ -215,6 +235,11 @@ export function SchemaTable(props: SchemaTableProps): React.ReactElement | null 
         columns={toColumnDefs(cols)}
         data={rows.map((r) => r.row)}
         storageKey={`schema:${tableCode}${block ? `:${block}` : ""}${category ? `:${category}` : ""}`}
+        /* 联动按 rowId 对：这里的行顺序与 `data` 一一对应（同一份 rows.map） */
+        rowIdOf={(_row, index) => rows[index]?.id ?? null}
+        activeRowId={activeRowId}
+        onRowFocus={onRowFocus}
+        revealActiveRow={revealActiveRow}
         onCellChange={
           readOnly || !onCellChange
             ? undefined

@@ -9,7 +9,11 @@ import {
 import { api, type ApiStagePanel, type ApiStageRow } from "../api";
 import { useAsync } from "../hooks/useAsync";
 import { SchemaTable, tableBlocks, tableCategories } from "../components/SchemaTable";
-import type { StageSnapshot, SupplementTable } from "../components/stage-snapshot";
+import type {
+  RowLinkOrigin,
+  StageSnapshot,
+  SupplementTable,
+} from "../components/stage-snapshot";
 import { useToast } from "../components/Toast";
 
 /**
@@ -116,6 +120,26 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
     onTableChange?.(activeTable, block);
   }, [activeTable, block, onTableChange]);
 
+  /**
+   * 中栏 ↔ 右栏的行联动（变更表 #150）
+   *
+   * 只有一个 `activeRowId`：中栏表格行与右栏 Tab① 的条目按**同一个 rowId** 高亮，所以
+   * 两边不会各说各话。`origin` 是防抖用的发起方标记——**只滚发起方的对面**：
+   * 中栏点的行才去滚右栏，右栏点的字段才去滚中栏；发起方自己纹丝不动，
+   * 于是 A→B→A 的互相滚动不成立（右栏自己滚动也不会反过来改中栏的选中行）。
+   */
+  const [activeRowId, setActiveRowId] = useState<string | null>(null);
+  const [activeRowOrigin, setActiveRowOrigin] = useState<RowLinkOrigin | null>(null);
+  const focusRow = useCallback((rowId: string, origin: RowLinkOrigin) => {
+    setActiveRowId(rowId);
+    setActiveRowOrigin(origin);
+  }, []);
+  /* 换表/换块/换类别/换步骤：上一张表的当前行不许带到新表上（新表里没有这个 rowId） */
+  useEffect(() => {
+    setActiveRowId(null);
+    setActiveRowOrigin(null);
+  }, [stage, stepId, activeTable, block, category]);
+
   /** 本表本块的行：多子块表按块过滤（否则接口块视图会带出一排架构块的空行） */
   const activeRows = useMemo(() => {
     const mine = rows.filter((r) => r.table_code === activeTable);
@@ -197,9 +221,12 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
       summary,
       summaryLoading,
       activeTable,
+      activeRowId,
+      activeRowOrigin,
       supplements,
       onRefreshSummary: () => void loadSummary(true),
       onSupplementChange: (rowId, cell, value) => void handleCellChange(rowId, cell, value),
+      onRowFocus: focusRow,
     };
   }, [
     data,
@@ -208,9 +235,12 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
     summaryLoading,
     stage,
     activeTable,
+    activeRowId,
+    activeRowOrigin,
     category,
     loadSummary,
     handleCellChange,
+    focusRow,
   ]);
 
   useEffect(() => {
@@ -284,6 +314,10 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
                 block={block ?? undefined}
                 category={category ?? undefined}
                 onCellChange={(rowId, cell, value) => void handleCellChange(rowId, cell, value)}
+                activeRowId={activeRowId}
+                /* 中栏发起的联动：右栏去滚；右栏发起的：由中栏把这一行滚进可视 */
+                revealActiveRow={activeRowOrigin === "right"}
+                onRowFocus={(rowId) => focusRow(rowId, "mid")}
               />
             ) : null}
 

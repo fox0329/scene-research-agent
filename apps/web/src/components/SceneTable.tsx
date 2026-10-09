@@ -25,6 +25,21 @@ interface SceneTableProps<T> {
   storageKey?: string;
   /** 点击行（含单元格）时上报：右栏详情联动用 */
   onRowClick?: (rowIndex: number) => void;
+  /**
+   * 受控当前行（rowId，变更表 #150）：给了就以父级为准（中栏 ↔ 右栏按同一 rowId 双向高亮）；
+   * 缺省退回内部点击态（`selectedIdx`，如资料库的行详情）
+   */
+  activeRowId?: string | null;
+  /** 取行 id（联动靠它与右栏条目对上）；缺省该表不参与联动 */
+  rowIdOf?: (row: T, index: number) => string | null;
+  /** 行成为当前行（点击，或行内单元格获得焦点）时上报 */
+  onRowFocus?: (rowId: string) => void;
+  /**
+   * 把当前行滚进可视（`block: "nearest"`）
+   *
+   * 只在**联动由右栏发起**时为 true：发起方自己不动，否则两边会互相把对方滚回去。
+   */
+  revealActiveRow?: boolean;
   /** 表格自身的类名（如 `schema-table--anchor`） */
   tableClassName?: string;
   /**
@@ -113,6 +128,10 @@ export function SceneTable<T extends Record<string, unknown>>({
   onCellChange,
   storageKey,
   onRowClick,
+  activeRowId,
+  rowIdOf,
+  onRowFocus,
+  revealActiveRow,
   tableClassName,
   rowEditable,
 }: SceneTableProps<T>) {
@@ -345,6 +364,24 @@ export function SceneTable<T extends Record<string, unknown>>({
     }
   }, [widths, storageKey]);
 
+  /**
+   * 当前行需要时滚进可视（变更表 #150）
+   *
+   * 依赖只有「当前行 id + 是否该由本表来滚」：同一个 id 反复上报（比如在同一行里从一个
+   * 单元格移到另一个）不会重跑，因此不会把用户刚滚开的中栏硬拉回来。
+   * `block: "nearest"` 只在行不在可视区时才动，且只滚最近的滚动容器（中栏列）。
+   */
+  useEffect(() => {
+    if (!revealActiveRow || !activeRowId) return;
+    const table = tableRef.current;
+    if (!table) return;
+    for (const tr of table.querySelectorAll<HTMLTableRowElement>("tbody tr[data-row-id]")) {
+      if (tr.dataset["rowId"] !== activeRowId) continue;
+      tr.scrollIntoView({ block: "nearest" });
+      break;
+    }
+  }, [revealActiveRow, activeRowId]);
+
   const handleBlur = useCallback(
     (rowIndex: number, key: string, el: HTMLElement) => {
       const newValue = el.textContent ?? "";
@@ -417,6 +454,20 @@ export function SceneTable<T extends Record<string, unknown>>({
 
   const placeholderOf = (col: ColumnDef<T>, row: T): string =>
     typeof col.placeholder === "function" ? col.placeholder(row) : (col.placeholder ?? "");
+  /**
+   * 行 id 与"是不是当前行"（变更表 #150）
+   *
+   * 一次算好、渲染里只查表：`rowIdOf` 是父级传下来的内联函数，逐处调用会把它当热点。
+   * 高亮口径：受控（父级给了 `activeRowId`）时只认父级的当前行；缺省退回内部点击态
+   * （资料库的行详情走这条）。没传 `rowIdOf` 的表（如表1-1 场景锚的纵向表）没有行 id，
+   * 因此天然不参与联动。
+   */
+  const rowIds = rowIdOf ? data.map((row, i) => rowIdOf(row, i)) : null;
+  const idOf = (index: number): string | null => rowIds?.[index] ?? null;
+  const isRowActive = (index: number): boolean =>
+    activeRowId === undefined
+      ? index === selectedIdx
+      : activeRowId !== null && idOf(index) === activeRowId;
   const resizeHandle = (col: ColumnDef<T>): React.ReactElement => (
     <span
       className="th-resize"
@@ -474,10 +525,18 @@ export function SceneTable<T extends Record<string, unknown>>({
           {data.map((row, ri) => (
             <tr
               key={ri}
-              className={ri === selectedIdx ? "sel" : undefined}
+              data-row-id={idOf(ri) ?? undefined}
+              className={isRowActive(ri) ? "sel" : undefined}
               onClick={() => {
                 setSelectedIdx(ri);
                 onRowClick?.(ri);
+                const id = idOf(ri);
+                if (id !== null) onRowFocus?.(id);
+              }}
+              /* React 的 onFocus 走 focusin（冒泡）：行内任一单元格获得焦点都算"移到这一行" */
+              onFocus={() => {
+                const id = idOf(ri);
+                if (id !== null) onRowFocus?.(id);
               }}
             >
               {columns.map((col) => {

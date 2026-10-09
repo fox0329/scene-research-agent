@@ -27,7 +27,7 @@
  *       由智能体自己排补，用户界面不再呈现（见 `@scene/domain` 的 `userGaps`）
  */
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { enumValues, middleColumns, tableDef } from "@scene/contract";
 import { AutoGrowTextarea } from "./AutoGrowTextarea";
 import { FoldSection } from "./FoldSection";
@@ -216,6 +216,33 @@ export const StageRightPanel: React.FC<StageRightPanelProps> = ({ snapshot, live
     });
   }, [snapshot]);
 
+  const bodyRef = useRef<HTMLDivElement>(null);
+  /** 有没有对应的右栏条目：没有就落阶段总结（第 1 步、交付物步） */
+  const hasSupplement = (snapshot?.supplements.length ?? 0) > 0;
+  const activeTab: Tab = hasSupplement ? tab : "summary";
+  const activeRowId = snapshot?.activeRowId ?? null;
+  const activeRowOrigin = snapshot?.activeRowOrigin ?? null;
+
+  /**
+   * 中栏点了某一行 → 把右栏里**同一个 rowId** 的条目滚进可视（变更表 #150）
+   *
+   * 三条防抖口径：
+   *  - 只有 `origin === "mid"` 才滚：右栏自己发起的联动不回滚自己（它本来就在视野里）；
+   *  - 依赖只有「当前行 + 发起方 + 当前 Tab」：同一行反复上报（在同一行内换字段）不重跑，
+   *    所以不会把用户刚滚开的右栏硬拉回来；
+   *  - `block: "nearest"`：只在条目不在可视区时才动，绝不居中，右栏不会跳来跳去。
+   * 用户自己滚右栏不改任何状态（不监听 scroll），因此不会反过来改中栏的选中行。
+   */
+  useEffect(() => {
+    if (activeTab !== "supplement" || activeRowOrigin !== "mid" || !activeRowId) return;
+    const root = bodyRef.current;
+    if (!root) return;
+    const target = Array.from(root.querySelectorAll<HTMLElement>("[data-row-id]")).find(
+      (el) => el.dataset["rowId"] === activeRowId,
+    );
+    target?.scrollIntoView({ block: "nearest" });
+  }, [activeTab, activeRowId, activeRowOrigin]);
+
   // 首帧（快照还没冒泡上来）不渲染占位块：闪一下的指引没有价值，联真态给一句极短状态即可
   if (!snapshot) {
     return (
@@ -230,9 +257,6 @@ export const StageRightPanel: React.FC<StageRightPanelProps> = ({ snapshot, live
   }
 
   const { supplements } = snapshot;
-  /** 没有补充说明就别把 Tab① 显示成可点但空白（第 1 步、交付物步）——默认落在阶段总结 */
-  const hasSupplement = supplements.length > 0;
-  const activeTab: Tab = hasSupplement ? tab : "summary";
 
   const emptyMsg = "本步还没有产出——做完本步分析后这里会生成本步总结";
   const full = snapshot.summary ?? "";
@@ -264,7 +288,7 @@ export const StageRightPanel: React.FC<StageRightPanelProps> = ({ snapshot, live
         </button>
       </div>
 
-      <div className="det-body">
+      <div className="det-body" ref={bodyRef}>
         {activeTab === "supplement" ? (
           <>
             {/* 中栏表格的补充说明列：一条信息一条目，字段名 → 值纵排（窄栏不排表格） */}
@@ -278,7 +302,15 @@ export const StageRightPanel: React.FC<StageRightPanelProps> = ({ snapshot, live
                   {s.rows.map((r) => {
                     const label = rowLabel(s.tableCode, r.row);
                     return (
-                      <div className="supp-item" key={r.id}>
+                      <div
+                        className={`supp-item${r.id === activeRowId ? " supp-item--active" : ""}`}
+                        key={r.id}
+                        /* 联动靠 rowId 与中栏那一行对上（变更表 #150） */
+                        data-row-id={r.id}
+                        /* `onFocus` 走 focusin：条目里任一字段（值编辑器）获得焦点即算"看这一条"。
+                           不加 onClick——可点的交互面就是字段本身，点字段必然聚焦，键盘 Tab 同样成立 */
+                        onFocus={() => snapshot.onRowFocus(r.id, "right")}
+                      >
                         <div className="supp-label">{label}</div>
                         <div className="supp-fields">
                           {s.columns.map((c) => {
@@ -317,7 +349,13 @@ export const StageRightPanel: React.FC<StageRightPanelProps> = ({ snapshot, live
                 </h4>
                 <div className="verify-list">
                   {verifyRows.map((r) => (
-                    <div className="verify-item" key={r.id}>
+                    <div
+                      className={`verify-item${r.id === activeRowId ? " verify-item--active" : ""}`}
+                      key={r.id}
+                      data-row-id={r.id}
+                      /* 同一行的核实条与补充说明同源高亮：在中栏点到哪一行，两边一起亮 */
+                      onFocus={() => snapshot.onRowFocus(r.id, "right")}
+                    >
                       <div className="verify-head">
                         <span className="verify-label" title={r.label}>
                           {r.label}

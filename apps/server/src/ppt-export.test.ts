@@ -185,6 +185,14 @@ const G_LINE_B = ["当场留痕", "到人可查", "有据可依", "口径唯一"
 /** 页标记（把每一页的短句彻底区分开，去掉标点后也不会撞车） */
 const G_MARK = ["甲", "乙", "丙", "丁", "戊", "己", "庚", "辛"];
 
+/** 网格要点四块 / 双栏两栏 / 阶段 / 层 / 卡片 / 表列的图标（变更表 #151：同页各不重样） */
+const BLOCK_ICONS = ["file-text", "checkup-list", "database", "clock"] as const;
+const COLUMN_ICONS = ["arrows-split", "hierarchy"] as const;
+const STAGE_ICONS = ["route", "calendar-check", "users", "gauge", "circle-check"] as const;
+const LAYER_ICONS = ["hierarchy", "server", "network"] as const;
+const CARD_ICONS = ["chart-bar", "trending-up", "target", "bolt"] as const;
+const TABLE_ICONS = ["route", "users", "gauge", "circle-check"] as const;
+
 /**
  * 小节标签：**按页号单调**地走「问题 → 方案 → 价值」
  *
@@ -217,7 +225,8 @@ function goodPage(i: number, over: Partial<PptPage> = {}): PptPage {
     blocks: [0, 1, 2, 3].map((k) => ({
       head: head(k),
       note: note(k),
-      icon: "file-text",
+      // 每块各一个图标（变更表 #151：同一页不许重复用同一个图标）
+      icon: BLOCK_ICONS[k]!,
       lines: lines(k, 3),
     })),
     columns: [],
@@ -248,7 +257,7 @@ function layoutPage(i: number): PptPage {
         columns: [0, 1].map((k) => ({
           head: G_HEADS[at(k) % G_HEADS.length]!,
           note: `${G_NOTE_A[at(k) % G_NOTE_A.length]!}，${mark}组`,
-          icon: "arrows-split",
+          icon: COLUMN_ICONS[k]!,
           lines: Array.from(
             { length: 4 },
             (_, j) => `${G_LINE_A[(at(k) * 5 + j) % G_LINE_A.length]!}${G_LINE_B[(at(k) * 5 + j) % G_LINE_B.length]!}，${mark}组`,
@@ -262,7 +271,7 @@ function layoutPage(i: number): PptPage {
         stages: [0, 1, 2, 3, 4].map((k) => ({
           head: G_HEADS[at(k) % G_HEADS.length]!,
           note: `${G_NOTE_A[at(k) % G_NOTE_A.length]!}${G_NOTE_B[at(k) % G_NOTE_B.length]!}，${mark}组`,
-          icon: "route",
+          icon: STAGE_ICONS[k]!,
         })),
       };
     case "分层架构":
@@ -271,7 +280,7 @@ function layoutPage(i: number): PptPage {
         blocks: [],
         layers: [0, 1, 2].map((k) => ({
           head: G_HEADS[at(k) % G_HEADS.length]!,
-          icon: "hierarchy",
+          icon: LAYER_ICONS[k]!,
           items: [0, 1, 2].map((j) => `${mark}组${G_NOTE_B[(at(k) + j) % G_NOTE_B.length]!}`.slice(0, 10)),
         })),
       };
@@ -282,7 +291,7 @@ function layoutPage(i: number): PptPage {
         cards: [0, 1, 2, 3].map((k) => ({
           value: ["12 个", "480 台", "2 天", "1 张表"][k]!,
           label: `${G_HEADS[at(k) % G_HEADS.length]!}，${mark}组`.slice(0, 14),
-          icon: "chart-bar",
+          icon: CARD_ICONS[k]!,
         })),
       };
     case "表格":
@@ -291,7 +300,7 @@ function layoutPage(i: number): PptPage {
         blocks: [],
         table: {
           head: ["阶段", "做什么", "谁负责", "验收"],
-          icons: ["route", "list-check", "users", "circle-check"],
+          icons: [...TABLE_ICONS],
           rows: [0, 1, 2, 3].map((k) => [
             `${mark}批`,
             `${G_LINE_A[at(k) % G_LINE_A.length]!}，${mark}组`.slice(0, 20),

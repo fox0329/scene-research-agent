@@ -11,6 +11,10 @@
  * 导出编排拿它当"这份大纲够不够好"的唯一尺子，不合格**不报错**，而是带着问题清单重跑
  * （重新提取 → 优化 → 再检查），最多 `PPT_OUTLINE_ROUNDS` 轮。
  *
+ * 变更表 #151 补两条：④ 的**中文数字**（`三成` / `五类` / `两倍` / `三分之一` / `百分之三十`
+ * 与原阿拉伯数字同一条口径，语境不符的常见词一律不误报）、⑧ 的**图标重复**（同一页两个元素
+ * 用同一个图标名要报；"图标数 ≥ 元素数"结构上必然成立，不单列）。
+ *
  * 铁律：
  *  - 模型返回不合法 → 明确失败值（`outline: null` + `error`），调用方据此重试一次再兜底提示；
  *  - 页内字段超限 → **截断**（截断不许把一页的正文全部抹掉）；缺字段按布局回落，绝不产空版式；
@@ -737,6 +741,7 @@ export const PPT_OUTLINE_ISSUE_CODES = [
   "叙事顺序错",
   "不自包含",
   "图标不合规",
+  "图标重复",
   "版式与字段不成套",
 ] as const;
 
@@ -840,10 +845,11 @@ function normalizeForCompare(text: string): string {
   return text.replace(/[\s，。、；：！？（）()【】《》「」“”"'·—\-…,.!?;:%％|｜]/g, "");
 }
 
-/** 数字比对用的归一化：全角数字折半角、去掉空白 */
+/** 数字比对用的归一化：全角数字折半角、全角百分号折半角、去掉空白 */
 function normalizeForNumber(text: string): string {
   return text
     .replace(/[\uFF10-\uFF19]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0xfee0))
+    .replace(/\uFF05/g, "%")
     .replace(/\s+/g, "");
 }
 
@@ -862,17 +868,141 @@ function cnNumberOf(value: number): string | null {
 const CN_QUANTIFIERS =
   "个|台|间|倍|天|小时|分钟|周|月|年|万|亿|元|次|人|张|条|层|块|列|行|页|项|套|辆|米|户|家|所|种|类|份|组|批|级|处|分|秒|件";
 
+/** 中文数字的字（与契约 `numberCnPattern` 同一批字；`零` 不收——「零故障」这类词太常见） */
+const CN_CHARS = /[一二三四五六七八九十百千万两俩半]/;
+
+/** 中文数字的「字 → 值」（`两` / `俩` = 2） */
+const CN_DIGIT_VALUE: Record<string, number> = {
+  一: 1,
+  二: 2,
+  两: 2,
+  俩: 2,
+  三: 3,
+  四: 4,
+  五: 5,
+  六: 6,
+  七: 7,
+  八: 8,
+  九: 9,
+};
+
+/** 中文数字的「位 → 权」 */
+const CN_UNIT_VALUE: Record<string, number> = { 十: 10, 百: 100, 千: 1000, 万: 10000 };
+
+/**
+ * 中文数字 → 数值（变更表 #151）
+ *
+ * 只认 `一–九` / `两` / `俩` / `十百千万`；出现别的字（含 `半`）返回 null——换算不出来就不换算，
+ * 只按原样比对（`半小时` 这类没有干净阿拉伯写法的写法不受影响）。
+ */
+function cnNumberValue(text: string): number | null {
+  let total = 0;
+  let section = 0;
+  let digit = 0;
+  for (const ch of text) {
+    const value = CN_DIGIT_VALUE[ch];
+    if (value !== undefined) {
+      digit = value;
+      continue;
+    }
+    const unit = CN_UNIT_VALUE[ch];
+    if (unit === undefined) return null;
+    if (unit === 10000) {
+      section = (section + (digit === 0 ? 1 : digit)) * 10000;
+      total += section;
+      section = 0;
+      digit = 0;
+      continue;
+    }
+    section += (digit === 0 ? 1 : digit) * unit;
+    digit = 0;
+  }
+  return total + section + digit;
+}
+
+/**
+ * 数字部分像不像"一个数"（变更表 #151）
+ *
+ * 必须含 `一–九` / `两` / `俩` / `半`，或**正好是 `十`**；光杆的 `十/百/千/万` 是"单位词"不算数——
+ * 「万元」「百米」「千万」「百般」正是靠这一条挡掉的（`十分钟` / `十项` 因为正好是 `十` 仍算数）。
+ * 另外**单独一个 `一`** 不算（「一个平台」「一次说清」「一度」「一成不变」都是口头语，不是数字）。
+ */
+function cnNumeralOk(numeral: string): boolean {
+  if (numeral === "一") return false;
+  if (numeral === "十") return true;
+  if (/[二三四五六七八九两俩半]/.test(numeral)) return true;
+  return /^一[十百千万]/.test(numeral);
+}
+
+/**
+ * 一段文字里"像数值"的中文数字（变更表 #151）
+ *
+ * 三个分支全在契约 `PPT_OUTLINE_QUALITY.numberCnPattern` 里（提示词与判据同源），这里只做两件
+ * 契约表达不了的事：① 用捕获组取数字部分做 `cnNumeralOk`（分数式是数学语境，不判）；
+ * ② 同一段里重复的只留一个。
+ */
+function cnNumberTokens(text: string): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const m of text.matchAll(new RegExp(PPT_OUTLINE_QUALITY.numberCnPattern, "g"))) {
+    const token = m[0];
+    // 组 1 / 2 是分数式（三分之一、百分之三十）；组 3 是「数字 + 单位」的数字部分；光杆分支没有组
+    const numeral = m[3] ?? (m[1] === undefined ? token : "");
+    if (numeral !== "" && !cnNumeralOk(numeral)) continue;
+    if (seen.has(token)) continue;
+    seen.add(token);
+    out.push(token);
+  }
+  return out;
+}
+
+/**
+ * 中文数字 token 的阿拉伯等价写法（变更表 #151）
+ *
+ * 与 `numberGrounded` 的反向宽容对称：大纲写「三成」而正文写「3 成」也算对得上。
+ * 三种写法都给：`三成` → `3成`、`百分之三十` → `百分之30` / `30%`、`三分之一` → `1/3`；
+ * 换算不出来（含 `半` 等）就一个都不给——只认原样。
+ */
+function cnTokenVariants(token: string): string[] {
+  const out: string[] = [];
+  const percent = /^百分之(.+)$/.exec(token);
+  if (percent !== null) {
+    const value = cnNumberValue(percent[1]!);
+    // 「百分之X」要单独走：整串替换会把「百」也算成 100（`百分之三十` → `100分之30`），
+    // 而正文里真正会出现的写法是「百分之30」与「30%」
+    if (value !== null) out.push(`百分之${value}`, `${value}%`);
+  } else {
+    const frac = /^(.+?)分之(.+)$/.exec(token);
+    const left = frac === null ? null : cnNumberValue(frac[1]!);
+    const right = frac === null ? null : cnNumberValue(frac[2]!);
+    // 中文分数的读法是「分母分之分子」（三分之一 = 1/3），所以斜杠写法要倒过来
+    if (left !== null && right !== null) out.push(`${right}/${left}`);
+    // 只把分子换成阿拉伯数字的混合写法（正文写「3分之一」）
+    if (left !== null && frac !== null) out.push(`${left}分之${frac[2]!}`);
+  }
+  const substituted = token.replace(/[一二三四五六七八九十百千万两俩半]+/g, (run) => {
+    const value = cnNumberValue(run);
+    return value === null ? run : String(value);
+  });
+  if (substituted !== token) out.push(substituted);
+  return out;
+}
+
 /**
  * 这个数字在报告正文里找得到吗（**防编造**，硬判据）
  *
- * 比对宽容两处（宁可放过一处改写，也不误杀）：① 全角/半角与空白差异；
- * ② 整数允许正文写的是中文数字（「八个环节」↔「8 个环节」），但**要求带量词**。
+ * 比对宽容三处（宁可放过一处改写，也不误杀）：① 全角/半角与空白差异；
+ * ② 整数允许正文写的是中文数字（「八个环节」↔「8 个环节」），但**要求带量词**；
+ * ③ 变更表 #151：大纲里的**中文数字**允许正文写阿拉伯数字（「三成」↔「3 成」、
+ *    「百分之三十」↔「30%」），反向也认（正文写「百分之三十」兜住大纲里的 30）。
  */
 function numberGrounded(token: string, mdNorm: string): boolean {
   if (mdNorm.includes(token)) return true;
+  if (CN_CHARS.test(token)) return cnTokenVariants(token).some((v) => mdNorm.includes(v));
   const cn = cnNumberOf(Number(token));
   if (cn === null) return false;
-  return new RegExp(`${cn}(?:${CN_QUANTIFIERS})`).test(mdNorm);
+  if (new RegExp(`${cn}(?:${CN_QUANTIFIERS})`).test(mdNorm)) return true;
+  return mdNorm.includes(`百分之${cn}`) || mdNorm.includes(`${cn}%`);
 }
 
 /** 观点型标题的判定（返回命中的空词；null = 不弱） */
@@ -997,12 +1127,17 @@ function highlightIssues(page: PptPage, index: number): PptOutlineQualityIssue[]
   return [];
 }
 
-/** 一页的数字可溯源问题（每个数字都要在报告正文里出现） */
+/** 一页的数字可溯源问题（每个数字都要在报告正文里出现；阿拉伯与中文数字同一口径） */
 function numberIssues(page: PptPage, index: number, mdNorm: string): PptOutlineQualityIssue[] {
   const out: PptOutlineQualityIssue[] = [];
   const seen = new Set<string>();
   for (const text of pageTexts(page)) {
-    const tokens = normalizeForNumber(text).match(new RegExp(PPT_OUTLINE_QUALITY.numberPattern, "g")) ?? [];
+    const norm = normalizeForNumber(text);
+    const tokens = [
+      ...(norm.match(new RegExp(PPT_OUTLINE_QUALITY.numberPattern, "g")) ?? []),
+      // 变更表 #151：中文数字（三成 / 五类 / 十二项 / 三十 / 两倍 / 半小时 / 三分之一 / 百分之三十）
+      ...cnNumberTokens(norm),
+    ];
     for (const token of tokens) {
       if (seen.has(token)) continue;
       seen.add(token);
@@ -1058,6 +1193,30 @@ function selfContainedIssues(page: PptPage, index: number): PptOutlineQualityIss
   return out;
 }
 
+/**
+ * 一页的图标重复问题（变更表 #151）
+ *
+ * 用户原本要的是"图标与字段 / 标题的关键词不匹配就报"，但"图标含义贴不贴切"没有可靠判定依据，
+ * 硬做只会制造误报、让 PPT 白跑轮次。换成这条**客观可判**的：同一页两个元素用同一个图标名
+ * （一页里重复用同一个图标 = 单调且失去区分度）。**不判**"图标数与元素数"——领域层 `iconOf`
+ * 会给每个元素兜一个图标、渲染层还会画页图标与结论带 bulb，那条线结构上必然成立（见契约
+ * `PPT_OUTLINE_QUALITY.iconReuseBanned`）。
+ */
+function iconReuseIssues(page: PptPage, index: number): PptOutlineQualityIssue[] {
+  const counts = new Map<string, number>();
+  for (const name of pageIcons(page)) counts.set(name, (counts.get(name) ?? 0) + 1);
+  const out: PptOutlineQualityIssue[] = [];
+  for (const [name, count] of counts) {
+    if (count < 2) continue;
+    out.push({
+      code: "图标重复",
+      page: index + 1,
+      detail: `第 ${index + 1} 页把图标「${name}」用了 ${count} 次（同一页的每个块 / 栏 / 阶段 / 层 / 卡片 / 表头列各给一个不同的图标）`,
+    });
+  }
+  return out;
+}
+
 /** 一页的图标与版式问题 */
 function shapeIssues(page: PptPage, index: number): PptOutlineQualityIssue[] {
   const out: PptOutlineQualityIssue[] = [];
@@ -1070,6 +1229,7 @@ function shapeIssues(page: PptPage, index: number): PptOutlineQualityIssue[] {
       detail: `图标名 ${[...new Set(bad)].map((n) => `「${n}」`).join("、")} 不在白名单里（只能从 ${PPT_ICONS.length} 个名字里选，选不出用 ${PPT_DEFAULT_ICON}）`,
     });
   }
+  if (PPT_OUTLINE_QUALITY.iconReuseBanned) out.push(...iconReuseIssues(page, index));
   if (page.table !== null && page.table.icons.length !== page.table.head.length) {
     out.push({
       code: "图标不合规",
