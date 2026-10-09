@@ -17,9 +17,10 @@ import { join } from "node:path";
  *  ② 点第二行的某一项 → 中栏真的换成它（表 → 那张表的表格）；
  *  ③ 第二行在中栏滚动容器 `.ws` 外面 → 上下滚表格时它始终可见（用户要解决的正是这个）；
  *  ④ 中栏不再自己再来一行表名（上一版曾在表格上面压一层粘性表头，用户否掉了）；
- *  ⑤ 交付物这一步例外（变更表 #140 立、#147 改）：两份交付物（解决方案 / 建设工作方案）的切换入口
- *     在**中栏顶部**（靠左），本步动作靠右；#147 起标题「交付物」独占第一行，这两组落到
- *     **标题下面那一行**（对齐流程轴「步骤名 + 表名」的两行结构），流程轴第二行在这一步不再画 chip。
+ *  ⑤ 交付物这一步例外（变更表 #140 立、#147 改、**#148 定**）：两份交付物（解决方案 / 建设工作方案）的切换 chip
+ *     与本步动作（生成报告 / 编辑 / 导出 Word / PPT / Markdown）画在**流程轴第二行**——就是别的步
+ *     显示表名的那一行（`.flow-outputs`，在中栏滚动容器 `.ws` 外面、通栏、滚动时始终可见）；
+ *     中栏不再有这一行，也没有「交付物」标题行（#147 的那套作废）。
  */
 
 const LIVE = "http://127.0.0.1:46175";
@@ -128,7 +129,7 @@ test("流程轴：阶段名一行 + 本步输出物一行，点第二行换中�
   await expect(page.locator(".flow-outputs .chip").filter({ hasText: "需求-能力对照" })).toHaveCount(0);
 });
 
-test("交付物这一步：两份交付物在中栏顶部切换，流程轴第二行不再画它们（联真）", async ({ page }) => {
+test("交付物这一步：两份交付物与动作都在流程轴第二行（中栏不再有这一行）（联真）", async ({ page }) => {
   const name = `E2E 交付物输出物 ${Date.now()}`;
   const projectId = await newProject(page, name);
   await completeSteps(page, projectId, 7);
@@ -138,50 +139,53 @@ test("交付物这一步：两份交付物在中栏顶部切换，流程轴第�
   await page.locator(".proj-hd", { hasText: name }).click();
   await page.locator(".flow-nodes .flow-node", { hasText: "交付物" }).click();
 
-  // 变更表 #140：两份交付物的 chip 移到**中栏顶部**（原来挂在流程轴第二行，变更表 #137）
-  const chips = page.locator(".ws .pnl-h .chip");
+  // 变更表 #148（用户两次纠正，#147 作废）：第二行**在流程轴里、在中栏滚动容器 `.ws` 外面**
+  // （它在 .ws 外面 → 滚正文时这一行始终可见，这正是用户要的"移上去"）
+  const row = page.locator(".flow-rail .flow-outputs");
+  await expect(row).toBeVisible();
+  await expect(page.locator(".ws .flow-outputs")).toHaveCount(0);
+
+  // 这一行里：2 个 chip（解决方案 / 建设工作方案，第一个 active）+ 动作组
+  const chips = row.locator(".chip");
   await expect(chips).toHaveCount(2);
   await expect(chips.nth(0)).toHaveText("解决方案");
   await expect(chips.nth(1)).toHaveText("建设工作方案");
   await expect(chips.filter({ hasText: "解决方案" })).toHaveClass(/active/);
-
-  // 变更表 #147（用户定调 2026-10-08）：标题「交付物」独占**第一行**，两份交付物与动作在**标题下面那一行**
-  // （对齐流程轴「步骤名 + 表名」的两行结构，原来 #140 是把它们合成一行）
-  const title = page.locator(".ws .pnl-h h2", { hasText: "交付物" });
-  await expect(title).toBeVisible();
-  const headBox = (await page.locator(".ws .pnl-h").boundingBox())!;
-  const titleBox = (await title.boundingBox())!;
-  const row = page.locator(".ws .pnl-h-row");
-  await expect(row).toBeVisible();
-  const rowBox = (await row.boundingBox())!;
-  // 第一行是标题、第二行在它下面，且第二行里放着 chip 与动作
-  expect(titleBox.y + titleBox.height).toBeLessThanOrEqual(rowBox.y + 2);
   await expect(row.locator('.pnl-actions[aria-label="交付物"]')).toHaveCount(1);
   await expect(row.locator(".pnl-actions--end")).toHaveCount(1);
 
   // chip 靠左、动作靠右，两组**同一行**（不是掉到下一行，也不是挤成一团）
-  const chipsGroup = page.locator('.ws [aria-label="交付物"]');
-  const actions = page.locator(".ws .pnl-actions--end");
+  const chipsGroup = row.locator('[aria-label="交付物"]');
+  const actions = row.locator(".pnl-actions--end");
+  const rowBox = (await row.boundingBox())!;
   const actionsBox = (await actions.boundingBox())!;
   const chipsBox = (await chipsGroup.boundingBox())!;
   const midY = (b: { y: number; height: number }) => b.y + b.height / 2;
   expect(Math.abs(midY(chipsBox) - midY(actionsBox))).toBeLessThanOrEqual(8);
-  // chip 在动作左侧、贴内容左边；动作贴内容右边
+  // chip 在动作左侧、贴这一行左边；动作贴这一行右边
   expect(actionsBox.x).toBeGreaterThan(chipsBox.x + chipsBox.width);
-  expect(chipsBox.x - headBox.x).toBeLessThanOrEqual(20);
-  expect(headBox.x + headBox.width - (actionsBox.x + actionsBox.width)).toBeLessThanOrEqual(20);
+  expect(chipsBox.x - rowBox.x).toBeLessThanOrEqual(20);
+  expect(rowBox.x + rowBox.width - (actionsBox.x + actionsBox.width)).toBeLessThanOrEqual(20);
 
-  // 动作同一行：改名后的导出 Word、只是入口的导出 PPT、以及保留的导出 Markdown
+  // 这一行在「交付物」步骤名那一行（.flow-nodes）的**下面**
+  const nodesBox = (await page.locator(".flow-nodes").boundingBox())!;
+  expect(nodesBox.y + nodesBox.height).toBeLessThanOrEqual(rowBox.y + 2);
+
+  // 动作同一行：生成报告 / 重新生成报告、导出 Word、导出 PPT、导出 Markdown
   await expect(actions).toContainText("生成报告");
   await expect(actions).toContainText("导出Word文档");
   await expect(actions).toContainText("导出PPT文档");
   await expect(actions).toContainText("导出 Markdown");
 
+  // 中栏**不再**有这两个 chip，也**不再**有「交付物」标题行（#147 的那套撤掉）
+  await expect(page.locator(".ws .pnl-h .chip")).toHaveCount(0);
+  await expect(page.locator(".ws .pnl-h-row")).toHaveCount(0);
+  await expect(page.locator(".ws .pnl-h h2", { hasText: "交付物" })).toHaveCount(0);
+
   // 默认看「解决方案」：中栏是它的正文
   await expect(page.locator(".ws .delivery-steps")).toHaveCount(0);
   // 还没跑模型 → 正文上方说清「当前是要点版」，并给出生成入口（v1.32）
   await expect(page.locator(".ws .brief-hint")).toContainText("要点版");
-  await expect(actions).toContainText("生成报告");
   // 变更表 #136：解决方案正文是「<场景名>解决方案」，五章、章标题不带手写序号
   await expect(page.locator(".ws .md-body")).toContainText("解决方案");
   for (const h of ["现状", "场景与问题", "方案", "价值", "下一步"]) {
@@ -198,9 +202,29 @@ test("交付物这一步：两份交付物在中栏顶部切换，流程轴第�
   await expect(page.locator(".ws .md-body")).toContainText("建设内容");
   await expect(page.locator(".ws .md-body")).not.toContainText("场景与问题");
 
-  // 变更表 #140：流程轴第二行在这一步**不再画**这两个 chip（切换入口只在中栏顶部一处）
-  await expect(page.locator(".flow-outputs")).toHaveCount(0);
-  await expect(page.locator(".flow-outputs .chip")).toHaveCount(0);
+  // 变更表 #148 的核心收益：这一行在中栏滚动容器 `.ws` **外面**（贴着它的上沿），
+  // 所以上下滚正文时它始终可见——先把中栏顶到可滚，再滚它，这一行纹丝不动
+  const wsBox = (await page.locator(".ws").boundingBox())!;
+  expect(rowBox.y + rowBox.height).toBeLessThanOrEqual(wsBox.y + 2);
+  await page.locator(".ws").evaluate((el) => {
+    // 这段高内容只服务本用例（交付物的要点版可能撑不满一屏，撑不满就滚不动）
+    const spacer = document.createElement("div");
+    spacer.id = "e2e-tall-spacer";
+    spacer.setAttribute("aria-hidden", "true");
+    spacer.style.height = "1600px";
+    el.appendChild(spacer);
+  });
+  const yBefore = (await row.boundingBox())!.y;
+  await page.locator(".ws").evaluate((el) => {
+    el.scrollTop = 480;
+  });
+  await page.waitForTimeout(200);
+  await expect(page.locator(".ws").evaluate((el) => el.scrollTop)).resolves.toBeGreaterThan(0);
+  const yAfter = (await row.boundingBox())!.y;
+  expect(Math.abs(yAfter - yBefore)).toBeLessThanOrEqual(2);
+  await row.scrollIntoViewIfNeeded();
+  await expect(row).toBeVisible();
+  await expect(chips.filter({ hasText: "建设工作方案" })).toBeVisible();
 
   // 变更表 #141：「导出PPT文档」已是真调用——点一次由服务端跑模型大纲 + 渲染 SVG + 转 pptx。
   // e2e 不真跑（慢，且依赖模型与本机技能），只拦掉 POST 断言**请求发对了**：URL、method、body。

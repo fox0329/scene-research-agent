@@ -10,8 +10,10 @@
  *  - 分析步：流程定义 `flowStep(n).tables` 里的表；**多子块表的每块各占一项**
  *    （与中栏 v1.26 的口径一致：架构块 / 接口块各自成"表"，列结构本来就不同）
  *  - 交付物步：不是表，而是**两份**客户端可读的正式交付物——「<场景>解决方案」
- *    与「<场景>建设工作方案」（变更表 #136 / #137）。**这两份的切换入口在中栏顶部**
- *    （变更表 #140），流程轴第二行在这一步不画 chip。
+ *    与「<场景>建设工作方案」（变更表 #136 / #137）。这两份的 chip 与本步动作一起挂在
+ *    **流程轴第二行**（变更表 #148，作废 #147 的"移到中栏"）——由 `DeliveryPanel` 用
+ *    `createPortal` 渲染进 `#delivery-row-slot`，所以 `railOutputsOf` 在这一步仍返回空
+ *    （这一行的内容不从 `StepOutput` 来，而是面板自己的状态）。
  *
  * 为什么抽出来：流程轴第二行与中栏面板必须**指同一批东西**，靠一个函数保证，
  * 而不是两处各写一套（写歪了就会出现"轴上点了 A、中栏显示 B"）。
@@ -49,7 +51,7 @@ export const DELIVERY_OUTPUTS: readonly DeliveryOutput[] = [
   { key: "construction", label: REPORT_KIND_LABEL.construction, code: null, block: null },
 ];
 
-/** 两份交付物的说明（流程轴 hover 与中栏 chip 共用）：各一句话说清这份讲什么 */
+/** 两份交付物的说明（流程轴第二行 chip 与面板共用）：各一句话说清这份讲什么 */
 export const DELIVERY_OUTPUT_HINT: Record<string, string> = {
   solution: "现状 / 场景与问题 / 方案 / 价值 / 下一步——给客户看的「怎么解决」",
   construction: "建设背景 / 目标 / 内容 / 路径 / 安排 / 保障——给客户看的「怎么建」",
@@ -73,11 +75,11 @@ export function stepOutputs(tables: readonly string[]): StepOutput[] {
 }
 
 /**
- * 流程轴第二行要画的输出物（变更表 #140）
+ * 流程轴第二行要画的**表类**输出物（变更表 #140 / #148）
  *
- * 交付物这一步**不画**：两份的切换入口移到中栏顶部（与动作按钮同一行、靠右），
- * 轴上也画一遍就是同一个动作开两个入口。其余步与 `stepOutputs` 完全一致
- * ——表名挂在阶段名下面、滚表格时始终可见（2026-10-06 用户定调，这条不变）。
+ * 交付物这一步返回空：它没有表，第二行的内容（两份交付物 + 本步动作）由 `DeliveryPanel`
+ * 自己 portal 进去——不是"轴上不画"，而是**不从这份表清单来**。其余步与 `stepOutputs`
+ * 完全一致——表名挂在阶段名下面、滚表格时始终可见（2026-10-06 用户定调，这条不变）。
  */
 export function railOutputsOf(stepId: number, tables: readonly string[], totalSteps: number): StepOutput[] {
   return stepId === totalSteps ? [] : stepOutputs(tables);

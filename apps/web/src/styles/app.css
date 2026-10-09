@@ -2178,39 +2178,6 @@ td.ed {
   margin-left: auto;
 }
 
-/* 交付物这一步（变更表 #140/#141）：左侧两份交付物 chip + 右侧动作，同一行。
-   放不下时整组换行；组内也允许收缩换行，窄屏不把按钮文案折成两行字 */
-.pnl-h--wrap {
-  flex-wrap: wrap;
-  gap: var(--s2);
-}
-
-/* 变更表 #147（用户定调 2026-10-08）：标题独占第一行，chip 与动作落到标题下面那一行
-   （对齐流程轴「步骤名 + 表名」的两行结构）。所以面板头改成纵向堆叠，第二行内部仍横向排 */
-.pnl-h--stack {
-  flex-direction: column;
-  align-items: stretch;
-  gap: var(--s2);
-}
-
-.pnl-h-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--s2);
-}
-
-.pnl-h--wrap > .pnl-actions {
-  flex-wrap: wrap;
-  flex-shrink: 1;
-}
-
-.pnl-h--stack .pnl-h-row > .pnl-actions {
-  flex-wrap: wrap;
-  flex-shrink: 1;
-  min-width: 0;
-}
-
 /* 同一行里靠右的那一组（本步动作按钮）：吃掉左侧余量推到行末 */
 .pnl-actions--end {
   margin-left: auto;
@@ -2277,12 +2244,32 @@ td.ed {
   gap: var(--s2);
 }
 
-/* 第二行：本步输出物（表名 / 子块；交付物步是两份报告） */
+/* 第二行：本步输出物（表名 / 子块；交付物步是两份报告 + 本步动作） */
 .flow-outputs {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: var(--s1);
+  min-width: 0;
+}
+
+/* 交付物这一步的第二行（变更表 #148）：整行由 DeliveryPanel portal 进来——
+   左边两份交付物的 chip、右边本步动作（`.pnl-actions--end` 的 margin-left:auto 推到行末）。
+   容器不存在时同一组控件就地渲染，那时落在 `.pnl-h.flow-outputs` 上，规则一样适用 */
+.flow-outputs-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--s1);
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* 第二行里的两组控件：窄屏各自换行，组内也允许收缩换行，不把按钮文案折成两行字 */
+.flow-outputs > .pnl-actions,
+.flow-outputs-row > .pnl-actions {
+  flex-wrap: wrap;
+  flex-shrink: 1;
   min-width: 0;
 }
 

@@ -8,18 +8,26 @@
  * 变更表 #136（用户定调）：「交付物不再分内部调研版和外部汇报版，直接用外部汇报版生成
  * 一个版本，就叫 XXX解决方案」。
  * 变更表 #137：交付物是**两份并列**——「<场景>解决方案」与「<场景>建设工作方案」。
- * 中栏一次只显示一份：看哪份由**中栏顶部那一行右侧的两个 chip** 决定（`tab`），编辑与保存
+ * 中栏一次只显示一份：看哪份由**流程轴第二行左边的两个 chip** 决定（`tab`），编辑与保存
  * 都只作用于当前这一份（切份即丢弃未保存的草稿，绝不把 A 的草稿写到 B）。
  *
- * 变更表 #140（用户定调）：「重新生成报告 / 编辑 / 导出这几个按钮移到上面去」——动作行居中栏
- * 顶部一行：左边是动作（生成 / 编辑 / 导出 Word / 导出 PPT / 导出 Markdown），右边是两份
- * 交付物的 chip（原来挂在流程轴第二行，现在同一步里只有一个入口）。
+ * 变更表 #140（用户定调）：「重新生成报告 / 编辑 / 导出这几个按钮移到上面去」「解决方案 和
+ * 工作方案放左边」——两份交付物的 chip 靠左、本步动作靠右合成一行（原来挂在流程轴第二行，
+ * #148 又搬了回去）。
+ *
+ * 变更表 #148（用户两次纠正，**#147 作废**）：「不是把交付物放下来　是把解决方案　工作方案　
+ * 重新生成报告　编辑　导出这些全部移上去　比如现在方案实现阶段所有的输出表格的名称不就直接在
+ * 方案实现下面一行吗？」——这两组控件搬回**流程轴第二行**（`.flow-outputs`，与别的步
+ * 显示表名的是同一行）：它在中栏滚动容器 `.ws` 外面、通栏，滚正文时始终可见。
+ * **状态仍留在本组件**，只是用 `createPortal` 把渲染位置搬到 `#delivery-row-slot`；
+ * 容器不存在时回退为就地渲染（演示模式等，保证不炸）。中栏不再有这一行，也没有「交付物」标题行。
  *
  * 中栏显示报告正文；还没生成正式版时显示确定性要点版，并在正文上方提示"当前是要点版"。
  * 「装配原料清单」与导出路径按 G-R9 归右栏。
  */
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { FLOW_TOTAL, flowStep } from "@scene/contract";
 import {
   api,
@@ -33,6 +41,7 @@ import {
 import { useStageAnalysis } from "../hooks/useStageAnalysis";
 import { renderMarkdown } from "../components/StageRightPanel";
 import { DELIVERY_OUTPUTS, DELIVERY_OUTPUT_HINT } from "../components/step-outputs";
+import { DELIVERY_ROW_ID } from "../components/FlowRail";
 import type { StageSnapshot } from "../components/stage-snapshot";
 import { useToast } from "../components/Toast";
 
@@ -150,6 +159,17 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
   /** 正在编辑的草稿（变更表 #135）：保存后清空，切份或取消即丢弃 */
   const [draft, setDraft] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  /**
+   * 流程轴第二行里那个容器（变更表 #148）：两组控件 portal 到那儿去
+   *
+   * 用 layout effect 取（赶在首帧之前，免得先在中栏闪一下再跳上去）；容器不存在
+   * （演示模式 / 流程轴没画这一行）时保持 null → 就地渲染，保证不炸。
+   */
+  const [railRow, setRailRow] = useState<HTMLElement | null>(null);
+
+  useLayoutEffect(() => {
+    setRailRow(document.getElementById(DELIVERY_ROW_ID));
+  }, []);
 
   const loadReports = useCallback(async () => {
     if (!live || !projectId) return;
@@ -404,95 +424,115 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
     return () => onStageSnapshot?.(null);
   }, [snapshot, onStageSnapshot]);
 
+  /**
+   * 两组控件（变更表 #148）：左边两份交付物的 chip，右边本步动作
+   *
+   * 抽成变量是因为它有两个落点——正常情况 portal 到流程轴第二行，容器不存在时就地渲染。
+   * 状态与 handler 全在本组件，渲染位置搬家不改一行行为。
+   */
+  const reportChips = (
+    <div className="pnl-actions" role="group" aria-label="交付物">
+      {/* 两份交付物：放行首（用户定调「解决方案 和 工作方案放左边」）。名字取契约
+          `REPORT_KIND_LABEL`（与报告标题、导出文件名同源），`active` 高亮当前这一份，
+          点一下切份（切份丢弃草稿） */}
+      {DELIVERY_OUTPUTS.map((o) => (
+        <button
+          key={o.key}
+          type="button"
+          className={`chip${tab === o.key ? " active" : ""}`}
+          title={deliveryHint(o.key)}
+          aria-pressed={tab === o.key}
+          onClick={() => handlePickReport(o.key)}
+        >
+          {o.label}
+        </button>
+      ))}
+    </div>
+  );
+
+  const stepActions = (
+    <div className="pnl-actions pnl-actions--end">
+      <button className="btn primary" type="button" disabled={gen.running} onClick={handleGenerate}>
+        {gen.running
+          ? `撰写中… ${gen.elapsedLabel}`
+          : generated
+            ? "重新生成报告"
+            : "生成报告"}
+      </button>
+      {draft !== null ? (
+        <>
+          <button
+            className="btn primary"
+            type="button"
+            disabled={saving || draft.trim() === ""}
+            onClick={() => void handleSave()}
+          >
+            {saving ? "保存中…" : "保存"}
+          </button>
+          <button className="btn" type="button" disabled={saving} onClick={() => setDraft(null)}>
+            取消
+          </button>
+        </>
+      ) : (
+        <button
+          className="btn"
+          type="button"
+          disabled={!live || body === ""}
+          onClick={() => setDraft(body)}
+        >
+          编辑
+        </button>
+      )}
+      <button
+        className="btn"
+        type="button"
+        disabled={busyWord || busyPpt}
+        onClick={() => void pickDirThen("word")}
+      >
+        {busyWord ? "导出中…" : "导出Word文档"}
+      </button>
+      {/* PPT（变更表 #141）：点一下全自动排中间页（5–10 页、无封面尾页）；等待期显示阶段文案 */}
+      <button
+        className="btn"
+        type="button"
+        disabled={busyPpt || busyWord}
+        title={pptPhase ?? "按 B 站蓝色模版排中间页：5–10 页，不要封面与尾页，突出问题、方案与价值"}
+        onClick={() => void pickDirThen("ppt")}
+      >
+        {busyPpt ? (pptPhase ?? "PPT 导出中…") : "导出PPT文档"}
+      </button>
+      <button className="btn" type="button" disabled={busy} onClick={() => void handleExport()}>
+        {busy ? "导出中…" : "导出 Markdown"}
+      </button>
+    </div>
+  );
+
   return (
     <div className="pnl">
-      {/* 变更表 #140（用户定调）：两份交付物的 chip 与动作从流程轴第二行挪到中栏顶部，
-          左边是这一份还是那一份（解决方案 / 建设工作方案），右边是本步动作
-          （生成 / 编辑 / 导出 Word / 导出 PPT / 导出 Markdown）；#140 补充：chip 靠左、动作靠右。
-          变更表 #147（用户定调 2026-10-08）：**#140 的"合成一行"作废**——标题「交付物」独占第一行，
-          两份交付物与动作合并到标题**下面那一行**，对齐流程轴「步骤名 + 表名」的两行结构；
-          行内仍保持 chip 靠左、动作靠右 */}
-      <div className="pnl-h pnl-h--stack">
-        <h2>交付物</h2>
-        <div className="pnl-h-row">
-          {/* 两份交付物：放行首（用户定调「解决方案 和 工作方案放左边」）。名字取契约
-              `REPORT_KIND_LABEL`（与报告标题、导出文件名同源），`active` 高亮当前这一份，
-              点一下切份（切份丢弃草稿） */}
-          <div className="pnl-actions" role="group" aria-label="交付物">
-            {DELIVERY_OUTPUTS.map((o) => (
-              <button
-                key={o.key}
-                type="button"
-                className={`chip${tab === o.key ? " active" : ""}`}
-                title={deliveryHint(o.key)}
-                aria-pressed={tab === o.key}
-                onClick={() => handlePickReport(o.key)}
-              >
-                {o.label}
-              </button>
-            ))}
-          </div>
-          <div className="pnl-actions pnl-actions--end">
-            <button
-              className="btn primary"
-              type="button"
-              disabled={gen.running}
-              onClick={handleGenerate}
-            >
-              {gen.running
-                ? `撰写中… ${gen.elapsedLabel}`
-                : generated
-                  ? "重新生成报告"
-                  : "生成报告"}
-            </button>
-            {draft !== null ? (
-              <>
-                <button
-                  className="btn primary"
-                  type="button"
-                  disabled={saving || draft.trim() === ""}
-                  onClick={() => void handleSave()}
-                >
-                  {saving ? "保存中…" : "保存"}
-                </button>
-                <button className="btn" type="button" disabled={saving} onClick={() => setDraft(null)}>
-                  取消
-                </button>
-              </>
-            ) : (
-              <button
-                className="btn"
-                type="button"
-                disabled={!live || body === ""}
-                onClick={() => setDraft(body)}
-              >
-                编辑
-              </button>
-            )}
-            <button
-              className="btn"
-              type="button"
-              disabled={busyWord || busyPpt}
-              onClick={() => void pickDirThen("word")}
-            >
-              {busyWord ? "导出中…" : "导出Word文档"}
-            </button>
-            {/* PPT（变更表 #141）：点一下全自动排中间页（5–10 页、无封面尾页）；等待期显示阶段文案 */}
-            <button
-              className="btn"
-              type="button"
-              disabled={busyPpt || busyWord}
-              title={pptPhase ?? "按 B 站蓝色模版排中间页：5–10 页，不要封面与尾页，突出问题、方案与价值"}
-              onClick={() => void pickDirThen("ppt")}
-            >
-              {busyPpt ? (pptPhase ?? "PPT 导出中…") : "导出PPT文档"}
-            </button>
-            <button className="btn" type="button" disabled={busy} onClick={() => void handleExport()}>
-              {busy ? "导出中…" : "导出 Markdown"}
-            </button>
-          </div>
+      {/* 变更表 #148（用户两次纠正，**#147 作废**）：两份交付物的 chip 与本步动作渲染到
+          **流程轴第二行**（别的步显示表名的那一行，`.flow-outputs`）——它在中栏滚动容器
+          `.ws` 外面、通栏，滚正文时始终可见，这正是用户要的"移上去"。
+          状态仍在本组件，只是渲染位置搬过去（createPortal）；容器不存在时就地渲染兜底。
+          #147 加的「交付物」标题行（`.pnl-h--stack` + `<h2>交付物</h2>` + `.pnl-h-row`）一并撤掉 */}
+      {railRow ? (
+        createPortal(
+          <>
+            {reportChips}
+            {stepActions}
+          </>,
+          railRow,
+        )
+      ) : (
+        <div className="pnl-h flow-outputs">
+          {reportChips}
+          {stepActions}
         </div>
-        {manualDir !== null ? (
+      )}
+
+      {/* 手填导出目录那一行（变更表 #133）：只在弹不出系统对话框、用户手动导出时出现，
+          属于面板局部，留在中栏 */}
+      {manualDir !== null ? (
+        <div className="pnl-h">
           <div className="pnl-actions dir-row">
             <input
               className="settings-input"
@@ -514,8 +554,8 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
               收起
             </button>
           </div>
-        ) : null}
-      </div>
+        </div>
+      ) : null}
 
       <div className="pnl-b">
         {!live ? (

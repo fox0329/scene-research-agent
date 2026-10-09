@@ -3,9 +3,9 @@ import { DELIVERY_OUTPUTS, railOutputsOf, stepOutputs } from "./step-outputs.js"
 
 /**
  * 流程轴第二行与中栏共用同一份「本步输出物」口径（变更表 #111）。
- * 这里锁住三条：单块表一项、多子块表按块拆项、交付物步**不占流程轴第二行**
- * （两份的切换入口在中栏顶部，变更表 #140）——写歪了就会出现「轴上点了 A、中栏显示 B」
- * 或者同一步里冒出两个切换入口。
+ * 这里锁住三条：单块表一项、多子块表按块拆项、交付物步**不从这份表清单来**
+ * （它没有表；两份交付物与本步动作由 DeliveryPanel portal 到流程轴第二行，变更表 #148）
+ * ——写歪了就会出现「轴上点了 A、中栏显示 B」。
  */
 describe("stepOutputs（本步输出物口径）", () => {
   it("普通表：一表一项，label 用表名", () => {
@@ -29,11 +29,11 @@ describe("stepOutputs（本步输出物口径）", () => {
     expect(() => stepOutputs(["不存在的表"])).toThrow();
   });
 
-  it("交付物步：流程轴第二行不画 chip——两份的入口在中栏顶部（变更表 #140）", () => {
+  it("交付物步：没有表 → 这份清单为空（两份交付物由面板 portal 到流程轴第二行，变更表 #148）", () => {
     expect(railOutputsOf(7, [], 7)).toEqual([]);
   });
 
-  it("交付物这两份仍有唯一定义，且名字取契约（中栏顶部据此画 chip，变更表 #137 / #140）", () => {
+  it("交付物这两份仍有唯一定义，且名字取契约（面板据此画 chip，变更表 #137 / #148）", () => {
     expect(DELIVERY_OUTPUTS.map((o) => o.key)).toEqual(["solution", "construction"]);
     expect(DELIVERY_OUTPUTS.map((o) => o.label)).toEqual(["解决方案", "建设工作方案"]);
     expect(DELIVERY_OUTPUTS.every((o) => o.code === null)).toBe(true);

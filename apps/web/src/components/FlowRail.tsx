@@ -17,6 +17,14 @@
  *  → 输出物名字放在这里的关键理由：流程轴在中栏滚动容器 `.ws` **外面**，
  *    用户上下滚表格时它始终可见（这正是用户要解决的问题）。
  *
+ * 用户两次纠正后的定调（2026-10-08，变更表 #148，作废 #147）：
+ *  「不是把交付物放下来　是把解决方案　工作方案　重新生成报告　编辑　导出这些全部移上去　
+ *   比如现在方案实现阶段所有的输出表格的名称不就直接在方案实现下面一行吗？」
+ *  → 交付物这一步的第二行**就是别的步显示表名的那一行**：左边两份交付物的 chip、
+ *    右边本步动作（生成报告 / 编辑 / 导出 Word / PPT / Markdown）。整行由 `DeliveryPanel`
+ *    用 `createPortal` 渲染进 `#delivery-row-slot`（状态仍在面板里），中栏不再有这一行，
+ *    #147 加的「交付物」标题行一并撤掉。
+ *
  * 用户定调（v2.9，仍有效）：
  *  - 节点只放关键词（场景定义 / 认识场景 / 能力匹配 …），完整标题进 `title` 与 `aria-label`
  *  - **只放关键词**：节点显示 `short`（场景定义 / 认识场景 / 能力匹配 …），
@@ -39,7 +47,10 @@
 import React, { useCallback, useRef } from "react";
 import type { ApiFlowStatus } from "../api";
 import { DELIVERY_OUTPUT_HINT, type StepOutput } from "./step-outputs";
-import { tableDef } from "@scene/contract";
+import { FLOW_TOTAL } from "@scene/contract";
+
+/** 交付物这一步的第二行落点：整行由 `DeliveryPanel` 用 `createPortal` 渲染进来（变更表 #148） */
+export const DELIVERY_ROW_ID = "delivery-row-slot";
 
 /** 流程轴上的运行按钮（八步同形） */
 export interface RailRunAction {
@@ -64,7 +75,8 @@ export interface FlowRailProps {
   onComplete: () => void;
   /** 运行本步（分析步 = 跑模型；第 1 步 = 打开场景定义对话） */
   run?: RailRunAction;
-  /** 第二行：当前正在看的那一步的输出物（表/子块；交付物步是两份报告） */
+  /** 第二行：当前正在看的那一步的输出物（表/子块）。
+      交付物这一步不从这里来——它的第二行由 `DeliveryPanel` portal 进来（变更表 #148） */
   outputs?: readonly StepOutput[];
   /** 第二行高亮哪一项：中栏此刻显示的那个 */
   activeOutputKey?: string | null;
@@ -100,6 +112,10 @@ export const FlowRail: React.FC<FlowRailProps> = ({
 
   const current = status.steps.find((s) => s.id === status.currentStep) ?? status.steps[0];
   const reviewing = activeStep !== status.currentStep;
+  /** 交付物这一步：第二行放的不是表名，而是两份交付物与本步动作（由 DeliveryPanel portal 进来） */
+  const isDelivery = activeStep === FLOW_TOTAL;
+  /** 第二行什么时候出现：有输出物，或者就是交付物这一步（它没有表，但这一行有东西要放） */
+  const showOutputs = isDelivery || (outputs?.length ?? 0) > 0;
 
   /** 左右方向键在可点节点间移动（Tab 组键盘规范） */
   const handleKeyDown = useCallback(
@@ -194,21 +210,30 @@ export const FlowRail: React.FC<FlowRailProps> = ({
 
       {/* 第二行：当前正在看的那一步的输出物。流程轴在滚动容器 .ws 外面 →
           用户上下滚表格时这一行始终可见（这正是用户要的"表格的名称能始终显示"）。
-          没有输出物的步（目前只有空表集的情况）不占这一行 */}
-      {outputs && outputs.length > 0 ? (
-        <div className="flow-outputs" aria-label={`第 ${activeStep} 步的输出物`}>
-          {outputs.map((o) => (
-            <button
-              key={o.key}
-              type="button"
-              className={`chip${activeOutputKey === o.key ? " active" : ""}`}
-              title={outputHint(o)}
-              aria-pressed={activeOutputKey === o.key}
-              onClick={() => onSelectOutput?.(o)}
-            >
-              {o.label}
-            </button>
-          ))}
+          没有输出物的步不占这一行；**交付物这一步例外**（变更表 #148）：它没有表，
+          但这一行要放「两份交付物 + 本步动作」，整行由 `DeliveryPanel` 用 createPortal
+          渲染进这个容器（状态仍留在面板里，见 DeliveryPanel）。 */}
+      {showOutputs ? (
+        <div
+          className="flow-outputs"
+          aria-label={isDelivery ? "交付物与动作" : `第 ${activeStep} 步的输出物`}
+        >
+          {isDelivery ? (
+            <div className="flow-outputs-row" id={DELIVERY_ROW_ID} />
+          ) : (
+            outputs?.map((o) => (
+              <button
+                key={o.key}
+                type="button"
+                className={`chip${activeOutputKey === o.key ? " active" : ""}`}
+                title={outputHint(o)}
+                aria-pressed={activeOutputKey === o.key}
+                onClick={() => onSelectOutput?.(o)}
+              >
+                {o.label}
+              </button>
+            ))
+          )}
         </div>
       ) : null}
     </div>

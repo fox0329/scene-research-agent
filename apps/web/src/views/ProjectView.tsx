@@ -98,7 +98,7 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
   const stepStage = (flowStep(step).stage ?? DELIVERY_STAGE) as InfoStageId;
 
   /* 流程轴第二行：当前正在看的那一步的输出物（表名 / 表·子块）。
-     交付物这一步不占这一行——两份交付物的切换入口在中栏顶部（变更表 #140） */
+     交付物这一步没有表，它的第二行由 DeliveryPanel portal 进去（变更表 #148） */
   const railOutputs = useMemo<StepOutput[]>(
     () => railOutputsOf(step, flowStep(step).tables, FLOW_TOTAL),
     [step],
