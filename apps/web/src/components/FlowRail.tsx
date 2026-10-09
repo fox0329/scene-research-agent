@@ -83,10 +83,11 @@ export interface FlowRailProps {
   onSelectOutput?: (o: StepOutput) => void;
 }
 
-/** 输出物 chip 的悬停说明：报告用它自己的口径说明，表用「表号 · 表名」 */
+/** 输出物 chip 的悬停说明：报告用它自己的口径说明，表就用表名
+    （用户定调 2026-10-09：表号不上界面，「有名称就够了」，悬停里也不再带表号） */
 function outputHint(o: StepOutput): string {
   if (o.code === null) return DELIVERY_OUTPUT_HINT[o.key] ?? o.label;
-  return `${o.code} · ${o.label}`;
+  return o.label;
 }
 
 /** 步骤状态 → 节点样式后缀 */

@@ -120,7 +120,8 @@ async function openLinkFixture(page: import("@playwright/test").Page): Promise<s
 
   // 切到表4-3：中栏 30 行，右栏 30 个条目，两边按同一个 rowId 对上
   await page.locator(".flow-outputs .chip", { hasText: "需求-能力对照" }).click();
-  await expect(page.locator(".ws .schema-table-title")).toContainText("表4-3");
+  await expect(page.locator(".ws .schema-table-title")).toContainText("需求-能力对照");
+  await expect(page.locator(".ws .schema-table-title")).not.toContainText("表4-3");
   await expect(page.locator(".ws .tw tbody tr")).toHaveCount(30);
   await expect(page.locator(".det-body .supp-item")).toHaveCount(30);
   return projectId;
@@ -242,7 +243,8 @@ test("行联动②③④⑤：右栏点字段 → 中栏对应行；换表清空
 
   /* ③ 换表：高亮清空，上一张表的当前行不带过来 */
   await page.locator(".flow-outputs .chip", { hasText: "能力底账" }).click();
-  await expect(page.locator(".ws .schema-table-title")).toContainText("表4-1");
+  await expect(page.locator(".ws .schema-table-title")).toContainText("能力底账");
+  await expect(page.locator(".ws .schema-table-title")).not.toContainText("表4-1");
   await expect(page.locator(".ws .tw tbody tr")).toHaveCount(10);
   await expect(page.locator(".ws .tw tbody tr.sel")).toHaveCount(0);
   await expect(page.locator(".det-body .supp-item")).toHaveCount(10);

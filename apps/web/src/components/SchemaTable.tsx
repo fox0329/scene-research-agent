@@ -226,8 +226,10 @@ export function SchemaTable(props: SchemaTableProps): React.ReactElement | null 
   const showGroupHeader = Boolean(def.groupBy);
   return (
     <div className="schema-table-wrap">
+      {/* 用户定调 2026-10-09：表头只留**表名**，「表X-X」这个表号删掉——有名称就够了。
+          表号仍留在契约里做内部交叉引用（报告章节映射、测试口径都用 code），只是不上界面 */}
       <div className="schema-table-title">
-        <strong>{def.code}</strong> {def.name}
+        {def.name}
         <span className="tier-badge">{def.tier}</span>
         <span className="row-unit">{def.rowUnit}</span>
       </div>

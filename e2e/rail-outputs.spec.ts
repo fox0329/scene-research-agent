@@ -109,7 +109,9 @@ test("流程轴：阶段名一行 + 本步输出物一行，点第二行换中�
 
   // 点第二行的某一项 → 中栏换成那张表
   await outputs.filter({ hasText: "需求-能力对照" }).click();
-  await expect(page.locator(".ws .schema-table-title")).toContainText("表4-3");
+  // 表头只留表名（用户定调 2026-10-09：表号不上界面）
+  await expect(page.locator(".ws .schema-table-title")).toContainText("需求-能力对照");
+  await expect(page.locator(".ws .schema-table-title")).not.toContainText("表4-3");
   await expect(outputs.filter({ hasText: "需求-能力对照" })).toHaveClass(/active/);
 
   // 上下滚表格内容 → 第二行仍钉在视口里（这正是用户要解决的问题）
