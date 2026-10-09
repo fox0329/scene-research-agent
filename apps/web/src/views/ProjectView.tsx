@@ -164,6 +164,8 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
 
   /** 本步数据刷新令牌：分析落库后 +1，面板据此重取本步数据与阶段总结 */
   const [analysisRefresh, setAnalysisRefresh] = useState(0);
+  /** 长跑对账信号：只让面板静默重取行数据，不重生成阶段总结（故障清单 #48） */
+  const [silentRefresh, setSilentRefresh] = useState(0);
   const [ackStaleBusy, setAckStaleBusy] = useState(false);
 
   /**
@@ -279,7 +281,8 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
   useEffect(() => {
     if (!serverRunning) return;
     const timer = setInterval(() => {
-      setAnalysisRefresh((n) => n + 1);
+      // 用 silentRefresh 而不是 analysisRefresh：后者会连带强制模型重写阶段总结
+      setSilentRefresh((n) => n + 1);
       void reloadFlow(true);
     }, 15_000);
     return () => clearInterval(timer);
@@ -345,26 +348,6 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
   const handleDemoAnchorConsolidated = useCallback((rows: ApiAnchorRow[]) => {
     setDemoAnchor(rows.map((r) => ({ ...r })));
   }, []);
-
-  /** 交付物导出（T5.6）：真实链路落服务端 exports/，toast 回显写出的两份文件 */
-  const [exporting, setExporting] = useState(false);
-  const handleExport = useCallback(async () => {
-    if (!live) {
-      showToast("演示模式：导出仅在实时数据模式可用");
-      return;
-    }
-    if (exporting) return;
-    setExporting(true);
-    try {
-      const r = await api.exportDeliverables(project.id);
-      const head = `已导出：${r.files.join("、")}`;
-      showToast(r.notice ? `${head}；${r.notice}` : head);
-    } catch (err: unknown) {
-      showToast(`导出失败：${err instanceof Error ? err.message : String(err)}`);
-    } finally {
-      setExporting(false);
-    }
-  }, [live, exporting, project.id, showToast]);
 
   /**
    * 顶部按钮位（用户定调「中栏不放按钮，上面有下一步」）
@@ -492,6 +475,7 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
            * 所以令牌每次自增都恰好对应"用户眼前这个面板"，不会误刷别的步。
            */
           refreshToken={analysisRefresh}
+          silentRefreshToken={silentRefresh}
           onChanged={handleDataChanged}
           onStageSnapshot={onStageSnapshot}
           pick={pickForStep}
@@ -566,9 +550,6 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
             onClick={() => setMaterialsOpen((v) => !v)}
           >
             {materialsOpen ? "收起本场景资料" : "本场景资料"}
-          </button>
-          <button className="btn" type="button" onClick={() => void handleExport()} disabled={exporting}>
-            {exporting ? "导出中…" : "导出交付物"}
           </button>
         </div>
       </div>

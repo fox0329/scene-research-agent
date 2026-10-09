@@ -63,6 +63,32 @@ describe("createDb", () => {
     expect(vtables[0]!.name).toBe("source_fts");
   });
 
+  it("存量库补 conversation.kind，并把历史「阶段 N · 分析」标成阶段分析（变更表 #174）", () => {
+    const root = mkdtempSync(join(tmpdir(), "scene-conv-kind-"));
+    const target = join(root, "scene.db");
+    try {
+      // 造一份"旧库"：没有 kind 列 + 两条历史阶段会话
+      const old = new Database(target);
+      old.exec("CREATE TABLE conversation (id TEXT PRIMARY KEY, scenario_id TEXT NOT NULL, title TEXT NOT NULL, status TEXT NOT NULL, dsh_session_id TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)");
+      old.exec("INSERT INTO conversation VALUES ('c1','s1','阶段 1 · 分析','活跃','x','2026-01-01','2026-01-01'), ('c2','s1','场景定义','活跃','y','2026-01-01','2026-01-01')");
+      old.close();
+
+      // 再启动一次 = 走增量升级
+      const up = createDb(target);
+      try {
+        const rows = up.db
+          .prepare("SELECT title, kind FROM conversation ORDER BY id")
+          .all() as { title: string; kind: string }[];
+        expect(rows[0]).toEqual({ title: "阶段 1 · 分析", kind: "阶段分析" });
+        expect(rows[1]).toEqual({ title: "场景定义", kind: "用户" });
+      } finally {
+        up.db.close();
+      }
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("冷启动自动建库文件父目录（故障 #9：全新检出无 data/ 目录）", () => {
     const root = mkdtempSync(join(tmpdir(), "scene-db-"));
     const target = join(root, "data", "deeper", "app.db");

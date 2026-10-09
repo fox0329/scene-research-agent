@@ -13,8 +13,9 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, 
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import type { DshClient, FollowEvent, StageId } from "@scene/contract";
-import { createDb } from "@scene/infra";
+import { buildReportMarkdown, createDb } from "@scene/infra";
 import type { DbInstance } from "@scene/infra";
+import { saveReportFile } from "./report-service.js";
 import { createApp } from "./app.js";
 import { createSseHub } from "./sse-hub.js";
 import { pptRunId } from "./ppt-progress.js";
@@ -1620,6 +1621,20 @@ describe("上传入库路由", () => {
 
 // ─── 交付物导出 ────────────────────────────────────────────
 
+/**
+ * 交付物"已生成"夹具（变更表 #174）
+ *
+ * 现在未生成时正文为空、导出直接 400，所以导出类用例得先有正式版。用要点版正文
+ * 落盘是**故意的**：这些用例验证的是导出链路，不是模型撰写质量。
+ */
+function generateReports(h: ReturnType<typeof makeHarness>, scenarioId: string): void {
+  const scenario = h.db.scenarioRepo.getById(scenarioId)!;
+  const stageData = h.db.stageDataRepo.list({ where: "scenario_id = ?", params: [scenarioId] });
+  for (const kind of ["solution", "construction"] as const) {
+    saveReportFile(scenario, kind, buildReportMarkdown({ scenario, stageSummaries: [], stageData }, kind));
+  }
+}
+
 describe("交付物导出", () => {
   it("POST export 写出两份 md：<场景>解决方案.md + <场景>建设工作方案.md（变更表 #137）", async () => {
     const h = makeHarness();
@@ -1627,6 +1642,7 @@ describe("交付物导出", () => {
     const dir = mkdtempSync(join(tmpdir(), "scene-deliverable-export-"));
     process.env.DELIVERABLE_DIR = dir;
     try {
+      generateReports(h, scenarioId);
       const res = await h.app.inject({
         method: "POST",
         url: `/api/v1/projects/${scenarioId}/deliverables/export`,
@@ -1658,6 +1674,32 @@ describe("交付物导出", () => {
     }
   });
 
+  it("未生成就导出 → 400，并说清要先「生成报告」（变更表 #174）", async () => {
+    const h = makeHarness();
+    const { scenarioId } = seedScenario(h.db, "未生成场景");
+    const dir = mkdtempSync(join(tmpdir(), "scene-export-blocked-"));
+    process.env.DELIVERABLE_DIR = dir;
+    try {
+      const md = await h.app.inject({
+        method: "POST",
+        url: `/api/v1/projects/${scenarioId}/deliverables/export`,
+      });
+      expect(md.statusCode).toBe(400);
+      expect(md.json().error).toContain("生成报告");
+
+      const docx = await h.app.inject({
+        method: "POST",
+        url: `/api/v1/projects/${scenarioId}/deliverables/export-docx`,
+        payload: { dir },
+      });
+      expect(docx.statusCode).toBe(400);
+      expect(docx.json().error).toContain("生成报告");
+    } finally {
+      delete process.env.DELIVERABLE_DIR;
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("场景不存在 → 404", async () => {
     const h = makeHarness();
     const res = await h.app.inject({
@@ -1671,7 +1713,9 @@ describe("交付物导出", () => {
     const h = makeHarness();
     const { scenarioId } = seedScenario(h.db, "Word 场景");
     const dir = mkdtempSync(join(homedir(), ".scene-docx-test-"));
+    process.env.DELIVERABLE_DIR = dir;
     try {
+      generateReports(h, scenarioId);
       const res = await h.app.inject({
         method: "POST",
         url: `/api/v1/projects/${scenarioId}/deliverables/export-docx`,
@@ -1789,7 +1833,9 @@ describe("交付物导出", () => {
     const dir = mkdtempSync(join(homedir(), ".scene-ppt-route-"));
     const skill = makeFakeSkill();
     process.env.PPT_MASTER_DIR = skill;
+    process.env.DELIVERABLE_DIR = dir;
     try {
+      generateReports(h, scenarioId);
       const res = await h.app.inject({
         method: "POST",
         url: `/api/v1/projects/${scenarioId}/deliverables/export-pptx`,
@@ -1836,6 +1882,8 @@ describe("交付物导出", () => {
     const skill = makeFakeSkill();
     try {
       process.env.PPT_MASTER_DIR = skill;
+      process.env.DELIVERABLE_DIR = dir;
+      generateReports(h, scenarioId);
       const res = await h.app.inject({
         method: "POST",
         url: `/api/v1/projects/${scenarioId}/deliverables/export-pptx`,
@@ -1965,10 +2013,10 @@ describe("交付物导出", () => {
       expect(reports["construction"]!.generated).toBe(true);
       expect(reports["construction"]!.generated_at).toBeTruthy();
       expect(reports["construction"]!.chars).toBeGreaterThan(0);
-      // 解决方案不受影响：还是要点版，且不含建设工作方案的正文
+      // 解决方案不受影响：未生成 → 留空（变更表 #174），也不含建设工作方案的正文
       expect(reports["solution"]!.generated).toBe(false);
-      expect(reports["solution"]!.markdown).toContain("## 现状");
-      expect(reports["solution"]!.markdown).not.toContain("手改的建设路径正文");
+      expect(reports["solution"]!.markdown).toBe("");
+      expect(reports["solution"]!.chars).toBe(0);
     } finally {
       delete process.env.DELIVERABLE_DIR;
       rmSync(dir, { recursive: true, force: true });
@@ -2013,6 +2061,9 @@ describe("交付物导出", () => {
   it("POST export-docx 目录非法或缺失 → 400", async () => {
     const h = makeHarness();
     const { scenarioId } = seedScenario(h.db, "Word 场景");
+    const dir = mkdtempSync(join(tmpdir(), "scene-docx-dir-"));
+    process.env.DELIVERABLE_DIR = dir;
+    generateReports(h, scenarioId);
     const outside = await h.app.inject({
       method: "POST",
       url: `/api/v1/projects/${scenarioId}/deliverables/export-docx`,
@@ -2029,7 +2080,7 @@ describe("交付物导出", () => {
     expect(missing.statusCode).toBe(400);
   });
 
-  it("GET /deliverables：中栏取两份正文（装配但不落盘）", async () => {
+  it("GET /deliverables：未生成时两份留空、不落盘；生成后取回正文（变更表 #174）", async () => {
     const h = makeHarness();
     const { scenarioId } = seedScenario(h.db, "取正文场景");
     const outDir = process.env.EXPORT_DIR!;
@@ -2048,23 +2099,22 @@ describe("交付物导出", () => {
     };
     // 变更表 #137：两份——解决方案 + 建设工作方案
     expect(Object.keys(reports).sort()).toEqual(["construction", "solution"]);
-    expect(reports["solution"]!.markdown).toContain("解决方案");
-    expect(reports["solution"]!.markdown).toContain("取正文场景");
-    // 章标题不带手写序号（五章：现状 / 场景与问题 / 方案 / 价值 / 下一步）
-    expect(reports["solution"]!.markdown).toContain("## 现状");
-    expect(reports["solution"]!.markdown).not.toContain("## 一、现状");
-    // 建设工作方案按自己的章节骨架装配（不是解决方案的复制）
-    expect(reports["construction"]!.markdown).toContain("建设工作方案");
-    expect(reports["construction"]!.markdown).toContain("## 建设背景与必要性");
-    expect(reports["construction"]!.markdown).not.toContain("## 一、");
+    /**
+     * 变更表 #174（用户定调）：交付物没开始就不填内容
+     *
+     * 以前这里返回即时推导的"要点版"（1.6 万/2.2 万字）当预览，用户会以为报告已经生成；
+     * 现在未生成就是空的，界面只留「生成报告」入口。
+     */
     for (const kind of ["solution", "construction"]) {
-      // 要点版没有"生成时间"（正式版才有）——见下一条用例
+      expect(reports[kind]!.markdown, kind).toBe("");
+      expect(reports[kind]!.chars, kind).toBe(0);
       expect(reports[kind]!.generated, kind).toBe(false);
       expect(reports[kind]!.generated_at, kind).toBeNull();
-      expect(reports[kind]!.chars, kind).toBeGreaterThan(0);
     }
-    // 只装配不写盘：目录文件数不变
+    // 不落盘：目录文件数不变
     expect(readdirSync(outDir).length).toBe(before);
+
+    // 生成后（= 有正式版文件）才有正文：见下一条用例的完整链路
   });
 
   it("生成过正式版后：GET 返回各自正式版内容，导出写盘的内容与 GET 一致（所见即所得）", async () => {

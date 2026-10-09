@@ -44,6 +44,13 @@ interface RealStagePanelProps {
 
   /** 分析落库后自增：本组件收到变化就重取本步数据与阶段总结 */
   refreshToken?: number;
+  /**
+   * 长跑期间的对账信号（自增）：**只重取本步数据**，不碰阶段总结
+   *
+   * 与 `refreshToken` 分开是因为阶段总结那条路带 `?refresh=1`＝强制模型重写：
+   * 对账每 15 秒来一次的话，既白烧模型调用，右栏文字也跟着来回变（故障清单 #48）。
+   */
+  silentRefreshToken?: number;
 
   /** 流程轴第二行点了某个输出物：`id` 变化时套用（外部选择），null 表示没点过 */
   pick?: { id: number; code: string | null; block: string | null };
@@ -60,6 +67,7 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
   stepId,
 
   refreshToken,
+  silentRefreshToken,
   pick,
   onTableChange,
 }) => {
@@ -175,6 +183,16 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
     reload();
     void loadSummary(true);
   }, [refreshToken, reload, loadSummary]);
+
+  /**
+   * 长跑对账：只静默重取本步数据（`reload()` 同查询重取不再回加载态，表格不闪）
+   *
+   * 阶段总结**不跟着重生成**——它只在跑完那一次（`refreshToken`）重写。
+   */
+  useEffect(() => {
+    if (silentRefreshToken === undefined || silentRefreshToken === 0) return;
+    reload();
+  }, [silentRefreshToken, reload]);
 
   const handleCellChange = useCallback(
     async (rowId: string, cell: string, value: string) => {

@@ -684,17 +684,16 @@ describe("createAdvanceStageCommand", () => {
       });
     });
 
-    it("应记录系统消息到 conversation", async () => {
+    it("不再往会话写「阶段完成」系统消息（变更表 #174）", async () => {
       const cmd = createAdvanceStageCommand(deps);
       await collectEvents(cmd.execute({ scenarioId: "sc-1", stage: 1 }));
 
-      expect(db.messageRepo.insert).toHaveBeenCalledWith(
-        expect.objectContaining({
-          role: "系统",
-          stage: 1,
-          content: expect.stringContaining("阶段 1 分析完成"),
-        }),
-      );
+      // 用户定调：「场景下面不需要每个阶段生成一个会话，没有意义」——分析结果有自己的
+      // 落点（流程轴进度、右栏阶段总结、阶段数据表），不再借会话承载
+      const stages = (db.messageRepo.insert as ReturnType<typeof vi.fn>).mock.calls
+        .map((c) => c[0] as { content?: string })
+        .filter((m) => String(m.content ?? "").includes("阶段 1 分析完成"));
+      expect(stages).toHaveLength(0);
     });
   });
 
@@ -963,8 +962,8 @@ describe("createAdvanceStageCommand", () => {
     });
   });
 
-  describe("F2 会话登记：DSH session → conversation", () => {
-    it("conversation 应包含正确的 dsh_session_id", async () => {
+  describe("阶段分析不再登记会话（变更表 #174）", () => {
+    it("跑完不建 conversation，但 DSH session 照建（模型调用要用）", async () => {
       db = createMockDb({ scenario: { current_stage: 1 } });
       dshClient = createTableAwareDshClient(makeStage1DshOutput());
       deps = { db, dshClient };
@@ -972,10 +971,8 @@ describe("createAdvanceStageCommand", () => {
       const cmd = createAdvanceStageCommand(deps);
       await collectEvents(cmd.execute({ scenarioId: "sc-1", stage: 1 }));
 
-      const convCall = (db.conversationRepo.insert as ReturnType<typeof vi.fn>)
-        .mock.calls[0]![0];
-      expect(convCall.dsh_session_id).toBe("mock-session-stage");
-      expect(convCall.title).toContain("阶段 1");
+      expect(db.conversationRepo.insert).not.toHaveBeenCalled();
+      expect(dshClient.createSession).toHaveBeenCalled();
     });
   
   describe("按表并发生成（v1.22）", () => {

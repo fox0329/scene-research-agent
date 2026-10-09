@@ -117,6 +117,17 @@ function runMigrations(db: Database.Database): void {
   if (!cols.some((c) => c.name === "scenario_id")) {
     db.exec("ALTER TABLE product_line ADD COLUMN scenario_id TEXT");
   }
+  /**
+   * 阶段分析不再逐阶段登记会话（变更表 #174）
+   *
+   * 只补一次列：补列的同时把历史"阶段 N · 分析"标成 `阶段分析`，左侧栏据此隐藏
+   * （数据保留，不删）。放在 `if` 里是为了不覆盖用户后来自己改过的值。
+   */
+  const convCols = db.pragma("table_info(conversation)") as { name: string }[];
+  if (!convCols.some((c) => c.name === "kind")) {
+    db.exec("ALTER TABLE conversation ADD COLUMN kind TEXT NOT NULL DEFAULT '用户'");
+    db.exec("UPDATE conversation SET kind = '阶段分析' WHERE title GLOB '阶段 * · 分析'");
+  }
   const scCols = db.pragma("table_info(scenario)") as { name: string }[];
   if (!scCols.some((c) => c.name === "description")) {
     db.exec("ALTER TABLE scenario ADD COLUMN description TEXT");

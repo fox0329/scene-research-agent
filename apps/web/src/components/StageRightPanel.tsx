@@ -32,6 +32,7 @@ import { enumValues, middleColumns, tableDef } from "@scene/contract";
 import { AutoGrowTextarea } from "./AutoGrowTextarea";
 import { FoldSection } from "./FoldSection";
 import { splitBold } from "./md-inline";
+import { SceneTable } from "./SceneTable";
 import type { StageSnapshot } from "./stage-snapshot";
 import { plainText } from "./text-display";
 
@@ -52,6 +53,15 @@ type Tab = "supplement" | "summary";
  */
 export interface RenderMarkdownOptions {
   tables?: boolean;
+  /**
+   * 表格用中栏那套组件渲染（带列宽拖拽），用于**交付物报告**
+   *
+   * 用户定调 2026-10-09：「交付物阶段生成的报告里面的表格，也应该和其他表格一样可以自由地
+   * 调整列宽」。走 `SceneTable` 而不是另写一套：列宽适配/拖拽/双击复位/本地留存全复用，
+   * 行为与中栏一致。`storageKeyPrefix` 按"场景 + 交付物口径"给，避免两份报告互相串宽度。
+   * 右栏阶段总结不启用（窄栏里拖宽没意义，用户已确认只改报告）。
+   */
+  resizableTables?: { storageKeyPrefix: string };
 }
 
 /** 极简 Markdown 渲染（标题/列表/引用/表格）——避免引入第三方依赖 */
@@ -83,6 +93,8 @@ export function renderMarkdown(
   options: RenderMarkdownOptions = {},
 ): React.ReactNode {
   const renderTables = options.tables ?? true;
+  /** 报告里第几张表：列宽留存键要按**表序**稳定，不能用 out.length（它会随正文长度变） */
+  let tableSeq = 0;
   const lines = md.split("\n");
   const out: React.ReactNode[] = [];
   let list: string[] = [];
@@ -110,6 +122,25 @@ export function renderMarkdown(
           .filter((s) => s !== "");
         if (pairs.length > 0) out.push(<p key={`tb-${out.length}`}>{inline(pairs.join(" · "))}</p>);
       }
+      table = [];
+      return;
+    }
+    if (options.resizableTables) {
+      const seq = tableSeq++;
+      const colKeys = head.map((_, i) => `c${i}`);
+      out.push(
+        <SceneTable
+          key={`tb-${out.length}`}
+          columns={head.map((c, i) => ({
+            key: colKeys[i]!,
+            label: c,
+            render: (v: unknown) => inline(String(v ?? "")),
+          }))}
+          data={body.map((r) => Object.fromEntries(colKeys.map((k, i) => [k, r[i] ?? ""])))}
+          storageKey={`${options.resizableTables.storageKeyPrefix}:t${seq}`}
+          tableClassName="schema-table md-table"
+        />,
+      );
       table = [];
       return;
     }

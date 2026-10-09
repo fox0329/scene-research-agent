@@ -607,8 +607,8 @@ describe("交付物报告生成（两份：模型撰写 + 确定性校验）", (
   });
 });
 
-describe("报告服务：两份各自的正式版优先，没有则要点版", () => {
-  it("未生成时两份都是要点版（generated=false），生成后各自读自己的正式版", async () => {
+describe("报告服务：两份各自的正式版优先，未生成则留空（变更表 #174）", () => {
+  it("未生成时两份都是空的（generated=false、chars=0），生成后各自读自己的正式版", async () => {
     const db = h.db;
     const scenario = db.scenarioRepo.getById(h.scenarioId)!;
     const before = getReports(db, scenario);
@@ -617,13 +617,16 @@ describe("报告服务：两份各自的正式版优先，没有则要点版", (
     expect(before.construction.generated).toBe(false);
     expect(before.solution.generated_at).toBeNull();
     expect(before.construction.generated_at).toBeNull();
-    expect(before.solution.chars).toBeGreaterThan(0);
-    expect(before.construction.chars).toBeGreaterThan(0);
-    // 两份的要点版各按自己的章节骨架装配
-    expect(before.solution.markdown).toContain("## 现状");
-    expect(before.construction.markdown).toContain("## 建设背景与必要性");
-    // 要点版只有数据要点，没有模型写的价值表
-    expect(before.solution.markdown).not.toContain("价值一：会前不再逐台开机");
+    /**
+     * 用户定调 2026-10-09：「价值验证完成后 交付物没有开始的时候不需要填充内容」
+     *
+     * 以前这里返回即时推导的"要点版"（1.6 万/2.2 万字）当预览，看着像成稿；现在没生成
+     * 就是空的，界面只留「生成报告」入口。要点版只在生成过程中按章兜底。
+     */
+    expect(before.solution.markdown).toBe("");
+    expect(before.construction.markdown).toBe("");
+    expect(before.solution.chars).toBe(0);
+    expect(before.construction.chars).toBe(0);
 
     const { client } = dshByPrompt((input) => goodReport(kindOfPrompt(input)));
     await run(db, client, h.scenarioId);

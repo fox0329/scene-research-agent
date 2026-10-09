@@ -6,7 +6,7 @@
  *
  * F2 三条工程约束：
  * 1. 上下文控制：prompt 只注入当前阶段 schema + 上游表数据
- * 2. 会话登记：DSH session 同步登记为 conversation
+ * 2. 会话：阶段分析不再登记 conversation（变更表 #174，用户定调「没有意义」）；DSH session 照建
  * 3. 流式续传：follow 事件带递增 id，支持 Last-Event-ID
  */
 
@@ -40,7 +40,7 @@ import {
   advance,
   LAST_STAGE,
   checkStageCompleteness,
-  gapsBrief,
+
   gradeAnalysisEvidence,
   gradeSource,
   parseCitations,
@@ -485,13 +485,12 @@ async function* executeAdvanceStage(
     title: `阶段 ${stage} · 分析`,
   });
 
-  // 5. 会话登记：将 DSH session 同步为 conversation（F2 约束 2）
-  const conversation = db.conversationRepo.insert({
-    scenario_id: scenarioId,
-    title: `阶段 ${stage} · 分析`,
-    status: "活跃",
-    dsh_session_id: session.sessionId,
-  });
+  // 5. 不再登记会话（变更表 #174）
+  //
+  // 历史做法：把每次分析的 DSH session 同步成一条「阶段 N · 分析」会话，于是场景下面
+  // 一路堆出七八条只有一句系统总结的会话——用户定调「没有意义」。分析进度与结果都有
+  // 自己的落点（流程轴进度、右栏阶段总结、阶段数据表），不需要借会话承载。
+  // DSH session 本身照建：模型调用要靠它。
 
   // 6. 按表并发生成：波内并发、波间串行（有真实依赖的表等前一层跑完，并把行喂给它）
   //
@@ -864,25 +863,6 @@ async function* executeAdvanceStage(
   const summary = generateStageSummary(db, scenario, stage);
   yield emit({ type: "summary", stage, markdown: summary.markdown });
 
-  // 11. 记录系统消息到 conversation
-  db.messageRepo.insert({
-    conversation_id: conversation.id,
-    role: "系统",
-    content: [
-      `阶段 ${stage} 分析完成，共写入 ${writtenRows.length} 条信息。`,
-      gapsBrief(completeness),
-      violations.length > 0 ? `产出行校验：${violations.length} 处需修正（见右栏）。` : "",
-      pcReport
-        ? `生成后自检：检 ${pcReport.checked} 行，自动改正 ${pcReport.fixed} 行${
-            pcReport.downgraded > 0 ? `，${pcReport.downgraded} 行因出处无法定位按实降级` : ""
-          }${pcReport.remaining > 0 ? `，仍有 ${pcReport.remaining} 处存疑（见总结第四段）` : ""}。`
-        : "",
-      "右栏已生成阶段总结文档。",
-    ]
-      .filter(Boolean)
-      .join(" "),
-    stage,
-  });
   // 11. 更新 scenario.current_stage（只前进不回退：重算早期阶段时保持进度，
   //     阶段 8 为终态；是否继续推进由用户决定——核心原则）
   const nextStage: StageId = stage < LAST_STAGE ? advance(stage) : stage;
@@ -896,7 +876,6 @@ async function* executeAdvanceStage(
     stage,
     rowsWritten: writtenRows.length,
     ...(failedTables.length > 0 ? { tablesFailed: failedTables.map((r) => r.code) } : {}),
-    conversationId: conversation.id,
   });
 }
 

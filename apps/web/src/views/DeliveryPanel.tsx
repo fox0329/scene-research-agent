@@ -500,8 +500,8 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
       <button
         className="btn"
         type="button"
-        disabled={busyWord || busyPpt}
-        title={busyWord ? "正在导出 Word 文档…" : undefined}
+        disabled={busyWord || busyPpt || !generated}
+        title={busyWord ? "正在导出 Word 文档…" : !generated ? "还没有生成报告" : undefined}
         onClick={() => void pickDirThen("word")}
       >
         {busyWord ? "导出中" : "导出Word文档"}
@@ -510,8 +510,14 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
       <button
         className="btn"
         type="button"
-        disabled={busyPpt || busyWord}
-        title={pptPhase ?? "按 B 站蓝色模版排中间页：5–10 页，不要封面与尾页，突出问题、方案与价值"}
+        disabled={busyPpt || busyWord || !generated}
+        title={
+          busyPpt
+            ? pptPhase ?? undefined
+            : !generated
+              ? "还没有生成报告"
+              : "按 B 站蓝色模版排中间页：5–10 页，不要封面与尾页，突出问题、方案与价值"
+        }
         onClick={() => void pickDirThen("ppt")}
       >
         {busyPpt ? "导出中" : "导出PPT文档"}
@@ -519,8 +525,8 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
       <button
         className="btn"
         type="button"
-        disabled={busy}
-        title={busy ? "正在导出 Markdown…" : undefined}
+        disabled={busy || !generated}
+        title={busy ? "正在导出 Markdown…" : !generated ? "还没有生成报告" : undefined}
         onClick={() => void handleExport()}
       >
         {busy ? "导出中" : "导出 Markdown"}
@@ -571,7 +577,7 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
             <button
               className="btn"
               type="button"
-              disabled={busyWord || busyPpt || manualDir.trim() === ""}
+              disabled={busyWord || busyPpt || !generated || manualDir.trim() === ""}
               onClick={exportIntoManualDir}
             >
               导出到该路径
@@ -586,8 +592,8 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
       <div className="pnl-b">
         {!live ? (
           <p className="brief-hint">
-            演示模式：两份交付物（解决方案 / 建设工作方案）由服务端按「章节 ← 表映射」装配，
-            联真模式下这里直接显示报告正文。
+            演示模式：两份交付物（解决方案 / 建设工作方案）都要点「生成报告」由模型撰写，
+            联真模式下这里显示生成的正文。
           </p>
         ) : loading && reports === null ? (
           <div className="loading-strip" role="status" aria-label="装配中" />
@@ -611,10 +617,13 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
               </div>
             ) : null}
             {!generated && !gen.running ? (
-              <p className="brief-hint">
-                当前是「{label}」的「要点版」（系统按章节 ← 表映射直接搬的数据要点，只是一份提纲）。
-                点上方「生成报告」，模型会读完全部表格后一次写出两份交付物的归纳正文。
-              </p>
+              <div className="empty-state">
+                <div className="empty-state-title">「{label}」还没有生成</div>
+                <div className="empty-state-desc">
+                  点上方「生成报告」，模型会读完全部表格后一次写出两份交付物的归纳正文；
+                  生成前不预填内容，避免把提纲当成稿子。
+                </div>
+              </div>
             ) : null}
             {draft !== null ? (
               <textarea
@@ -623,8 +632,12 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
               />
-            ) : (
-              <div className="md-body">{renderMarkdown(body)}</div>
+            ) : body === "" ? null : (
+              <div className="md-body">
+                {renderMarkdown(body, {
+                  resizableTables: { storageKeyPrefix: `report:${projectId}:${tab}` },
+                })}
+              </div>
             )}
           </>
         )}

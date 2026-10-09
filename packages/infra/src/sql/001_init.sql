@@ -240,6 +240,7 @@ CREATE TABLE IF NOT EXISTS conversation (
   scenario_id      TEXT NOT NULL REFERENCES scenario(id),
   title            TEXT NOT NULL,
   status           TEXT NOT NULL CHECK (status IN ('活跃','已归档')),
+  kind             TEXT NOT NULL DEFAULT '用户',
   dsh_session_id   TEXT NOT NULL,
   created_at       TEXT NOT NULL,
   updated_at       TEXT NOT NULL

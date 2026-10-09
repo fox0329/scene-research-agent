@@ -441,10 +441,24 @@ export function registerUiRoutes(app: FastifyInstance, deps: UiRoutesDeps): void
    *
    * 变更表 #137：`<场景>解决方案.md` + `<场景>建设工作方案.md`
    */
+  /**
+   * 交付物"必须先生成"守卫（变更表 #174）
+   *
+   * 未生成时服务端不再即时推导要点版（用户定调：交付物没开始就不填内容），所以导出前
+   * 必须先「生成报告」——否则会导出一份空文件，还不如当场说清楚。
+   */
+  const ungenerated = (scenario: Scenario): string | null => {
+    const reports = getReports(db, scenario);
+    const missing = REPORT_KINDS.filter((k) => !reports[k].generated);
+    return missing.length === 0 ? null : `交付物还没生成（${missing.join("、")}）——请先点「生成报告」`;
+  };
+
   app.post("/api/v1/projects/:id/deliverables/export", async (request, reply) => {
     const { id } = request.params as { id: string };
     const scenario = db.scenarioRepo.getById(id);
     if (!scenario) return notFound(reply, `场景 ${id} 不存在`);
+    const notReady = ungenerated(scenario);
+    if (notReady) return reply.code(400).send({ error: notReady });
     return writeReportFiles(db, scenario);
   });
 
@@ -499,6 +513,8 @@ export function registerUiRoutes(app: FastifyInstance, deps: UiRoutesDeps): void
     const { id } = request.params as { id: string };
     const scenario = db.scenarioRepo.getById(id);
     if (!scenario) return notFound(reply, `场景 ${id} 不存在`);
+    const notReady = ungenerated(scenario);
+    if (notReady) return reply.code(400).send({ error: notReady });
     const body = (request.body ?? {}) as { dir?: unknown };
     if (typeof body.dir !== "string" || body.dir.trim() === "") {
       return reply.code(400).send({ error: "缺少导出目录 dir" });
@@ -528,6 +544,8 @@ export function registerUiRoutes(app: FastifyInstance, deps: UiRoutesDeps): void
     const { id } = request.params as { id: string };
     const scenario = db.scenarioRepo.getById(id);
     if (!scenario) return notFound(reply, `场景 ${id} 不存在`);
+    const notReady = ungenerated(scenario);
+    if (notReady) return reply.code(400).send({ error: notReady });
     const body = (request.body ?? {}) as { dir?: unknown; kind?: unknown; run?: unknown };
     if (typeof body.dir !== "string" || body.dir.trim() === "") {
       return reply.code(400).send({ error: "缺少导出目录 dir" });

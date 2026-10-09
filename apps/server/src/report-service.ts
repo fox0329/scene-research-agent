@@ -18,7 +18,7 @@ import { existsSync, mkdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { REPORT_KINDS, type ReportKind, type Scenario } from "@scene/contract";
 import type { DbInstance } from "@scene/infra";
-import { safeWriteFile, buildReportMarkdown, exportFileName, type ChapterDigest } from "@scene/infra";
+import { safeWriteFile, exportFileName, type ChapterDigest } from "@scene/infra";
 import { reportChapterDigest } from "@scene/infra";
 import {
   deliverableDir,
@@ -87,8 +87,15 @@ export function getReport(db: DbInstance, scenario: Scenario, kind: ReportKind):
       digest,
     };
   }
-  const markdown = buildReportMarkdown({ scenario, stageSummaries: [], stageData }, kind);
-  return { kind, markdown, chars: countChars(markdown), generated: false, generated_at: null, digest };
+  /**
+   * 未生成 → **返回空**（用户定调 2026-10-09：「价值验证完成后 交付物没有开始的时候不需要填充内容」）
+   *
+   * 这里曾经即时推导一份"要点版"（把各表要点按章节搬过来，实测 1.6 万 / 2.2 万字）当预览，
+   * 毛病是**看起来像成稿**：用户以为交付物已经生成，而它没有归纳、也不能当交付件用。
+   * 现在没生成就是空的，界面只留「生成报告」入口。
+   * 要点版函数本身保留——生成报告时某一章模型没写，仍由它逐章兜底（deliverable-report.ts）。
+   */
+  return { kind, markdown: "", chars: 0, generated: false, generated_at: null, digest };
 }
 
 /** 取两份交付物（GET /deliverables 的形状） */

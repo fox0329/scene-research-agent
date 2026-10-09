@@ -27,6 +27,15 @@ export function useAsync<T>(
   const [tick, setTick] = useState(0);
   const fetcherRef = useRef(fetcher);
   fetcherRef.current = fetcher;
+  /**
+   * 上一次拉取对应的 deps 签名
+   *
+   * 用来区分两种重取：**换了查询**（换步骤/换表/换场景 → 该回加载态、该出骨架）与
+   * **同一份数据重取**（`reload()`，如长跑期间每 15 秒对账 → 必须静默）。旧写法不分这两种、
+   * 一律 `status: "loading"`，于是对账一到就把整块面板换成加载条、数据回来再重建表格——
+   * 用户看到的就是"表格内容一闪一闪"（故障清单 #48）。
+   */
+  const lastQueryRef = useRef<string | null>(null);
   // 组件卸载后禁止 setState（React 18 不再警告但仍是无效写入）
   const mountedRef = useRef(true);
   useEffect(() => {
@@ -38,7 +47,15 @@ export function useAsync<T>(
 
   useEffect(() => {
     let cancelled = false;
-    setState((prev) => ({ ...prev, status: "loading", error: undefined }));
+    const query = JSON.stringify(deps);
+    // 同一份查询重取 = 静默刷新：保留屏上内容，拿到新数据再替换，中间不闪
+    const silent = lastQueryRef.current === query;
+    lastQueryRef.current = query;
+    setState((prev) =>
+      silent && prev.data !== undefined
+        ? { ...prev, error: undefined }
+        : { ...prev, status: "loading", error: undefined },
+    );
     fetcherRef
       .current()
       .then((data) => {
@@ -47,10 +64,15 @@ export function useAsync<T>(
         }
       })
       .catch((err: unknown) => {
-        if (!cancelled && mountedRef.current) {
-          const message = err instanceof Error ? err.message : String(err);
-          setState({ status: "error", data: undefined, error: message });
-        }
+        if (cancelled || !mountedRef.current) return;
+        const message = err instanceof Error ? err.message : String(err);
+        // 静默刷新失败不把已有内容打掉：表格继续显示旧数据，下一个对账周期再试；
+        // 首次加载失败仍走错误态（带重试按钮）
+        setState((prev) =>
+          silent && prev.data !== undefined
+            ? { ...prev, error: message }
+            : { status: "error", data: undefined, error: message },
+        );
       });
     return () => {
       cancelled = true;

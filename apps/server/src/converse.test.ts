@@ -273,6 +273,23 @@ describe("createConverseCommand", () => {
       }
     });
 
+    it("阶段分析内部会话不出现在列表中，但数据还在（变更表 #174）", () => {
+      const cmd = createConverseCommand(deps);
+      // 历史库里的「阶段 N · 分析」（现在不再新建，但老数据要藏起来）
+      deps.db.conversationRepo.insert({
+        scenario_id: "s1",
+        title: "阶段 1 · 分析",
+        status: "活跃",
+        dsh_session_id: "sess-1",
+        kind: "阶段分析",
+      });
+
+      expect(cmd.list("s1")).toHaveLength(0);
+      // 数据保留：按 id 仍可查（消息接口照旧可用），只是不列在左侧栏
+      const all = deps.db.conversationRepo.list({ where: "scenario_id = ?", params: ["s1"] });
+      expect(all).toHaveLength(1);
+    });
+
     it("归档的会话不出现在列表中", async () => {
       const cmd = createConverseCommand(deps);
       const conv = await cmd.create({ scenario_id: "s1", title: "将归档" });

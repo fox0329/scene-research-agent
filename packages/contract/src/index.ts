@@ -270,7 +270,16 @@ export interface StageData extends TraceableFields {
   updated_at: string;
 }
 
-/** 会话（与 DSH session 一一映射） */
+/**
+ * 会话类型（变更表 #174）
+ *
+ * `阶段分析` = 阶段分析跑一次登记的内部会话（历史上每个阶段一条，左侧栏不再显示——
+ * 用户定调「场景下面不需要每个阶段生成一个会话，没有意义」）；`用户` = 用户自己开的对话。
+ * 缺省按 `用户` 处理，旧库补列时也回填成 `用户`。
+ */
+export type ConversationKind = "用户" | "阶段分析";
+
+/** 会话（用户对话；阶段分析不再登记会话，历史行的 kind = 阶段分析） */
 export interface Conversation {
   id: string;
   scenario_id: string;
@@ -279,6 +288,8 @@ export interface Conversation {
   dsh_session_id: string;
   created_at: string;
   updated_at: string;
+  /** 会话类型；缺省（旧数据）视为 `用户` */
+  kind?: ConversationKind;
 }
 
 /** 消息 */

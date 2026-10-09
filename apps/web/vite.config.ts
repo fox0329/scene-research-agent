@@ -8,17 +8,17 @@ const here = dirname(fileURLToPath(import.meta.url));
 export default defineConfig({
   plugins: [react()],
   server: {
-    port: 5173,
-    // 开发态联真：/api → 应用主实例 4081（AGENTS 端口规则；preview 不配代理，E2E 走演示模式）
+    port: 46173,
+    // 开发态联真：/api → 应用主实例 46172（AGENTS 端口规则；preview 不配代理，E2E 走演示模式）
     proxy: {
       "/api": {
-        target: "http://127.0.0.1:4081",
+        target: "http://127.0.0.1:46172",
         changeOrigin: true,
       },
     },
   },
   // preview.proxy 默认继承 server.proxy：显式清空，E2E/预览恒走演示模式，
-  // 不受本机 4081 真实后端是否在跑的影响（否则 mock 断言会被联真数据干扰）
+  // 不受本机 46172 真实后端是否在跑的影响（否则 mock 断言会被联真数据干扰）
   preview: {
     proxy: {},
   },

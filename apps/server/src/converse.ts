@@ -90,9 +90,12 @@ export function createConverseCommand(deps: ConverseDeps) {
 
     /**
      * 列出会话（默认活跃状态，按创建时间倒序）。
+     *
+     * 隐藏 `阶段分析` 内部会话（变更表 #174）：历史库里有每个阶段一条，左侧栏不该显示；
+     * 数据保留，`get`/消息接口照旧可查。
      */
     list: (scenarioId: string): Conversation[] =>
-      listConversations(db, scenarioId),
+      listConversations(db, scenarioId).filter((c) => (c.kind ?? "用户") !== "阶段分析"),
 
     /**
      * 获取单个会话。
