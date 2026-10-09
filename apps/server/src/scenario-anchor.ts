@@ -369,7 +369,7 @@ export async function draftAnchor(
  * 唯一的差别是**锚行按 `item` 定位**，所以模型改写后必须把 `item` 原样钉回去——
  * 条目名一改，用户在界面上就再也找不到那一行了。
  */
-async function runAnchorPostcheck(
+export async function runAnchorPostcheck(
   db: DbInstance,
   dshClient: DshClient,
   scenario: Scenario,

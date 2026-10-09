@@ -177,6 +177,22 @@ const CLAIMED_VERIFIED = "已核实";
 export const MID_CELL_MAX_CHARS = 60;
 
 /**
+ * 「中栏太长」的例外列（用户定调 v1.34，2026-10-09：「表1-1『内容』列不需要守 60 字」）
+ *
+ * 表1-1 是场景画像概览：项/内容 纵向呈现，`content` 就是**整段表述**
+ * （契约里标了 `longText` + `truncate`）。它是给人一眼读懂"这个场景是什么"的，
+ * 不是结论格——压到 60 字反而把范围、口径、条件这些必要信息切碎。
+ *
+ * **例外只给这一列**：其余 longText 中栏列（「怎么测」「打分依据」「要点」等 28 列）
+ * 都是结论型格子，照旧受 60 字约束。
+ * 曾经想按"凡 longText 一律豁免"来做，查证后发现那等于把这条检查废掉，
+ * 已否掉（登记于变更表 #165）。
+ */
+const MID_LENGTH_EXEMPT: Readonly<Record<string, readonly string[]>> = {
+  "表1-1": ["content"],
+};
+
+/**
  * 中栏内容格里**不该出现**的引用痕迹（确定性判据，不靠模型自觉）
  *
  * 用户原话：「大量的文字在说明来源，我认为中栏的表格，要说价值，说结果，
@@ -584,13 +600,17 @@ export function runDeterministicPostcheck(input: PostcheckInput): PostcheckFindi
 
     // ⑦ 中栏说结果：内容格里不许夹带出处/引用（用户定调 v1.32「来源、引用什么的可以放到右栏」）
     const midKeys = midKeysOf(r.tableCode);
+    const lengthExempt = new Set(MID_LENGTH_EXEMPT[r.tableCode] ?? []);
     const citedCells: string[] = [];
     const longCells: string[] = [];
     for (const key of midKeys) {
       const v = r.row[key];
       if (typeof v !== "string" || v.trim() === "") continue;
+      // 引用痕迹任何列都不许进中栏（例外只免长度，不免"夹带出处"）
       if (hasMidCitation(v)) citedCells.push(key);
-      if (v.trim().length > MID_CELL_MAX_CHARS) longCells.push(`${key}（${v.trim().length} 字）`);
+      if (!lengthExempt.has(key) && v.trim().length > MID_CELL_MAX_CHARS) {
+        longCells.push(`${key}（${v.trim().length} 字）`);
+      }
     }
     if (citedCells.length > 0) {
       findings.push({

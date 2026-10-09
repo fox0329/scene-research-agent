@@ -557,3 +557,46 @@ describe("postcheck — 硬结论必须有依据（v1.33，用户质问「结论
     expect(f.some((x) => x.kind === "判定与能力底账矛盾")).toBe(false);
   });
 });
+
+describe("中栏太长 — 表1-1『内容』列例外（用户定调 v1.34，变更表 #165）", () => {
+  const long = "空间与业务范围：华东地区某三甲医院集团下属院区内的一个住院病区，为试点范围；业务上覆盖病区内的护理呼叫、输液监护、病区环境监测与设备联动四类动作。";
+
+  it("表1-1 内容列写整段也不判『中栏太长』", () => {
+    const findings = runDeterministicPostcheck({
+      rows: [row({ tableCode: "表1-1", rowId: "a1", label: "场景边界", row: { item: "场景边界", content: long } })],
+      lookup: fakeLookup({}),
+    });
+    expect(long.length).toBeGreaterThan(MID_CELL_MAX_CHARS);
+    expect(findings.some((f) => f.kind === "中栏太长")).toBe(false);
+  });
+
+  it("例外只免长度，不免『中栏夹带出处』：表1-1 内容列夹了引用照样点名", () => {
+    const findings = runDeterministicPostcheck({
+      rows: [
+        row({
+          tableCode: "表1-1",
+          rowId: "a2",
+          label: "场景边界",
+          row: { item: "场景边界", content: `${long}（见 ingest-1.pdf:2）` },
+        }),
+      ],
+      lookup: fakeLookup({ "ingest-1.pdf:2": ["x"] }),
+    });
+    expect(findings.some((f) => f.kind === "中栏夹带出处")).toBe(true);
+  });
+
+  it("例外不外溢：其它表的结论型长列（表6-1 怎么测）超 60 字仍点名", () => {
+    const findings = runDeterministicPostcheck({
+      rows: [
+        row({
+          tableCode: "表6-1",
+          rowId: "a3",
+          label: "响应时长",
+          row: { how_to_measure: long },
+        }),
+      ],
+      lookup: fakeLookup({}),
+    });
+    expect(findings.some((f) => f.kind === "中栏太长")).toBe(true);
+  });
+});
