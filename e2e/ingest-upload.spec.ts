@@ -148,30 +148,6 @@ test.describe("上传入库（联真）", () => {
     expect(labels).toContain("来源标注");
   });
 
-  test("对话直接导入：消息里写文件路径即入库，结果回显且模型感知", async ({ page }) => {
-    await page.locator(".conv-ta").click(); // 展开抽屉
-    await page
-      .locator(".conv-ta")
-      .fill(`请导入 ${PDF_FIXTURE} 这份材料，导入后告诉我入了哪些表`);
-    await page.keyboard.press("Enter");
-    /* 导入报告随流回显：识别进度 → 每文件入库行数（含每表分布） */
-    await expect(page.locator(".conv-stream")).toContainText("识别到 1 个文件", {
-      timeout: 30_000,
-    });
-    await expect(page.locator(".conv-stream")).toContainText(`✅ ${PDF_FIXTURE}`, {
-      timeout: 60_000,
-    });
-    await expect(page.locator(".conv-stream")).toContainText("入库", { timeout: 10_000 });
-    /* 模型收到导入结果（系统消息含报告），回复落定且非错误 */
-    await expect(page.locator(".conv-stream")).toContainText("【材料导入结果】", {
-      timeout: 30_000,
-    });
-    const bubbles = page.locator(".conv-stream .bub");
-    await expect
-      .poll(async () => bubbles.last().textContent(), { timeout: 90_000 })
-      .not.toContain("【错误】未收到回复内容");
-  });
-});
 
 /* ─── 场景定义（第一输入）对话式 → 整理成表1-1 → 对照确认 ─────────── */
 

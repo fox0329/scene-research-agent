@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { Sidebar } from "./components/Sidebar";
-import { ConversationDrawer } from "./components/ConversationDrawer";
 import { StageRightPanel } from "./components/StageRightPanel";
 import { ScenarioDefinitionDialog } from "./components/ScenarioDefinitionDialog";
 import { NewScenarioDialog } from "./components/NewScenarioDialog";
@@ -12,7 +11,7 @@ import { ProjectView } from "./views/ProjectView";
 import { SettingsView } from "./views/SettingsView";
 import { useColumnLayout } from "./hooks/useColumnLayout";
 import { api, type ApiConversation, type ApiProductLine, type ApiProject } from "./api";
-import { conversationMessages, projects, type Project } from "./mock/project-data";
+import { projects, type Project } from "./mock/project-data";
 
 /** 主视图：project 项目工作台（默认）/ library 资料库 / settings 设置 */
 type ViewName = "project" | "library" | "settings";
@@ -55,7 +54,7 @@ function mapApiProject(
 /**
  * 场景通 — App 入口
  * 三栏布局骨架：左栏 256px / 中栏自适应 / 右栏 280px
- * 中栏底部常驻对话输入栏（展开成对话抽屉）
+ * 对话只有一处：`ScenarioDefinitionDialog` 独立弹窗（变更表 #58 定调、#180 落地）
  *
  * 联真模式（M5-T5.3）：挂载时探测 /api/v1/health——
  * 后端可达 → 项目/工作台走真实数据；不可达 → 演示模式（mock 数据，页头徽标提示）。
@@ -92,15 +91,7 @@ const AppShell: React.FC = () => {
   const [definitionRefresh, setDefinitionRefresh] = useState(0);
   /** 资料库行详情（右栏备注区，变更表 #19） */
   const [rowDetail, setRowDetail] = useState<RowDetail | null>(null);
-  /** 对话抽屉唤起信号（v1.14：定义/澄清生成后主动弹出） */
-  const [drawerKick, setDrawerKick] = useState(0);
-  /** 抽屉内状态提示（v1.16）：弹出即显示「梳理中」，生成完成后清除 */
-  const [drawerHint, setDrawerHint] = useState<string | null>(null);
-  const openConversation = useCallback((convId?: string) => {
-    if (convId) setActiveConvId(convId);
-    setDrawerKick((k) => k + 1);
-  }, []);
-  /** 当前选中会话（对话抽屉随之切换；null=未选/项目未建会话） */
+  /** 当前选中会话（左栏高亮用；用户可见的会话只有「场景定义」，点它开独立弹窗） */
   const [activeConvId, setActiveConvId] = useState<string | null>(null);
   const layout = useColumnLayout();
 
@@ -164,11 +155,19 @@ const AppShell: React.FC = () => {
     setView("project");
   };
 
-  /** 左栏选中会话：对话抽屉切换到该会话 */
+  /**
+   * 左栏选中会话：打开「场景定义」独立弹窗（变更表 #180）
+   *
+   * 用户可见的会话只有「场景定义」（变更表 #174 起阶段分析会话不再登记），而
+   * 变更表 #58 已定调「对话是独立弹窗/单独页面（不是中栏、不是右下角抽屉）」，
+   * 所以这里直接开那个弹窗，不再有第二套对话界面。
+   */
   const handleSelectConversation = (projectId: string, convId: string) => {
+    const target = shownProjects.find((x) => x.id === projectId);
     setActiveProjectId(projectId);
     setActiveConvId(convId);
     setView("project");
+    setDefinitionTarget({ id: projectId, name: target?.name ?? "" });
   };
 
   /** 左栏底部入口：切换主视图（收窄 string 到 ViewName） */
@@ -290,15 +289,6 @@ const AppShell: React.FC = () => {
     [live, refreshProjects, showToast, activeConvId],
   );
 
-  /** 抽屉自动建会话成功：选中并刷新左栏列表 */
-  const handleConversationCreated = useCallback(
-    (conv: { id: string; title: string }) => {
-      setActiveConvId(conv.id);
-      void refreshProjects().catch(() => {});
-    },
-    [refreshProjects],
-  );
-
   return (
     <div className={layout.shellClass} style={layout.shellStyle}>
       {/* 左栏：导航 + 项目列表 */}
@@ -344,16 +334,6 @@ const AppShell: React.FC = () => {
           />
         )}
         {view === "settings" && <SettingsView live={live} />}
-        {/* 对话抽屉：联真模式走 converse SSE；演示模式保持本地 mock */}
-        <ConversationDrawer
-          messages={conversationMessages}
-          live={live}
-          projectId={live ? activeProject?.id ?? null : null}
-          conversationId={live ? activeConvId : null}
-          onConversationCreated={live ? handleConversationCreated : undefined}
-          openSignal={drawerKick}
-          statusHint={drawerHint}
-        />
       </main>
 
       {/* 右栏：项目工作台显示阶段面板（补充说明 + 阶段总结）/ 资料库选中行显示行详情。

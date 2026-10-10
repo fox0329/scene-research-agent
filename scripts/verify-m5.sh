@@ -36,7 +36,6 @@ for f in \
   apps/web/src/views/RealStagePanel.tsx \
   apps/web/src/views/RealLibraryView.tsx \
   apps/web/src/views/RealKnowledgeView.tsx \
-  apps/web/src/components/ConversationDrawer.tsx \
   packages/infra/src/provider-store.ts \
   packages/infra/src/provider-check.ts \
   scripts/verify-live-chain.mjs \

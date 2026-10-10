@@ -28,7 +28,7 @@ interface ProjectViewProps {
   onNewProject?: () => void;
   /** 右栏阶段快照：补充说明 + 确认清单 + 阶段总结 */
   onStageSnapshot?: (snap: StageSnapshot | null) => void;
-  /** 主动弹出对话抽屉（v1.14）：定义/澄清生成后让用户直接对话 */
+  /** 对话入口：流程轴第 1 步的运行按钮打开「场景定义」独立弹窗（变更表 #58 / #180） */
   /**
    * 定义对话在 App 层发生变化（新建场景后直接开聊）的信号（自增计数）
    *

@@ -371,20 +371,25 @@ await page.waitForFunction(
 const doneAfter = await page.locator(".flow-rail .flow-node--done").count();
 ok("7 「下一步」真实推进流程（导航动作，信息缺口不阻断）", doneAfter > doneBefore, `已完成步 ${doneBefore} → ${doneAfter}`);
 
-/* 8. 对话 converse 闭环存在性（细节覆盖见 M5-T5.5 验收） */
-await page.click(".conv-ta");
-await page.fill(".conv-ta", "端到端走查：这个场景能不能进？");
-await page.press(".conv-ta", "Enter");
+/* 8. 对话闭环存在性（细节覆盖见 M5-T5.5 验收）
+   对话只有一处：变更表 #58 定调「独立弹窗」——入口是流程轴第 1 步的运行按钮
+   （变更表 #180 退休了中栏底部常驻抽屉，这里同步改走弹窗） */
+await page.locator(".flow-rail .flow-node", { hasText: "场景定义" }).first().click();
+await page.waitForTimeout(800);
+await page.locator(".flow-rail .flow-actions button").first().click();
+await page.locator(".definition-dialog").waitFor({ timeout: 20_000 });
+await page.fill(".definition-ta", "端到端走查：这个场景能不能进？");
+await page.press(".definition-ta", "Enter");
 await page.waitForFunction(
   () =>
-    [...document.querySelectorAll(".msg.ai .bub")].some(
+    [...document.querySelectorAll(".definition-dialog .bub")].some(
       (e) => e.textContent.length > 0 && !/^思考中…$/.test(e.textContent),
     ),
   null,
   { timeout: 90_000 },
 );
-const aiBubble = await page.locator(".msg.ai .bub").last().textContent();
-ok("8 对话抽屉真实会话回复落定", !!aiBubble, aiBubble.slice(0, 40));
+const aiBubble = await page.locator(".definition-dialog .bub").last().textContent();
+ok("8 场景定义弹窗真实会话回复落定", !!aiBubble, aiBubble.slice(0, 40));
 
 await browser.close();
 console.log(results.join("\n"));

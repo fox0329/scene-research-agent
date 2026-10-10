@@ -8,11 +8,6 @@ import { test, expect, type Page } from "@playwright/test";
 
 const H48 = 48;
 
-async function openDrawer(page: Page) {
-  await page.locator(".conv-ta").click();
-  await expect(page.locator(".conv-stream-wrap.open")).toBeVisible();
-}
-
 test.beforeEach(async ({ page }) => {
   await page.goto("/");
   await expect(page.locator(".shell")).toBeVisible();
@@ -37,77 +32,6 @@ test("栏头统一 48px 且底边线水平对齐（右栏页头已删，变更�
   // ——右栏不再有 48px 页头，直接从 Tab 开始
   await expect(page.locator(".det .det-h")).toHaveCount(0);
   await expect(page.locator(".det .det-tabs")).toBeVisible();
-});
-
-/* ───────────────────── §4.2 对话抽屉 ───────────────────── */
-
-test("输入栏常驻底部：实底、两行高", async ({ page }) => {
-  const input = page.locator(".conv-input");
-  await expect(input).toBeVisible();
-  await expect(page.locator(".conv-ta")).toHaveAttribute("rows", "2");
-  const bg = await input.evaluate((el) => getComputedStyle(el).backgroundColor);
-  expect(bg).toBe("rgb(255, 255, 255)"); // 实底不透明
-});
-
-test("聚焦输入框展开对话流：250ms 过渡 + 半透明浮层无毛玻璃", async ({ page }) => {
-  await openDrawer(page);
-  const wrap = page.locator(".conv-stream-wrap");
-  const style = await wrap.evaluate((el) => {
-    const cs = getComputedStyle(el);
-    return { duration: cs.transitionDuration, blur: cs.backdropFilter };
-  });
-  expect(style.duration).toContain("0.25s");
-  expect(style.blur === "none" || style.blur === "").toBeTruthy();
-  const bg = await page.locator(".conv-stream").evaluate((el) => getComputedStyle(el).backgroundColor);
-  /* 品牌浅蓝半透明（用户定稿：加一点蓝色、保持透明度） */
-  expect(bg).toBe("rgba(219, 234, 254, 0.6)");
-});
-
-test("气泡配色：AI 深底白字、用户主色", async ({ page }) => {
-  await openDrawer(page);
-  const ai = page.locator(".msg.ai .bub").first();
-  const user = page.locator(".msg.u .bub").first();
-  const aiStyle = await ai.evaluate((el) => {
-    const cs = getComputedStyle(el);
-    return { color: cs.color, bg: cs.backgroundColor };
-  });
-  expect(aiStyle.color).toBe("rgb(255, 255, 255)");
-  expect(aiStyle.bg).toBe("rgba(24, 24, 27, 0.5)");
-  expect(await user.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(
-    "rgba(37, 99, 235, 0.85)",
-  );
-});
-
-test("拖拽条常亮 48×4px，可上下拖动调高度", async ({ page }) => {
-  await openDrawer(page);
-  const bar = page.locator(".conv-resize");
-  const pill = await bar.evaluate((el) => {
-    const cs = getComputedStyle(el, "::before");
-    return { w: cs.width, h: cs.height, bg: cs.backgroundColor };
-  });
-  expect(pill.w).toBe("48px");
-  expect(pill.h).toBe("4px");
-  expect(pill.bg).not.toBe("rgba(0, 0, 0, 0)"); // 常亮可见，非 hover 才现
-  const box = (await bar.boundingBox())!;
-  const h0 = (await page.locator(".conv-stream-wrap").boundingBox())!.height;
-  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-  await page.mouse.down();
-  await page.mouse.move(box.x + box.width / 2, box.y - 80, { steps: 5 });
-  const h1 = (await page.locator(".conv-stream-wrap").boundingBox())!.height;
-  await page.mouse.up();
-  expect(Math.round(h1)).toBeGreaterThanOrEqual(Math.round(h0) + 60);
-});
-
-test("Esc 收起对话流", async ({ page }) => {
-  await openDrawer(page);
-  await page.keyboard.press("Escape");
-  await expect(page.locator(".conv-stream-wrap.open")).toHaveCount(0);
-});
-
-test("点击表格工作区收起对话流", async ({ page }) => {
-  await openDrawer(page);
-  await page.locator(".ws").click({ position: { x: 12, y: 12 } });
-  await expect(page.locator(".conv-stream-wrap.open")).toHaveCount(0);
 });
 
 /* ───────────────────── §4.2 会话管理 ───────────────────── */
@@ -733,7 +657,7 @@ test("收起态下拖拽热区隐藏（不可误拖）", async ({ page }) => {
 /* ───────────────────── §11.3 决定与反馈（Toast） ───────────────────── */
 
 test("可点击元素键盘可达：Tab 聚焦显示焦点环（2px 内缩）", async ({ page }) => {
-  await page.locator(".conv-ta").blur().catch(() => {});
+  await page.locator("body").click({ position: { x: 2, y: 2 } });
   await page.keyboard.press("Tab");
   const ring = await page.evaluate(() => {
     const el = document.activeElement as HTMLElement | null;
