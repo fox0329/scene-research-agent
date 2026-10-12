@@ -349,4 +349,14 @@ if (!app.requestSingleInstanceLock()) {
     if (process.platform !== "darwin") app.quit();
   });
   app.on("will-quit", stopServer);
+
+  /* 主进程被信号杀掉时也要收掉服务端，否则会留下孤儿进程占着端口。
+     真实踩过：用 SIGTERM 关掉应用后，内嵌服务端仍在后台跑（父进程没了它不会自己退）。 */
+  for (const signal of ["SIGTERM", "SIGINT"] as const) {
+    process.on(signal, () => {
+      stopServer();
+      app.quit();
+    });
+  }
+  process.on("exit", stopServer);
 }
