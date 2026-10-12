@@ -220,11 +220,21 @@ mkdirSync(runtimeDir, { recursive: true });
    为什么不在原地 deploy：pnpm deploy 对"工作区内的目标路径"解析会受 cwd 影响，
    曾把产物歪写到 apps/server/apps/desktop/...（真实发生过），先用临时目录隔离掉这类风险。 */
 const deployTmp = mkdtempSync(join(tmpRoot, "scene-deploy-"));
+/* Windows：pnpm 是 .cmd，node 直接 execFile 会 EINVAL，必须经 shell；而 shell 模式下参数不做转义，
+   临时目录里一旦有空格（Windows 用户名常见）就会被拆开，所以自己加引号。 */
+const isWin = process.platform === "win32";
 try {
   execFileSync(
-    "pnpm",
-    ["--filter", "@scene/server", "deploy", "--prod", "--node-linker=hoisted", deployTmp],
-    { cwd: repo, stdio: ["ignore", "ignore", "inherit"] },
+    isWin ? "pnpm.cmd" : "pnpm",
+    [
+      "--filter",
+      "@scene/server",
+      "deploy",
+      "--prod",
+      "--node-linker=hoisted",
+      isWin ? `"${deployTmp}"` : deployTmp,
+    ],
+    { cwd: repo, stdio: ["ignore", "ignore", "inherit"], shell: isWin },
   );
   safeRm(serverOut, "清理旧运行时");
   cpSync(deployTmp, serverOut, { recursive: true });

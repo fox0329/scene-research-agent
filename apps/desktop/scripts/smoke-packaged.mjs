@@ -9,40 +9,20 @@
  * 用法：node apps/desktop/scripts/smoke-packaged.mjs
  */
 
-import { existsSync, readdirSync, statSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { execFileSync } from "node:child_process";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { findPackagedApp, releaseDir } from "./find-packaged-app.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const desktopDir = resolve(here, "..");
-const releaseDir = join(desktopDir, "release");
 
 if (!existsSync(releaseDir)) {
   console.error("没有 release 目录，先跑：pnpm --filter @scene/desktop run pack:dir");
   process.exit(1);
 }
 
-/** 在 release 下找到未压缩的应用可执行文件（平台各异） */
-function findApp() {
-  const dirs = readdirSync(releaseDir).filter((n) => statSync(join(releaseDir, n)).isDirectory());
-  for (const d of dirs) {
-    if (process.platform === "darwin" && d.startsWith("mac")) {
-      const appDir = readdirSync(join(releaseDir, d)).find((n) => n.endsWith(".app"));
-      if (!appDir) continue;
-      const binName = appDir.replace(/\.app$/u, "");
-      const bin = join(releaseDir, d, appDir, "Contents", "MacOS", binName);
-      if (existsSync(bin)) return bin;
-    }
-    if (process.platform === "win32" && d === "win-unpacked") {
-      const exe = readdirSync(join(releaseDir, d)).find((n) => n.endsWith(".exe"));
-      if (exe) return join(releaseDir, d, exe);
-    }
-  }
-  return null;
-}
-
-const bin = findApp();
+const bin = findPackagedApp();
 if (!bin) {
   console.error(`在 ${releaseDir} 里没找到打包后的可执行文件`);
   process.exit(1);

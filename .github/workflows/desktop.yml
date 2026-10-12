@@ -56,8 +56,10 @@ jobs:
       - name: 全量构建（契约/领域/基础设施/服务端/前端）
         run: pnpm build
 
+      # 不用 `pnpm test`：它前置的 clean:stray 依赖 GNU find，Windows runner 上没有。
+      # CI 是干净检出，本来就没有杂散编译产物，直接跑 vitest 等价。
       - name: 单测（构建产物与契约的回归）
-        run: pnpm test
+        run: pnpm exec vitest run
 
       - name: 装配桌面版运行时（含按 Electron ABI 重建 better-sqlite3）
         run: node apps/desktop/scripts/prepare-server.mjs --arch=${{ matrix.arch }}
@@ -65,10 +67,11 @@ jobs:
       - name: 桌面壳冒烟（真启动应用 + 真拉本地服务）
         run: node apps/desktop/scripts/smoke.mjs
 
-      - name: 先出未压缩应用目录并对**打包产物**跑冒烟
+      - name: 先出未压缩应用目录，并对**打包产物**跑冒烟 + 验「应用内配置模型」
         run: |
           pnpm --filter @scene/desktop run pack:dir
           node apps/desktop/scripts/smoke-packaged.mjs
+          node apps/desktop/scripts/verify-settings.mjs
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
 

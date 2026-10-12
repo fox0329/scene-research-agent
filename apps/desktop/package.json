@@ -16,7 +16,8 @@
     "smoke:packaged": "node scripts/smoke-packaged.mjs",
     "pack:mac:arm64": "node scripts/prepare-server.mjs --arch=arm64 && node scripts/build.mjs && electron-builder --mac --arm64",
     "pack:mac:x64": "node scripts/prepare-server.mjs --arch=x64 && node scripts/build.mjs && electron-builder --mac --x64",
-    "pack:win:x64": "node scripts/prepare-server.mjs --arch=x64 && node scripts/build.mjs && electron-builder --win --x64"
+    "pack:win:x64": "node scripts/prepare-server.mjs --arch=x64 && node scripts/build.mjs && electron-builder --win --x64",
+    "verify:settings": "node scripts/verify-settings.mjs"
   },
   "devDependencies": {
     "electron": "^36.9.5",
