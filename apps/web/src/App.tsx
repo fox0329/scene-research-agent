@@ -177,12 +177,31 @@ const AppShell: React.FC = () => {
     }
   }, []);
 
+  /**
+   * 传给孩子视图的回调必须**身份稳定**（变更表 #181）
+   *
+   * 原来这两处是内联箭头（`() => void refreshProjects()…` / `() => void handleNewProject()`），
+   * 每次 App 渲染都换身份 → `ProjectView` 里 `handleDataChanged` 的 useCallback 失效 →
+   * `RealStagePanel` 的 `handleCellChange` 失效 → 快照 memo 每渲染重算 →
+   * 快照回报 effect 每渲染调 `setStageSnapshot` → App 重渲染……实测点一次「理解商业」，
+   * 阶段面板渲染 **8794 次 / 4 秒**、刷 84 条 `Maximum update depth exceeded`
+   * （真死循环：白烧 CPU、制造抖动，而且完全不报错、只表现为"卡"）。
+   */
+  const handleProjectsChanged = useCallback(() => {
+    void refreshProjects().catch(() => {});
+  }, [refreshProjects]);
+
   /** 新建项目：只问名称（演示模式保持占位入口） */
   const handleNewProject = useCallback(async () => {
     if (!live) return;
     setCreateError(null);
     setNewScenarioOpen(true);
   }, [live]);
+
+  /** `handleNewProject` 的稳定包装：见上面「回调必须身份稳定」 */
+  const handleNewProjectForView = useCallback(() => {
+    void handleNewProject();
+  }, [handleNewProject]);
 
   /**
    * 提交名称 → 建项目 → 直接打开独立的「场景定义」对话页
@@ -316,8 +335,8 @@ const AppShell: React.FC = () => {
             project={activeProject}
             live={live}
             hasProjects={shownProjects.length > 0}
-            onProjectsChanged={() => void refreshProjects().catch(() => {})}
-            onNewProject={() => void handleNewProject()}
+            onProjectsChanged={handleProjectsChanged}
+            onNewProject={handleNewProjectForView}
             onStageSnapshot={setStageSnapshot}
             definitionRefresh={definitionRefresh}
           />

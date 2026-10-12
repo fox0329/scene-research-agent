@@ -5,7 +5,7 @@
  * 组件按 status 渲染 加载骨架 / 数据 / 空态 / 错误+重试。
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 export type AsyncStatus = "loading" | "ok" | "error";
 
@@ -82,5 +82,15 @@ export function useAsync<T>(
 
   const reload = useCallback(() => setTick((t) => t + 1), []);
 
-  return { ...state, reload };
+  /**
+   * 返回值必须**保持身份稳定**（变更表 #181）
+   *
+   * 调用方普遍把这个对象写进 `useCallback`/`useMemo` 的依赖（`ProjectView` 的
+   * `handleDataChanged` 依赖 `stale` 对象、`RealStagePanel` 的 `handleCellChange`
+   * 依赖 `onChanged`、快照 memo 又依赖 `handleCellChange`）。原来每次渲染都
+   * `return { ...state, reload }` 新建对象，依赖链整体失效 → 快照 effect 每次渲染都
+   * 回报父级 `setStageSnapshot` → 父级重渲染 → 再回报……实测点「理解商业」刷出
+   * 68 条 `Maximum update depth exceeded`（真死循环，白烧 CPU 并制造抖动）。
+   */
+  return useMemo(() => ({ ...state, reload }), [state, reload]);
 }
