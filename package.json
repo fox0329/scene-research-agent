@@ -17,7 +17,7 @@
   "scripts": {
     "dsh:start": "bash scripts/start.sh",
     "dsh:stop": "bash scripts/stop.sh",
-    "dsh:status": "curl -s -o /dev/null -w 'HTTP %{http_code}\\n' --max-time 3 http://127.0.0.1:3081/ || echo '未运行'",
+    "dsh:status": "curl -s -o /dev/null -w 'HTTP %{http_code}\\n' --max-time 3 http://127.0.0.1:46171/ || echo '未运行'",
     "dsh:logs": "tail -f .dsh/dsh-web.log",
     "typecheck": "pnpm run typecheck:packages && node scripts/copy-infra-sql.mjs && tsc -b apps/server apps/web",
     "build": "pnpm -r --if-present run build",
@@ -39,6 +39,17 @@
     "typecheck:packages": "tsc --noEmit -p tsconfig.json",
     "migrate:info-model": "node scripts/copy-infra-sql.mjs && node scripts/migrate-info-model.mjs",
     "clean": "rm -rf packages/*/dist apps/*/dist *.tsbuildinfo packages/*/*.tsbuildinfo apps/*/*.tsbuildinfo && pnpm run clean:stray",
-    "verify:m6": "bash scripts/verify-m5.sh"
+    "verify:m6": "bash scripts/verify-m5.sh",
+    "desktop:runtime": "node apps/desktop/scripts/prepare-server.mjs",
+    "desktop:dev": "pnpm --filter @scene/desktop run start",
+    "desktop:pack:mac": "pnpm --filter @scene/desktop run pack:mac",
+    "desktop:pack:win": "pnpm --filter @scene/desktop run pack:win"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "better-sqlite3",
+      "electron",
+      "esbuild"
+    ]
   }
 }

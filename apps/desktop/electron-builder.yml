@@ -1,0 +1,67 @@
+# 场景通 桌面版打包配置（electron-builder）
+#
+# 分发口径（用户定调 2026-10-12）：**免签名**，通过 GitHub Release / 百度网盘给其他人用。
+# 所以这里刻意不配证书：mac 不签名（首次要右键→打开，或 xattr 去隔离属性），
+# win 不签名（SmartScreen 会提示「仍要运行」）——两条用户侧说明见 docs/桌面版使用说明.md。
+#
+# 运行时（服务端 + 前端产物）走 extraResources 放在 asar 之外：
+# 服务端是被 Electron 当 Node 直接执行的，且 better-sqlite3 是原生模块，
+# 放进 asar 里加载会失败。
+
+appId: com.qoder.scenetong
+productName: 场景通
+copyright: 场景通
+
+directories:
+  output: release
+  buildResources: build
+
+files:
+  - dist/**/*
+  - package.json
+  - runtime/**/*
+
+# 运行时走 asar + asarUnpack（而不是 extraResources）。
+# 为什么：electron-builder 会对「它识别为依赖」的 node_modules 做智能裁剪，用 extraResources
+# 放运行时会被裁掉 node_modules，包出得来、一跑就报 Cannot find package '@scene/infra'（真实踩过）。
+# 放进 files 再 asarUnpack，等于告诉它"这些是应用自身文件"，原样落到 app.asar.unpacked/ 下；
+# 服务端由 Electron 当 Node 执行，必须是真实文件，不能在 asar 里，所以整棵 runtime 都要 unpack。
+asarUnpack:
+  - runtime/**/*
+
+# 产物命名：中文名便于网盘分发时一眼认出来
+artifactName: 场景通-${version}-${arch}.${ext}
+
+mac:
+  category: public.app-category.productivity
+  icon: build/icon.png
+  identity: null # 免签名：显式置空，避免 electron-builder 去找钥匙串里的证书
+  hardenedRuntime: false
+  gatekeeperAssess: false
+  # 不写死架构：默认打宿主架构；要交叉打就在命令上显式给 --arm64 / --x64。
+  # 原因：运行时里的 better-sqlite3 是**架构相关**的，一个运行时只能配一个架构的安装包。
+  target:
+    - target: dmg
+
+dmg:
+  title: 场景通 ${version}
+  artifactName: 场景通-${version}-mac-${arch}.${ext}
+
+win:
+  icon: build/icon.png
+  target:
+    - target: nsis
+    - target: portable
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: 场景通
+  artifactName: 场景通-${version}-win-${arch}-安装版.${ext}
+
+# 免安装版（绿色包，网盘分发友好）
+portable:
+  artifactName: 场景通-${version}-win-${arch}-免安装版.${ext}

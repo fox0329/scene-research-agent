@@ -1,0 +1,106 @@
+# 桌面版构建（GitHub Actions）：mac / win 各自机器上出包，附到 Release
+#
+# 为什么必须在各自平台构建、而不是在 mac 上一把出两个平台：
+#   electron-builder 在 mac 上出 Windows 包要借 Wine 一类工具链，装出来的东西自己没法验；
+#   这里用矩阵各自构建，并且**每个平台都跑一遍桌面壳冒烟**（真启动应用、真拉本地服务），
+#   不是"打完包就算完"。
+#
+# 触发：推 tag（v*）→ 出包并创建/更新 Release；也可手动 workflow_dispatch 只留 artifacts。
+name: desktop
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # 每个架构必须在自己的机器上构建并冒烟：
+          # 运行时里的 better-sqlite3 是**架构相关**的，在 arm64 上交叉打出 x64 包，
+          # 塞进去的仍是 arm64 原生模块，用户一跑就崩（2026-10-12 真实踩过）。
+          - os: macos-14 # Apple Silicon
+            target: mac
+            arch: arm64
+          - os: macos-13 # Intel
+            target: mac
+            arch: x64
+          - os: windows-latest
+            target: win
+            arch: x64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      # better-sqlite3 是原生模块，Windows 上要从源码编译（runner 自带 VS Build Tools），
+      # mac 上自带 Xcode CLT；这里显式装好 python-setuptools 让 node-gyp 稳一点。
+      - name: 安装依赖
+        run: pnpm install --frozen-lockfile
+
+      - name: 全量构建（契约/领域/基础设施/服务端/前端）
+        run: pnpm build
+
+      - name: 单测（构建产物与契约的回归）
+        run: pnpm test
+
+      - name: 装配桌面版运行时（含按 Electron ABI 重建 better-sqlite3）
+        run: node apps/desktop/scripts/prepare-server.mjs --arch=${{ matrix.arch }}
+
+      - name: 桌面壳冒烟（真启动应用 + 真拉本地服务）
+        run: node apps/desktop/scripts/smoke.mjs
+
+      - name: 先出未压缩应用目录并对**打包产物**跑冒烟
+        run: |
+          pnpm --filter @scene/desktop run pack:dir
+          node apps/desktop/scripts/smoke-packaged.mjs
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
+      - name: 打包
+        run: pnpm --filter @scene/desktop run pack:${{ matrix.target }}:${{ matrix.arch }}
+        env:
+          # 免签名：不让 electron-builder 去找证书，也就不会因缺证书失败
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
+      - name: 上传产物（构建记录里可下载）
+        uses: actions/upload-artifact@v4
+        with:
+          name: 场景通-${{ matrix.target }}-${{ matrix.arch }}-${{ github.run_number }}
+          path: |
+            apps/desktop/release/*.dmg
+            apps/desktop/release/*.exe
+          if-no-files-found: error
+
+      - name: 附到 Release（仅打 tag 时）
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            apps/desktop/release/*.dmg
+            apps/desktop/release/*.exe
+          draft: false
+          body: |
+            场景通桌面版（免签名安装包）
+
+            - macOS：`场景通-*-mac-arm64.dmg`（Apple 芯片）/ `场景通-*-mac-x64.dmg`（Intel）
+              首次打开请**右键 →「打开」**；若被拦，执行 `xattr -dr com.apple.quarantine /Applications/场景通.app`
+            - Windows：`…-win-x64-安装版.exe`（安装）或 `…-win-x64-免安装版.exe`（绿色）
+              SmartScreen 提示时点「更多信息 → 仍要运行」
+
+            数据都在你自己的电脑上（应用数据目录），模型端点与密钥在应用内「设置」里配置。

@@ -41,3 +41,12 @@ dist/
 
 # 模型原始输出留证（解析失败必存；排查用，不进版本库）
 data/raw-output/
+
+# 桌面版：Electron 运行时装配产物（pnpm deploy + 原生模块重建，属生成物）
+apps/desktop/runtime/
+# 桌面版：electron-builder 从 build/icon.png 生成的平台图标
+apps/desktop/build/icon.icns
+apps/desktop/build/icon.ico
+apps/desktop/build/icons/
+# 桌面版：electron-builder 输出的安装包/未压缩应用（100MB+，分发走 Release/网盘）
+apps/desktop/release/
