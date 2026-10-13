@@ -205,7 +205,9 @@ async function startServer(): Promise<void> {
     EXPORT_DIR: paths.exports,
     WEB_DIST: webDist,
     NODE_ENV: "production",
-    LOG_LEVEL: "warn",
+    /* info（不是 warn）：桌面版排障只能靠这份日志。warn 级别下连"请求进来没有"
+       都看不出来——用户报「点了没反应」时无从判断请求是否到达（故障 #64 的教训）。 */
+    LOG_LEVEL: "info",
   };
   /* 只由本进程决定密钥来源：外面环境里若碰巧有同名变量，不能让服务端拿到一把错的主密钥
      （那会把登记表写成解不开的密文），所以没有就删掉。 */

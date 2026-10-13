@@ -89,6 +89,21 @@ export function useStageAnalysis(opts: {
     setStreamLines(["已发起本步分析…"]);
     void (async () => {
       let terminal = false;
+      /**
+       * 本地运行态的硬兜底
+       *
+       * 连接层最坏情况是 130 秒看门狗 ×3（首次 + 2 次续连）≈ 6.5 分钟；超过 15 分钟
+       * 还在「分析中」必然是别处出了问题。用户实测（故障 #64）：分析早已跑完、库里
+       * 33 行都在，按钮却一直显示「分析中」，等到的人只能反复刷新——有了这条兜底，
+       * 界面自己会收口并提示，不必等用户想办法。
+       */
+      const hardStop = setTimeout(() => {
+        push("【提示】本步运行时间异常偏长，已自动对账本步数据（结果可能早已生成）");
+        onWarn?.("本步运行时间异常偏长，已自动对账；若数据已生成可直接查看");
+        runningRef.current = false;
+        setRunning(false);
+        onSettled?.();
+      }, 15 * 60_000);
       try {
         const result = await consumeAnalysisStream({
           open: (lastEventId) => {
@@ -156,10 +171,17 @@ export function useStageAnalysis(opts: {
         push(`【错误】${message}`);
         onError?.(message);
       } finally {
-        // 不管拿到没拿到终局事件都对账一次：服务端可能早已写完（连接断在收尾那段）
-        onSettled?.();
+        clearTimeout(hardStop);
+        /* 顺序要紧：先把运行态摘掉，再对账。对账里任何一步抛错都不能把按钮
+           永远钉在「分析中」（一旦钉住，start() 开头的守卫会让后续点击全部失效）。 */
         runningRef.current = false;
         setRunning(false);
+        try {
+          // 不管拿到没拿到终局事件都对账一次：服务端可能早已写完（连接断在收尾那段）
+          onSettled?.();
+        } catch {
+          /* 对账失败不影响运行态收尾 */
+        }
       }
     })();
   }, [projectId, stage, stepId, push, onDone, onSettled, onError, onWarn, openStream]);
