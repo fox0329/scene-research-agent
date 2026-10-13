@@ -228,6 +228,8 @@ export interface ApiDefinitionConsolidation {
   alignment: ApiDefinitionAlignment[];
   updated: number;
   skipped: number;
+  /** 失败原因（模型没调通／输出解析不了）：有值时界面必须显示，别让用户猜 */
+  error?: string;
   open_questions: string[];
   /**
    * 生成后三问自检结果（规则 G-R8）

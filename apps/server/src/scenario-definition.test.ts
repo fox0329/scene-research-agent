@@ -440,3 +440,102 @@ describe("scenario-definition — 路由", () => {
     expect(first.readyHint).not.toContain("待确认");
   });
 });
+
+/**
+ * 故障清单 #63：装了桌面版、聊完点「整理成定义」，表1-1 六项里五项全空、界面无任何提示。
+ *
+ * 三层原因各有回归：
+ *  ① 项名：提示词同时给了 item_key（scene_name）与中文名，模型把**键填进 item 字段**时
+ *     旧解析器只按中文名找 → 六项全判"匹配不到"丢弃；
+ *  ② 正文：思考型模型不接受强制 tool_choice（400），去掉后模型看不到 JSON Schema，
+ *     会把正文放进 `value` 而不是 `content`；
+ *  ③ 失败可见：`prompt` 出错是 **yield error 事件**不是抛异常，旧代码只收 text → 静默空白。
+ */
+describe("scenario-definition — 模型输出兼容与失败可见（故障清单 #63）", () => {
+  it("英文 item_key 填在 item 字段里也能匹配到固定项", () => {
+    const out = normalizeConsolidatedItems({
+      items: [{ item: "scene_boundary", content: "只含企业园区会议室" }],
+    });
+    expect(out.dropped).toEqual([]);
+    expect(out.rows.map((r) => r.item)).toEqual(["场景边界"]);
+  });
+
+  it("正文放在 value 字段也能收（模型没拿到 JSON Schema 时会自起字段名）", () => {
+    const out = normalizeConsolidatedItems({
+      items: [
+        { item_key: "scene_boundary", item: "场景边界", value: "只含企业园区会议室" },
+        { item: "production_object", value: "会议预约、音视频、环控" },
+      ],
+    });
+    expect(out.dropped).toEqual([]);
+    expect(out.rows.map((r) => r.content)).toEqual([
+      "只含企业园区会议室",
+      "会议预约、音视频、环控",
+    ]);
+  });
+
+  it("模型只回 error 事件时：不写表，但原因必须带出来（不许静默空白）", async () => {
+    const s = setup();
+    const failing: DshClient = {
+      createSession: vi.fn(async () => ({ sessionId: "s-err" })),
+      prompt: vi.fn(async function* (): AsyncGenerator<FollowEvent> {
+        yield {
+          type: "error",
+          message: "API 请求失败：Bad Request — Thinking mode does not support this tool_choice",
+        };
+      }),
+      cancel: vi.fn(async () => {}),
+    } as DshClient;
+    const convId = await ensureDefinitionConversation(
+      s.db,
+      mockDsh(consolidation),
+      s.db.scenarioRepo.getById(s.scenarioId)!,
+    );
+    process.env.EXPORT_DIR = mkdtempSync(join(tmpdir(), "scene-export-"));
+    const out = await consolidateDefinition(
+      s.db,
+      failing,
+      s.db.scenarioRepo.getById(s.scenarioId)!,
+      convId,
+    );
+    expect(out.usedLlm).toBe(false);
+    expect(out.error).toContain("tool_choice");
+    // 除"场景名称"（用户输入，建锚骨架时就落好）外，一项都不该被写
+    const filled = readAnchorRows(s.db, s.scenarioId).filter(
+      (r) => r.content && r.item !== "场景名称",
+    );
+    expect(filled).toHaveLength(0);
+  });
+
+  it("路由把失败原因回给界面（error 字段），不再是 200 空白", async () => {
+    const s = setup();
+    process.env.EXPORT_DIR = mkdtempSync(join(tmpdir(), "scene-export-"));
+    process.env.SCENE_PROVIDERS_FILE = join(
+      mkdtempSync(join(tmpdir(), "scene-providers-")),
+      "providers.local.json",
+    );
+    await ensureDefinitionConversation(
+      s.db,
+      mockDsh(consolidation),
+      s.db.scenarioRepo.getById(s.scenarioId)!,
+    );
+    const failingApp = createApp({
+      db: s.db,
+      hub: createSseHub(),
+      dshClient: {
+        createSession: vi.fn(async () => ({ sessionId: "s-err" })),
+        prompt: vi.fn(async function* (): AsyncGenerator<FollowEvent> {
+          yield { type: "error", message: "模型没有返回任何内容" };
+        }),
+        cancel: vi.fn(async () => {}),
+      } as DshClient,
+    });
+    const res = await failingApp.inject({
+      method: "POST",
+      url: `/api/v1/projects/${s.scenarioId}/definition/consolidate`,
+    });
+    expect(res.statusCode).toBe(200);
+    expect((res.json() as { error?: string }).error).toContain("模型没有返回任何内容");
+  });
+});
+

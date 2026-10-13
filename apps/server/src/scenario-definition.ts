@@ -275,14 +275,22 @@ function buildItemResolver(): (raw: { item_key?: unknown; item?: unknown }) => s
   const byAlias = new Map(Object.entries(ITEM_ALIASES).map(([k, v]) => [normalizeLabel(k), v]));
 
   return (raw) => {
-    const key = String(raw.item_key ?? "").trim().toLowerCase();
-    if (key && byKey.has(key)) return byKey.get(key)!;
-    const label = String(raw.item ?? "").trim();
-    if (!label) return null;
-    const norm = normalizeLabel(label);
-    if (byLabel.has(norm)) return byLabel.get(norm)!;
-    if (byAlias.has(norm)) return byAlias.get(norm)!;
+    /* 提示词里一个项同时给了 item_key（`scene_name`）和中文名（「场景名称」），
+       模型把哪个写进哪个字段都不一定。旧实现只认「item_key 字段=键、item 字段=中文名」，
+       模型一旦把键填进 item（实测 deepseek-flash 就这么干），6 项全被判"匹配不到"丢弃 →
+       表1-1 一片空白（故障清单 #63）。所以两个字段都按"键 → 中文名 → 别名"各认一遍。 */
+    for (const value of [raw.item_key, raw.item]) {
+      const v = String(value ?? "").trim();
+      if (!v) continue;
+      const lower = v.toLowerCase();
+      if (byKey.has(lower)) return byKey.get(lower)!;
+      const norm = normalizeLabel(v);
+      if (byLabel.has(norm)) return byLabel.get(norm)!;
+      if (byAlias.has(norm)) return byAlias.get(norm)!;
+    }
     // 最后兜一层：子串/超串（如「覆盖率」≈「覆盖什么」）
+    const norm = normalizeLabel(String(raw.item ?? raw.item_key ?? ""));
+    if (!norm) return null;
     for (const [n, k] of byLabel) {
       if (n && (n.includes(norm) || norm.includes(n))) return k;
     }
@@ -308,6 +316,8 @@ export function normalizeConsolidatedItems(payload: {
     item_key?: unknown;
     item?: unknown;
     content?: unknown;
+    /** 模型偶尔把正文放在 value 里（尤其没拿到 JSON Schema 时），按 content 的同义词收 */
+    value?: unknown;
     source_type?: unknown;
     source?: unknown;
   }[];
@@ -324,7 +334,7 @@ export function normalizeConsolidatedItems(payload: {
       if (name) dropped.push(name);
       continue;
     }
-    const content = String(raw.content ?? "").trim();
+    const content = String(raw.content ?? raw.value ?? "").trim();
     if (content === "" || content === "未提供") continue; // 空内容不落行（不算丢弃）
     if (rows.some((r) => r.item === byKey.get(key)!.label)) continue; // 同项去重，先到先得
     const sourceType = raw.source_type === "用户补充" ? "用户补充" : "AI推断";
@@ -389,6 +399,14 @@ export interface ConsolidateOutcome {
   dropped: string[];
   /** 模型顺手推断、按"只收用户说过的"规则丢弃的项数（不落表，但可观测） */
   inferredDropped: number;
+  /**
+   * 失败原因（模型没调通 / 输出无法解析）。
+   *
+   * 必须往上报：`prompt` 出错时是 **yield 一个 error 事件**而不是抛异常，
+   * 旧代码只收 text、把错误事件丢掉 → 表现成"点整理成定义，表1-1 一片空白、日志也没有一行"，
+   * 用户只能猜。真实故障：装了桌面版、聊完点整理，场景概述 6 项里 5 项全空（故障清单 #63）。
+   */
+  error?: string;
 }
 
 /**
@@ -424,12 +442,15 @@ export async function consolidateDefinition(
   let dropped: string[] = [];
   /** 模型顺手推断、按规则丢弃的项数（不落表，但要能看见） */
   let inferredDropped = 0;
+  /** prompt 的 error 事件（不是异常）：必须显式收，否则错误就被吞了 */
+  let error = "";
+  /** 模型流式正文（排障时要留片段，所以声明在外层） */
+  let full = "";
 
   try {
     const session: SessionHandle = await dshClient.createSession({
       title: `场景定义整理 · ${scenario.name}`,
     });
-    let full = "";
     const deadline = Date.now() + timeoutMs;
     for await (const ev of dshClient.prompt(session, {
       system: DEFINITION_SYSTEM,
@@ -445,6 +466,9 @@ export async function consolidateDefinition(
       outputContract: CONSOLIDATE_CONTRACT,
     })) {
       if (ev.type === "text") full += (ev as { type: string; text: string }).text;
+      else if (ev.type === "error") {
+        error = String((ev as { message?: string }).message ?? "模型调用失败");
+      }
       // 有界等待：模型长时间无输出就断开（break 会关闭该异步生成器），
       // 降级为"不写任何内容"——用户可再点一次，而不是让请求悬着
       if (Date.now() > deadline) break;
@@ -467,12 +491,31 @@ export async function consolidateDefinition(
       openQuestions = Array.isArray(parsed.open_questions)
         ? parsed.open_questions.map(String).slice(0, 2)
         : [];
+      error = "";
+    } else if (full.trim()) {
+      error = "模型返回的内容没有解析出表1-1（多半是输出格式不符），再点一次或换个模型试试";
+    } else if (!error) {
+      error = "模型没有返回任何内容（多半是调用没通），再点一次；仍失败请看日志或换模型";
     }
-  } catch {
-    /* 降级：不写任何内容，让用户继续聊 */
+  } catch (err: unknown) {
+    /* 不写任何内容，但**必须**留下原因 */
+    error = err instanceof Error ? err.message : String(err);
+  }
+  if (error) {
+    // 这条日志是排障入口：桌面版用户可以把 logs/server.log 直接发过来
+    console.warn(`[定义整理] 场景 ${scenario.id} 失败：${error}`);
   }
 
   const usedLlm = incoming.length > 0;
+  if (!usedLlm) {
+    /* 没产出内容时把模型原文留一段：这类"点了没反应"的问题只有原文能定位
+       （真实故障：思考型模型 400 → 静默空白，故障清单 #63）。截断保存，够定位即可。 */
+    console.warn(
+      `[定义整理] 场景 ${scenario.id} 未产出内容（解析=${error ? "失败" : "成功但无行"}）。模型原文片段：${
+        full.trim().slice(0, 400) || "（空）"
+      }`,
+    );
+  }
   // 幂等补齐骨架：整理可能发生在「锚骨架还没建」的场景上（例如直接调 consolidate），
   // 没有这一步的话「场景名称」会落成空——那是用户唯一亲手输入的项。
   ensureAnchorRows(db, scenario.id, scenario.name);
@@ -526,6 +569,7 @@ export async function consolidateDefinition(
     skipped: Math.max(0, anchorFixedRows().length - updated),
     openQuestions,
     usedLlm,
+    error: error || undefined,
     dropped,
     inferredDropped,
   };

@@ -1313,6 +1313,8 @@ function registerConversationRoutes(
       dropped: out.dropped,
       // 模型顺手推断、按"只收用户说过的"规则丢弃的项数（定义页去噪的可观测指标）
       inferred_dropped: out.inferredDropped,
+      // 失败原因：不让"点了没反应"变成哑巴（模型没调通／输出解析不了）
+      error: out.error,
       // 生成后自检结果：第 1 步也要让用户看得见"查了什么、改了什么"
       postcheck: postcheckOutcome.report,
     };

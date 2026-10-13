@@ -188,6 +188,24 @@ class DshClientImpl implements DshClient {
           body: JSON.stringify(body),
           signal: AbortSignal.any([abortController.signal, connectAbort.signal]),
         });
+      } catch (err: unknown) {
+        if (!isToolChoiceRejection(err)) throw err;
+        /* 思考型模型：去掉 tool_choice 重试一次。工具仍在，模型通常照样直接调用；
+           就算它改成正文输出 JSON，下游解析器本来就同时吃 tool_calls 与正文 JSON。
+           真实故障：用户选 deepseek-flash，定义整理 400 → 静默不写表（故障清单 #63）。 */
+        const retryBody = buildRequestBody(
+          resolved.modelId,
+          input.system,
+          input.user,
+          input.outputContract,
+          { withoutToolChoice: true },
+        );
+        response = await fetchWithLlmCheck(url, {
+          method: "POST",
+          headers,
+          body: JSON.stringify(retryBody),
+          signal: AbortSignal.any([abortController.signal, connectAbort.signal]),
+        });
       } finally {
         clearTimeout(connectTimer);
       }
@@ -302,11 +320,36 @@ class DshClientImpl implements DshClient {
 
 // ─── 请求体构建 ──────────────────────────────────────────
 
+/**
+ * 思考型模型（deepseek-flash / deepseek-reasoner / o1/o3…）不接受强制 `tool_choice`：
+ * 报 `Thinking mode does not support this tool_choice`。命中时去掉 tool_choice 重试一次。
+ */
+function isToolChoiceRejection(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return /tool_choice/i.test(msg) && /thinking|does not support/i.test(msg);
+}
+
+/**
+ * 去掉 tools/tool_choice 的那次重试，模型**看不到 JSON Schema** 了，
+ * 会自己发明字段名（实测 deepseek-flash 把正文放进 `value`，导致整表判空）。
+ * 所以把结构用文字写进提示词，让它照着输出。
+ */
+function describeOutputContract(user: string, outputContract: Record<string, unknown>): string {
+  return [
+    user,
+    "",
+    "【输出格式（必须遵守）】",
+    "不要调用任何工具，直接输出**一个 JSON 对象**（不要代码围栏、不要解释文字）。字段与类型如下：",
+    JSON.stringify(outputContract),
+  ].join("\n");
+}
+
 function buildRequestBody(
   model: string,
   system: string,
   user: string,
   outputContract: Record<string, unknown>,
+  opts?: { withoutToolChoice?: boolean },
 ): Record<string, unknown> {
   // 使用 tool_choice + tools 强制 JSON Schema 输出
   // 这比 response_format 更通用，各 provider 兼容性更好
@@ -314,7 +357,10 @@ function buildRequestBody(
 
   const messages = [
     { role: "system", content: system },
-    { role: "user", content: user },
+    {
+      role: "user",
+      content: opts?.withoutToolChoice ? describeOutputContract(user, outputContract) : user,
+    },
   ];
 
   const body: Record<string, unknown> = {
@@ -326,7 +372,7 @@ function buildRequestBody(
     max_tokens: llmMaxTokens(),
   };
 
-  if (hasSchema) {
+  if (hasSchema && !opts?.withoutToolChoice) {
     body.tools = [
       {
         type: "function",

@@ -247,6 +247,9 @@ export const ScenarioDefinitionDialog: React.FC<ScenarioDefinitionDialogProps> =
       const r = demo ? demoDefinitionConsolidation() : await api.consolidateDefinition(projectId);
       setResult(r);
       setView("result");
+      /* 整理失败要说出来：以前只收 text、把模型的 error 事件丢掉，
+         表现成"点了整理、表1-1 一片空白、也没任何提示"，用户只能猜（故障清单 #63） */
+      if (r.error) setError(`整理失败：${r.error}`);
       onConsolidated?.(r.rows);
     } catch (err: unknown) {
       setError(errText(err));

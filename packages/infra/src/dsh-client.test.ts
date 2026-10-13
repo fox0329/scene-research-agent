@@ -207,4 +207,59 @@ describe("DshClient 接口实现完整性", () => {
     const h = await client.createSession({ title: "带 preset", preset: "analysis" });
     expect(h.sessionId).toBeTruthy();
   });
+
+  /**
+   * 故障清单 #63：思考型模型（deepseek-flash / deepseek-reasoner / o1…）不接受强制 tool_choice，
+   * 报 `Thinking mode does not support this tool_choice` → 整步分析 400。旧实现直接失败，
+   * 用户表现为"点了整理成定义、表1-1 一片空白"。
+   */
+  it("思考型模型拒绝 tool_choice 时：去掉它重试一次，并把输出格式写进提示词", async () => {
+    seedRegistry();
+    const origFetch = globalThis.fetch;
+    const enc = new TextEncoder();
+    const seen: Record<string, unknown>[] = [];
+    globalThis.fetch = (async (_url: string, init: RequestInit) => {
+      const body = JSON.parse(String(init.body)) as Record<string, unknown>;
+      seen.push(body);
+      if (body["tool_choice"]) {
+        return new Response(
+          JSON.stringify({
+            error: { message: "Thinking mode does not support this tool_choice" },
+          }),
+          { status: 400, headers: { "content-type": "application/json" } },
+        );
+      }
+      const stream = new ReadableStream<Uint8Array>({
+        start(c) {
+          c.enqueue(enc.encode('data: {"choices":[{"delta":{"content":"已整理"}}]}\n\n'));
+          c.enqueue(enc.encode("data: [DONE]\n\n"));
+          c.close();
+        },
+      });
+      return new Response(stream, {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+      });
+    }) as typeof fetch;
+    try {
+      const client = createDshClient();
+      const h = await client.createSession({ title: "思考型模型" });
+      const events: FollowEvent[] = [];
+      for await (const e of client.prompt(h, {
+        system: "s",
+        user: "u",
+        outputContract: { type: "object", properties: { a: { type: "string" } } },
+      })) {
+        events.push(e);
+      }
+      expect(seen).toHaveLength(2); // 重试了一次
+      expect(seen[1]!["tool_choice"]).toBeUndefined(); // 第二次不带 tool_choice
+      // 模型看不到 Schema 了，必须把结构写进提示词，否则它会自起字段名（正文进 value）
+      expect(JSON.stringify(seen[1]!["messages"])).toContain("输出格式（必须遵守）");
+      expect(events.some((e) => e.type === "error")).toBe(false);
+      expect(events.some((e) => e.type === "text" && e.text === "已整理")).toBe(true);
+    } finally {
+      globalThis.fetch = origFetch;
+    }
+  });
 });
