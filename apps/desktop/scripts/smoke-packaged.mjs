@@ -28,6 +28,9 @@ if (!bin) {
   process.exit(1);
 }
 
+/* 先验运行时是不是刚装配的那份：electron-builder 不清 app.asar.unpacked/，
+   不验就可能出现"新壳 + 旧运行时"，而且不报错（真实踩过）。 */
+execFileSync(process.execPath, [join(here, "verify-runtime.mjs"), bin], { stdio: "inherit" });
 console.log(`对打包产物跑冒烟：${bin}\n`);
 execFileSync(process.execPath, [join(here, "smoke.mjs")], {
   stdio: "inherit",

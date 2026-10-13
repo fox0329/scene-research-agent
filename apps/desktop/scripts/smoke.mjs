@@ -18,7 +18,7 @@
 
 import { _electron as electronLauncher } from "@playwright/test";
 import electronBinary from "electron"; // 这个包的默认导出就是 Electron 可执行文件路径
-import { existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -66,18 +66,38 @@ const ok = (label, pass, detail = "") => {
 const childEnv = { ...process.env, NODE_ENV: "production" };
 delete childEnv.ELECTRON_RUN_AS_NODE;
 
+/* 启动失败时把应用自己的启动留痕打出来：窗口起不来时没有服务端日志，boot.log 是唯一线索 */
+async function dumpBootLog() {
+  const bootLog = join(userData, "boot.log");
+  if (!existsSync(bootLog)) {
+    console.error(`（没有 boot.log：应用连启动阶段都没走到，或根本没起来）`);
+    return;
+  }
+  const lines = readFileSync(bootLog, "utf8").trim().split("\n");
+  console.error(`—— boot.log 末尾 ——\n${lines.slice(-12).join("\n")}`);
+}
+
 /* 打包产物：可执行文件直接给 Playwright；开发态：给 Electron 二进制 + 应用目录参数 */
-const app = packagedApp
-  ? await electronLauncher.launch({
-      executablePath: packagedApp,
-      args: [`--user-data-dir=${userData}`],
-      env: childEnv,
-    })
-  : await electronLauncher.launch({
-      executablePath: typeof electronBinary === "string" ? electronBinary : undefined,
-      args: [desktopDir, `--user-data-dir=${userData}`],
-      env: childEnv,
-    });
+let app;
+try {
+  app = packagedApp
+    ? await electronLauncher.launch({
+        executablePath: packagedApp,
+        args: [`--user-data-dir=${userData}`],
+        env: childEnv,
+      })
+    : await electronLauncher.launch({
+        executablePath: typeof electronBinary === "string" ? electronBinary : undefined,
+        args: [desktopDir, `--user-data-dir=${userData}`],
+        env: childEnv,
+      });
+} catch (err) {
+  /* 启动就失败（窗口压根没出来）时也要把线索留下：这是最难查的一类失败 */
+  console.error(`\n应用启动失败：${err instanceof Error ? err.message.split("\n")[0] : String(err)}`);
+  await dumpBootLog();
+  rmSync(userData, { recursive: true, force: true });
+  process.exit(1);
+}
 
 try {
   const win = await app.firstWindow({ timeout: 90_000 });
@@ -114,6 +134,7 @@ try {
 
   await win.screenshot({ path: join(desktopDir, "release/smoke.png") }).catch(() => {});
 } finally {
+  if (failures.length) await dumpBootLog();
   await app.close().catch(() => {});
   rmSync(userData, { recursive: true, force: true });
 }

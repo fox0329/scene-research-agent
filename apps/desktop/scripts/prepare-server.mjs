@@ -90,6 +90,17 @@ function safeRm(target, what = "删除目录") {
   rmSync(assertInside(target, what), { recursive: true, force: true });
 }
 
+/** 列目录下所有文件（用于比较产物与源码的新旧） */
+function walk(dir) {
+  const out = [];
+  for (const e of readdirSync(dir, { withFileTypes: true })) {
+    const full = join(dir, e.name);
+    if (e.isDirectory()) out.push(...walk(full));
+    else out.push(full);
+  }
+  return out;
+}
+
 function requireArtifacts() {
   const needed = [
     ["apps/server/dist/index.js", "服务端构建产物"],
@@ -101,6 +112,27 @@ function requireArtifacts() {
     console.error("缺少构建产物，请先跑 `pnpm build`：");
     for (const [p, label] of missing) console.error(`  - ${label}：${p}`);
     process.exit(1);
+  }
+
+  /* 光"存在"不够，还要"够新"：真实踩过——改了 packages/infra 源码却忘了 build，
+     装配进运行时的还是旧 dist，表现是"代码明明改了、打出来的应用行为还是老的"，白查半天。 */
+  const stale = [];
+  for (const pkgDir of ["apps/server", "packages/contract", "packages/domain", "packages/infra"]) {
+    const srcDir = join(repo, pkgDir, "src");
+    const distDir = join(repo, pkgDir, "dist");
+    if (!existsSync(srcDir) || !existsSync(distDir)) continue;
+    /* 判据：最新的**参与构建的**源码 与 最新的产物 比。
+       为什么不用"某个固定入口文件"比：tsc 对内容没变的产物**不重写**（保留旧 mtime），
+       拿 index.js 这种没改过的聚合文件当基准会一直误报（真实踩过一次）。
+       为什么排除 *.test.ts：测试文件不参与构建，却躺在 src 下，留着也会误报。 */
+    const newestSrc = walk(srcDir)
+      .filter((f) => !/\.(test|spec)\.tsx?$/u.test(f) && !f.includes(`${sep}__tests__${sep}`))
+      .reduce((acc, f) => Math.max(acc, statSync(f).mtimeMs), 0);
+    const newestDist = walk(distDir).reduce((acc, f) => Math.max(acc, statSync(f).mtimeMs), 0);
+    if (newestSrc > newestDist) stale.push(`${pkgDir}/dist 比 src 旧`);
+  }
+  if (stale.length) {
+    fail(`构建产物不是最新的，先跑 pnpm build：\n    ${stale.join("\n    ")}`);
   }
 }
 

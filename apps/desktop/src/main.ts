@@ -22,7 +22,16 @@
 
 import { spawn, type ChildProcess } from "node:child_process";
 import { createServer } from "node:net";
-import { existsSync, mkdirSync, createWriteStream, type WriteStream } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  appendFileSync,
+  createWriteStream,
+  readFileSync,
+  writeFileSync,
+  type WriteStream,
+} from "node:fs";
+import { randomBytes } from "node:crypto";
 import { join, resolve } from "node:path";
 /* 这里刻意用 require 而不是 import：esbuild 打成 CJS 时会把 `import` 的 electron
    套上 __toESM 互操作包装，而 Electron 的模块对象是 getter 式暴露、没有可枚举自有属性，
@@ -59,6 +68,8 @@ interface Paths {
   deliverables: string;
   exports: string;
   logs: string;
+  /** 主密钥（被系统钥匙串包过一层）存放处 */
+  secrets: string;
 }
 
 let serverProc: ChildProcess | null = null;
@@ -69,6 +80,23 @@ let paths: Paths | null = null;
 let bootError: string | null = null;
 
 const isDev = !app.isPackaged;
+
+/**
+ * 启动阶段留痕：桌面版出问题时第一现场往往是"窗口起不来"，而那一刻还没有服务端日志
+ * （`logs/server.log` 是拉起服务端时才建的）。这里把关键阶段写到 `userData/boot.log`，
+ * 用户可以直接把它发过来定位。
+ */
+let bootLogPath: string | null = null;
+function stage(step: string, detail = ""): void {
+  const line = `[${new Date().toISOString()}] ${step}${detail ? ` — ${detail}` : ""}`;
+  console.log(`[desktop] ${line}`);
+  try {
+    bootLogPath ??= join(electron.app.getPath("userData"), "boot.log");
+    appendFileSync(bootLogPath, `${line}\n`);
+  } catch {
+    /* 留痕失败绝不影响启动 */
+  }
+}
 
 /** 取一个空闲端口：让系统分配，拿到号立刻释放（随后服务端绑定它） */
 function freePort(): Promise<number> {
@@ -108,11 +136,48 @@ function preparePaths(): Paths {
     deliverables: join(root, "data", "deliverables"),
     exports: join(root, "exports"),
     logs: join(root, "logs"),
+    secrets: join(root, "secrets"),
   };
-  for (const dir of [join(root, "data"), p.deliverables, p.exports, p.logs]) {
+  for (const dir of [join(root, "data"), p.deliverables, p.exports, p.logs, p.secrets]) {
     mkdirSync(dir, { recursive: true });
   }
   return p;
+}
+
+/**
+ * 取主密钥交给服务端做密钥落盘加密（变更表 #183）。
+ *
+ * 做法：随机生成 32 字节，用系统钥匙串（macOS Keychain / Windows DPAPI，走 Electron
+ * safeStorage）包一层后存到应用数据目录；服务端只拿到解开后的明文密钥（经环境变量），
+ * 拿不到钥匙串本身。这样单独把数据文件拷走是解不开密钥的。
+ *
+ * **默认不用钥匙串**（见下），钥匙串不可用时也不伪造：返回 null，服务端按明文 0600 落盘，日志留痕。
+ */
+function resolveMasterKey(root: string): string | null {
+  /* 为什么默认关：桌面版是**免签名**分发的，macOS 无法把「始终允许」稳定记住，
+     每次访问钥匙串都会弹系统授权框、**要用户输登录密码**，还会阻塞启动等在那里。
+     用户明确反馈过「能不能不要老是输密码」（变更表 #183 / 故障清单 #62）。
+     所以改成显式开启：真要"文件被拷走也解不开"的强度，就设 SCENE_KEYCHAIN_PROTECTION=1。 */
+  if (process.env.SCENE_KEYCHAIN_PROTECTION !== "1") {
+    return null;
+  }
+  /* 这一行故意留在调用之前：macOS 首次访问钥匙串会弹授权框并**阻塞**，
+     boot.log 的最后一行就是"卡在哪"的唯一线索（真实排查时正是靠它定位的）。 */
+  stage("server:请求系统钥匙串（首次会弹系统授权框，请点允许）");
+  const storage = electron.safeStorage;
+  if (!storage?.isEncryptionAvailable?.()) {
+    return null;
+  }
+  const file = join(root, "secrets", "master.key");
+  try {
+    if (existsSync(file)) return storage.decryptString(readFileSync(file));
+    const key = randomBytes(32).toString("base64");
+    writeFileSync(file, storage.encryptString(key), { mode: 0o600 });
+    return key;
+  } catch (err) {
+    serverLog?.write(`[desktop] 主密钥读写失败，本次不启用密钥加密：${String(err)}\n`);
+    return null;
+  }
 }
 
 /** 拉起服务端；返回健康检查是否通过 */
@@ -122,27 +187,41 @@ async function startServer(): Promise<void> {
   if (!existsSync(serverEntry)) {
     throw new Error(`服务端入口不存在：${serverEntry}（先跑 npm run desktop:runtime 生成运行时）`);
   }
+  stage("server:入口就绪", serverEntry);
   appPort = await freePort();
+  stage("server:选到空闲端口", String(appPort));
   serverLog = createWriteStream(join(paths.logs, "server.log"), { flags: "a" });
+
+  const secretKey = resolveMasterKey(paths.root);
+  stage("server:主密钥", secretKey ? "系统钥匙串" : "未启用（明文 0600）");
+  const childEnv: NodeJS.ProcessEnv = {
+    ...process.env,
+    // 关键：以 Node 方式运行 Electron 可执行文件，安装包因此不必自带 Node
+    ELECTRON_RUN_AS_NODE: "1",
+    APP_HOST: "127.0.0.1",
+    APP_PORT: String(appPort),
+    DB_PATH: paths.db,
+    DELIVERABLE_DIR: paths.deliverables,
+    EXPORT_DIR: paths.exports,
+    WEB_DIST: webDist,
+    NODE_ENV: "production",
+    LOG_LEVEL: "warn",
+  };
+  /* 只由本进程决定密钥来源：外面环境里若碰巧有同名变量，不能让服务端拿到一把错的主密钥
+     （那会把登记表写成解不开的密文），所以没有就删掉。 */
+  if (secretKey) childEnv.SCENE_SECRET_KEY = secretKey;
+  else delete childEnv.SCENE_SECRET_KEY;
 
   serverProc = spawn(process.execPath, [serverEntry], {
     cwd: paths.root,
-    env: {
-      ...process.env,
-      // 关键：以 Node 方式运行 Electron 可执行文件，安装包因此不必自带 Node
-      ELECTRON_RUN_AS_NODE: "1",
-      APP_HOST: "127.0.0.1",
-      APP_PORT: String(appPort),
-      DB_PATH: paths.db,
-      DELIVERABLE_DIR: paths.deliverables,
-      EXPORT_DIR: paths.exports,
-      WEB_DIST: webDist,
-      NODE_ENV: "production",
-      LOG_LEVEL: "warn",
-    },
+    env: childEnv,
     stdio: ["ignore", "pipe", "pipe"],
   });
-  serverLog.write(`[desktop] app=${app.getVersion()} entry=${serverEntry}\n[desktop] web=${webDist}\n[desktop] userData=${paths.root}\n`);
+  serverLog.write(
+    `[desktop] app=${app.getVersion()} entry=${serverEntry}\n[desktop] web=${webDist}\n[desktop] userData=${paths.root}\n` +
+      `[desktop] 密钥保护=${secretKey ? "系统钥匙串（safeStorage）" : "未启用（明文 0600）"}\n`,
+  );
+  stage("server:已拉起", `pid=${serverProc.pid ?? "-"}`);
   serverProc.stdout?.pipe(serverLog);
   serverProc.stderr?.pipe(serverLog);
   serverProc.on("exit", (code) => {
@@ -197,6 +276,7 @@ function loadingPage(): string {
       <div class="t">${APP_TITLE} 正在启动</div>
       <div class="b"><i></i></div>
       <div class="s">正在准备本地服务…</div>
+      <div class="s" style="font-size:12px;color:#a1a1aa">首次启动若弹出钥匙串／系统授权，请点「允许」</div>
     </div></body></html>`)}`;
 }
 
@@ -313,6 +393,8 @@ function registerIpc(): void {
     version: app.getVersion(),
     port: appPort,
     dataDir: paths?.root ?? "",
+    /** 密钥是否由系统钥匙串保护（排障时先看这一项） */
+    keychain: Boolean(electron.safeStorage?.isEncryptionAvailable?.()),
   }));
 }
 
@@ -328,16 +410,22 @@ if (!app.requestSingleInstanceLock()) {
   });
 
   void app.whenReady().then(async () => {
-    paths = preparePaths();
-    registerIpc();
-    buildMenu();
-    createWindow();
-    win?.loadURL(loadingPage());
     try {
+      stage("boot:whenReady");
+      paths = preparePaths();
+      stage("boot:数据目录就绪", paths.root);
+      registerIpc();
+      buildMenu();
+      createWindow();
+      stage("boot:窗口已建");
+      win?.loadURL(loadingPage());
       await startServer();
       await win?.loadURL(`http://127.0.0.1:${appPort}/`);
+      stage("boot:就绪", `http://127.0.0.1:${appPort}/`);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
+      /* 连数据目录都没建起来时也要留痕：先试着补一个日志文件再报错 */
+      stage("boot:失败", message);
       await win?.loadURL(errorPage(message));
     }
     app.on("activate", () => {

@@ -6,10 +6,13 @@
  * 存储：data/providers.local.json（不进 git，写盘 0600），可用
  * SCENE_PROVIDERS_FILE 环境变量指向其他路径（测试/CI 用）。
  * 密钥永不回显：公共面只给 has_key + key_masked。
+ * 密钥落盘保护：给了主密钥（桌面版从系统钥匙串取，见 secret-box.ts）时 api_key 加密存储，
+ * 文件被单独拷走也解不开；没给主密钥则保持明文 0600，行为与从前一致。
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
+import { decryptSecret, encryptSecret } from "./secret-box.js";
 
 // ─── 类型 ──────────────────────────────────────────────────
 
@@ -89,7 +92,12 @@ export function loadRegistry(): ProviderRegistry {
       def && typeof def.provider === "string" && typeof def.model === "string"
         ? { provider: def.provider, model: def.model }
         : null;
-    return { providers, default_model: defaultModel };
+    // 密钥解密：密文还原、历史明文原样通过（下次写入自动转密文）
+    const unlocked = providers.map((p) => ({
+      ...p,
+      api_key: decryptSecret(String(p.api_key ?? "")),
+    }));
+    return { providers: unlocked, default_model: defaultModel };
   } catch {
     return emptyRegistry();
   }
@@ -98,7 +106,11 @@ export function loadRegistry(): ProviderRegistry {
 function saveRegistry(reg: ProviderRegistry): void {
   const path = registryPath();
   mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, JSON.stringify(reg, null, 2), { encoding: "utf-8", mode: 0o600 });
+  const atRest: ProviderRegistry = {
+    ...reg,
+    providers: reg.providers.map((p) => ({ ...p, api_key: encryptSecret(p.api_key) })),
+  };
+  writeFileSync(path, JSON.stringify(atRest, null, 2), { encoding: "utf-8", mode: 0o600 });
 }
 
 // ─── 变更操作 ──────────────────────────────────────────────
