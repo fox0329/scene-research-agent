@@ -17,7 +17,7 @@
  * 必须回答的问题清单，并负责最后一轮的确定性收口。
  */
 
-import { TABLES_BY_CODE, middleColumns } from "@scene/contract";
+import { CURRENT_STATE_TABLES, TABLES_BY_CODE, middleColumns } from "@scene/contract";
 import type { InfoRow } from "./completeness.js";
 
 // ─── 类型 ────────────────────────────────────────────────
@@ -213,6 +213,54 @@ const MID_CITATION_PATTERNS: readonly RegExp[] = [
      真正的纯引用句子由 isCitationOnly 整句搬右栏，不靠这里按词删。 */
   /按\s*(?:XX|某)?(?:白皮书|报告|标准|材料)/g,
 ];
+
+/**
+ * 「这一行到底有没有**客户事实**」（现状类表专用，确定性判据）
+ *
+ * 现状类表（`CURRENT_STATE_TABLES`：表1-2、表2-7）问的是"该客户现在怎么做"。
+ * 没有客户材料时，模型只能写行业通例 + 把答案标成「未提供（本客户材料未含）」，
+ * 整表读起来就像没填（用户实测："交付与运维现状 表格为什么没填？"）。
+ * 用户定调：这种行不该入库，直接提示"需要先补材料"。
+ *
+ * 判据只看**值列**（首列是"项/环节"，是问题本身，不算事实）：值列整格只是在说
+ * "材料里没有"（未提供／无材料／材料未含／暂无…）时，这一行就没有客户事实。
+ */
+const NO_FACT_VALUE =
+  /^(?:未提供|未给出|未说明|未获取|未查到|未见|无材料|材料未含|暂无|待补|不详|未知|无)$/;
+
+/** 去掉括注、空白与标点后的"可见正文"（用于判断这格有没有实质内容） */
+function visibleText(value: unknown): string {
+  return String(value ?? "")
+    .replace(/[（(][^）)]*[)）]/g, "")
+    .replace(/[\s，,。.、；;：:!？?—\-"'「」【】]/g, "");
+}
+
+/** 这一行有没有客户事实（非现状类表一律视为有，不参与此判据） */
+export function hasCustomerFacts(tableCode: string, row: InfoRow): boolean {
+  if (!isCurrentStateTable(tableCode)) return true;
+  const def = TABLES_BY_CODE[tableCode];
+  if (!def) return true;
+  const mids = middleColumns(def);
+  /* 首列是"项/环节"（问题本身），后面的才是答案；只有一列时退化为看它自己 */
+  const valueCols = mids.length > 1 ? mids.slice(1) : mids;
+  if (valueCols.length === 0) return true;
+  const filled = valueCols.map((c) => visibleText(row[c.key])).filter((x) => x !== "");
+  /* **字段空着 ≠ 材料里没有**：空值属于"没写全"，归完整性检查管；
+     只有模型明确声明了"材料里没有"（未提供／材料未含…）才判定缺客户事实。 */
+  if (filled.length === 0) return true;
+  return filled.some((text) => !NO_FACT_VALUE.test(text));
+}
+
+function isCurrentStateTable(code: string): boolean {
+  return (CURRENT_STATE_TABLES as readonly string[]).includes(code);
+}
+
+/** 一句话说明这张表缺什么材料（给界面提示用） */
+export function missingMaterialHint(tableCode: string): string {
+  const def = TABLES_BY_CODE[tableCode];
+  const name = def ? `${tableCode} ${def.name}` : tableCode;
+  return `${name}：需要先补客户材料（这张表问的是"该客户现在怎么做"，材料里没有就只能拿行业通例占位，所以本次没有生成）`;
+}
 
 /** 句子切分：按中文句读切开，逐句判断是"纯引用"还是"正文夹带引用" */
 function splitSentences(text: string): string[] {

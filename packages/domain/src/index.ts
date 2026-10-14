@@ -242,6 +242,8 @@ export {
   splitMidCitations,
   hasMidCitation,
   hasCustomerBaseline,
+  hasCustomerFacts,
+  missingMaterialHint,
   MID_CELL_MAX_CHARS,
 } from "./postcheck.js";
 export type {

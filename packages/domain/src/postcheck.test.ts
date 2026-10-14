@@ -6,6 +6,7 @@ import {
   enforceTruthfulDowngrade,
   enforceMidCleanliness,
   splitMidCitations,
+  hasCustomerFacts,
   hasMidCitation,
   MID_CELL_MAX_CHARS,
   summarizePostcheck,
@@ -626,5 +627,47 @@ describe("中栏引用清理 — 不许把缺材料的说明啃成病句（故�
     const out = splitMidCitations("会议平板故障率偏高。来源：ingest-3.pdf:12");
     expect(out.cleaned).not.toContain("ingest-3.pdf");
     expect(out.moved.join(" ")).toContain("ingest-3.pdf:12");
+  });
+});
+
+/**
+ * 现状类表（表1-2 / 表2-7）缺客户材料时的判据
+ *
+ * 用户定调 2026-10-14：「干脆不生成，直接提示需要先补材料」——没有客户材料时，
+ * 模型只能写行业通例 + 把答案标成「未提供（本客户材料未含）」，整表读起来像没填。
+ */
+describe("hasCustomerFacts — 现状类表有没有客户事实（确定性判据）", () => {
+  it("表2-7 答案整格是「未提供（本客户材料未含）」→ 没有客户事实", () => {
+    expect(
+      hasCustomerFacts("表2-7", {
+        item: "会议室设备与系统运维责任方",
+        status: "未提供（本客户材料未含）",
+      }),
+    ).toBe(false);
+  });
+
+  it("表2-7 写了真实现状 → 有客户事实", () => {
+    expect(
+      hasCustomerFacts("表2-7", {
+        item: "会议室设备与系统运维责任方",
+        status: "行政部兼管，音视频设备由集成商季度巡检",
+      }),
+    ).toBe(true);
+  });
+
+  it("表1-2 值列全是「材料里没有」→ 没有客户事实", () => {
+    expect(
+      hasCustomerFacts("表1-2", { link: "会议室预订", owner_now: "未提供", current_tool: "材料未含" }),
+    ).toBe(false);
+  });
+
+  it("字段空着不算「缺客户事实」（空值归完整性检查管，不许误删）", () => {
+    expect(hasCustomerFacts("表2-7", { item: "现状项" })).toBe(true);
+    expect(hasCustomerFacts("表1-2", { link: "视频监控", can_touch: "可以碰" })).toBe(true);
+  });
+
+  it("非现状类表不参与此判据（一律视为有事实，避免误删）", () => {
+    expect(hasCustomerFacts("表2-5", { constraint_item: "消防", required_value: "未提供" })).toBe(true);
+    expect(hasCustomerFacts("表2-3", { layer: "感知层", components: "未提供" })).toBe(true);
   });
 });

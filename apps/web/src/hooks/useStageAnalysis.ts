@@ -39,8 +39,10 @@ export function useStageAnalysis(opts: {
    *
    * `info.tablesFailed` = 按表并发生成时没成功的那几张表（服务端会保留它们的原有内容）——
    * 界面必须说出来，不能让用户以为"全好了"。
+   * `info.tablesNeedMaterial` = 现状类表（表1-2 / 表2-7）因为**没有客户材料**而没生成的数量——
+   * 这不是失败，是要用户先补材料（用户定调 2026-10-14：干脆不生成，直接提示需要先补材料）。
    */
-  onDone?: (info?: { tablesFailed?: string[] }) => void;
+  onDone?: (info?: { tablesFailed?: string[]; tablesNeedMaterial?: string[] }) => void;
   /**
    * 本次运行**结束**（正常完成 / 出错 / 连接续连失败）后回调一次
    *
@@ -145,12 +147,23 @@ export function useStageAnalysis(opts: {
               const tablesFailed = Array.isArray(ev.tablesFailed)
                 ? (ev.tablesFailed as string[])
                 : [];
-              push(
+              const tablesNeedMaterial = Array.isArray(ev.tablesNeedMaterial)
+                ? (ev.tablesNeedMaterial as string[])
+                : [];
+              const notes = [
                 tablesFailed.length > 0
-                  ? `【完成】分析结果已落库；${tablesFailed.join("、")} 未生成成功（沿用原有内容）`
+                  ? `${tablesFailed.join("、")} 未生成成功（沿用原有内容）`
+                  : "",
+                tablesNeedMaterial.length > 0
+                  ? `${tablesNeedMaterial.join("、")} 需要先补客户材料（现状类表，本次未生成）`
+                  : "",
+              ].filter((x) => x !== "");
+              push(
+                notes.length > 0
+                  ? `【完成】分析结果已落库；${notes.join("；")}`
                   : "【完成】分析结果已落库",
               );
-              onDone?.({ tablesFailed });
+              onDone?.({ tablesFailed, tablesNeedMaterial });
             }
           },
           onReconnect: (reason) => {

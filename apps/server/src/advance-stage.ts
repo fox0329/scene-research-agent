@@ -48,6 +48,7 @@ import {
   validateIncomingRows,
 } from "@scene/domain";
 import type { InfoRow, PostcheckFinding, PostcheckReport, RowViolation } from "@scene/domain";
+import { hasCustomerFacts, missingMaterialHint } from "@scene/domain";
 import { buildStagePrompt, getStageOutputContract } from "./stage-prompts.js";
 import { scenarioLineContext } from "./scenario-lines.js";
 import { runScenarioClarify, clarifyAbortEvent } from "./scenario-clarify.js";
@@ -567,6 +568,8 @@ async function* executeAdvanceStage(
   const results = new Map<string, TableGenResult>();
   /** 本步已产出的行，按表号键：喂给依赖它的下游表（口径一致） */
   const producedRows: Record<string, unknown[]> = {};
+  /* 现状类表缺客户材料 → 不生成占位，改为提示"需要先补材料"（用户定调 2026-10-14） */
+  const needMaterial = new Map<string, string>();
 
   // 并发任务不能 yield，进度事件先进队列，由主循环统一编号后发出（保持 id 单调，续传才准）
   const queue: FollowEvent[] = [];
@@ -636,6 +639,19 @@ async function* executeAdvanceStage(
                 });
               }
             }
+            /* 现状类表（表1-2 / 表2-7）：整表都是"材料里没有"时**不生成占位**，
+               直接告诉用户"需要先补客户材料"——比堆一整表"未提供 + 行业通例"有用
+               （用户定调 2026-10-14：干脆不生成，直接提示需要先补材料） */
+            if (
+              effective.rows.length > 0 &&
+              !effective.rows.some((r) => hasCustomerFacts(effective.code, r.fields as InfoRow))
+            ) {
+              const hint = missingMaterialHint(effective.code);
+              needMaterial.set(effective.code, hint);
+              push({ type: "progress", stage, message: `📋 ${hint}` });
+              effective = { code: effective.code, rows: [], chars: effective.chars };
+            }
+
             results.set(code, effective);
             if (effective.rows.length > 0) {
               producedRows[code] = effective.rows.map((r) => ({ ...r.fields, source: r.source }));
@@ -704,7 +720,8 @@ async function* executeAdvanceStage(
   const tableResults = coveredCodes
     .map((code) => results.get(code))
     .filter((r): r is TableGenResult => Boolean(r));
-  const failedTables = tableResults.filter((r) => r.rows.length === 0);
+  /* 缺客户材料的现状类表**不算失败**：它是有意不生成，走 tablesNeedMaterial 提示 */
+  const failedTables = tableResults.filter((r) => r.rows.length === 0 && !needMaterial.has(r.code));
   const dshOutput: DshStageOutput = { rows: tableResults.flatMap((r) => r.rows) };
   const failureNote = failedTables.map((r) => r.error ?? `${r.code} 未产出`).join("；");
 
@@ -717,6 +734,22 @@ async function* executeAdvanceStage(
    * 现在先判定产出，再决定动不动旧数据；按表并发后失败粒度到表，只有全军覆没才整步报错。
    */
   if (dshOutput.rows.length === 0) {
+    /* 本步只有"缺客户材料的现状类表"时不是失败：照常收尾并提示补材料（用户定调 2026-10-14） */
+    if (failedTables.length === 0 && needMaterial.size > 0) {
+      yield emit({
+        type: "progress",
+        stage,
+        message: `本步没有可写内容：${[...needMaterial.values()].join("；")}`,
+      });
+      /* 不推进阶段：本步什么都没写，让用户补完材料再重算本步 */
+      yield emit({
+        type: "done",
+        stage,
+        rowsWritten: 0,
+        tablesNeedMaterial: [...needMaterial.keys()],
+      });
+      return;
+    }
     yield emit({
       type: "error",
       message: `模型这次没有产出可解析的表格数据（未写入任何内容，本步原有数据已保留）——可直接重试${
@@ -962,6 +995,7 @@ async function* executeAdvanceStage(
     stage,
     rowsWritten: writtenRows.length,
     ...(failedTables.length > 0 ? { tablesFailed: failedTables.map((r) => r.code) } : {}),
+    ...(needMaterial.size > 0 ? { tablesNeedMaterial: [...needMaterial.keys()] } : {}),
   });
 }
 

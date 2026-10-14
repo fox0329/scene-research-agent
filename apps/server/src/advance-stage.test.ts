@@ -1275,3 +1275,50 @@ describe("json-extract — 逐行抢救（故障清单 #65）", () => {
     expect(extractRowsBestEffort("模型今天不想干活")).toBeNull();
   });
 });
+
+describe("现状类表缺客户材料：不生成占位，改提示需要先补材料", () => {
+  let db2: DbInstance;
+  let dsh2: DshClient;
+  beforeEach(() => {
+    db2 = createMockDb({ scenario: { current_stage: 1 } });
+  });
+
+  it("表2-7 整表都是「材料里没有」→ 不写库，done 里报 tablesNeedMaterial", async () => {
+    const sample = makeStage1DshOutput();
+    dsh2 = {
+      createSession: vi.fn(async () => ({ sessionId: "mock-need-material" })),
+      prompt: vi.fn(async function* (
+        _h: unknown,
+        input: { outputContract: Record<string, unknown> },
+      ): AsyncGenerator<FollowEvent> {
+        const allowed = allowedTablesOf(input.outputContract);
+        /* 样例里本来没有表2-7 的行，这里补一条"答案整格都是材料里没有"的现状类行 */
+        const rows = [
+          ...sample.rows.filter((r) => allowed.includes(String(r["table_code"]))),
+          ...(allowed.includes("表2-7")
+            ? [
+                {
+                  table_code: "表2-7",
+                  fields: { item: "会议室设备与系统运维责任方", status: "未提供（本客户材料未含）" },
+                  source: "行业通例（模型知识）",
+                },
+              ]
+            : []),
+        ];
+        yield { type: "text", text: JSON.stringify({ rows }) };
+        yield { type: "done" };
+      }),
+      cancel: vi.fn(async () => {}),
+    } as unknown as DshClient;
+
+    const events = await collectEvents(
+      createAdvanceStageCommand({ db: db2, dshClient: dsh2 }).execute({ scenarioId: "sc-1", stage: 1 }),
+    );
+    const done = events.find((e) => e.type === "done") as { tablesNeedMaterial?: string[]; tablesFailed?: string[] };
+    expect(done.tablesNeedMaterial).toContain("表2-7");
+    // 缺材料不是失败：不许混进 tablesFailed（否则界面会说"未生成成功、沿用原有内容"，口径不对）
+    expect(done.tablesFailed ?? []).not.toContain("表2-7");
+    const progress = events.filter((e) => e.type === "progress").map((e) => String(e.message));
+    expect(progress.some((m) => m.includes("需要先补客户材料"))).toBe(true);
+  });
+});

@@ -232,16 +232,18 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
     // done 只是"更快知道成功了"：真正决定界面收敛的是下面的 onSettled
     onDone: (info) => {
       const failed = info?.tablesFailed ?? [];
-      // 只有部分失败才挂常驻提示（全部成功就清掉旧提示）：失败的表沿用了原有内容，
-      // 用户需要知道"这一步没全成"，否则会以为看到的是最新结果
-      setAnalysisNotice(
+      const needMaterial = info?.tablesNeedMaterial ?? [];
+      /* 两类提示分开说：失败 = 这次没成（沿用旧内容）；需要补材料 = 现状类表没有客户材料，
+         不是失败，是让用户先补材料（用户定调 2026-10-14：干脆不生成，直接提示需要先补材料） */
+      const parts = [
         failed.length > 0
-          ? {
-              kind: "warning",
-              text: `${failed.join("、")} 这次没生成成功，已沿用原有内容——可稍后重算本步补齐`,
-            }
-          : null,
-      );
+          ? `${failed.join("、")} 这次没生成成功，已沿用原有内容——可稍后重算本步补齐`
+          : "",
+        needMaterial.length > 0
+          ? `${needMaterial.join("、")} 需要先补客户材料：这两张表问的是"该客户现在怎么做"，材料里没有就只能拿行业通例占位，所以本次没有生成——补上材料后重算本表即可`
+          : "",
+      ].filter((x) => x !== "");
+      setAnalysisNotice(parts.length > 0 ? { kind: "warning", text: parts.join("；") } : null);
       onProjectsChanged?.();
     },
     /**
