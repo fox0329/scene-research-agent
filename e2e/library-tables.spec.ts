@@ -137,3 +137,27 @@ test("溯源不占列：主表只留业务列，来源信息在右栏行详情�
   await expect(det).toContainText("来源");
   await expect(det).toContainText("证据");
 });
+
+test("新建产品线：走应用内对话框（Electron 不支持 window.prompt，故障清单 #70）", async ({ page }) => {
+  /* 空库时选择器不渲染（"还没有产品线"空态），先 API 造一条让页面进入正常态 */
+  await newLine(page, "前置线");
+  await page.goto(LIVE);
+  await expect(page.locator(".shell")).toBeVisible();
+  await page.getByRole("button", { name: "产品资料库" }).click();
+  const picker = page.locator('select[aria-label="选择产品线"]');
+  await expect(picker).toBeVisible();
+
+  /* 点「新建产品线」必须弹出应用内对话框——桌面壳里 window.prompt 直接抛异常，
+     旧实现的表现就是"点了毫无反应"（真机反馈 2026-10-14） */
+  await page.getByRole("button", { name: "新建产品线" }).click();
+  const dialog = page.locator('div[role="dialog"][aria-label="新建产品线"]');
+  await expect(dialog).toBeVisible();
+
+  const name = `E2E-新建按钮-${Date.now()}`;
+  await dialog.locator("input").fill(name);
+  await dialog.getByRole("button", { name: "创建" }).click();
+
+  /* 创建成功：右下弹 toast，产品线选择器里能选到新库 */
+  await expect(page.locator(".toast-item").filter({ hasText: "已创建" }).last()).toBeVisible({ timeout: 10_000 });
+  await expect(picker.locator(`option:has-text("${name}")`)).toHaveCount(1);
+});

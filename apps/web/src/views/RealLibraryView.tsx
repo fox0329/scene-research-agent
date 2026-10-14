@@ -10,6 +10,7 @@ import { SceneTable, type ColumnDef } from "../components/SceneTable";
 import { MaterialUpload } from "../components/MaterialUpload";
 import type { RowDetail } from "../components/RowDetailPanel";
 import { useToast } from "../components/Toast";
+import { promptText } from "../components/prompt-text";
 import { TABLES_BY_CODE } from "@scene/contract";
 
 /**
@@ -317,11 +318,14 @@ const TablePanel: React.FC<TablePanelProps> = ({
   );
 
   const handleAdd = useCallback(async () => {
-    const input = window.prompt(
-      optional
-        ? "新增行字段（JSON，整体存入 payload），例：{\"cert_name\":\"CE\",\"scope\":\"欧盟\"}"
-        : "新增行字段（JSON），例：{\"name\":\"型号A\"}",
-    );
+    const input = await promptText({
+      title: optional ? "新增行字段（选填字段组，整体存入 payload）" : "新增行字段",
+      message: optional
+        ? 'JSON 格式，例：{"cert_name":"CE","scope":"欧盟"}'
+        : 'JSON 格式，例：{"name":"型号A"}',
+      multiline: true,
+      okText: "新增",
+    });
     if (!input?.trim()) return;
     let values: Record<string, unknown>;
     try {
@@ -717,7 +721,7 @@ export const RealLibraryView: React.FC<{
   );
 
   const handleNewLine = useCallback(async () => {
-    const name = window.prompt("新建产品线 · 请输入名称");
+    const name = await promptText({ title: "新建产品线", message: "请输入名称", placeholder: "例如：鸿蒙生态产品线", okText: "创建" });
     if (!name?.trim()) return;
     try {
       const created = await api.createProductLine(name.trim());
@@ -732,7 +736,7 @@ export const RealLibraryView: React.FC<{
   /** 重命名产品线（资料库） */
   const handleRenameLine = useCallback(async () => {
     const cur = lines.find((l) => l.id === lineId);
-    const name = window.prompt("重命名产品资料库 · 请输入新名称", cur?.name ?? "");
+    const name = await promptText({ title: "重命名产品资料库", message: "请输入新名称", defaultValue: cur?.name ?? "", okText: "重命名" });
     if (!name?.trim() || name.trim() === cur?.name) return;
     try {
       await api.renameProductLine(lineId, name.trim());
@@ -957,6 +961,11 @@ export const RealLibraryView: React.FC<{
                   </option>
                 ))}
               </select>
+              {/* 故障清单 #70：「新建产品线」原来只在空态出现——一旦有库，想建第二条线没有入口。
+                  补回工具栏入口，与重命名/删除并排。 */}
+              <button className="btn btn-sm" type="button" onClick={() => void handleNewLine()}>
+                新建产品线
+              </button>
               <button className="btn btn-sm" type="button" onClick={() => void handleRenameLine()}>
                 重命名
               </button>

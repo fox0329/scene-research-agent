@@ -7,6 +7,7 @@ import { RowDetailPanel, type RowDetail } from "./components/RowDetailPanel";
 import type { StageSnapshot } from "./components/stage-snapshot";
 import { ToastProvider, useToast } from "./components/Toast";
 import { LibraryView } from "./views/LibraryView";
+import { promptText } from "./components/prompt-text";
 import { ProjectView } from "./views/ProjectView";
 import { SettingsView } from "./views/SettingsView";
 import { useColumnLayout } from "./hooks/useColumnLayout";
@@ -249,7 +250,7 @@ const AppShell: React.FC = () => {
       }
       try {
         if (action === "重命名") {
-          const name = window.prompt("重命名项目", project.name);
+          const name = await promptText({ title: "重命名项目", defaultValue: project.name, okText: "重命名" });
           if (!name?.trim()) return;
           await api.patchProject(project.id, { name: name.trim() });
         } else if (action === "归档") {
@@ -286,7 +287,7 @@ const AppShell: React.FC = () => {
       }
       try {
         if (action === "重命名") {
-          const title = window.prompt("重命名会话", convName);
+          const title = await promptText({ title: "重命名会话", defaultValue: convName, okText: "重命名" });
           if (!title?.trim()) return;
           await api.renameConversation(convId, title.trim());
         } else if (action === "归档") {
