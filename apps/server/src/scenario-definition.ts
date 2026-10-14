@@ -29,6 +29,7 @@ import {
   type SessionHandle,
 } from "@scene/contract";
 import type { DbInstance } from "@scene/infra";
+import { extractFirstJson } from "./json-extract.js";
 import {
   anchorAgentRows,
   anchorFixedRows,
@@ -200,8 +201,10 @@ function parseConsolidation(text: string): {
   const candidates = [text.trim()];
   const block = text.match(/```(?:json)?\s*([\s\S]*?)```/);
   if (block?.[1]) candidates.push(block[1].trim());
-  const start = text.indexOf("{");
-  if (start >= 0) candidates.push(text.slice(start));
+  /* 模型可能先给一段说明、或在合法 JSON 后面又跟一份（Extra data）：
+     按括号配对取第一个完整对象，别让整表因为"后缀"作废（故障清单 #65） */
+  const first = extractFirstJson(text);
+  if (first !== null) candidates.push(JSON.stringify(first));
   for (const c of candidates) {
     try {
       const parsed = JSON.parse(c) as {

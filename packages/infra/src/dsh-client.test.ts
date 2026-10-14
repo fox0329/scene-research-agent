@@ -262,4 +262,83 @@ describe("DshClient 接口实现完整性", () => {
       globalThis.fetch = origFetch;
     }
   });
+
+  /**
+   * 故障清单 #65：思考模式下模型 91 秒只吐 reasoning_content、正文一个字没出，
+   * 连接被网络路径重置（terminated）→ 整张表作废。关掉思考后同样内容 10 秒出完。
+   */
+  it("默认关闭思考模式；LLM_THINKING=1 才打开", async () => {
+    seedRegistry();
+    const origFetch = globalThis.fetch;
+    const seen: Record<string, unknown>[] = [];
+    const enc = new TextEncoder();
+    globalThis.fetch = (async (_url: string, init: RequestInit) => {
+      seen.push(JSON.parse(String(init.body)) as Record<string, unknown>);
+      const stream = new ReadableStream<Uint8Array>({
+        start(c) {
+          c.enqueue(enc.encode('data: {"choices":[{"delta":{"content":"x"}}]}\n\n'));
+          c.enqueue(enc.encode("data: [DONE]\n\n"));
+          c.close();
+        },
+      });
+      return new Response(stream, { status: 200, headers: { "content-type": "text/event-stream" } });
+    }) as typeof fetch;
+    try {
+      const client = createDshClient();
+      const h = await client.createSession({ title: "默认关思考" });
+      for await (const _e of client.prompt(h, { system: "s", user: "u", outputContract: {} })) {
+        void _e;
+      }
+      expect(seen[0]!["thinking"]).toEqual({ type: "disabled" });
+
+      process.env["LLM_THINKING"] = "1";
+      const h2 = await client.createSession({ title: "打开思考" });
+      for await (const _e of client.prompt(h2, { system: "s", user: "u", outputContract: {} })) {
+        void _e;
+      }
+      expect(seen[1]!["thinking"]).toBeUndefined();
+    } finally {
+      globalThis.fetch = origFetch;
+      delete process.env["LLM_THINKING"];
+    }
+  });
+
+  it("供应商不认 thinking 参数时：丢掉它重试一次并成功", async () => {
+    seedRegistry();
+    const origFetch = globalThis.fetch;
+    const enc = new TextEncoder();
+    const seen: Record<string, unknown>[] = [];
+    globalThis.fetch = (async (_url: string, init: RequestInit) => {
+      const body = JSON.parse(String(init.body)) as Record<string, unknown>;
+      seen.push(body);
+      if (body["thinking"]) {
+        return new Response(
+          JSON.stringify({ error: { message: "Unrecognized request argument supplied: thinking" } }),
+          { status: 400, headers: { "content-type": "application/json" } },
+        );
+      }
+      const stream = new ReadableStream<Uint8Array>({
+        start(c) {
+          c.enqueue(enc.encode('data: {"choices":[{"delta":{"content":"好了"}}]}\n\n'));
+          c.enqueue(enc.encode("data: [DONE]\n\n"));
+          c.close();
+        },
+      });
+      return new Response(stream, { status: 200, headers: { "content-type": "text/event-stream" } });
+    }) as typeof fetch;
+    try {
+      const client = createDshClient();
+      const h = await client.createSession({ title: "不认 thinking" });
+      const events: FollowEvent[] = [];
+      for await (const e of client.prompt(h, { system: "s", user: "u", outputContract: {} })) {
+        events.push(e);
+      }
+      expect(seen).toHaveLength(2);
+      expect(seen[1]!["thinking"]).toBeUndefined();
+      expect(events.some((e) => e.type === "error")).toBe(false);
+      expect(events.some((e) => e.type === "text" && e.text === "好了")).toBe(true);
+    } finally {
+      globalThis.fetch = origFetch;
+    }
+  });
 });

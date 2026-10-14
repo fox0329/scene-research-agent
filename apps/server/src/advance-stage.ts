@@ -27,6 +27,7 @@ import type {
 } from "@scene/contract";
 import type { DbInstance } from "@scene/infra";
 import { mkdirSync, writeFileSync } from "node:fs";
+import { extractFirstJson, extractRowsBestEffort, repairTruncatedJson } from "./json-extract.js";
 import { join } from "node:path";
 import {
   isModelStage,
@@ -239,6 +240,14 @@ interface TableGenResult {
   chars: number;
   /** 本表失败原因；有值即视为该表没有产出 */
   error?: string;
+  /**
+   * 是否只是"抢救出来的半张表"（连接中断时救回的完整行）
+   *
+   * 半张表**绝不能覆盖已有的完整数据**：实测把表2-3 从 6 行覆盖成 2 行、
+   * 表2-4/2-7 从 13 行覆盖成 5 行，等于用残缺数据换掉好数据（故障 #65）。
+   * 是否落库由调用处按"这张表原本有没有数据"决定。
+   */
+  partial?: boolean;
 }
 
 /**
@@ -371,9 +380,33 @@ async function generateOneTable(
     return rows.length > 0 ? rows : null;
   };
 
+  /**
+   * 只有"连接被中断"才抢救正文
+   *
+   * 撞到输出上限（finish_reason=length）时输出是**不完整的**：把半张表写进去会覆盖
+   * 原来的完整数据，所以那条路保持"报错 + 不清库"（既有安全保证）。连接被重置不同——
+   * 模型其实已经写完大部分，救回来是净收益（故障清单 #65）。
+   */
+  const salvageable = (err?: string): boolean =>
+    err !== undefined &&
+    /terminated|ECONNRESET|ECONNREFUSED|EPIPE|socket hang up|无法连接|连接超时|响应超时|fetch failed/i.test(err);
+
   const first = await streamOnce();
   dumpRawOutput(d.stage, first.text, code, { failed: !parseOnce(first.text) });
   if (first.error) {
+    /* 流被中断（terminated／连接重置）时**必须先抢救正文再报错**：
+       实测表2-2 已经写出 5 KB、表2-7 写出 2.7 KB，旧实现直接返回 0 行、
+       连解析都不试，等于白丢（故障清单 #65）。 */
+    const salvagedFromError = salvageable(first.error) ? parseOnce(first.text) : null;
+    if (salvagedFromError) {
+      d.push({
+        type: "progress",
+        stage: d.stage,
+        message: `⚠️ ${label}：连接中断（${first.error}），已抢救出 ${salvagedFromError.length} 行`,
+      });
+      dumpRawFailure(code, d.stage, first.text, `连接中断但抢救出 ${salvagedFromError.length} 行：${first.error}`);
+      return { code, rows: salvagedFromError, chars: first.text.length, partial: true };
+    }
     dumpRawFailure(code, d.stage, first.text, first.error);
     return { code, rows: [], chars: first.text.length, error: first.error };
   }
@@ -389,8 +422,35 @@ async function generateOneTable(
   progress(`${label} 没产出可解析的行，重试一次…`);
   const second = await streamOnce();
   dumpRawOutput(d.stage, second.text, code, { failed: !parseOnce(second.text) });
-  const retried = second.error ? null : parseOnce(second.text);
-  if (retried) return { code, rows: retried, chars: second.text.length };
+  /* 第二次也解析成功：只有"这一轮流被中断过"才算半张表；干净重试成功就是完整产出 */
+  const parsedSecond = parseOnce(second.text);
+  if (parsedSecond) {
+    if (second.error) {
+      d.push({
+        type: "progress",
+        stage: d.stage,
+        message: `⚠️ ${label}：连接中断（${second.error}），已抢救出 ${parsedSecond.length} 行`,
+      });
+    }
+    return {
+      code,
+      rows: parsedSecond,
+      chars: second.text.length,
+      ...(second.error ? { partial: true } : {}),
+    };
+  }
+  /* 第二次也中断 → 退回头一次的正文再抢救 */
+  if (second.error && salvageable(second.error)) {
+    const salvaged = parseOnce(first.text);
+    if (salvaged) {
+      d.push({
+        type: "progress",
+        stage: d.stage,
+        message: `⚠️ ${label}：重试仍中断（${second.error}），已抢救出 ${salvaged.length} 行`,
+      });
+      return { code, rows: salvaged, chars: first.text.length, partial: true };
+    }
+  }
 
   const detail = describeUnparseable(second.text || first.text);
   const reason = `${label} 没有产出可解析的行（重试一次仍未成功。模型输出${detail}）`;
@@ -555,15 +615,36 @@ async function* executeAdvanceStage(
           push,
         })
           .then((result) => {
-            results.set(code, result);
-            if (result.rows.length > 0) {
-              producedRows[code] = result.rows.map((r) => ({ ...r.fields, source: r.source }));
+            /* 半张表（连接中断抢救出来的）与已有数据比一比：已有数据就保留旧的、只提示重算，
+               绝不拿残缺结果覆盖完整数据；空表则可以落（救回来总比空着强） */
+            let effective = result;
+            if (result.partial === true && result.rows.length > 0) {
+              const hasExisting = db
+                .stageDataRepo.listByScenarioStage(scenarioId, effectiveStage)
+                .some((r) => r.table_code === code);
+              if (hasExisting) {
+                const message =
+                  `${labelOf(code)}：连接中断，已抢救出 ${result.rows.length} 行，` +
+                  `为避免覆盖原有内容未落库（建议重算本表）`;
+                effective = { code, rows: [], chars: result.chars, error: message };
+                push({ type: "progress", stage, message: `⚠️ ${message}` });
+              } else {
+                push({
+                  type: "progress",
+                  stage,
+                  message: `⚠️ ${labelOf(code)}：连接中断，已把抢救出的 ${result.rows.length} 行落库（建议重算本表补全）`,
+                });
+              }
+            }
+            results.set(code, effective);
+            if (effective.rows.length > 0) {
+              producedRows[code] = effective.rows.map((r) => ({ ...r.fields, source: r.source }));
             }
             // 不管成没成都要标记完成：失败的依赖不能让下游干等
             finished.add(code);
             // 单张表失败必须当场说出来（只在收尾汇总里提一句，用户看不到是哪张表卡住的）
-            if (result.error) {
-              push({ type: "progress", stage, message: `⚠️ ${result.error}` });
+            if (effective.error) {
+              push({ type: "progress", stage, message: `⚠️ ${effective.error}` });
             }
           })
           .catch((err: unknown) => {
@@ -721,6 +802,11 @@ async function* executeAdvanceStage(
 
   // 部分表失败：明确告诉用户是哪张表、原有内容已保留（不要把失败藏起来）
   if (failedTables.length > 0) {
+    /* 失败必须留痕：装好的应用里只有日志可查（0.1.3 起 LOG_LEVEL=info），
+       否则用户只能看到界面上一句"没生成成功"，查不到是超时、截断还是供应商拒绝。 */
+    console.warn(
+      `[本步分析] 场景 ${scenario.id} 第 ${effectiveStage} 步有 ${failedTables.length} 张表没产出：${failureNote}`,
+    );
     yield emit({
       type: "progress",
       stage,
@@ -988,6 +1074,9 @@ export function collectUpstreamData(
 
 // ─── 子函数：执行质量关 ────────────────────────────────────
 
+/* 既有调用点/测试从本模块取，实现搬到 json-extract（定义整理那条路也要用同一套） */
+export { repairTruncatedJson };
+
 // ─── DSH 输出解析 ──────────────────────────────────────────
 
 /** 原始输出落盘的目录：默认落 `data/raw-output/`（相对仓库根），可用 `SCENE_DUMP_RAW_DIR` 覆盖 */
@@ -1064,14 +1153,28 @@ function parseDshOutput(text: string): DshStageOutput {
     }
   }
 
-  // 3. 找第一个 { 开始
-  const jsonStart = trimmed.indexOf("{");
-  if (jsonStart >= 0) {
-    try {
-      const parsed = JSON.parse(trimmed.slice(jsonStart)) as unknown;
-      if (isDshStageOutput(parsed)) return parsed;
-    } catch {
-      // 继续
+  /* 3. 从第一个 { 开始按括号配对取一个**完整**对象
+        （模型常常在合法 JSON 后面又跟一份内容，整段 parse 会报 Extra data → 整表误判失败） */
+  const first = extractFirstJson(trimmed);
+  if (isDshStageOutput(first)) return first;
+
+  // 4. 抢救被截断的输出（连接被重置时最常见：模型其实已经写出大部分行）
+  const repaired = repairTruncatedJson(trimmed);
+  if (isDshStageOutput(repaired)) return repaired;
+
+  /* 5. 逐行抢救：某一行语法坏掉（少逗号/引号没转义）时，别让整张表作废
+        —— 实测表2-3、表2-5 就这样整张丢掉，其余十几行其实都是好的（故障清单 #65） */
+  const salvaged = extractRowsBestEffort(trimmed);
+  if (salvaged) {
+    const rows = salvaged.rows.filter(
+      (r): r is DshStageOutput["rows"][number] =>
+        typeof r === "object" && r !== null && typeof (r as { table_code?: unknown }).table_code === "string",
+    );
+    if (rows.length > 0) {
+      console.warn(
+        `[模型输出] 整段 JSON 不合法，逐行抢救出 ${rows.length} 行（跳过 ${salvaged.skipped} 行残缺/语法错）`,
+      );
+      return { rows };
     }
   }
 

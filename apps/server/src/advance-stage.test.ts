@@ -35,8 +35,10 @@ import type {
 import {
   createAdvanceStageCommand,
   readyTables,
+  repairTruncatedJson,
   resolveSourceType,
 } from "./advance-stage.js";
+import { extractRowsBestEffort } from "./json-extract.js";
 import type { AdvanceStageDeps } from "./advance-stage.js";
 
 // ─── Mock 工厂 ─────────────────────────────────────────────
@@ -1234,5 +1236,42 @@ describe("resolveSourceType：未声明时按出处如实判定（变更表 #162
   it("来源权威性按 G-R1 映射：AI提取→T3，AI推断→T4", () => {
     expect(gradeSource(resolveSourceType(undefined, "文件.pdf:12"))).toBe("T3");
     expect(gradeSource(resolveSourceType(undefined, null))).toBe("T4");
+  });
+});
+
+/**
+ * 故障清单 #65：模型已写到 17 KB 时连接被重置（`terminated`），旧实现整份判作废、
+ * 这张表白跑。截断的 JSON 应当抢救出**已完整的行**（只丢最后一个不完整的对象）。
+ */
+describe("advance-stage — 截断输出抢救（故障清单 #65）", () => {
+  it("被截断的 rows 数组：救回已完整的行，丢掉残缺的最后一对象", () => {
+    const truncated =
+      '{"rows":[{"table_code":"表2-3","fields":{"layer":"感知层","components":"摄像头"}},' +
+      '{"table_code":"表2-3","fields":{"layer":"处理层","components":"DSP"}},' +
+      '{"table_code":"表2-3","fields":{"layer":"平';
+    const out = repairTruncatedJson(truncated) as { rows: unknown[] } | null;
+    expect(out).not.toBeNull();
+    expect(out!.rows).toHaveLength(2);
+  });
+
+  it("输出压根不是 JSON 时返回 null（不许瞎猜）", () => {
+    expect(repairTruncatedJson("模型今天不想干活")).toBeNull();
+  });
+});
+
+describe("json-extract — 逐行抢救（故障清单 #65）", () => {
+  it("某一行语法坏掉时：其余行照样救回，坏行被跳过并计数", () => {
+    const broken =
+      '{"rows": [{"table_code":"表2-3","fields":{"layer":"A"}},' +
+      '{"table_code":"表2-3","fields":{"layer":"B" "components":"缺逗号"}},' +
+      '{"table_code":"表2-3","fields":{"layer":"C"}}]}';
+    const out = extractRowsBestEffort(broken);
+    expect(out).not.toBeNull();
+    expect(out!.rows).toHaveLength(2);
+    expect(out!.skipped).toBe(1);
+  });
+
+  it("压根没有 rows 时返回 null（真的没产出，不当格式问题处理）", () => {
+    expect(extractRowsBestEffort("模型今天不想干活")).toBeNull();
   });
 });

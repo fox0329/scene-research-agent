@@ -154,12 +154,13 @@ class DshClientImpl implements DshClient {
       session.modelId = resolved.modelId;
 
       const url = `${resolved.provider.base_url.replace(/\/+$/, "")}/chat/completions`;
-      const body = buildRequestBody(
-        resolved.modelId,
-        input.system,
-        input.user,
-        input.outputContract,
-      );
+      const cap = capabilityOf(`${url}|${resolved.modelId}`);
+      const buildBody = (): Record<string, unknown> =>
+        buildRequestBody(resolved.modelId, input.system, input.user, input.outputContract, {
+          structured: cap.structured,
+          withoutToolChoice: cap.structured === "prompt",
+          withoutThinking: !cap.thinkingParam,
+        });
 
       const headers: Record<string, string> = {
         "Content-Type": "application/json",
@@ -171,43 +172,43 @@ class DshClientImpl implements DshClient {
        *
        * 曾经写成 `AbortSignal.timeout()` 直接挂在 fetch 上：那个信号一旦到点会连
        * **响应体读取**一起中止——本步分析一次要跑 1–3 分钟，结果任何超过 60 秒的
-       * 分析都在第 60 秒被自己掐死，报「The operation was aborted due to timeout」
-       * （用户实机复现：重算第 3 步跑到 62 秒整条断掉）。所以这里用手动定时器，
-       * 响应头一到就 clearTimeout 摘掉它；流中卡死由 idle 超时（readWithIdleTimeout）管。
+       * 分析都在第 60 秒被自己掐死（用户实机：重算第 3 步到 62 秒整条断掉）。
+       * 所以用手动定时器，响应头一到就摘掉；流中卡死由 idle 超时管。
+       *
+       * 重试分两类（产品要求：模型、供应商、网络环境都要扛得住）：
+       *  - **参数被拒**（不认 thinking / tool_choice / response_format）→ 降级并记住，不占传输层次数；
+       *  - **传输失败**（连不上、被重置、超时）→ 退避重试，最多 TRANSPORT_RETRIES 次。
        */
-      const connectAbort = new AbortController();
-      const connectTimer = setTimeout(() => {
-        timedOut = true;
-        connectAbort.abort();
-      }, connectTimeoutMs);
-      let response: Response;
-      try {
-        response = await fetchWithLlmCheck(url, {
-          method: "POST",
-          headers,
-          body: JSON.stringify(body),
-          signal: AbortSignal.any([abortController.signal, connectAbort.signal]),
-        });
-      } catch (err: unknown) {
-        if (!isToolChoiceRejection(err)) throw err;
-        /* 思考型模型：去掉 tool_choice 重试一次。工具仍在，模型通常照样直接调用；
-           就算它改成正文输出 JSON，下游解析器本来就同时吃 tool_calls 与正文 JSON。
-           真实故障：用户选 deepseek-flash，定义整理 400 → 静默不写表（故障清单 #63）。 */
-        const retryBody = buildRequestBody(
-          resolved.modelId,
-          input.system,
-          input.user,
-          input.outputContract,
-          { withoutToolChoice: true },
-        );
-        response = await fetchWithLlmCheck(url, {
-          method: "POST",
-          headers,
-          body: JSON.stringify(retryBody),
-          signal: AbortSignal.any([abortController.signal, connectAbort.signal]),
-        });
-      } finally {
-        clearTimeout(connectTimer);
+      let response: Response | null = null;
+      let transportAttempt = 0;
+      let paramDrops = 0;
+      while (response === null) {
+        const connectAbort = new AbortController();
+        const connectTimer = setTimeout(() => {
+          timedOut = true;
+          connectAbort.abort();
+        }, connectTimeoutMs);
+        try {
+          response = await fetchWithLlmCheck(url, {
+            method: "POST",
+            headers,
+            body: JSON.stringify(buildBody()),
+            signal: AbortSignal.any([abortController.signal, connectAbort.signal]),
+          });
+        } catch (err: unknown) {
+          const drop = unsupportedParamDrop(err);
+          if (drop && paramDrops < 3) {
+            paramDrops += 1;
+            if (drop.toolChoice) cap.structured = cap.structured === "tools" ? "json_object" : "prompt";
+            if (drop.thinking) cap.thinkingParam = false;
+            continue;
+          }
+          if (!isRetryableTransportError(err) || transportAttempt >= TRANSPORT_RETRIES) throw err;
+          transportAttempt += 1;
+          await sleep(TRANSPORT_BACKOFF_MS * transportAttempt);
+        } finally {
+          clearTimeout(connectTimer);
+        }
       }
 
       // 流式读取 SSE
@@ -321,12 +322,72 @@ class DshClientImpl implements DshClient {
 // ─── 请求体构建 ──────────────────────────────────────────
 
 /**
- * 思考型模型（deepseek-flash / deepseek-reasoner / o1/o3…）不接受强制 `tool_choice`：
- * 报 `Thinking mode does not support this tool_choice`。命中时去掉 tool_choice 重试一次。
+ * 每个「端点|模型」的能力记忆（产品要求：模型与供应商无关，别硬碰同一堵墙）
+ *
+ * 用户用什么模型、接哪个供应商、走哪条网络，我们事先都不知道：有的不认 `thinking`，
+ * 有的不认强制 `tool_choice`，有的只认 `response_format`，还有的干脆不吃结构化参数。
+ * 所以做法是**先试、被拒就降级、记住结果**，同一进程内不再重复踩同一个坑。
  */
-function isToolChoiceRejection(err: unknown): boolean {
+type StructuredMode = "tools" | "json_object" | "prompt";
+interface ModelCapability {
+  /** 是否可以带 `thinking` 参数（被拒后置 false） */
+  thinkingParam: boolean;
+  /** 结构化输出的当前档位：tools+tool_choice → response_format → 纯提示词 */
+  structured: StructuredMode;
+}
+const capabilityCache = new Map<string, ModelCapability>();
+
+function capabilityOf(key: string): ModelCapability {
+  let cap = capabilityCache.get(key);
+  if (!cap) {
+    cap = { thinkingParam: true, structured: "tools" };
+    capabilityCache.set(key, cap);
+  }
+  return cap;
+}
+
+/** 传输层可重试的错误（网络不可达／连接被重置／超时）——退避重试，其余照原样抛出 */
+function isRetryableTransportError(err: unknown): boolean {
+  const cause = (err as { cause?: { code?: string } } | null)?.cause?.code ?? "";
+  const msg = `${err instanceof Error ? err.message : String(err)} ${cause}`;
+  return /无法连接到模型服务|ECONNRESET|ECONNREFUSED|ETIMEDOUT|EPIPE|socket hang up|terminated|fetch failed|network|other side closed/i.test(
+    msg,
+  );
+}
+
+const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+
+/** 传输层重试次数与退避基数（第 n 次等 n×基数） */
+const TRANSPORT_RETRIES = 2;
+const TRANSPORT_BACKOFF_MS = 1500;
+
+/**
+ * 是否让模型进入思考模式（默认**关闭**）
+ *
+ * 实测（2026-10-13，用户实机）：`deepseek-flash` 思考模式下 91 秒只吐 `reasoning_content`、
+ * 正文一个字都没开始，随后连接被网络路径重置（`TypeError: terminated` / ECONNRESET）→ 整张表作废；
+ * 同一提示词关掉思考后 **10 秒出完 3000 字**、首个正文字 0.6 秒。生成任务本就是"按给定结构把内容写出来"，
+ * 判定逻辑全在确定性层（G-R5/G-R8），不需要思考模式。需要时用 `LLM_THINKING=1` 打开。
+ */
+function llmThinkingEnabled(): boolean {
+  const v = process.env["LLM_THINKING"];
+  return v === "1" || v === "on" || v === "true";
+}
+
+/**
+ * provider 拒绝某个参数时该丢掉哪个（返回 null = 不是参数问题，照原样抛出）
+ *
+ * 实跑踩过的两种「供应商不认我们的参数」：
+ *  - 思考型模型不接受强制 `tool_choice`（`Thinking mode does not support this tool_choice`）；
+ *  - 不支持关闭思考的供应商会拒 `thinking`（`unknown/unrecognized argument: thinking`）。
+ */
+function unsupportedParamDrop(err: unknown): { toolChoice: boolean; thinking: boolean } | null {
   const msg = err instanceof Error ? err.message : String(err);
-  return /tool_choice/i.test(msg) && /thinking|does not support/i.test(msg);
+  if (/tool_choice/i.test(msg)) return { toolChoice: true, thinking: false };
+  if (/thinking/i.test(msg) && /(unsupport|not support|invalid|unknown|unrecognized|does not)/i.test(msg)) {
+    return { toolChoice: false, thinking: true };
+  }
+  return null;
 }
 
 /**
@@ -349,7 +410,7 @@ function buildRequestBody(
   system: string,
   user: string,
   outputContract: Record<string, unknown>,
-  opts?: { withoutToolChoice?: boolean },
+  opts?: { withoutToolChoice?: boolean; withoutThinking?: boolean; structured?: StructuredMode },
 ): Record<string, unknown> {
   // 使用 tool_choice + tools 强制 JSON Schema 输出
   // 这比 response_format 更通用，各 provider 兼容性更好
@@ -372,7 +433,22 @@ function buildRequestBody(
     max_tokens: llmMaxTokens(),
   };
 
-  if (hasSchema && !opts?.withoutToolChoice) {
+  /* 关掉思考模式：理由见 llmThinkingEnabled（思考阶段正文要等 60~90 秒，实测会被网络重置） */
+  if (!opts?.withoutThinking && !llmThinkingEnabled()) {
+    body.thinking = { type: "disabled" };
+  }
+
+  const mode = opts?.structured ?? "tools";
+  if (hasSchema && mode === "json_object") {
+    /* 中间档：供应商不认强制 tool_choice 时用它；模型看不到 Schema，所以结构也写进提示词 */
+    body.response_format = { type: "json_object" };
+    const userMsg = messages[1];
+    if (userMsg) userMsg.content = describeOutputContract(user, outputContract);
+  } else if (hasSchema && (opts?.withoutToolChoice === true || mode === "prompt")) {
+    /* 不给工具、也不给 response_format 时，模型看不到结构 → 用文字写进提示词 */
+    const msg = messages[1];
+    if (msg) msg.content = describeOutputContract(user, outputContract);
+  } else if (hasSchema) {
     body.tools = [
       {
         type: "function",
