@@ -276,7 +276,7 @@ export const STAGE_DEFS: readonly StageDef[] = [
     id: 6,
     name: "最终交付物",
     producedBy: "系统组装",
-    goal: "内部调研报告 + 对外汇报材料（文档产出，非表）",
+    goal: "《<场景>解决方案》+《<场景>建设工作方案》（文档产出，非表）",
     tableCodes: [],
     summaryTitle: "⑦ 交付说明",
   },

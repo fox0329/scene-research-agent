@@ -432,7 +432,7 @@ echo "✅ 多子块表一行显示（方案架构 / 接口清单 / 硬件成本�
 
 # v1.27：每条信息必须带核实判定（准不准·客不客观·为什么），且不许把核实推给读者
 check_contains "packages/contract/src/tables.ts" "verification_verdict" "核实两列在注册表"
-check_contains "packages/contract/src/tables.ts" "VERIFICATION_COLUMNS" "核实列统一追加（35 张表都带）"
+check_contains "packages/contract/src/tables.ts" "VERIFICATION_COLUMNS" "核实列统一追加（33 张表都带）"
 check_contains "apps/server/src/stage-prompts.ts" "每条信息必须由你核实" "提示词要求模型自己核实"
 check_contains "packages/domain/src/stage-summary.ts" "## 四、核实结论" "总结第四段是核实结论"
 check_contains "packages/domain/src/row-validation.ts" "核实推诿" "推诿话术有确定性检查"
