@@ -26,7 +26,7 @@ describe("flow — 流程定义（取自注册表）", () => {
     const s2 = flowStep(2);
     expect(s2.title).toBe("认识场景");
     expect(s2.tables).not.toContain("表1-1");
-    expect(s2.tables.length).toBe(7); // 阶段 1 共 8 张，减去场景锚
+    expect(s2.tables.length).toBe(5); // 阶段 1 共 6 张，减去场景锚（表1-2 已迁到阶段 3）
     expect(s2.kind).toBe("分析");
   });
 
@@ -38,6 +38,8 @@ describe("flow — 流程定义（取自注册表）", () => {
 
   it("步骤表集与注册表一致（不重抄表号）", () => {
     expect(flowStep(3).tables).toEqual(["表3-1", "表3-2", "表3-3", "表3-4", "表3-5", "表3-6", "表3-7", "表3-8", "表3-9"]);
+    // 2026-10-14：客户现状两表随能力匹配落在第 4 步（表1-2 场景环节地图、表2-7 交付与运维现状）
+    expect(flowStep(4).tables).toEqual(["表1-2", "表2-7", "表4-1", "表4-2", "表4-3", "表4-4", "表4-5"]);
     expect(flowStep(7).tables).toEqual([]); // 交付物：文档组装，不产表
   });
 

@@ -19,12 +19,15 @@ describe("completeness — 取值判定", () => {
 });
 
 describe("completeness — 阶段级", () => {
-  it("阶段 1 无数据时列出 8 张缺表，完整度 0%", () => {
+  it("阶段 1 无数据时列出 6 张缺表，完整度 0%", () => {
     const r = checkStageCompleteness({ stage: 1, rowsByTable: {} });
-    expect(r.expectedTables).toBe(8);
+    expect(r.expectedTables).toBe(6);
     expect(r.tablesWithData).toBe(0);
-    expect(r.missingTables).toHaveLength(8);
+    expect(r.missingTables).toHaveLength(6);
     expect(r.missingTables).toContain("表1-1");
+    // 2026-10-14 契约变更：客户现状（表1-2 场景环节地图、表2-7 交付与运维现状）迁到阶段 3 能力匹配
+    expect(r.missingTables).not.toContain("表1-2");
+    expect(r.missingTables).not.toContain("表2-7");
     expect(r.percent).toBe(0);
     expect(r.gaps.every((g) => g.kind === "缺表")).toBe(true);
   });
@@ -137,14 +140,17 @@ describe("completeness — 单表规则", () => {
     expect(g?.count).toBe(2);
   });
 
-  it("覆盖度：min-rows（表1-2 业务环节 ≥3）", () => {
+  it("覆盖度：min-rows（表1-2 业务环节 ≥3）——表1-2 迁到阶段 3 后规则仍生效", () => {
     const r = checkStageCompleteness({
-      stage: 1,
+      stage: 3, // 2026-10-14：表1-2 场景环节地图改由能力匹配阶段产出（客户现状是能力判断的基线）
       rowsByTable: { "表1-2": [row({ link: "制水", can_touch: "可以碰", our_role: "辅助" })] },
     });
     const g = r.gaps.find((x) => x.kind === "覆盖度不足" && x.tableCode === "表1-2");
     expect(g?.detail).toContain("≥3");
     expect(g?.count).toBe(1);
+    // 阶段 3 = 表1-2、表2-7 + 表4-1..4-5 共 7 张；表2-7 同样归这里
+    expect(r.expectedTables).toBe(7);
+    expect(r.missingTables).toContain("表2-7");
   });
 
   it("覆盖度：enum-complete（表1-3 五类门槛各 ≥1 行）列出缺类别", () => {

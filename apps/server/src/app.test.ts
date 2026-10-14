@@ -159,12 +159,12 @@ function createMockDshClient(rowsText?: string): DshClient {
       rows: [
         {
           // 必须是注册表里属于该阶段的表号，否则会被本地校验拦下、不入库（无 schema 无法渲染）
-          table_code: "表1-2",
+          table_code: "表1-3",
           fields: {
-            link: "视频监控",
-            can_touch: "可以碰",
-            our_role: "替代",
-            description: "园区摄像头接入",
+            barrier_type: "技术",
+            barrier_name: "AI 识别准确率",
+            criteria: "≥ 95%",
+            judgment: "过得了",
           },
           source: "手册.pdf:1",
         },

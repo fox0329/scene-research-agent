@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { validateIncomingRows, violationsBrief, mustDowngrade } from "./row-validation.js";
+import { flowStep } from "@scene/contract";
 
 const ok = (table_code: string, fields: Record<string, unknown>, extra: Record<string, unknown> = {}) => ({
   table_code,
@@ -31,12 +32,12 @@ describe("row-validation — 表号", () => {
 });
 
 describe("row-validation — 流程步限定表集", () => {
-  it("表1-1 不在本步表集内 → 判为未知表号（第 3 步不该产出场景锚）", () => {
-    const step3Tables = ["表1-2", "表1-3"];
+  it("表1-1 不在本步表集内 → 判为未知表号（第 4 步能力匹配不该产出场景锚）", () => {
+    const step4Tables = flowStep(4).tables;
     const v = validateIncomingRows(
-      1,
+      3,
       [ok("表1-1", { item: "场景名称", content: "智慧水务" })],
-      step3Tables,
+      step4Tables,
     );
     expect(v[0]?.kind).toBe("未知表号");
     expect(v[0]?.detail).toContain("表1-1");
@@ -44,7 +45,7 @@ describe("row-validation — 流程步限定表集", () => {
 
   it("本步表集内的表照常校验（不会误判成未知表号）", () => {
     const v = validateIncomingRows(
-      1,
+      3,
       [
         ok("表1-2", {
           link: "制水",
@@ -65,8 +66,8 @@ describe("row-validation — 流程步限定表集", () => {
 
 describe("row-validation — 必填列", () => {
   it("缺必填列逐项报出（带列名与行号）", () => {
-    // 表1-2 必填：link / owner_now / current_tool / current_flow / pain
-    const v = validateIncomingRows(1, [
+    // 表1-2 必填（阶段 3 客户现状基线）：link / owner_now / current_tool / current_flow / pain
+    const v = validateIncomingRows(3, [
       ok("表1-2", { link: "制水", owner_now: "值班班组" }),
     ]);
     const kinds = v.filter((x) => x.kind === "缺必填列").map((x) => x.column);
@@ -139,7 +140,7 @@ describe("row-validation — 来源与证据归属", () => {
   });
 
   it("模型自称「用户确认」必须报出并降级（证据等级不可被模型污染）", () => {
-    const v = validateIncomingRows(1, [
+    const v = validateIncomingRows(3, [
       ok(
         "表1-2",
         { link: "制水", can_touch: "可以碰", our_role: "辅助", description: "x" },
@@ -224,7 +225,7 @@ describe("row-validation — 汇总", () => {
   });
 
   it("违规概览按类型计数", () => {
-    const v = validateIncomingRows(1, [
+    const v = validateIncomingRows(3, [
       ok("表1-2", { link: "制水" }),
       { table_code: "表9-9", fields: {} },
     ]);

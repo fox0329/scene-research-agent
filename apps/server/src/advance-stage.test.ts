@@ -343,20 +343,16 @@ async function collectEvents(
 
 // ─── DSH 输出样本 ──────────────────────────────────────────
 
+/**
+ * 阶段 1（认识场景）的样例输出
+ *
+ * 表集 = 表1-1（场景锚，由「场景诉求 → 起草 → 用户确认」写入，**不在本阶段模型产出里**）、
+ * 表1-3、表2-2、表2-3、表2-4、表2-5。**客户现状（表1-2 场景环节地图、表2-7 交付与运维现状）
+ * 已迁到阶段 3**（用户定调 2026-10-14：阶段 1/2 只梳理场景与行业本身），所以这里没有它们的行。
+ */
 function makeStage1DshOutput() {
   return {
     rows: [
-      {
-        // 场景锚（表1-1）由「场景诉求 → 起草 → 用户确认」写入，**不在本阶段模型产出里**
-        table_code: "表1-2",
-        fields: {
-          link: "视频监控",
-          can_touch: "可以碰",
-          our_role: "替代",
-          description: "园区摄像头接入与智能分析",
-        },
-        source: "需求文档.pdf:5",
-      },
       {
         table_code: "表1-3",
         fields: {
@@ -428,6 +424,96 @@ function makeStage2DshOutput() {
           competitor_c: "90%",
         },
         source: "测评报告.pdf:3",
+      },
+    ],
+  };
+}
+
+/**
+ * 阶段 3（能力匹配）的样例输出
+ *
+ * 表集 = 表1-2、表2-7（客户现状底数）+ 表4-1..表4-5（我方能力）。
+ * 现状类表（表1-2 / 表2-7）在这里是**有客户事实**的正常产出——缺材料那条路径由
+ * 「现状类表缺客户材料」用例专门覆盖（整表都是「未提供」时才不落库）。
+ */
+function makeStage3DshOutput() {
+  return {
+    rows: [
+      {
+        table_code: "表1-2",
+        fields: {
+          link: "视频监控",
+          owner_now: "园区安保班组人工值守",
+          current_tool: "模拟摄像头 + 本地录像机",
+          current_flow: "每班 2 人轮巡，异常靠电话上报",
+          pain: "夜间漏报多、录像回查慢",
+          description: "园区摄像头接入与智能分析",
+          responsibility: "安保部",
+          reason: "客户现状访谈记录",
+        },
+        source: "需求文档.pdf:5",
+      },
+      {
+        table_code: "表2-7",
+        fields: {
+          item: "设备巡检与故障处理",
+          status: "客户自有运维班组每周巡检一次，故障电话报修",
+          note: "无外部运维合同",
+        },
+        source: "运维记录.pdf:2",
+      },
+      {
+        table_code: "表4-1",
+        fields: {
+          ability: "边缘 AI 推理",
+          maturity: "已交付",
+          limitation: "依赖 NPU 算力，无该硬件时只能回传云端",
+          proof: "AI Box 已在 3 个项目交付",
+        },
+        source: "能力清单.pdf:1",
+      },
+      {
+        table_code: "表4-2",
+        fields: {
+          link: "视频监控",
+          can_touch: "可以碰",
+          our_role: "替代",
+          role_reason: "AI Box 边缘算力带 6TOPS NPU，已交付",
+        },
+        source: "能力清单.pdf:2",
+      },
+      {
+        table_code: "表4-3",
+        fields: {
+          gap_ref: "夜间漏报",
+          match: "真能解",
+          our_product: "AI Box",
+          ability_basis: "边缘 AI 推理",
+          boundary_note: "现场需有 PoE 供电",
+        },
+        source: "能力清单.pdf:3",
+      },
+      {
+        table_code: "表4-4",
+        fields: {
+          sub_scene: "园区夜间安防",
+          value_density: "高",
+          fit: "高",
+          difficulty: "中",
+          stock_maturity: "成熟",
+          rank: "1",
+        },
+        source: "行业报告.pdf:4",
+      },
+      {
+        table_code: "表4-5",
+        fields: {
+          dimension: "算法准确率",
+          weight: "30",
+          score: "4",
+          basis: "已交付项目实测 95%",
+        },
+        source: "测评报告.pdf:5",
       },
     ],
   };
@@ -552,7 +638,7 @@ describe("createAdvanceStageCommand", () => {
       const cmd = createAdvanceStageCommand(deps);
       await collectEvents(cmd.execute({ scenarioId: "sc-1", stage: 1 }));
       const rows = db.stageDataRepo.list();
-      // 样本行带可定位出处「需求文档.pdf:5」→ AI提取 → B（间接有据）
+      // 样本行带可定位出处（如「白皮书.pdf:12」）→ AI提取 → B（间接有据）
       const extracted = rows.find((r) => r.source_authority === "T3");
       expect(extracted?.evidence_level).toBe("B");
       expect(extracted?.row["evidence_level"]).toBe("B");
@@ -592,15 +678,15 @@ describe("createAdvanceStageCommand", () => {
       const cmd = createAdvanceStageCommand(deps);
       await collectEvents(cmd.execute({ scenarioId: "sc-1", stage: 1 }));
 
-      // 5 条 stage1 输出行
-      expect(db.stageDataRepo.insert).toHaveBeenCalledTimes(5);
+      // 4 条 stage1 输出行（表1-3 两条、表2-2、表2-3 各一条；表1-2 已迁到阶段 3）
+      expect(db.stageDataRepo.insert).toHaveBeenCalledTimes(4);
 
       // 验证第一条
       const firstCall = (db.stageDataRepo.insert as ReturnType<typeof vi.fn>)
         .mock.calls[0]![0];
       expect(firstCall.scenario_id).toBe("sc-1");
       expect(firstCall.stage).toBe(1);
-      expect(firstCall.table_code).toBe("表1-2");
+      expect(firstCall.table_code).toBe("表1-3");
       expect(firstCall.source_type).toBe("AI提取");
     });
 
@@ -627,7 +713,8 @@ describe("createAdvanceStageCommand", () => {
         violations: unknown[];
       };
       expect(ev).toBeDefined();
-      expect(ev.completeness.expectedTables).toBe(8);
+      // 阶段 1 共 6 张表（表1-1、表1-3、表2-2、表2-3、表2-4、表2-5）
+      expect(ev.completeness.expectedTables).toBe(6);
       expect(Array.isArray(ev.completeness.gaps)).toBe(true);
       expect(Array.isArray(ev.violations)).toBe(true);
       // 缺口文案不得含通过/不通过等判定
@@ -646,14 +733,22 @@ describe("createAdvanceStageCommand", () => {
 
     it("按流程步限定表集：本步表集外的产出行不入库（场景锚不重复产出）", async () => {
       const cmd = createAdvanceStageCommand(deps);
+      // 第 2 步（认识场景）= 阶段 1 减去场景锚；表1-2/表2-7 属阶段 3，不在本步
+      const step2 = ["表1-3", "表2-2", "表2-3", "表2-4", "表2-5"];
       await collectEvents(
-        cmd.execute({ scenarioId: "sc-1", stage: 1, tables: ["表1-2"] }),
+        cmd.execute({ scenarioId: "sc-1", stage: 1, tables: step2 }),
       );
       const codes = (db.stageDataRepo.insert as ReturnType<typeof vi.fn>).mock.calls.map(
         (c) => (c[0] as { table_code: string }).table_code,
       );
       expect(codes.length).toBeGreaterThan(0);
-      expect(codes.every((c) => c === "表1-2")).toBe(true);
+      // 本步表集内的样例行照常落库
+      expect(codes).toContain("表1-3");
+      expect(codes).toContain("表2-2");
+      // 场景锚（表1-1）属第 1 步，本步不许重复产出
+      expect(codes).not.toContain("表1-1");
+      // 表集外的表（表1-1 场景锚、以及已迁到阶段 3 的表1-2/表2-7）一行都不许入库
+      expect(codes.every((c) => step2.includes(c))).toBe(true);
     });
 
     it("重算阶段 1 不丢场景锚（表1-1 常驻，用户确认内容保留）", async () => {
@@ -1021,7 +1116,7 @@ describe("createAdvanceStageCommand", () => {
 
       await collectEvents(createAdvanceStageCommand(deps).execute({ scenarioId: "sc-1", stage: 1 }));
 
-      // 阶段 1 本步 7 张表：无依赖的那些一起跑（默认上限 5）
+      // 阶段 1 共 6 张表：无依赖的那些一起跑（默认上限 5）
       expect(probe.calls()).toBeGreaterThanOrEqual(5);
       expect(probe.peak()).toBeGreaterThanOrEqual(2);
     });
@@ -1116,7 +1211,7 @@ describe("createAdvanceStageCommand", () => {
 
       const rows = events.filter((e) => e.type === "row").map((e) => String(e.tableCode));
       expect(rows).toContain("表2-3"); // 样本里 表2-3 有一行：它必须落库
-      expect(db.stageDataRepo.insert).toHaveBeenCalledTimes(5);
+      expect(db.stageDataRepo.insert).toHaveBeenCalledTimes(4);
       expect(events.at(-1)!.type).toBe("done");
     });
 
@@ -1185,7 +1280,9 @@ describe("createAdvanceStageCommand", () => {
       const deleted = (db.stageDataRepo.deleteByScenarioStageTable as ReturnType<typeof vi.fn>)
         .mock.calls.map((c) => String(c[2]));
       for (const code of done.tablesFailed ?? []) expect(deleted).not.toContain(code);
-      expect(deleted).toContain("表1-2");
+      // 有产出的表（表1-3）才被清旧写新；没产出的表2-2 一行不删
+      expect(deleted).toContain("表1-3");
+      expect(deleted).not.toContain("表2-2");
       // 命令别再整阶段删了：那会把失败表的原有内容一起清掉
       expect(db.stageDataRepo.deleteByScenarioStage).not.toHaveBeenCalled();
       expect(db.stageDataRepo.insert).toHaveBeenCalled();
@@ -1280,11 +1377,41 @@ describe("现状类表缺客户材料：不生成占位，改提示需要先补�
   let db2: DbInstance;
   let dsh2: DshClient;
   beforeEach(() => {
-    db2 = createMockDb({ scenario: { current_stage: 1 } });
+    /* 客户现状（表1-2 / 表2-7）属**阶段 3（能力匹配）**：它是判断"我方能力能否满足"的基线 */
+    db2 = createMockDb({ scenario: { current_stage: 3 } });
+  });
+
+  it("阶段 3：现状类表有客户事实时照常落库（表1-2 / 表2-7 归阶段 3）", async () => {
+    dsh2 = createTableAwareDshClient(makeStage3DshOutput());
+
+    const events = await collectEvents(
+      createAdvanceStageCommand({ db: db2, dshClient: dsh2 }).execute({ scenarioId: "sc-1", stage: 3 }),
+    );
+
+    const written = (db2.stageDataRepo.insert as ReturnType<typeof vi.fn>).mock.calls.map(
+      (c) => c[0] as { table_code: string; stage: number },
+    );
+    expect(written.map((r) => r.table_code)).toContain("表1-2");
+    expect(written.map((r) => r.table_code)).toContain("表2-7");
+    // 客户现状落的是阶段 3（不再写进阶段 1）
+    expect(written.every((r) => r.stage === 3)).toBe(true);
+    expect(events.at(-1)!.type).toBe("done");
+    const done = events.find((e) => e.type === "done") as { tablesNeedMaterial?: string[] };
+    // 有客户事实 → 不报"需要补材料"
+    expect(done.tablesNeedMaterial ?? []).toEqual([]);
   });
 
   it("表2-7 整表都是「材料里没有」→ 不写库，done 里报 tablesNeedMaterial", async () => {
-    const sample = makeStage1DshOutput();
+    const sample = makeStage3DshOutput();
+    /* 表2-7 整表都答"材料里没有"：本次不生成占位，改为提示需要先补客户材料 */
+    const missingMaterialRows = [
+      ...sample.rows.filter((r) => String(r["table_code"]) !== "表2-7"),
+      {
+        table_code: "表2-7",
+        fields: { item: "会议室设备与系统运维责任方", status: "未提供（本客户材料未含）" },
+        source: "行业通例（模型知识）",
+      },
+    ];
     dsh2 = {
       createSession: vi.fn(async () => ({ sessionId: "mock-need-material" })),
       prompt: vi.fn(async function* (
@@ -1292,19 +1419,7 @@ describe("现状类表缺客户材料：不生成占位，改提示需要先补�
         input: { outputContract: Record<string, unknown> },
       ): AsyncGenerator<FollowEvent> {
         const allowed = allowedTablesOf(input.outputContract);
-        /* 样例里本来没有表2-7 的行，这里补一条"答案整格都是材料里没有"的现状类行 */
-        const rows = [
-          ...sample.rows.filter((r) => allowed.includes(String(r["table_code"]))),
-          ...(allowed.includes("表2-7")
-            ? [
-                {
-                  table_code: "表2-7",
-                  fields: { item: "会议室设备与系统运维责任方", status: "未提供（本客户材料未含）" },
-                  source: "行业通例（模型知识）",
-                },
-              ]
-            : []),
-        ];
+        const rows = missingMaterialRows.filter((r) => allowed.includes(String(r["table_code"])));
         yield { type: "text", text: JSON.stringify({ rows }) };
         yield { type: "done" };
       }),
@@ -1312,12 +1427,20 @@ describe("现状类表缺客户材料：不生成占位，改提示需要先补�
     } as unknown as DshClient;
 
     const events = await collectEvents(
-      createAdvanceStageCommand({ db: db2, dshClient: dsh2 }).execute({ scenarioId: "sc-1", stage: 1 }),
+      createAdvanceStageCommand({ db: db2, dshClient: dsh2 }).execute({ scenarioId: "sc-1", stage: 3 }),
     );
     const done = events.find((e) => e.type === "done") as { tablesNeedMaterial?: string[]; tablesFailed?: string[] };
     expect(done.tablesNeedMaterial).toContain("表2-7");
     // 缺材料不是失败：不许混进 tablesFailed（否则界面会说"未生成成功、沿用原有内容"，口径不对）
     expect(done.tablesFailed ?? []).not.toContain("表2-7");
+    // 表2-7 一行都不写库；同批的表1-2 与表4-x 照常落库（别让它们把 done 变成 error）
+    const written = (db2.stageDataRepo.insert as ReturnType<typeof vi.fn>).mock.calls.map(
+      (c) => String((c[0] as { table_code?: string }).table_code),
+    );
+    expect(written).not.toContain("表2-7");
+    expect(written).toContain("表1-2");
+    expect(written).toContain("表4-1");
+    expect(events.at(-1)!.type).toBe("done");
     const progress = events.filter((e) => e.type === "progress").map((e) => String(e.message));
     expect(progress.some((m) => m.includes("需要先补客户材料"))).toBe(true);
   });

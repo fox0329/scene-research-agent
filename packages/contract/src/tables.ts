@@ -236,8 +236,8 @@ export const STAGE_DEFS: readonly StageDef[] = [
     id: 1,
     name: "认识场景（含门槛与合规）",
     producedBy: "模型分析",
-    goal: "场景是什么、由哪些业务环节组成、每环节能否参与、有哪些要素、系统怎么连、有哪些硬约束与门槛、认证现状、现有交付运维方式",
-    tableCodes: ["表1-1", "表1-2", "表1-3", "表2-2", "表2-3", "表2-4", "表2-5", "表2-7"],
+    goal: "场景是什么、有哪些要素与产业链构成、系统怎么连、有哪些硬约束与门槛、认证现状（只看场景与行业本身：客户现状与我方产品都不在这一步）",
+    tableCodes: ["表1-1", "表1-3", "表2-2", "表2-3", "表2-4", "表2-5"],
     summaryTitle: "② 场景认识总结",
   },
   {
@@ -252,8 +252,8 @@ export const STAGE_DEFS: readonly StageDef[] = [
     id: 3,
     name: "能力匹配",
     producedBy: "模型分析",
-    goal: "我方能力底账、客户每条需求能否满足、细分优先级、竞争力评分",
-    tableCodes: ["表4-1", "表4-2", "表4-3", "表4-4", "表4-5"],
+    goal: "客户现状底数（现在谁在做、用什么、怎么交付运维）、我方能力底账、客户每条需求能否满足、细分优先级、竞争力评分",
+    tableCodes: ["表1-2", "表2-7", "表4-1", "表4-2", "表4-3", "表4-4", "表4-5"],
     summaryTitle: "④ 能力匹配总结",
   },
   {
@@ -511,7 +511,7 @@ const TABLES_STAGE_0: readonly TableDef[] = [
   },
 ];
 
-// ─── 阶段 1 · 认识场景（含门槛与合规）（8 张） ──────────────
+// ─── 阶段 1 · 认识场景（含门槛与合规）（6 张） ──────────────
 
 const TABLES_STAGE_1: readonly TableDef[] = [
   {
@@ -552,33 +552,6 @@ const TABLES_STAGE_1: readonly TableDef[] = [
       "允许抽象、可留「待定」——不阻断后续阶段",
     ],
     consumedBy: [2, 3, 4, 5, 6, 6],
-  },
-  {
-    code: "表1-2",
-    name: "场景环节地图",
-    stage: 1,
-    tier: "重要",
-    rowUnit: "一个业务环节",
-    purpose: "铺开场景的全部业务环节，把每个环节**现在是怎么做的**写清楚（谁在做、用什么、什么问题）",
-    columns: [
-      mid("link", "业务环节", { required: true }),
-      mid("owner_now", "现在谁在做", { required: true, note: "写角色或岗位（如「班组长人工抄表」），不写人名" }),
-      mid("current_tool", "现在用什么", { required: true, note: "现有系统/设备/方式；纯人工也要写明" }),
-      mid("current_flow", "现在怎么做", { required: true, note: "流程与频次（谁在什么时候做什么）" }),
-      mid("pain", "现状问题", { required: true, note: "这个环节现在卡在哪；没有就写「未发现明确问题」" }),
-      sup("description", "环节说明", { required: true, type: "longText" }),
-      sup("responsibility", "责任归属", { required: true }),
-      sup("reason", "依据", { required: true, type: "longText" }),
-      sup("source", "来源", { required: true }),
-      sup("evidence_level", "证据等级", { required: true, enum: "evidence_level" }),
-      sup("authority", "来源权威性", { required: true, enum: "authority" }),
-    ],
-    completeness: [
-      "业务环节 ≥3 个",
-      "每环节 owner_now / current_tool / current_flow / pain 非空——本步只写现状",
-      "依据须可回溯材料；没有材料就按行业通例口径写（来源列标 AI推断）",
-    ],
-    consumedBy: [3, 4, 6],
   },
   {
     code: "表1-3",
@@ -624,7 +597,11 @@ const TABLES_STAGE_1: readonly TableDef[] = [
       sup("touchpoint", "触点"),
       sup("source", "出处", { required: true }),
     ],
-    completeness: ["element_name/element_type/function 非空", "price_range 缺须显式写『未提供』", "供应商与价格须有来源或标『待确认』"],
+    completeness: [
+      "element_name/element_type/function 非空",
+      "price_range 按行业口径给量级（如「万元级」「十万元级」）；判断不了写『量级待确认（行业口径）』——不许写『未提供（本客户…）』",
+      "供应商写行业主流厂商（不是客户指定品牌），与价格都须有来源或标『待确认』",
+    ],
     consumedBy: [2, 4],
   },
   {
@@ -682,25 +659,9 @@ const TABLES_STAGE_1: readonly TableDef[] = [
     completeness: ["constraint_item/required_value 非空且为具体数值或等级", "约束类须 T1"],
     consumedBy: [2, 4],
   },
-  {
-    code: "表2-7",
-    name: "交付与运维现状",
-    stage: 1,
-    tier: "过程",
-    rowUnit: "一个现状项",
-    purpose: "客户现有的交付与运维方式，供交付模式设计参照",
-    columns: [
-      mid("item", "项", { required: true }),
-      mid("status", "现状", { required: true, type: "longText", truncate: TRUNCATE_DEFAULT }),
-      sup("note", "说明"),
-      sup("source", "出处", { required: true }),
-    ],
-    completeness: ["item/status 非空", "status 须说明『谁在做、什么形式、周期如何』"],
-    consumedBy: [4],
-  },
 ];
 
-// ─── 阶段 2 · 理解商业（8 张） ──────────────────────────────
+// ─── 阶段 2 · 理解商业（9 张） ──────────────────────────────
 
 const TABLES_STAGE_2: readonly TableDef[] = [
   {
@@ -888,9 +849,52 @@ const TABLES_STAGE_2: readonly TableDef[] = [
   },
 ];
 
-// ─── 阶段 3 · 能力匹配（5 张） ──────────────────────────────
+// ─── 阶段 3 · 能力匹配（7 张） ──────────────────────────────
 
 const TABLES_STAGE_3: readonly TableDef[] = [
+  {
+    code: "表1-2",
+    name: "场景环节地图",
+    stage: 3,
+    tier: "重要",
+    rowUnit: "一个业务环节",
+    purpose: "铺开场景的全部业务环节，把每个环节**现在是怎么做的**写清楚（谁在做、用什么、什么问题）",
+    columns: [
+      mid("link", "业务环节", { required: true }),
+      mid("owner_now", "现在谁在做", { required: true, note: "写角色或岗位（如「班组长人工抄表」），不写人名" }),
+      mid("current_tool", "现在用什么", { required: true, note: "现有系统/设备/方式；纯人工也要写明" }),
+      mid("current_flow", "现在怎么做", { required: true, note: "流程与频次（谁在什么时候做什么）" }),
+      mid("pain", "现状问题", { required: true, note: "这个环节现在卡在哪；没有就写「未发现明确问题」" }),
+      sup("description", "环节说明", { required: true, type: "longText" }),
+      sup("responsibility", "责任归属", { required: true }),
+      sup("reason", "依据", { required: true, type: "longText" }),
+      sup("source", "来源", { required: true }),
+      sup("evidence_level", "证据等级", { required: true, enum: "evidence_level" }),
+      sup("authority", "来源权威性", { required: true, enum: "authority" }),
+    ],
+    completeness: [
+      "业务环节 ≥3 个",
+      "每环节 owner_now / current_tool / current_flow / pain 非空——本步只写现状",
+      "依据须可回溯材料；没有材料就按行业通例口径写（来源列标 AI推断）",
+    ],
+    consumedBy: [4, 6],
+  },
+  {
+    code: "表2-7",
+    name: "交付与运维现状",
+    stage: 3,
+    tier: "过程",
+    rowUnit: "一个现状项",
+    purpose: "客户现有的交付与运维方式，供交付模式设计参照",
+    columns: [
+      mid("item", "项", { required: true }),
+      mid("status", "现状", { required: true, type: "longText", truncate: TRUNCATE_DEFAULT }),
+      sup("note", "说明"),
+      sup("source", "出处", { required: true }),
+    ],
+    completeness: ["item/status 非空", "status 须说明『谁在做、什么形式、周期如何』"],
+    consumedBy: [4],
+  },
   {
     code: "表4-1",
     name: "能力底账",
@@ -907,6 +911,8 @@ const TABLES_STAGE_3: readonly TableDef[] = [
       sup("source", "来源", { required: true }),
     ],
     completeness: ["ability/maturity/proof 非空", "已交付行须有案例或验收数据"],
+    /* 客户现状表已移到本阶段（2026-10-14）：现成现状，再谈能不能满足 */
+    dependsOnTables: ["表1-2", "表2-7"],
     consumedBy: [6],
   },
   {
@@ -930,6 +936,8 @@ const TABLES_STAGE_3: readonly TableDef[] = [
       "can_touch 与 our_role 非空且取值合法",
       "判定依据须引用 M3/M4/M5 的具体条目",
     ],
+    /* 客户现状表已移到本阶段（2026-10-14）：现成现状，再谈能不能满足 */
+    dependsOnTables: ["表1-2", "表2-7"],
     consumedBy: [4, 5, 6],
   },
   {
@@ -949,7 +957,7 @@ const TABLES_STAGE_3: readonly TableDef[] = [
       sup("source", "来源", { required: true }),
     ],
     completeness: ["match 取值合法", "覆盖表3-8 每条缺口", "boundary_note 非空", "ability_basis 可回溯表4-1"],
-    dependsOnTables: ["表4-1"],
+    dependsOnTables: ["表4-1", "表1-2", "表2-7"],
     consumedBy: [6],
   },
   {
@@ -972,6 +980,8 @@ const TABLES_STAGE_3: readonly TableDef[] = [
       sup("source", "来源", { required: true }),
     ],
     completeness: ["≥2 个细分场景", "四维度非空", "必须给出排名第一的结论"],
+    /* 客户现状表已移到本阶段（2026-10-14）：现成现状，再谈能不能满足 */
+    dependsOnTables: ["表1-2", "表2-7"],
     consumedBy: [6],
   },
   {
@@ -993,6 +1003,8 @@ const TABLES_STAGE_3: readonly TableDef[] = [
       sup("source", "来源"),
     ],
     completeness: ["维度 ≥4 个", "权重之和 = 100%", "总分 = Σ(权重 × 评分)"],
+    /* 客户现状表已移到本阶段（2026-10-14）：现成现状，再谈能不能满足 */
+    dependsOnTables: ["表1-2", "表2-7"],
     consumedBy: [6],
   },
 ];

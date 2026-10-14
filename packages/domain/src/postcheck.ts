@@ -31,6 +31,7 @@ export type PostcheckKind =
   | "把推断写成客户事实"
   | "价值不可验证"
   | "中栏夹带出处"
+  | "客户侧口径混入场景分析"
   | "中栏太长"
   | "依据未落到事实"
   | "硬结论无依据"
@@ -89,6 +90,13 @@ export interface SourceLookup {
 export interface PostcheckInput {
   rows: readonly PostcheckRow[];
   lookup: SourceLookup;
+  /**
+   * 本批行所属阶段（用于**口径分档**，用户定调 2026-10-14）
+   *
+   * 阶段 1–2 只梳理**场景与行业本身**，客户现状表（表1-2、表2-7）已移到阶段 3；
+   * 因此这两步的中栏不该出现「本客户／我方」这类客户侧口径。
+   */
+  stage?: number;
 }
 
 // ─── 常量 ────────────────────────────────────────────────
@@ -550,6 +558,38 @@ function proseOf(r: PostcheckRow): string {
  *
  * 判据都写在这里，**不写提示词**（AGENTS §三.5：高风险判定必须落在确定性层）。
  */
+/**
+ * 阶段 1–2 的客户侧口径措辞（用户定调 2026-10-14）
+ *
+ * 用户实测质问：「认识场景／场景理解／理解商业这三步梳理的应该是场景的状态，与用户本地的产品、
+ * 用户的现状没有关系才对——为什么场景要素清单里提示『未提供（本客户未指定品牌）』『未提供（本客户
+ * 未提供采购价）』？」根因是自检口径不分阶段：场景级字段（主要供应商、价格量级、竞争激烈度）被
+ * 逼着按客户口径回答。判据落确定性层：阶段 ≤2 的中栏出现客户侧/我方措辞即报出。
+ */
+const CUSTOMER_SCOPE_WORDS = /本客户|该客户|本场景客户|客户方|我方|贵司|贵方/g;
+
+function customerScopeLeak(r: PostcheckRow, stage?: number): PostcheckFinding | null {
+  if (stage === undefined || stage > 2) return null;
+  const hits: string[] = [];
+  for (const key of midKeysOf(r.tableCode)) {
+    const v = r.row[key];
+    if (typeof v !== "string") continue;
+    const m = v.match(CUSTOMER_SCOPE_WORDS);
+    if (m !== null) hits.push(`${key}（${[...new Set(m)].join("、")}）`);
+  }
+  if (hits.length === 0) return null;
+  return {
+    tableCode: r.tableCode,
+    rowId: r.rowId,
+    label: r.label,
+    kind: "客户侧口径混入场景分析",
+    detail:
+      `阶段 1–2 只梳理**场景与行业本身**，这些格子却用了客户侧口径：${hits.join("；")}——` +
+      "场景级字段按**行业口径**给量级并标注口径；判断不了就写「量级待确认（行业口径）」，不许写「未提供（本客户…）」",
+    severity: "存疑",
+  };
+}
+
 export function runDeterministicPostcheck(input: PostcheckInput): PostcheckFinding[] {
   const findings: PostcheckFinding[] = [];
   // 跨表校验先跑（判据要对照整批行，不能只看当前行）
@@ -688,6 +728,10 @@ export function runDeterministicPostcheck(input: PostcheckInput): PostcheckFindi
         severity: "存疑",
       });
     }
+
+    // ⑨ 口径分档：阶段 1–2 只谈场景与行业本身（用户定调 2026-10-14）
+    const scopeLeak = customerScopeLeak(r, input.stage);
+    if (scopeLeak) findings.push(scopeLeak);
 
     // ⑧ 依据列不许写废话：复述结论 / 行业套话（用户定调：「角色判定依据 里面有不少的废话」）
     const fluff = basisFluff(r);

@@ -138,8 +138,11 @@ describe("@scene/contract 表号 → 流程步（横幅文案用）", () => {
 
   it("阶段 1 的两步靠表集区分：表1-1 归第 1 步，其余归第 2 步", () => {
     expect(flowStepOfTable("表1-1")?.id).toBe(1);
-    expect(flowStepOfTable("表1-2")?.id).toBe(2);
     expect(flowStepOfTable("表1-3")?.id).toBe(2);
+    /* 客户现状表（表1-2 环节现状、表2-7 交付与运维现状）已移到阶段 3（能力匹配，第 4 步）：
+       阶段 1–2 只梳理场景与行业本身，不碰客户现状（用户定调 2026-10-14） */
+    expect(flowStepOfTable("表1-2")?.id).toBe(4);
+    expect(flowStepOfTable("表2-7")?.id).toBe(4);
   });
 
   it("阶段 3/4 的表分别落在第 4 步与第 5 步（用户看到的就是这两步）", () => {

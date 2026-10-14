@@ -671,3 +671,81 @@ describe("hasCustomerFacts — 现状类表有没有客户事实（确定性判�
     expect(hasCustomerFacts("表2-3", { layer: "感知层", components: "未提供" })).toBe(true);
   });
 });
+
+/**
+ * 口径分档 — 用户质问 2026-10-14
+ *
+ * 「认识场景／场景理解／理解商业这三步梳理的应该是场景的状态，与用户本地的产品、用户的现状
+ * 没有关系才对——为什么场景要素清单表格里提示『未提供（本客户未指定品牌）』
+ * 『未提供（本客户未提供采购价）』？」
+ *
+ * 根因：自检口径不分阶段。场景级字段（主要供应商、价格量级、竞争激烈度）被逼着按客户口径回答，
+ * 于是把"行业问题"答成了"客户问题"。判据落确定性层：阶段 ≤2 的中栏出现客户侧/我方措辞即报出。
+ */
+describe("口径分档 — 阶段 1–2 不许把行业问题答成客户问题（故障清单 #68）", () => {
+  const elementRow = (p: Partial<PostcheckRow> = {}): PostcheckRow =>
+    row({
+      tableCode: "表2-2",
+      label: "会议平板",
+      row: {
+        element_name: "会议平板",
+        element_type: "设备",
+        function: "会议室显示与白板书写",
+        vendor: "未提供（本客户未指定品牌）",
+        price_range: "未提供（本客户未提供采购价）",
+      },
+      ...p,
+    });
+
+  it("阶段 1 的「本客户未指定品牌」被报出", () => {
+    const f = runDeterministicPostcheck({ rows: [elementRow()], lookup: fakeLookup({}), stage: 1 });
+    const hit = f.find((x) => x.kind === "客户侧口径混入场景分析");
+    expect(hit).toBeDefined();
+    expect(hit?.detail).toContain("行业口径");
+    expect(hit?.severity).toBe("存疑");
+  });
+
+  it("阶段 2 同样报出（理解商业也只看场景与行业本身）", () => {
+    const f = runDeterministicPostcheck({ rows: [elementRow()], lookup: fakeLookup({}), stage: 2 });
+    expect(f.map((x) => x.kind)).toContain("客户侧口径混入场景分析");
+  });
+
+  it("阶段 3 起不报（客户现状表已移到能力匹配，本客户口径是正当的）", () => {
+    const f = runDeterministicPostcheck({
+      rows: [
+        row({
+          tableCode: "表1-2",
+          label: "会议室预订",
+          row: { link: "会议室预订", owner_now: "本客户行政部兼管", current_tool: "OA 系统" },
+        }),
+      ],
+      lookup: fakeLookup({}),
+      stage: 3,
+    });
+    expect(f.map((x) => x.kind)).not.toContain("客户侧口径混入场景分析");
+  });
+
+  it("不传阶段时不报（向后兼容：老调用点不因新判据失败）", () => {
+    const f = runDeterministicPostcheck({ rows: [elementRow()], lookup: fakeLookup({}) });
+    expect(f.map((x) => x.kind)).not.toContain("客户侧口径混入场景分析");
+  });
+
+  it("按行业口径给的量级不报（正例：这是我们要的写法）", () => {
+    const f = runDeterministicPostcheck({
+      rows: [
+        elementRow({
+          row: {
+            element_name: "会议平板",
+            element_type: "设备",
+            function: "会议室显示与白板书写",
+            vendor: "MAXHUB、华为、海信等十多家主流厂商",
+            price_range: "万元级（65–86 寸）",
+          },
+        }),
+      ],
+      lookup: fakeLookup({}),
+      stage: 1,
+    });
+    expect(f.map((x) => x.kind)).not.toContain("客户侧口径混入场景分析");
+  });
+});

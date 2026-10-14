@@ -39,12 +39,12 @@ function seed(): { db: DbInstance; scenarioId: string; lineId: string } {
     status: "进行中",
     current_stage: 1,
   });
-  // 表1-2 两行 + 表1-1 锚一行
+  // 表1-3 一行 + 表1-1 锚一行（表1-2、表2-7 已移到阶段 3）
   db.stageDataRepo.insert({
     scenario_id: sc.id,
     stage: 1,
-    table_code: "表1-2",
-    row: { link: "制水", can_touch: "可以碰", our_role: "辅助", description: "加药" },
+    table_code: "表1-3",
+    row: { barrier_type: "技术", barrier_name: "水质达标率", criteria: "≥ 99%", judgment: "过得了" },
     is_stale: false,
     source: "《招标》p.2",
   });
@@ -81,8 +81,8 @@ describe("stage-summary-service — 读行", () => {
     const { db, scenarioId } = seed();
     const rows = readStageRowsByTable(db, scenarioId, 1);
     expect(Object.keys(rows)).toContain("表1-1");
-    expect(Object.keys(rows)).toContain("表1-2");
-    expect(rows["表1-2"]).toHaveLength(1);
+    expect(Object.keys(rows)).toContain("表1-3");
+    expect(rows["表1-3"]).toHaveLength(1);
     expect(rows["表1-1"]).toHaveLength(1);
   });
 
@@ -111,7 +111,7 @@ describe("stage-summary-service — 生成与落库", () => {
     expect(r.markdown).toContain("# 阶段 1 · 认识场景（含门槛与合规） — 总结");
     expect(r.markdown).toContain("## 五、待补齐信息");
     expect(r.markdown).toContain("用户诉求（第一输入，唯一基准）");
-    expect(r.completeness.expectedTables).toBe(8);
+    expect(r.completeness.expectedTables).toBe(6);
     const stored = db.stageSummaryRepo.get(scenarioId, 1);
     expect(stored?.content).toBe(r.markdown);
   });
@@ -131,7 +131,7 @@ describe("stage-summary-service — 生成与落库", () => {
   it("stageCompletenessOf 给出缺口清单（不含判定措辞）", () => {
     const { db, scenarioId } = seed();
     const c = stageCompletenessOf(db, scenarioId, 1);
-    expect(c.expectedTables).toBe(8);
+    expect(c.expectedTables).toBe(6);
     expect(c.tablesWithData).toBe(2);
     const text = c.gaps.map((g) => g.detail).join(" ");
     expect(text).toContain("尚无数据");
@@ -173,9 +173,9 @@ describe("stage-summary-service — 路由", () => {
     });
     expect(res.statusCode).toBe(200);
     const body = res.json() as { expectedTables: number; gaps: unknown[]; percent: number };
-    expect(body.expectedTables).toBe(8);
+    expect(body.expectedTables).toBe(6);
     expect(body.gaps.length).toBeGreaterThan(0);
-    expect(body.percent).toBe(25);
+    expect(body.percent).toBe(33);
   });
 
   it("GET /stages/:n/summary 返回 markdown + 完整度", async () => {
@@ -187,7 +187,7 @@ describe("stage-summary-service — 路由", () => {
     const body = res.json() as { stage: number; markdown: string; completeness: { percent: number } };
     expect(body.stage).toBe(1);
     expect(body.markdown).toContain("## 六、上下游衔接");
-    expect(body.completeness.percent).toBe(25);
+    expect(body.completeness.percent).toBe(33);
   });
 
   it("GET /stages/:n/summary?format=md 直接下载 Markdown", async () => {

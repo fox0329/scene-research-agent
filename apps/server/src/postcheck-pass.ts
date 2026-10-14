@@ -160,6 +160,20 @@ export function toPostcheckRows(
  * 一步从 105 秒涨到 592 秒——检查的成本必须**与真问题数成正比**，不能与全量行数成正比。
  * 拆开后：第 1 轮输出只有"哪几行有问题"（几百 token），第 2 轮才只对这几行给修法。
  */
+
+/** 阶段 1–2 的口径分档（用户定调 2026-10-14）：这两步只梳理场景与行业本身 */
+function stageScopeBlock(stage?: number): string {
+  if (stage === undefined || stage > 2) return "";
+  return `
+**本步口径（阶段 ${stage}：只梳理场景与行业本身，不碰客户现状、不碰我方产品）**：
+- **不许**出现「本客户／该客户／我方／贵司／贵方」这类客户侧或我方口径——客户现状表已移到阶段 3（能力匹配）。
+- 场景级字段（主要供应商、价格量级、竞争激烈度、产业链构成、采购与决策机制）按**行业口径**给出并标明口径；
+  给不出精确值时写**量级**（如「万元级」「十多家主流厂商」），实在判断不了写「量级待确认（行业口径）」，
+  **不许**写「未提供（本客户…）」——那是把行业问题答成了客户问题。
+- 「价值必须有本客户基线」这条规则**本步不适用**（只对价值与验证阶段与交付物生效）。
+`;
+}
+
 const SYSTEM_TRIAGE = `你是「生成后自检」环节的执行者。刚刚由你（或上一轮的你）生成了这批阶段信息行，
 现在你要**对每一行连问三遍**：这真实吗？客观吗？有价值吗？
 
@@ -184,7 +198,8 @@ const SYSTEM = `你是「生成后自检」环节的执行者。刚刚由你（�
    - 有价值吗：价值类主张有没有可测指标、有没有**本客户基线**？没基线的收益等于无法验证。
 2. **只改被点名的行，能改就改**（没被点名的行不要回）：
    - 措辞问题 → 改写成可复算、可被反驳的客观表述（保留原意，删掉绝对化词）
-   - 口径问题（把行情写成客户事实）→ 改成本客户事实就写"未提供"，或把表述退回行情口径
+   - 口径问题（把行情写成客户事实）→ 把表述退回**行情口径**（阶段 1–2 的客户侧口径一律退回行业口径并给量级，
+     不许写成"未提供（本客户…）"）；阶段 3 起的客户事实确实没有依据才写"未提供"
    - 出处对不上 → **不要把出处改成别的**（你不许编造来源）；把核实结论按实降级（单一来源/无法核实），
      并在核实说明里写清"哪一处对不上"
    - 价值缺基线 → 基线条写「未提供（本客户材料未含）」，并在核实说明里点明"价值不可验证"
@@ -379,6 +394,8 @@ async function triage(
   rows: readonly PostcheckRow[],
   findings: readonly PostcheckFinding[],
   progress: (m: string) => void,
+  /** 口径分档：阶段 1–2 只谈场景与行业本身（用户定调 2026-10-14） */
+  stage?: number,
 ): Promise<{ rowId: string; question: string; detail: string }[]> {
   const out: { rowId: string; question: string; detail: string }[] = [];
   for (let i = 0; i < rows.length; i += MAX_ROWS_PER_ROUND) {
@@ -386,7 +403,7 @@ async function triage(
     try {
       const problems = parseProblems(
         await withTimeout(
-          collect(session, dsh, SYSTEM_TRIAGE, buildUser(batch, findings, 1), TRIAGE_CONTRACT),
+          collect(session, dsh, SYSTEM_TRIAGE + stageScopeBlock(stage), buildUser(batch, findings, 1), TRIAGE_CONTRACT),
           ROUND_TIMEOUT_MS,
           `三问自检超时（${Math.round(ROUND_TIMEOUT_MS / 1000)} 秒）`,
         ),
@@ -454,7 +471,10 @@ export async function runPostcheck(deps: PostcheckRunnerDeps): Promise<Postcheck
   // 判定始终由领域层给：模型只改内容，不判"什么算问题"
   // 产出行校验的机械违规同样并入（变更表 #163）——判定仍在确定性层，只是不再漏掉它们
   const violationsOf = deps.listViolations ?? ((): readonly PostcheckFinding[] => []);
-  let findings = [...runDeterministicPostcheck({ rows: all, lookup }), ...violationsOf()];
+  let findings = [
+    ...runDeterministicPostcheck({ rows: all, lookup, stage: deps.stage }),
+    ...violationsOf(),
+  ];
   progress(`生成后自检：初查 ${all.length} 行，命中 ${findings.length} 处待处理`);
   const allFindings = [...findings];
   let fixedRows = 0;
@@ -465,7 +485,7 @@ export async function runPostcheck(deps: PostcheckRunnerDeps): Promise<Postcheck
     try {
       // 第 1/3 轮：全量三问，只报告（输出小 → 成本与"真问题数"成正比）
       progress(`第 1/3 轮三问自检：全量 ${all.length} 行（只报告不改写）`);
-      let triaged = await triage(session, dsh, all, findings, progress);
+      let triaged = await triage(session, dsh, all, findings, progress, deps.stage);
       if (triaged.length > 0) {
         progress(`第 1 轮：模型另指出 ${triaged.length} 处问题`);
       }
@@ -487,7 +507,7 @@ export async function runPostcheck(deps: PostcheckRunnerDeps): Promise<Postcheck
           try {
             problems = parseProblems(
               await withTimeout(
-                collect(session, dsh, SYSTEM, buildUser(batch, findings, 2)),
+                collect(session, dsh, SYSTEM + stageScopeBlock(deps.stage), buildUser(batch, findings, 2)),
                 ROUND_TIMEOUT_MS,
                 `第 2 轮自检修法超时（${Math.round(ROUND_TIMEOUT_MS / 1000)} 秒）`,
               ),
@@ -522,7 +542,10 @@ export async function runPostcheck(deps: PostcheckRunnerDeps): Promise<Postcheck
       }
 
       // 改完再判一遍——判定权始终在确定性层（产出行校验也重判，改没改掉由它说了算）
-      findings = [...runDeterministicPostcheck({ rows: all, lookup }), ...violationsOf()];
+      findings = [
+        ...runDeterministicPostcheck({ rows: all, lookup, stage: deps.stage }),
+        ...violationsOf(),
+      ];
       allFindings.push(...findings);
 
       // 第 3/3 轮：对"改完还存疑"的行再问一遍（第三问）
@@ -533,7 +556,7 @@ export async function runPostcheck(deps: PostcheckRunnerDeps): Promise<Postcheck
       const recheck = all.filter((r) => stillFlagged.has(r.rowId));
       if (recheck.length > 0) {
         progress(`第 3/3 轮：复查仍有存疑的 ${recheck.length} 行`);
-        triaged = await triage(session, dsh, recheck, findings, progress);
+        triaged = await triage(session, dsh, recheck, findings, progress, deps.stage);
         progress(`第 3 轮：模型仍指出 ${triaged.length} 处存疑`);
       } else {
         progress("第 3/3 轮：已无存疑行");

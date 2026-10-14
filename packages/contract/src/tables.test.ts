@@ -42,9 +42,10 @@ describe("表定义注册表 — 完整性", () => {
     expect(count("过程")).toBe(4);
   });
 
-  it("阶段分布：0→6张、1→8张、2→9张、3→5张、4→3张、5→2张、6→0张", () => {
+  it("阶段分布：0→6张、1→6张、2→9张、3→7张、4→3张、5→2张、6→0张", () => {
+    /* 表1-2、表2-7 属"客户现状"，已从阶段 1 移到阶段 3（用户定调 2026-10-14） */
     const dist = [0, 1, 2, 3, 4, 5, 6].map((s) => tablesOfStage(s as 0).length);
-    expect(dist).toEqual([6, 8, 9, 5, 3, 2, 0]);
+    expect(dist).toEqual([6, 6, 9, 7, 3, 2, 0]);
   });
 
   it("阶段定义的 tableCodes 与实际表一致（含交付物阶段无表）", () => {
@@ -334,8 +335,11 @@ describe("dependsOnTables — 本步内的真实依赖（按表并发的调度�
     // 要素清单 → 分层架构/要素间关系（架构与关系都引用要素名）
     expect(tableDef("表2-3")?.dependsOnTables).toEqual(["表2-2"]);
     expect(tableDef("表2-4")?.dependsOnTables).toEqual(["表2-2"]);
-    // 能力清单 → 需求-能力对照
-    expect(tableDef("表4-3")?.dependsOnTables).toEqual(["表4-1"]);
+    // 客户现状（表1-2 环节现状、表2-7 交付运维现状）现与能力匹配同在阶段 3（2026-10-14 搬迁）：
+    // 判断"我方能不能满足"必须站在客户现状上，所以阶段 3 的表都要等这两张先出
+    expect(tableDef("表4-1")?.dependsOnTables).toEqual(["表1-2", "表2-7"]);
+    // 能力清单 → 需求-能力对照（同样要站在客户现状上）
+    expect(tableDef("表4-3")?.dependsOnTables).toEqual(["表4-1", "表1-2", "表2-7"]);
     // 架构 → 实施计划（实施项要落在架构的组件上）
     expect(tableDef("表5-3")?.dependsOnTables).toEqual(["表5-1"]);
   });

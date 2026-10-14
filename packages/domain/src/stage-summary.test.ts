@@ -45,16 +45,18 @@ function summaryFor(rows: Record<string, InfoRow[]> = stage1Rows): string {
  * 步骤级只覆盖本步表集，且**不含用户诉求全文与上下游衔接**（那两段属于阶段级/交付物）。
  */
 describe("stage-summary — 步骤级只讲本步", () => {
-  const stepRows: Record<string, InfoRow[]> = { "表1-2": stage1Rows["表1-2"] ?? [] };
+  // 第 2 步（认识场景）本步表集：阶段 1 六张减去场景锚，表1-3 是其中之一
+  // （表1-2 已迁到阶段 3，不再是第 2 步的表）
+  const stepRows: Record<string, InfoRow[]> = { "表1-3": stage1Rows["表1-3"] ?? [] };
   const md = buildStageSummary({
     stage: 1,
     step: 2,
-    tableCodes: ["表1-2"],
+    tableCodes: ["表1-3"],
     scope: "step",
     scenarioName: "智慧水务",
     productLineName: "感知与控制",
     rowsByTable: stepRows,
-    completeness: checkStageCompleteness({ stage: 1, rowsByTable: stepRows, tableCodes: ["表1-2"] }),
+    completeness: checkStageCompleteness({ stage: 1, rowsByTable: stepRows, tableCodes: ["表1-3"] }),
     briefRawText: "场景名称：智慧水务\n想搞清楚什么：值不值得进",
     generatedAt: "2026-09-25",
   });
@@ -76,8 +78,9 @@ describe("stage-summary — 步骤级只讲本步", () => {
   });
 
   it("只写本步表集：其他表的行与表名不出现，完整度也只算本步", () => {
-    expect(md).toContain("表1-2");
+    expect(md).toContain("表1-3");
     expect(md).not.toContain("表1-1");
+    expect(md).not.toContain("表1-2"); // 表1-2 属阶段 3，不该进第 2 步的总结
     expect(md).toContain("信息完整度：1/1 张表齐备");
   });
 
@@ -96,7 +99,7 @@ describe("stage-summary — 阶段级六段骨架（交付物装配口径）", (
     expect(md).toContain("# 阶段 1 · 认识场景（含门槛与合规） — 总结");
     expect(md).toContain("场景：智慧水务");
     expect(md).toContain("产品线：感知与控制");
-    expect(md).toContain("信息完整度：3/8 张表齐备");
+    expect(md).toContain("信息完整度：2/6 张表齐备"); // 阶段 1 = 表1-1、表1-3、表2-2..2-5（有数据的 2 张）
     expect(md).toContain("用户诉求（第一输入，唯一基准）");
     expect(md).toContain("想搞清楚什么：值不值得进");
   });
@@ -109,16 +112,19 @@ describe("stage-summary — 阶段级六段骨架（交付物装配口径）", (
   });
 
   it("一、信息摘要含表数/行数/来源分布/假设与推断计数", () => {
-    expect(md).toContain("8 张表 / 10 行");
+    expect(md).toContain("6 张表 / 7 行"); // 表1-1 两行 + 表1-3 五行；表1-2 不算在阶段 1
     expect(md).toContain("来源分布 T1");
     expect(md).toContain("C 级假设的条目 1 条");
     expect(md).toContain("系统推断条目 1 条");
   });
 
   it("二、关键信息清单逐表给行数与取值样例，缺表标「尚无数据」", () => {
-    // 取样列跟着表定义走：表1-2 删掉「有无电子部分」后，样例回落到行标识（业务环节）
-    expect(md).toContain("**表1-2 场景环节地图**：3 行——制水；输配；原水取水");
+    expect(md).toContain("**表1-1 场景概述**：2 行——场景名称·智慧水务；客户类型/行业·市政水务集团");
+    expect(md).toContain("**表1-3 门槛与合规**：5 行——技术·等保三级；行业准入·计量认证；经济·预算科目 …");
     expect(md).toContain("**表2-2 场景要素清单**：尚无数据");
+    // 客户现状（表1-2 场景环节地图 / 表2-7 交付与运维现状）归阶段 3，阶段 1 的清单里不该出现
+    expect(md).not.toContain("表1-2");
+    expect(md).not.toContain("表2-7");
   });
 
   it("三、说明与方法口径列出 C 级假设与系统推断（带表号）", () => {
@@ -153,9 +159,33 @@ describe("stage-summary — 阶段级六段骨架（交付物装配口径）", (
   });
 
   it("六、上下游衔接给出产出、下游引用与上游依据", () => {
-    expect(md).toContain("本阶段产出：表1-1、表1-2、表1-3");
-    expect(md).toContain("阶段 3 · 能力匹配 会引用：表1-1、表1-2");
+    expect(md).toContain("本阶段产出：表1-1、表1-3、表2-2、表2-3、表2-4、表2-5");
+    expect(md).toContain("阶段 3 · 能力匹配 会引用：表1-1");
+    expect(md).toContain("阶段 4 · 方案与实现 会引用：表1-1、表1-3、表2-2、表2-3、表2-4、表2-5");
     expect(md).toContain("上游依据：M3、M4");
+  });
+
+  it("表1-2 / 表2-7 的总结归阶段 3（能力匹配）：产出清单与行样例都在那里", () => {
+    const rows: Record<string, InfoRow[]> = {
+      "表1-2": stage1Rows["表1-2"] ?? [],
+      "表2-7": [row({ item: "驻场运维", status: "运维班组每周巡检一次" })],
+    };
+    const md3 = buildStageSummary({
+      stage: 3,
+      scenarioName: "智慧水务",
+      productLineName: "感知与控制",
+      rowsByTable: rows,
+      completeness: checkStageCompleteness({ stage: 3, rowsByTable: rows }),
+      briefRawText: "场景名称：智慧水务\n想搞清楚什么：值不值得进",
+      generatedAt: "2026-09-25",
+    });
+    expect(md3).toContain("# 阶段 3 · 能力匹配 — 总结");
+    expect(md3).toContain("信息完整度：2/7 张表齐备");
+    expect(md3).toContain("本阶段产出：表1-2、表2-7、表4-1、表4-2、表4-3、表4-4、表4-5");
+    expect(md3).toContain("**表1-2 场景环节地图**：3 行——制水；输配；原水取水");
+    expect(md3).toContain("**表2-7 交付与运维现状**：1 行——驻场运维·运维班组每周巡检一次");
+    expect(md3).toContain("**表4-1 能力底账**：尚无数据");
+    expect(md3).not.toContain("表1-3"); // 门槛与合规留在阶段 1
   });
 });
 
@@ -171,9 +201,10 @@ describe("stage-summary — 信息版口径", () => {
 
   it("空阶段也能生成（不报错，缺口清单占位）", () => {
     const md = summaryFor({});
-    expect(md).toContain("信息完整度：0/8");
+    expect(md).toContain("信息完整度：0/6"); // 阶段 1 现为 6 张表
     expect(md).toContain("（本阶段尚无信息，见第五节待补清单）");
     expect(md).toContain("表1-1 场景概述：尚无数据");
+    expect(md).not.toContain("表1-2"); // 表1-2 不属阶段 1
   });
 });
 

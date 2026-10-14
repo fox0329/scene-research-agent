@@ -133,14 +133,15 @@ describe("flow-service — 锁步与就绪", () => {
     db.stageDataRepo.insert({
       scenario_id: scenarioId,
       stage: 1,
-      table_code: "表1-2",
-      row: { link: "制水", can_touch: "可以碰" },
+      table_code: "表1-3",
+      row: { barrier_type: "技术", barrier_name: "水质达标率", criteria: "≥ 99%", judgment: "过得了" },
       is_stale: false,
     });
     const s2 = state(db, scenarioId, 2);
     expect(s2.ready).toBe(true);
     expect(s2.progress.rows).toBe(1);
-    expect(s2.progress.expectedTables).toBe(7);
+    /* 阶段 1 现为 6 张（表1-2、表2-7 已移到阶段 3）；第 2 步不含表1-1 → 5 张 */
+    expect(s2.progress.expectedTables).toBe(5);
   });
 
   it("完成第 2 步推进 current_stage 到 1；完成第 7 步把场景标记为已完成", () => {
