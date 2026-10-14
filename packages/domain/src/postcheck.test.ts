@@ -600,3 +600,31 @@ describe("中栏太长 — 表1-1『内容』列例外（用户定调 v1.34，�
     expect(findings.some((f) => f.kind === "中栏太长")).toBe(true);
   });
 });
+
+/**
+ * 故障清单 #66：中栏"按词啃"引用痕迹，把缺材料的说明啃成病句
+ *
+ * 用户报「交付与运维现状 表格为什么没填？」→ 库里 7 行全写「未提供（本客户 含）」：
+ * 模型原本写的是规范的「未提供（本客户材料未含）」，被 MID_CITATION_PATTERNS 里
+ * `(?:材料|文档|资料)(?:中|里)?(?:未|没有|未见|未含)` 把「材料未」当引用删掉。
+ * 它是**缺材料的说明**（G-R5 要求写），不是引用痕迹。
+ */
+describe("中栏引用清理 — 不许把缺材料的说明啃成病句（故障清单 #66）", () => {
+  it("「未提供（本客户材料未含）」原样保留", () => {
+    const out = splitMidCitations("未提供（本客户材料未含）");
+    expect(out.cleaned).toBe("未提供（本客户材料未含）");
+    expect(out.moved).toEqual([]);
+  });
+
+  it("夹在长句里的「（本客户材料未含）」整块保住", () => {
+    const out = splitMidCitations("本客户现有报修渠道与响应时限均无材料（本客户材料未含），只能给行业通例");
+    expect(out.cleaned).toContain("（本客户材料未含）");
+    expect(out.cleaned).not.toContain("本客户 含");
+  });
+
+  it("真正的出处照旧搬右栏（文件名:页码）", () => {
+    const out = splitMidCitations("会议平板故障率偏高。来源：ingest-3.pdf:12");
+    expect(out.cleaned).not.toContain("ingest-3.pdf");
+    expect(out.moved.join(" ")).toContain("ingest-3.pdf:12");
+  });
+});

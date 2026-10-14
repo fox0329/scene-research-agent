@@ -207,9 +207,10 @@ const MID_CITATION_PATTERNS: readonly RegExp[] = [
   /[（(]\s*[MO]\s*[1-6]\s*[)）]/g, // （M5）（O2）
   /\b[MO][1-6]_[\u4e00-\u9fa5A-Za-z]+/g, // M1_产品型号
   /第\s*\d+\s*页/g,
-  /(?:材料|文档|资料)(?:中|里)?(?:未|没有|未见|未含)/g, // 材料未提供 / 文档里没有
-  /(?:文档|材料)未(?:说明|提及|提供|给出)/g,
-  /未见材料|材料未含|未查到材料/g,
+  /* 这三条曾经"按词啃"：把「未提供（本客户材料未含）」里的「材料未」当引用痕迹删掉，
+     正文变成病句「未提供（本客户 含）」（用户报「交付与运维现状 表格为什么没填」时抓到）。
+     「本客户材料未含」是 **缺材料的说明**（G-R5 要求必须写），不是引用痕迹。
+     真正的纯引用句子由 isCitationOnly 整句搬右栏，不靠这里按词删。 */
   /按\s*(?:XX|某)?(?:白皮书|报告|标准|材料)/g,
 ];
 
@@ -229,8 +230,15 @@ function isCitationOnly(sentence: string): boolean {
 
 /** 摘掉句子里夹带的引用痕迹（保留正文） */
 function stripCitationMarks(sentence: string): string {
-  let out = sentence;
+  /* 保险：括号里带「本客户／客户」的限定语整块保护起来——它是**缺材料的说明**，
+     属于正文（G-R5 要求写），任何引用模式都不许啃（啃过就是「本客户 含」这种病句） */
+  const protectedSpans: string[] = [];
+  let out = sentence.replace(/[（(][^）)]*(?:本客户|客户)[^）)]*[)）]/g, (m) => {
+    protectedSpans.push(m);
+    return `\u0000${protectedSpans.length - 1}\u0000`;
+  });
   for (const re of MID_CITATION_PATTERNS) out = out.replace(re, " ");
+  out = out.replace(/\u0000(\d+)\u0000/g, (_m, i: string) => protectedSpans[Number(i)] ?? "");
   return out
     .replace(/[（(]\s*[)）]/g, " ")
     .replace(/\s*[，,；;]\s*(?=[，,；;。])/g, "")
