@@ -128,4 +128,21 @@ jobs:
           else
             gh release create "$TAG" --title "场景通 $TAG" --notes-file .github/release-notes.md
           fi
-          gh release upload "$TAG" dist/* --clobber
+          # 逐个文件上传并重试：Release 刚创建时，上传主机对个别文件偶发 404
+          # （2026-10-15 真机：三个包里第三个报 HTTP 404，重试即可成功）
+          for f in dist/*; do
+            for attempt in 1 2 3 4 5; do
+              if gh release upload "$TAG" "$f" --clobber; then
+                echo "✅ $(basename "$f")"
+                break
+              fi
+              if [ "$attempt" = "5" ]; then
+                echo "::error::上传失败（已重试 5 次）：$f"
+                exit 1
+              fi
+              echo "… 第 $attempt 次失败，5 秒后重试：$(basename "$f")"
+              sleep 5
+            done
+          done
+          echo "── 最终核对：Release 上的产物 ──"
+          gh release view "$TAG" --json assets --jq '.assets[] | "\(.name)  \(.size)"'
