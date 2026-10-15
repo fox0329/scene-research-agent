@@ -26,12 +26,12 @@ jobs:
           # 每个架构必须在自己的机器上构建并冒烟：
           # 运行时里的 better-sqlite3 是**架构相关**的，在 arm64 上交叉打出 x64 包，
           # 塞进去的仍是 arm64 原生模块，用户一跑就崩（2026-10-12 真实踩过）。
+          #
+          # 2026-10-15 用户定调：**不再支持 macOS Intel（x64）**——只出 Apple 芯片 dmg。
+          # 顺带解决 macos-13 被 GitHub 逐步下线、排队动辄半小时以上的问题（变更表 #200）。
           - os: macos-14 # Apple Silicon
             target: mac
             arch: arm64
-          - os: macos-13 # Intel
-            target: mac
-            arch: x64
           - os: windows-latest
             target: win
             arch: x64
@@ -106,7 +106,6 @@ jobs:
 
             ### 下载哪个
             - macOS（Apple 芯片，M 系列）：`场景通-*-mac-arm64.dmg`
-            - macOS（Intel）：`场景通-*-mac-x64.dmg`
             - Windows 10/11 64 位：`场景通-*-win-x64.exe`
 
             ### macOS 首次安装（免签名，两步放行）
