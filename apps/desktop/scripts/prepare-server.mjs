@@ -76,9 +76,29 @@ const tmpRoot = (() => {
   }
 })();
 
+/**
+ * 装配用的临时根（Windows 必须与仓库同盘）。
+ *
+ * 为什么：GitHub 的 Windows runner 仓库在 `D:\a\...`，而系统临时目录在
+ * `C:\Users\...\Temp`——pnpm deploy 往目标里建硬链接/符号链接，跨卷直接失败
+ * （2026-10-15 真机：`pnpm deploy` 退出码 1，报错还被 stdio 配置吞了，排查全靠猜）。
+ * 所以 Windows 上改用「仓库上一级」的目录：同盘、又在 pnpm 工作区之外
+ * （工作区内做 deploy 目标会歪写路径，见下方注释）。
+ */
+const deployTmpRoot = (() => {
+  if (process.platform !== "win32") return tmpRoot;
+  const sameDrive = join(dirname(repo), ".scene-deploy-tmp");
+  mkdirSync(sameDrive, { recursive: true });
+  try {
+    return realpathSync(sameDrive);
+  } catch {
+    return sameDrive;
+  }
+})();
+
 function assertInside(target, what) {
   const abs = resolve(target);
-  const roots = [runtimeDir, tmpRoot];
+  const roots = [runtimeDir, tmpRoot, deployTmpRoot];
   const ok = roots.some((r) => abs === r || abs.startsWith(r + sep));
   if (!ok) {
     fail(`拒绝执行「${what}」：目标越界 → ${abs}\n  只允许动：${roots.join(" ｜ ")}`);
@@ -251,7 +271,7 @@ mkdirSync(runtimeDir, { recursive: true });
 /* 先 deploy 到工作区外的临时目录，再整体拷进来。
    为什么不在原地 deploy：pnpm deploy 对"工作区内的目标路径"解析会受 cwd 影响，
    曾把产物歪写到 apps/server/apps/desktop/...（真实发生过），先用临时目录隔离掉这类风险。 */
-const deployTmp = mkdtempSync(join(tmpRoot, "scene-deploy-"));
+const deployTmp = mkdtempSync(join(deployTmpRoot, "scene-deploy-"));
 /* Windows：pnpm 是 .cmd，node 直接 execFile 会 EINVAL，必须经 shell；而 shell 模式下参数不做转义，
    临时目录里一旦有空格（Windows 用户名常见）就会被拆开，所以自己加引号。 */
 const isWin = process.platform === "win32";
@@ -266,7 +286,9 @@ try {
       "--node-linker=hoisted",
       isWin ? `"${deployTmp}"` : deployTmp,
     ],
-    { cwd: repo, stdio: ["ignore", "ignore", "inherit"], shell: isWin },
+    /* stdout 也放出来：pnpm 的报错走的是 stdout，之前 ignore 掉过一次，
+        Windows 首跑失败时只剩"退出码 1"，白白多花一轮排查 */
+    { cwd: repo, stdio: ["ignore", "inherit", "inherit"], shell: isWin },
   );
   safeRm(serverOut, "清理旧运行时");
   cpSync(deployTmp, serverOut, { recursive: true });
