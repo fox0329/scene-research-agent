@@ -113,37 +113,17 @@ jobs:
           test -n "$(ls dist/*.dmg 2>/dev/null)" || { echo "缺 macOS dmg"; exit 1; }
           test -n "$(ls dist/*.exe 2>/dev/null)" || { echo "缺 Windows exe"; exit 1; }
 
-      - name: 挂到 Release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: dist/*
-          draft: false
-          body: |
-            ## 场景通桌面版 ${{ github.ref_name }}（免签名安装包）
+      - name: 取回仓库文件（发布说明与脚本）
+        uses: actions/checkout@v4
 
-            ### 下载哪个
-            - macOS（Apple 芯片，M 系列）：`场景通-*-mac-arm64.dmg`
-            - Windows 10/11 64 位：`场景通-*-win-x64.exe`
-
-            ### macOS 首次安装（免签名，两步放行）
-            1. 打开 dmg，把「场景通」拖进「应用程序」
-            2. 首次打开若被拦：**系统设置 → 隐私与安全性 → 仍要打开**；
-               或在终端执行：`xattr -dr com.apple.quarantine /Applications/场景通.app`
-
-            ### Windows 首次安装
-            - 双击 exe 安装；若 SmartScreen 弹「Windows 已保护你的电脑」：
-              点 **更多信息 → 仍要运行**
-
-            ### 导出 PPT 的前提（macOS 与 Windows 相同）
-            - 需要本机装有 **Python 3.10 或更高版本**（没有时导出 Word/Markdown 不受影响）
-            - macOS：`brew install python3`；Windows：https://www.python.org/downloads/ 勾选
-              "Add python.exe to PATH"
-
-            ### 升级前请备份
-            - 你的全部数据在：`~/Library/Application Support/@scene/desktop/data/`（macOS）
-              或 `%APPDATA%\@scene\desktop\data\`（Windows）
-            - 覆盖安装**不会**动这个目录；但升级前建议整份拷贝备份
-            - Windows：`…-win-x64-安装版.exe`（安装）或 `…-win-x64-免安装版.exe`（绿色）
-              SmartScreen 提示时点「更多信息 → 仍要运行」
-
-            数据都在你自己的电脑上（应用数据目录），模型端点与密钥在应用内「设置」里配置。
+      - name: 挂到 Release（gh CLI：中文文件名可靠、可重复执行）
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="$GITHUB_REF_NAME"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG 已存在 → 直接覆盖产物"
+          else
+            gh release create "$TAG" --title "场景通 $TAG" --notes-file .github/release-notes.md
+          fi
+          gh release upload "$TAG" dist/* --clobber
