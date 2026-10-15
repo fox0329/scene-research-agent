@@ -4,8 +4,8 @@
 
 | 你的机器 | 下载这个 |
 |---|---|
-| Mac（Apple 芯片，M1/M2/M3/M4 等） | `场景通-*-mac-arm64.dmg` |
-| Windows 10 / 11（64 位） | `场景通-*-win-x64-安装版.exe`（推荐）或 `…-免安装版.exe`（绿色，解压即用） |
+| Mac（Apple 芯片，M1/M2/M3/M4 等） | `SceneMaster-*-mac-arm64.dmg` |
+| Windows 10 / 11（64 位） | `SceneMaster-*-win-x64-setup.exe`（安装版，推荐）或 `…-win-x64-portable.exe`（免安装，解压即用） |
 
 > 暂不支持 macOS Intel（x64）机型。
 

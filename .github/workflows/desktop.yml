@@ -118,7 +118,29 @@ jobs:
           test -n "$(ls dist/*.dmg 2>/dev/null)" || { echo "缺 macOS dmg"; exit 1; }
           test -n "$(ls dist/*.exe 2>/dev/null)" || { echo "缺 Windows exe"; exit 1; }
 
-      - name: 挂到 Release（gh CLI：中文文件名可靠、可重复执行）
+      - name: 产物改名为 ASCII（GitHub 资产名不允许非 ASCII）
+        run: |
+          # GitHub 会把资产名里的非 ASCII 字符剥掉：两个中文名不同的 Windows 包
+          # （安装版/免安装版）会变成同一个 `-0.2.1-win-x64-.exe`，第二个必然上传失败
+          # （2026-10-15 真机连续三轮 404/422，故障清单 #79）。
+          # 所以发布前统一改成 ASCII 名；中文信息留在 Release 标题与说明里。
+          VER="${GITHUB_REF_NAME#v}"
+          mkdir -p out
+          for f in dist/*; do
+            b="$(basename "$f")"
+            case "$b" in
+              *mac-arm64.dmg)        n="SceneMaster-$VER-mac-arm64.dmg" ;;
+              *win-x64-安装版.exe)   n="SceneMaster-$VER-win-x64-setup.exe" ;;
+              *win-x64-免安装版.exe) n="SceneMaster-$VER-win-x64-portable.exe" ;;
+              *win-x64.exe)          n="SceneMaster-$VER-win-x64.exe" ;;
+              *)                     n="$b" ;;
+            esac
+            cp "$f" "out/$n"
+            echo "$b  →  $n"
+          done
+          ls -l out
+
+      - name: 挂到 Release（逐文件重试，抵御瞬时失败）
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -128,9 +150,7 @@ jobs:
           else
             gh release create "$TAG" --title "场景通 $TAG" --notes-file .github/release-notes.md
           fi
-          # 逐个文件上传并重试：Release 刚创建时，上传主机对个别文件偶发 404
-          # （2026-10-15 真机：三个包里第三个报 HTTP 404，重试即可成功）
-          for f in dist/*; do
+          for f in out/*; do
             for attempt in 1 2 3 4 5; do
               if gh release upload "$TAG" "$f" --clobber; then
                 echo "✅ $(basename "$f")"
