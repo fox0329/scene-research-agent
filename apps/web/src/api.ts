@@ -617,9 +617,6 @@ export const api = {
       method: "POST",
       body: { startIn },
     }),
-  /** 在访达中显示一个导出文件（故障清单 #73：导出到哪了、有没有成功，一键可见） */
-  revealExport: (path: string) =>
-    req<{ ok: boolean }>(`/system/reveal`, { method: "POST", body: { path } }),
   /** 按模版把报告写成 Word 落到指定文件夹 */
   exportDocx: (id: string, dir: string) =>
     req<{ files: string[]; unchanged: string[]; notice?: string }>(

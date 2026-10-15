@@ -253,18 +253,6 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
     gen.start();
   }, [live, projectId, showToast, gen]);
 
-  /** 最近一次导出的产物（PPT > Word > Markdown，谁最新用谁） */
-  const lastExported = pptPaths[0] ?? docxPaths[0] ?? mdPaths?.files?.[0] ?? null;
-  const hasExportedFile = lastExported !== null;
-  const handleReveal = useCallback(async () => {
-    if (!lastExported) return;
-    try {
-      await api.revealExport(lastExported);
-    } catch (err: unknown) {
-      showToast(`打开失败：${err instanceof Error ? err.message : String(err)}`);
-    }
-  }, [lastExported, showToast]);
-
   const exportMdInto = useCallback(
     async (dir?: string) => {
       if (!live || !projectId) {
@@ -276,7 +264,7 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
         const r = await api.exportDeliverables(projectId, dir);
         setMdPaths({ files: r.files });
         if (dir) saveExportDir(projectId, dir);
-        const head = `已导出 Markdown：${r.files.join("、")}`;
+        const head = `已导出 Markdown（存到上面这些路径）：${r.files.join("、")}`;
         showToast(r.notice ? `${head}；${r.notice}` : head);
         onExported?.();
       } catch (err: unknown) {
@@ -545,16 +533,6 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
         onClick={() => void pickDirThen("md")}
       >
         {busy ? "导出中" : "导出 Markdown"}
-      </button>
-      {/* 故障清单 #73：导出到哪了、有没有成功——一键在访达里定位最新产物 */}
-      <button
-        className="btn"
-        type="button"
-        disabled={!hasExportedFile}
-        title={hasExportedFile ? `在访达中显示：${lastExported}` : "还没有导出过文件"}
-        onClick={() => void handleReveal()}
-      >
-        在访达中显示
       </button>
     </div>
   );
