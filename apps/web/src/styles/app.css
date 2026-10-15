@@ -142,6 +142,7 @@ body {
 .side-body {
   flex: 1;
   overflow-y: auto;
+  scrollbar-gutter: stable;
   padding: var(--s2) 0;
 }
 
@@ -188,6 +189,7 @@ body {
 .det-body {
   flex: 1;
   overflow-y: auto;
+  scrollbar-gutter: stable;
   padding: var(--s3) var(--s4);
 }
 
@@ -279,6 +281,7 @@ body {
 .ws {
   flex: 1;
   overflow-y: auto;
+  scrollbar-gutter: stable;
   padding: var(--s4) var(--s5);
   /* 对话输入栏浮在内容区之上：底部留白让最末内容可滚出输入栏上沿 */
   padding-bottom: 120px;
