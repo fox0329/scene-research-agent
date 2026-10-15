@@ -99,10 +99,31 @@ jobs:
             apps/desktop/release/*.exe
           draft: false
           body: |
-            场景通桌面版（免签名安装包）
+            ## 场景通桌面版 ${{ github.ref_name }}（免签名安装包）
 
-            - macOS：`场景通-*-mac-arm64.dmg`（Apple 芯片）/ `场景通-*-mac-x64.dmg`（Intel）
-              首次打开请**右键 →「打开」**；若被拦，执行 `xattr -dr com.apple.quarantine /Applications/场景通.app`
+            ### 下载哪个
+            - macOS（Apple 芯片，M 系列）：`场景通-*-mac-arm64.dmg`
+            - macOS（Intel）：`场景通-*-mac-x64.dmg`
+            - Windows 10/11 64 位：`场景通-*-win-x64.exe`
+
+            ### macOS 首次安装（免签名，两步放行）
+            1. 打开 dmg，把「场景通」拖进「应用程序」
+            2. 首次打开若被拦：**系统设置 → 隐私与安全性 → 仍要打开**；
+               或在终端执行：`xattr -dr com.apple.quarantine /Applications/场景通.app`
+
+            ### Windows 首次安装
+            - 双击 exe 安装；若 SmartScreen 弹「Windows 已保护你的电脑」：
+              点 **更多信息 → 仍要运行**
+
+            ### 导出 PPT 的前提（macOS 与 Windows 相同）
+            - 需要本机装有 **Python 3.10 或更高版本**（没有时导出 Word/Markdown 不受影响）
+            - macOS：`brew install python3`；Windows：https://www.python.org/downloads/ 勾选
+              "Add python.exe to PATH"
+
+            ### 升级前请备份
+            - 你的全部数据在：`~/Library/Application Support/@scene/desktop/data/`（macOS）
+              或 `%APPDATA%\@scene\desktop\data\`（Windows）
+            - 覆盖安装**不会**动这个目录；但升级前建议整份拷贝备份
             - Windows：`…-win-x64-安装版.exe`（安装）或 `…-win-x64-免安装版.exe`（绿色）
               SmartScreen 提示时点「更多信息 → 仍要运行」
 
