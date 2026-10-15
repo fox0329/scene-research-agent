@@ -93,13 +93,30 @@ jobs:
             apps/desktop/release/*.exe
           if-no-files-found: error
 
-      - name: 附到 Release（仅打 tag 时）
-        if: startsWith(github.ref, 'refs/tags/v')
+  # 单独一个发布任务：**发布只有一个写入者**。
+  # 为什么必须拆出来：之前两个平台各自 softprops/action-gh-release 同时写同一个 Release，
+  # 苹果那路先建好、Windows 这路再写就撞车失败（2026-10-15 真机：包传上去了、步骤报失败）。
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - name: 取回各平台产物
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: 核对产物齐了（Apple 芯片 dmg + Windows exe）
+        run: |
+          ls -l dist
+          test -n "$(ls dist/*.dmg 2>/dev/null)" || { echo "缺 macOS dmg"; exit 1; }
+          test -n "$(ls dist/*.exe 2>/dev/null)" || { echo "缺 Windows exe"; exit 1; }
+
+      - name: 挂到 Release
         uses: softprops/action-gh-release@v2
         with:
-          files: |
-            apps/desktop/release/*.dmg
-            apps/desktop/release/*.exe
+          files: dist/*
           draft: false
           body: |
             ## 场景通桌面版 ${{ github.ref_name }}（免签名安装包）
