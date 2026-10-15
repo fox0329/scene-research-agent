@@ -117,6 +117,12 @@ export function resolvePython(): Promise<string | null> {
   return pythonCache;
 }
 
+/** python 子进程环境：强制 UTF-8 输出（Windows 默认走本地代码页，中文报错会被转义成 \uXXXX，
+ *  甚至 print 直接抛 UnicodeEncodeError 被判成转档失败） */
+function pythonEnv(): NodeJS.ProcessEnv {
+  return { ...process.env, PYTHONIOENCODING: "utf-8", PYTHONUTF8: "1" };
+}
+
 const PYTHON_MISSING =
   "本机没有可用的 Python 3.10 或更高版本（PPT 转档需要）。请安装 python3 后重试（如 brew install python3）";
 
@@ -498,6 +504,7 @@ async function finalizeSvgs(
     await run(py, [script, projectDir, "--only", "embed-icons", "fix-rounded"], {
       timeout: PPT_EXPORT_TIMEOUT_MS,
       maxBuffer: 8 * 1024 * 1024,
+      env: pythonEnv(),
     });
     return { ok: true };
   } catch (err: unknown) {
@@ -538,6 +545,7 @@ async function convertToPptx(
     await run(py, [script, projectDir, "-o", outFile, "--no-compat", "-f", "ppt169"], {
       timeout: PPT_EXPORT_TIMEOUT_MS,
       maxBuffer: 8 * 1024 * 1024,
+      env: pythonEnv(),
     });
   } catch (err: unknown) {
     const e = err as { code?: string; killed?: boolean; stderr?: unknown; message?: string };

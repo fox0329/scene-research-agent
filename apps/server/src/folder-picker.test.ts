@@ -6,7 +6,7 @@
  * 但**拼出来的那条 AppleScript 是纯函数**，转义与默认起点在这里锁住。
  */
 
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -35,12 +35,21 @@ describe("导出目录校验（变更表 #133）", () => {
 
   it("拒绝主目录之外的路径", () => {
     expect(() => assertExportDir(tmpdir())).toThrow(/主目录/);
-    expect(() => assertExportDir("/etc")).toThrow(/主目录/);
+    // Windows 没有 /etc；用家目录的上一级（C:\Users）表达"家目录之外"
+    const outsideHome = process.platform === "win32" ? join(homedir(), "..") : "/etc";
+    expect(() => assertExportDir(outsideHome)).toThrow(/主目录/);
   });
 
   it("拒绝配置与密钥目录", () => {
     for (const rel of [".ssh", ".dsh", ".aws", "Library/Keychains"]) {
-      expect(() => assertExportDir(join(homedir(), rel)), rel).toThrow(/受保护/);
+      const dir = join(homedir(), rel);
+      // Windows 上这些目录通常不存在——产品会先按"不存在"拒绝，只要拒绝即可；
+      // 存在时（macOS/Linux）必须给出"受保护"这个更准确的原因
+      if (existsSync(dir)) {
+        expect(() => assertExportDir(dir), rel).toThrow(/受保护/);
+      } else {
+        expect(() => assertExportDir(dir), rel).toThrow();
+      }
     }
   });
 

@@ -1,0 +1,10 @@
+# 统一按 LF 进出：文档漂移守卫按字节比对，Windows 检出转 CRLF 会误报（变更表 #199）
+* text=auto eol=lf
+
+# 二进制，别碰
+*.dmg binary
+*.exe binary
+*.png binary
+*.jpg binary
+*.ico binary
+*.icns binary

@@ -84,7 +84,7 @@ describe("供应商增删改", () => {
     ).toThrow("模型");
   });
 
-  it("登记表文件不给组/其他用户读权限（0600 口径）", () => {
+  it.skipIf(process.platform === "win32")("登记表文件不给组/其他用户读权限（0600 口径）", () => {
     upsertProvider({ name: "p", base_url: "https://a.com/v1", api_key: "k", models: [{ id: "m" }] });
     const mode = statSync(process.env.SCENE_PROVIDERS_FILE!).mode & 0o777;
     expect(mode & 0o077).toBe(0);
