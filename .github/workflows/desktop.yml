@@ -101,6 +101,11 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:
+      # 必须放在最前面：actions/checkout 默认执行 `git clean -ffdx`，
+      # 放在下载产物之后就等于把 dist/ 清空（2026-10-15 真机：上传时 no matches found）
+      - name: 取回仓库文件（发布说明与脚本）
+        uses: actions/checkout@v4
+
       - name: 取回各平台产物
         uses: actions/download-artifact@v4
         with:
@@ -112,9 +117,6 @@ jobs:
           ls -l dist
           test -n "$(ls dist/*.dmg 2>/dev/null)" || { echo "缺 macOS dmg"; exit 1; }
           test -n "$(ls dist/*.exe 2>/dev/null)" || { echo "缺 Windows exe"; exit 1; }
-
-      - name: 取回仓库文件（发布说明与脚本）
-        uses: actions/checkout@v4
 
       - name: 挂到 Release（gh CLI：中文文件名可靠、可重复执行）
         env:
