@@ -343,7 +343,16 @@ export function SceneTable<T extends Record<string, unknown>>({
       if (w) setWidths(syncToContainer(w));
     };
     sync();
-    const ro = new ResizeObserver(sync);
+    /* 只认**宽度**变化（故障清单 #71）：表格行高变 → 窗口滚动条出现/消失 → 中栏宽变几像素
+       → 又触发重排 → 行高又变……两套列宽解来回切，就是用户看到的「整表文字闪烁」。
+       列宽只依赖容器宽，高度变化一律忽略，环从根上断掉。 */
+    let lastW = wrap.clientWidth;
+    const ro = new ResizeObserver(() => {
+      const w = wrap.clientWidth;
+      if (w === lastW) return;
+      lastW = w;
+      sync();
+    });
     ro.observe(wrap);
     return () => ro.disconnect();
   }, [measuring, fitToContainer, syncToContainer]);
