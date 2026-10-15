@@ -10,7 +10,8 @@
 import type { FastifyInstance } from "fastify";
 import { createWriteStream, existsSync, rmSync } from "node:fs";
 import { pipeline } from "node:stream/promises";
-import { join } from "node:path";
+import { spawn } from "node:child_process";
+import { join, resolve as resolvePath, sep as pathSep } from "node:path";
 import { tmpdir, homedir } from "node:os";
 import type {
   Conversation,
@@ -64,7 +65,7 @@ import {
 import type { ProviderModelEntry } from "@scene/infra";
 import type { SseHub } from "./sse-hub.js";
 import { createDeliverableReportCommand } from "./deliverable-report.js";
-import { getReports, saveReportFile, writeReportFiles } from "./report-service.js";
+import { exportDir, getReports, saveReportFile, writeReportFiles } from "./report-service.js";
 import { exportReportDocx } from "./docx-export.js";
 import { exportReportPptx } from "./ppt-export.js";
 import { closePptRun, ensurePptRun, pptRunId } from "./ppt-progress.js";
@@ -454,13 +455,41 @@ export function registerUiRoutes(app: FastifyInstance, deps: UiRoutesDeps): void
     return missing.length === 0 ? null : `交付物还没生成（${missing.join("、")}）——请先点「生成报告」`;
   };
 
+  /**
+   * 在访达中显示导出文件（故障清单 #73：用户不知道导出到哪了、有没有成功）
+   *
+   * 只允许 reveal **导出目录**里的文件——不能变成任意路径的"文件打开器"。
+   * macOS 用 `open -R`（在访达里选中该文件）；其它平台明确说不支持。
+   */
+  app.post("/api/v1/system/reveal", async (request, reply) => {
+    const body = (request.body ?? {}) as { path?: unknown };
+    const target = typeof body.path === "string" ? body.path : "";
+    if (target === "" || !existsSync(target)) return reply.code(400).send({ error: "文件不存在" });
+    const resolved = resolvePath(target);
+    const root = resolvePath(exportDir());
+    if (resolved !== root && !resolved.startsWith(root + pathSep)) {
+      return reply.code(400).send({ error: "只能显示导出目录里的文件" });
+    }
+    if (process.platform !== "darwin") return reply.code(400).send({ error: "当前系统不支持在访达中显示" });
+    const child = spawn("open", ["-R", resolved], { stdio: "ignore", detached: true });
+    child.unref();
+    return { ok: true };
+  });
+
   app.post("/api/v1/projects/:id/deliverables/export", async (request, reply) => {
     const { id } = request.params as { id: string };
     const scenario = db.scenarioRepo.getById(id);
     if (!scenario) return notFound(reply, `场景 ${id} 不存在`);
     const notReady = ungenerated(scenario);
     if (notReady) return reply.code(400).send({ error: notReady });
-    return writeReportFiles(db, scenario);
+    /* 变更表 #197：dir 可选——给了就落到该文件夹（与 Word/PPT 同一套选位置体验） */
+    const body = (request.body ?? {}) as { dir?: unknown };
+    const dir = typeof body.dir === "string" && body.dir.trim() !== "" ? body.dir.trim() : undefined;
+    try {
+      return writeReportFiles(db, scenario, dir);
+    } catch (err: unknown) {
+      return reply.code(400).send({ error: err instanceof Error ? err.message : String(err) });
+    }
   });
 
   /** 保存中栏改过的报告正文（变更表 #135 / #137）：写回数据/deliverables，先读后写留档 */

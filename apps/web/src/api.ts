@@ -595,10 +595,10 @@ export const api = {
   getDeliverables: (id: string) =>
     req<ApiDeliverables>(`/projects/${encodeURIComponent(id)}/deliverables`),
   /** 导出两份 Markdown（写盘内容 = 界面所见），回显写出的文件路径 */
-  exportDeliverables: (id: string) =>
+  exportDeliverables: (id: string, dir?: string) =>
     req<{ files: string[]; notice?: string }>(
       `/projects/${encodeURIComponent(id)}/deliverables/export`,
-      { method: "POST" },
+      { method: "POST", body: dir ? { dir } : {} },
     ),
   /** 保存中栏编辑后的正文（变更表 #135）：按份保存，A 的正文不会写到 B */
   saveDeliverable: (id: string, kind: DeliverableKind, markdown: string) =>
@@ -617,6 +617,9 @@ export const api = {
       method: "POST",
       body: { startIn },
     }),
+  /** 在访达中显示一个导出文件（故障清单 #73：导出到哪了、有没有成功，一键可见） */
+  revealExport: (path: string) =>
+    req<{ ok: boolean }>(`/system/reveal`, { method: "POST", body: { path } }),
   /** 按模版把报告写成 Word 落到指定文件夹 */
   exportDocx: (id: string, dir: string) =>
     req<{ files: string[]; unchanged: string[]; notice?: string }>(

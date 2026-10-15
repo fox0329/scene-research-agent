@@ -72,6 +72,52 @@ import {
 
 const run = promisify(execFile);
 
+/**
+ * 选一个能跑 ppt-master 的 python（故障清单 #73）
+ *
+ * 桌面版服务端继承的是 GUI 环境，PATH 里的 python3 往往是系统自带的旧版
+ * （macOS /usr/bin/python3 = 3.9.6），跑技能脚本会在 `str | Path` 这类
+ * PEP 604 语法上直接 TypeError（0.1.8/0.1.9 真机：导出 PPT 失败）。
+ * 按候选顺序探测，取第一个 ≥3.10 的解释器；结果缓存，一次导出只探测一轮。
+ */
+let pythonCache: Promise<string | null> | null = null;
+
+function pythonCandidates(): string[] {
+  return [
+    ...(process.env["PPT_PYTHON"] ? [process.env["PPT_PYTHON"] as string] : []),
+    "python3",
+    "/opt/homebrew/bin/python3",
+    "/usr/local/bin/python3",
+    "/usr/bin/python3",
+  ];
+}
+
+function probePython(candidate: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    execFile(
+      candidate,
+      ["-c", "import sys; print(sys.version_info >= (3, 10))"],
+      { timeout: 10_000 },
+      (err: unknown, stdout: unknown) => {
+        resolve(!err && String(stdout).trim() === "True");
+      },
+    ).on("error", () => resolve(false));
+  });
+}
+
+export function resolvePython(): Promise<string | null> {
+  pythonCache ??= (async () => {
+    for (const candidate of pythonCandidates()) {
+      if (await probePython(candidate)) return candidate;
+    }
+    return null;
+  })();
+  return pythonCache;
+}
+
+const PYTHON_MISSING =
+  "本机没有可用的 Python 3.10 或更高版本（PPT 转档需要）。请安装 python3 后重试（如 brew install python3）";
+
 /** 转档子进程超时（技能里装依赖/首次运行时也可能慢，给足 2 分钟） */
 export const PPT_EXPORT_TIMEOUT_MS = 120_000;
 
@@ -444,8 +490,10 @@ async function finalizeSvgs(
   script: string,
   projectDir: string,
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const py = await resolvePython();
+  if (py === null) return { ok: false, reason: PYTHON_MISSING };
   try {
-    await run("python3", [script, projectDir, "--only", "embed-icons", "fix-rounded"], {
+    await run(py, [script, projectDir, "--only", "embed-icons", "fix-rounded"], {
       timeout: PPT_EXPORT_TIMEOUT_MS,
       maxBuffer: 8 * 1024 * 1024,
     });
@@ -482,8 +530,10 @@ async function convertToPptx(
   projectDir: string,
   outFile: string,
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const py = await resolvePython();
+  if (py === null) return { ok: false, reason: PYTHON_MISSING };
   try {
-    await run("python3", [script, projectDir, "-o", outFile, "--no-compat", "-f", "ppt169"], {
+    await run(py, [script, projectDir, "-o", outFile, "--no-compat", "-f", "ppt169"], {
       timeout: PPT_EXPORT_TIMEOUT_MS,
       maxBuffer: 8 * 1024 * 1024,
     });

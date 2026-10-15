@@ -129,12 +129,20 @@ export function saveReportFile(
   return saved;
 }
 
-/** 导出两份 md 到 `exports/`（写盘内容 = 界面所见）：`<场景>解决方案.md` / `<场景>建设工作方案.md` */
+/** 导出两份 md（写盘内容 = 界面所见）：`<场景>解决方案.md` / `<场景>建设工作方案.md`。
+ * dirOverride 缺省落 exports/；给了就落到该目录（变更表 #197：Markdown 与 Word/PPT 一样可选位置） */
 export function writeReportFiles(
   db: DbInstance,
   scenario: Scenario,
+  dirOverride?: string,
 ): { files: string[]; notice?: string } {
-  const outDir = exportDir();
+  let outDir = exportDir();
+  if (dirOverride !== undefined && dirOverride.trim() !== "") {
+    outDir = dirOverride.trim();
+    if (!existsSync(outDir) || !statSync(outDir).isDirectory()) {
+      throw new Error(`导出目录不存在或不是文件夹：${outDir}`);
+    }
+  }
   mkdirSync(outDir, { recursive: true });
   const files: string[] = [];
   const notices: string[] = [];

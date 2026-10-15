@@ -153,7 +153,7 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
   /** PPT 导出的当前阶段文案（进度通道推来的，直接顶在按钮上） */
   const [pptPhase, setPptPhase] = useState<string | null>(null);
   /** 手动填路径那一行是给哪次导出用的（Word / PPT 共用一套选目录） */
-  const [dirPurpose, setDirPurpose] = useState<"word" | "ppt">("word");
+  const [dirPurpose, setDirPurpose] = useState<"word" | "ppt" | "md">("md");
   /** 弹不出系统对话框时，回退到让用户手填路径（null = 不显示） */
   const [manualDir, setManualDir] = useState<string | null>(null);
   /** 正在编辑的草稿（变更表 #135）：保存后清空，切份或取消即丢弃 */
@@ -253,25 +253,40 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
     gen.start();
   }, [live, projectId, showToast, gen]);
 
-  const handleExport = useCallback(async () => {
-    if (!live || !projectId) {
-      showToast("演示模式：交付物导出仅在实时数据模式可用");
-      return;
-    }
-    if (busy) return;
-    setBusy(true);
+  /** 最近一次导出的产物（PPT > Word > Markdown，谁最新用谁） */
+  const lastExported = pptPaths[0] ?? docxPaths[0] ?? mdPaths?.files?.[0] ?? null;
+  const hasExportedFile = lastExported !== null;
+  const handleReveal = useCallback(async () => {
+    if (!lastExported) return;
     try {
-      const r = await api.exportDeliverables(projectId);
-      setMdPaths({ files: r.files });
-      const head = `已导出 Markdown：${r.files.join("、")}`;
-      showToast(r.notice ? `${head}；${r.notice}` : head);
-      onExported?.();
+      await api.revealExport(lastExported);
     } catch (err: unknown) {
-      showToast(`导出失败：${err instanceof Error ? err.message : String(err)}`);
-    } finally {
-      setBusy(false);
+      showToast(`打开失败：${err instanceof Error ? err.message : String(err)}`);
     }
-  }, [live, projectId, busy, showToast, onExported]);
+  }, [lastExported, showToast]);
+
+  const exportMdInto = useCallback(
+    async (dir?: string) => {
+      if (!live || !projectId) {
+        showToast("演示模式：交付物导出仅在实时数据模式可用");
+        return;
+      }
+      setBusy(true);
+      try {
+        const r = await api.exportDeliverables(projectId, dir);
+        setMdPaths({ files: r.files });
+        if (dir) saveExportDir(projectId, dir);
+        const head = `已导出 Markdown：${r.files.join("、")}`;
+        showToast(r.notice ? `${head}；${r.notice}` : head);
+        onExported?.();
+      } catch (err: unknown) {
+        showToast(`导出失败：${err instanceof Error ? err.message : String(err)}`);
+      } finally {
+        setBusy(false);
+      }
+    },
+    [live, projectId, showToast, onExported],
+  );
 
   /** 保存中栏改过的正文 → 写回**当前这一份**（服务端先读后写留档） */
   const handleSave = useCallback(async () => {
@@ -374,14 +389,14 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
    * 两条链共用同一套「系统对话框 + 弹不出时手填路径」；取消不打扰，弹不出对话框才回退。
    */
   const pickDirThen = useCallback(
-    async (purpose: "word" | "ppt") => {
+    async (purpose: "word" | "ppt" | "md") => {
       if (!live || !projectId) {
         showToast("演示模式：交付物导出仅在实时数据模式可用");
         return;
       }
-      if (busyWord || busyPpt) return;
+      if (busyWord || busyPpt || busy) return;
       setDirPurpose(purpose);
-      const setBusy = purpose === "ppt" ? setBusyPpt : setBusyWord;
+      const setBusyFor = purpose === "ppt" ? setBusyPpt : purpose === "word" ? setBusyWord : setBusy;
       setBusy(true);
       let dir: string | null = null;
       try {
@@ -395,17 +410,17 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
       } finally {
         setBusy(false);
       }
-      if (dir) await (purpose === "ppt" ? exportPptInto(dir) : exportWordInto(dir));
+      if (dir) await (purpose === "ppt" ? exportPptInto(dir) : purpose === "word" ? exportWordInto(dir) : exportMdInto(dir));
     },
-    [live, projectId, busyWord, busyPpt, showToast, exportPptInto, exportWordInto],
+    [live, projectId, busyWord, busyPpt, busy, showToast, exportPptInto, exportWordInto, exportMdInto],
   );
 
   /** 手填路径那一行：按当初点的是哪次导出落到对应的链上 */
   const exportIntoManualDir = useCallback(() => {
     const dir = manualDir?.trim() ?? "";
     if (dir === "") return;
-    void (dirPurpose === "ppt" ? exportPptInto(dir) : exportWordInto(dir));
-  }, [manualDir, dirPurpose, exportPptInto, exportWordInto]);
+    void (dirPurpose === "ppt" ? exportPptInto(dir) : dirPurpose === "word" ? exportWordInto(dir) : exportMdInto(dir));
+  }, [manualDir, dirPurpose, exportPptInto, exportWordInto, exportMdInto]);
 
   const snapshot = useMemo<StageSnapshot>(
     () => ({
@@ -527,9 +542,19 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
         type="button"
         disabled={busy || !generated}
         title={busy ? "正在导出 Markdown…" : !generated ? "还没有生成报告" : undefined}
-        onClick={() => void handleExport()}
+        onClick={() => void pickDirThen("md")}
       >
         {busy ? "导出中" : "导出 Markdown"}
+      </button>
+      {/* 故障清单 #73：导出到哪了、有没有成功——一键在访达里定位最新产物 */}
+      <button
+        className="btn"
+        type="button"
+        disabled={!hasExportedFile}
+        title={hasExportedFile ? `在访达中显示：${lastExported}` : "还没有导出过文件"}
+        onClick={() => void handleReveal()}
+      >
+        在访达中显示
       </button>
     </div>
   );
@@ -577,7 +602,7 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
             <button
               className="btn"
               type="button"
-              disabled={busyWord || busyPpt || !generated || manualDir.trim() === ""}
+              disabled={busyWord || busyPpt || busy || !generated || manualDir.trim() === ""}
               onClick={exportIntoManualDir}
             >
               导出到该路径
