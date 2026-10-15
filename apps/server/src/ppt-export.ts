@@ -83,12 +83,14 @@ const run = promisify(execFile);
 let pythonCache: Promise<string | null> | null = null;
 
 function pythonCandidates(): string[] {
+  // Windows 上命令名是 `python`（`python3` 通常不存在，微软商店占位符还会静默失败）
+  const win = process.platform === "win32";
   return [
     ...(process.env["PPT_PYTHON"] ? [process.env["PPT_PYTHON"] as string] : []),
-    "python3",
-    "/opt/homebrew/bin/python3",
-    "/usr/local/bin/python3",
-    "/usr/bin/python3",
+    win ? "python" : "python3",
+    ...(win
+      ? []
+      : ["/opt/homebrew/bin/python3", "/usr/local/bin/python3", "/usr/bin/python3"]),
   ];
 }
 

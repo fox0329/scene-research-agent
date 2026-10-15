@@ -64,6 +64,9 @@ jobs:
       - name: 装配桌面版运行时（含按 Electron ABI 重建 better-sqlite3）
         run: node apps/desktop/scripts/prepare-server.mjs --arch=${{ matrix.arch }}
 
+      - name: 编译桌面壳（冒烟依赖 dist/main.cjs）
+        run: pnpm --filter @scene/desktop run build:shell
+
       - name: 桌面壳冒烟（真启动应用 + 真拉本地服务）
         run: node apps/desktop/scripts/smoke.mjs
 
