@@ -58,6 +58,25 @@ const COVER_BLANK_LINES = 3;
 /** 空段落：封面留白、表格后留白共用 */
 const EMPTY_PARAGRAPH_XML = "<w:p/>";
 
+/**
+ * 表标题样式名（规范 §1.5《正文表标题》：黑体 12pt、居中、无首行缩进、表格**上方**）
+ *
+ * 用**命名样式**而不是就地写格式：样式名会出现在 Word 的样式面板里，用户改一处就整篇生效，
+ * 这也正是规范把「正文表标题」写成一个样式名的原因。
+ */
+const STYLE_TABLE_CAPTION = "正文表标题";
+
+/**
+ * 认得出「表标题」的写法：`表 4-1 YS-EC3200 关键规格` / `表3.1-1 编号说明` / `表A-2 认证清单`。
+ *
+ * 三条约束都是为了**不误伤正文**：
+ *  - `表` 后面必须是编号（数字或大写字母），所以「表格11 的内容…」「表示……」都不会命中；
+ *  - 编号与标题文字之间必须有空白，「表2是…」这种口语不会命中；
+ *  - 整行不能以句末标点收尾——标题不会是完整句子。
+ */
+const TABLE_CAPTION_PATTERN = /^表\s*[0-9A-Z]+(?:[-.][0-9]+)*\s+\S/;
+const TABLE_CAPTION_TAIL = /[。；;]$/;
+
 /** 多级列表 numId（规范 §2.1：章节编号走 numId=1） */
 const NUMBERING_NUM_ID = "1";
 /** 三级章节编号格式：Heading1 → %1、Heading2 → %1.%2、Heading3 → %1.%2.%3 */
@@ -163,6 +182,17 @@ function paragraphXml(text: string, pPr: string, format?: RunFormat): string {
 /** 正文段落：缩进/行距/两端对齐全部继承 Normal 样式，这里不重复声明 */
 function bodyParagraphXml(text: string): string {
   return `<w:p>${runsXml(text)}</w:p>`;
+}
+
+/** 表标题：格式全在样式里（黑体 12pt 居中、不缩进、keepNext 跟住下表） */
+function tableCaptionXml(text: string): string {
+  return `<w:p><w:pPr><w:pStyle w:val="${STYLE_TABLE_CAPTION}"/></w:pPr>${runsXml(text)}</w:p>`;
+}
+
+/** 这一行是不是表标题（规范 §1.5） */
+function isTableCaption(line: string): boolean {
+  const text = line.trim();
+  return TABLE_CAPTION_PATTERN.test(text) && !TABLE_CAPTION_TAIL.test(text);
 }
 
 function pageBreakParagraphXml(): string {
@@ -294,6 +324,13 @@ function stylesXml(): string {
     rPr: `${rFontsXml(FONT_CN_BODY)}<w:sz w:val="24"/><w:szCs w:val="24"/>`,
   });
   const h1Spacing = '<w:spacing w:before="340" w:after="330" w:line="578" w:lineRule="exact"/>';
+  // 表标题：`w:pPr` 顺序固定 keepNext → spacing → ind → jc；黑体 12pt（规范 §1.5）
+  const tableCaption = paragraphStyleXml({
+    id: STYLE_TABLE_CAPTION,
+    name: STYLE_TABLE_CAPTION,
+    pPr: `<w:keepNext/>${LINE_ONE_HALF}${NO_INDENT}<w:jc w:val="center"/>`,
+    rPr: `${rFontsXml(FONT_CN_COVER)}<w:sz w:val="24"/><w:szCs w:val="24"/>`,
+  });
   const headings = [
     headingStyleXml("Heading1", "heading 1", 0, 32, h1Spacing, 0),
     headingStyleXml("Heading2", "heading 2", 1, 30, LINE_ONE_HALF, 1),
@@ -301,7 +338,7 @@ function stylesXml(): string {
     headingStyleXml("Heading4", "heading 4", 3, 28, LINE_ONE_HALF),
   ].join("");
   return `${XML_DECL}
-<w:styles xmlns:w="${W_NS}" xmlns:r="${R_NS}"><w:docDefaults><w:rPrDefault><w:rPr>${rFontsXml(FONT_CN_BODY)}<w:sz w:val="24"/><w:szCs w:val="24"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr>${LINE_ONE_HALF}<w:ind w:firstLine="420"/><w:jc w:val="both"/></w:pPr></w:pPrDefault></w:docDefaults>${normal}${headings}${tableStylesXml()}</w:styles>`;
+<w:styles xmlns:w="${W_NS}" xmlns:r="${R_NS}"><w:docDefaults><w:rPrDefault><w:rPr>${rFontsXml(FONT_CN_BODY)}<w:sz w:val="24"/><w:szCs w:val="24"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr>${LINE_ONE_HALF}<w:ind w:firstLine="420"/><w:jc w:val="both"/></w:pPr></w:pPrDefault></w:docDefaults>${normal}${tableCaption}${headings}${tableStylesXml()}</w:styles>`;
 }
 
 function settingsXml(): string {
@@ -499,6 +536,11 @@ function renderBlocks(lines: string[], start: number): string {
     }
     if (isQuote(line)) {
       out.push(bodyParagraphXml(line.trim().replace(/^>\s?/, "")));
+      index += 1;
+      continue;
+    }
+    if (isTableCaption(line)) {
+      out.push(tableCaptionXml(line.trim()));
       index += 1;
       continue;
     }

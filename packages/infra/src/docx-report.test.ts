@@ -267,6 +267,47 @@ describe("reportMarkdownToDocx — 基本形态", () => {
     expect(rels).toContain('Target="numbering.xml"');
   });
 
+  it("表标题走「正文表标题」样式（黑体 12pt 居中、keepNext），正文句子不被误判", async () => {
+    const markdown = `# 智慧会议室 解决方案
+
+表 4-1 YS-EC3200 关键规格
+
+| 参数项 | 数值 |
+| --- | --- |
+| 功耗 | 6W |
+
+表格 3 的内容见上，表示 2 号方案；表2是口语写法。
+
+表3.1-1 编号说明
+
+| 列 | 说明 |
+| --- | --- |
+| a | b |
+`;
+    const parts = await partsOf(await reportMarkdownToDocx(markdown));
+
+    // ① 样式本身：黑体、12pt、居中、不缩进、跟住下表
+    const style = styleXmlOf(parts["word/styles.xml"] ?? "", "正文表标题");
+    expect(style).not.toBe("");
+    expect(style).toContain('w:eastAsia="黑体"');
+    expect(style).toContain('<w:sz w:val="24"/>');
+    expect(style).toContain('<w:jc w:val="center"/>');
+    expect(style).toContain('<w:ind w:firstLine="0"/>');
+    expect(style).toContain("<w:keepNext/>");
+    // schema 顺序：keepNext 必须排在 spacing 之前，否则 Word 拒绝打开
+    expect(style.indexOf("<w:keepNext/>")).toBeLessThan(style.indexOf("<w:spacing"));
+
+    // ② 认得出来的两条
+    const captions = paragraphsWithStyle(parts["word/document.xml"] ?? "", "正文表标题");
+    expect(captions.map(textOf)).toEqual(["表 4-1 YS-EC3200 关键规格", "表3.1-1 编号说明"]);
+
+    // ③ 误判防线：`表格 3 …`（表后不是编号）、`表2是…`（编号后没空白）走正文
+    const doc = parts["word/document.xml"] ?? "";
+    const body = paragraphsOf(doc).filter((p) => !p.includes("正文表标题"));
+    const bodyText = body.map(textOf).join("\n");
+    expect(bodyText).toContain("表格 3 的内容见上，表示 2 号方案；表2是口语写法。");
+  });
+
   it("标题行首的手写章号剥掉，改由 Word 自动编号", async () => {
     const markdown = `# 1.2 智慧会议室 解决方案
 
