@@ -6,7 +6,7 @@
  *           无文本层时自动走 macOS Vision 识别（scripts/setup-ocr.sh 安装）
  * - .docx → mammoth（HTML output → 正则提取 table）
  * - .xlsx → exceljs（直接映射行列）
- * - .pptx → jszip + XML（提取 slide 文本，表格 TODO）
+ * - .pptx → jszip + XML（提取 slide 文本 + `<a:tbl>` 原生表格；按幻灯片序号数值排序）
  *
  * @module doc-parser
  */
@@ -273,36 +273,131 @@ async function parseXlsx(rawBuffer: Buffer): Promise<ParseResult> {
 
 // ── PPT：jszip + XML ──────────────────────────────────────
 
+/**
+ * `<a:t>` 文本节点。
+ *
+ * 必须容忍属性：PowerPoint 会写出 `<a:t xml:space="preserve">`，
+ * 旧写法只认无属性的 `<a:t>`，遇到带属性的节点会**静默丢字**（不报错、不计数）。
+ */
+const PPT_TEXT_RE = /<a:t(?:\s[^>]*)?>([\s\S]*?)<\/a:t>/g;
+
+/**
+ * DrawingML 表格块 `<a:tbl>…</a:tbl>`。
+ *
+ * 按标签整体切而不是上 XML 解析器：DrawingML 的表格**不能嵌套**，
+ * 而单元格里的 `<a:tcPr>` 等子元素不会产生第二个 `<a:tbl>`。
+ */
+const PPT_TABLE_RE = /<a:tbl(?:\s[^>]*)?>([\s\S]*?)<\/a:tbl>/g;
+
+/**
+ * 表行 `<a:tr>`、单元格 `<a:tc>`。
+ *
+ * 收尾都要求 `[ >]`，为的是避开同前缀的子元素：`<a:tcPr>` 长在 `<a:tc>` 里面
+ * （`<a:tc` 后面跟的是 `P`，不匹配），`<a:tblGrid>` / `<a:txBody>` 同理不会误切。
+ */
+const PPT_ROW_SPLIT = /<a:tr[ >]/;
+const PPT_CELL_SPLIT = /<a:tc[ >]/;
+
+/** XML 实体反转义（`&amp;` 必须最后做，否则 `&amp;lt;` 会被二次解码成 `<`） */
+function unescapeXmlEntities(text: string): string {
+  return text
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&#(\d+);/g, (_m, code: string) => String.fromCodePoint(Number(code)))
+    .replace(/&#x([0-9a-fA-F]+);/g, (_m, code: string) => String.fromCodePoint(parseInt(code, 16)))
+    .replace(/&amp;/g, "&");
+}
+
+/**
+ * 一个单元格的文本。
+ *
+ * 单元格里可以有多个 `<a:p>`（多段落），这里用空格并起来而不是换行：
+ * 换行在下游会被当成行分隔，把一行记录拆成两条。
+ * 合并单元格的「续格」（`hMerge` / `vMerge`）本身没有文字，解析出空串，列数保持一致。
+ */
+function pptCellText(cellXml: string): string {
+  return [...cellXml.matchAll(PPT_TEXT_RE)]
+    .map((m) => unescapeXmlEntities(m[1] ?? "").trim())
+    .filter((s) => s !== "")
+    .join(" ");
+}
+
+/**
+ * 从一张幻灯片的 XML 里抽出所有 DrawingML 表格（`<a:tbl>`）。
+ *
+ * 首行作表头、其余作数据行，与 docx / xlsx 两条解析路径同一口径
+ * （`ParsedTable` 的约定就是 headers + rows）。
+ */
+function extractTablesFromSlide(slideXml: string): ParsedTable[] {
+  const tables: ParsedTable[] = [];
+
+  for (const tableMatch of slideXml.matchAll(PPT_TABLE_RE)) {
+    const tableXml = tableMatch[1] ?? "";
+    const rowChunks = tableXml.split(PPT_ROW_SPLIT).slice(1);
+    if (rowChunks.length === 0) continue;
+
+    // 逐行切单元格；同一张表内按最宽行补空串，保证矩形（下游按列取值）
+    const grid = rowChunks.map((rowXml) => {
+      const cells = rowXml.split(PPT_CELL_SPLIT).slice(1).map(pptCellText);
+      return cells;
+    });
+    const width = Math.max(...grid.map((cells) => cells.length));
+    const rect = grid.map((cells) => [...cells, ...Array<string>(width - cells.length).fill("")]);
+
+    // 整张表一个字都没有（空的占位 graphicFrame）就不算表，免得下游多出一张空表
+    const blank = rect.every((cells) => cells.every((cell) => cell === ""));
+    if (blank) continue;
+
+    const [headers, ...rows] = rect;
+    tables.push({ headers: headers ?? [], rows });
+  }
+
+  return tables;
+}
+
 async function parsePptx(buffer: Buffer): Promise<ParseResult> {
   const JSZip = (await import("jszip")).default;
   const zip = await JSZip.loadAsync(buffer);
 
   const allFiles = Object.keys(zip.files);
+  const numberOf = (file: string) => Number(/slide(\d+)\.xml$/.exec(file)?.[1] ?? 0);
+  // 按**数字**排，不能按字典序：字典序会把 slide10 排到 slide2 前面，
+  // 十页以上的 PPT 文本顺序会乱（`[Slide 10]` 出现在 `[Slide 2]` 之前）。
   const slideFiles = allFiles
     .filter((f) => /^ppt\/slides\/slide\d+\.xml$/.test(f))
-    .sort();
+    .sort((a, b) => numberOf(a) - numberOf(b));
 
   const textParts: string[] = [];
+  const tables: ParsedTable[] = [];
 
   for (const slideFile of slideFiles) {
     const xml = await zip.file(slideFile)!.async("string");
+    const slideIndex = numberOf(slideFile) || "?";
 
-    // 提取 <a:t>text</a:t> 文本节点
-    const textMatches = xml.match(/<a:t>([^<]*)<\/a:t>/g) ?? [];
-    const texts = textMatches.map((m) => m.replace(/<\/?a:t>/g, ""));
+    // 文本：包含表格单元格里的 `<a:t>`，所以表格内容本来就在纯文本里
+    const texts = [...xml.matchAll(PPT_TEXT_RE)]
+      .map((m) => unescapeXmlEntities(m[1] ?? "").trim())
+      .filter((s) => s !== "");
 
     if (texts.length > 0) {
-      const slideIndex = slideFile.match(/slide(\d+)\.xml/)?.[1] ?? "?";
       textParts.push(`[Slide ${slideIndex}]`);
       textParts.push(...texts);
     }
 
-    // TODO: M2+ 增强 — 从 XML 中解析 <a:tbl> 表格节点
+    for (const table of extractTablesFromSlide(xml)) {
+      tables.push(table);
+      // 表格也补一份带结构的纯文本，与 xlsx 路径同一做法（模型两条路都能看到）
+      textParts.push(`[Slide ${slideIndex} 表格]`);
+      textParts.push(table.headers.join("\t"));
+      for (const row of table.rows) textParts.push(row.join("\t"));
+    }
   }
 
   return {
     text: textParts.join("\n"),
-    tables: [], // PPT 表格需深层 XML 解析，标记为 TODO
+    tables,
     metadata: {
       pageCount: slideFiles.length,
     },

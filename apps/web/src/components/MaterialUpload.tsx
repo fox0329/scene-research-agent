@@ -4,6 +4,11 @@ import { api, ingestStream } from "../api";
 import { pickSupportedFiles, describeSkipped, splitOversizeFiles, describeOversize, describeLargeFiles } from "../constants";
 import { FILE_UPLOAD_LIMIT_MB } from "@scene/contract";
 import { useToast } from "./Toast";
+import {
+  buildIngestReceipt,
+  fileResultLine,
+  type FileIngestResult,
+} from "./ingest-receipt";
 
 /**
  * 材料上传组件（v1.10 抽公共）：文件多选 + 整个文件夹 → 逐个解析入库 SSE 进度。
@@ -72,22 +77,29 @@ export const MaterialUpload: React.FC<{
       let totalRows = 0;
       let failed = 0;
       const tableCounts: Record<string, number> = {};
+      /** 逐文件结果：只报总数的话，「哪个文件一行没落」是看不出来的 */
+      const perFile: FileIngestResult[] = [];
       try {
         for (let i = 0; i < files.length; i++) {
           const file = files[i]!;
+          let fileRows = 0;
+          let fileFailed = false;
           setProgress((prev) => [...prev, `（${i + 1}/${files.length}）${file.name}`].slice(-8));
           try {
             for await (const ev of ingestStream(file, lineId)) {
               if (ev.type === "progress") {
                 setProgress((prev) => [...prev, `　${String(ev.text ?? "处理中…")}`].slice(-8));
               } else if (ev.type === "done") {
-                totalRows += Number(ev.rows_inserted ?? 0);
+                const rows = Number(ev.rows_inserted ?? 0);
+                fileRows += rows;
+                totalRows += rows;
                 const counts = ev.table_counts as Record<string, number> | undefined;
                 for (const [t, n] of Object.entries(counts ?? {})) {
                   tableCounts[t] = (tableCounts[t] ?? 0) + Number(n);
                 }
               } else if (ev.type === "error") {
                 failed++;
+                fileFailed = true;
                 setProgress((prev) =>
                   [...prev, `【错误】${file.name}：${String(ev.message ?? "")}`].slice(-8),
                 );
@@ -95,6 +107,7 @@ export const MaterialUpload: React.FC<{
             }
           } catch (err: unknown) {
             failed++;
+            fileFailed = true;
             setProgress((prev) =>
               [
                 ...prev,
@@ -102,18 +115,19 @@ export const MaterialUpload: React.FC<{
               ].slice(-8),
             );
           }
+          const result: FileIngestResult = { name: file.name, rows: fileRows, failed: fileFailed };
+          perFile.push(result);
+          const line = fileResultLine(result);
+          if (line !== null) setProgress((prev) => [...prev, line].slice(-8));
         }
-        const countsStr = Object.entries(tableCounts)
-          .map(([t, n]) => `${t}×${n}`)
-          .join("、");
-        setProgress((prev) =>
-          [
-            ...prev,
-            `【完成】${files.length} 个文件 · 共入库 ${totalRows} 行${countsStr ? `（${countsStr}）` : ""}${failed ? ` · 失败 ${failed} 个` : ""}`,
-          ].slice(-8),
-        );
+        const receipt = buildIngestReceipt(perFile, tableCounts);
+        setProgress((prev) => [...prev, receipt.doneLine].slice(-8));
+        // 0 行的文件单独点名：可能是这个格式没被真正读进去（如 pptx 的表格）
+        if (receipt.emptyLine !== null) {
+          setProgress((prev) => [...prev, receipt.emptyLine!].slice(-8));
+        }
         setFinished(true);
-        showToast(`解析完成：入库 ${totalRows} 行${countsStr ? `（${countsStr}）` : ""}`);
+        showToast(receipt.toast);
         onDone?.();
       } finally {
         setUploading(false);
