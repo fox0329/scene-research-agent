@@ -63,6 +63,39 @@ export interface CompletenessCheckItem {
   risk: string;
 }
 
+/**
+ * 单条来源抽查结果（G-R3，变更表 #211）
+ *
+ * 抽查不是"看看有没有标来源"，而是**回原文核对这句话在不在**：
+ * 出处必须在材料库里查得到（`hasSource`），且那一页确实出现关键片段（`hasContent`）。
+ */
+export interface SourceSpotCheck {
+  /** 出处（`文件名:页码` 或 URL） */
+  source: string;
+  /** 被抽查的记录（表号 + 简述），便于用户回定位 */
+  where: string;
+  /** verified=原文核对通过 / missing=出处查不到 / mismatch=那页没这句话 / skipped=片段太短无法判定 */
+  verdict: "verified" | "missing" | "mismatch" | "skipped";
+  /** 说明（查不到时写清缺什么） */
+  detail: string;
+}
+
+/** 来源抽查汇总（G-R3：至少抽 3 条） */
+export interface SourceSpotCheckReport {
+  /** 抽查条数 */
+  checked: number;
+  /** 核对通过条数 */
+  verified: number;
+  /** 出处查不到 / 内容对不上（真问题） */
+  failed: number;
+  /** 无法判定（片段太短等，不指控） */
+  skipped: number;
+  /** 逐条结果 */
+  items: SourceSpotCheck[];
+  /** 是否满足"至少抽 3 条"的覆盖要求 */
+  covered: boolean;
+}
+
 /** 材料补充提醒项（对应表 0-13） */
 export interface MaterialReminder {
   /** 对应表编号 */
@@ -304,6 +337,147 @@ export function assessQuality(
   };
 }
 
+// ─── 来源抽查（G-R3 真核对，变更表 #211） ────────────────────
+
+/** 抽查覆盖要求（G-R3：每个质量关至少抽查 3 条来源） */
+export const SPOT_CHECK_MIN = 3;
+
+/** 抽查时从记录里取"关键片段"的最短长度（太短无法在原文里定位） */
+const MIN_SNIPPET_LEN = 6;
+
+/** 一条可抽查的记录：出处 + 一句能代表这条记录的话 */
+interface CheckableRecord {
+  source: string;
+  where: string;
+  snippet: string;
+}
+
+/**
+ * 从 M1-M5 记录里挑出可抽查的（有出处、有可代表内容的）
+ *
+ * 顺序即抽查优先级：**先抽 M1/M3**（产品与能力是后续所有结论的地基），
+ * 再抽 M2/M4/M5。同一出处只抽一次——同页抽两条等于只抽了一条。
+ */
+function collectCheckable(
+  products: Product[],
+  specParams: SpecParam[],
+  capabilities: Capability[],
+  boundaries: Boundary[],
+  limitations: Limitation[],
+): CheckableRecord[] {
+  const out: CheckableRecord[] = [];
+  const push = (source: unknown, where: string, snippet: unknown) => {
+    const src = String(source ?? "").trim();
+    const text = String(snippet ?? "").trim();
+    if (!src || text.length < MIN_SNIPPET_LEN) return;
+    out.push({ source: src, where, snippet: text });
+  };
+
+  for (const p of products) {
+    // 产品名 + 定位描述一起作为"这句话"，比只拿名字更容易在原文里命中
+    push(p.source, `M1 ${p.name || p.model || "(未命名)"}`, `${p.name ?? ""} ${p.position_desc ?? ""}`.trim());
+  }
+  for (const c of capabilities) {
+    push(c.source, `M3 ${c.name || "(未命名)"}`, `${c.name ?? ""} ${c.description ?? ""}`.trim());
+  }
+  for (const sp of specParams) {
+    push(sp.source, `M2 ${sp.param_name || "(未命名)"}`, `${sp.param_name ?? ""} ${sp.value ?? ""}`.trim());
+  }
+  for (const b of boundaries) {
+    push(b.source, `M4 ${(b.description ?? "").slice(0, 20)}`, b.description);
+  }
+  for (const l of limitations) {
+    push(l.source, `M5 ${(l.description ?? "").slice(0, 20)}`, l.description);
+  }
+
+  // 同一出处只留第一条（同页抽两条没有信息增益）
+  const seen = new Set<string>();
+  const unique: CheckableRecord[] = [];
+  for (const r of out) {
+    if (seen.has(r.source)) continue;
+    seen.add(r.source);
+    unique.push(r);
+  }
+  return unique;
+}
+
+/**
+ * 来源抽查真核对（G-R3）
+ *
+ * 与旧实现（"有一条带来源就算已抽查"）的区别：这里**逐条回原文核对**——
+ * 出处必须在材料库里存在，且那一页真的出现了这条记录的关键片段。
+ * 核对不了的（片段太短、FTS 判定不了）记为 skipped 而不是 failed：
+ * 不能凭空指控材料是假的，但也不能把"查不了"算成"查过了"。
+ *
+ * 领域层不碰数据库：检索能力由 `lookup` 注入（见 `SourceLookup`）。
+ *
+ * @param lookup - 材料库反查端口
+ * @param records - M1-M5 记录
+ * @param minCount - 至少要抽查多少条（默认 G-R3 的 3 条）
+ */
+export function spotCheckSources(
+  lookup: { hasSource(ref: string): boolean; hasContent(ref: string, snippet: string): boolean },
+  records: {
+    products: Product[];
+    specParams: SpecParam[];
+    capabilities: Capability[];
+    boundaries: Boundary[];
+    limitations: Limitation[];
+  },
+  minCount = SPOT_CHECK_MIN,
+): SourceSpotCheckReport {
+  const candidates = collectCheckable(
+    records.products,
+    records.specParams,
+    records.capabilities,
+    records.boundaries,
+    records.limitations,
+  );
+
+  const items: SourceSpotCheck[] = [];
+  for (const c of candidates) {
+    if (items.length >= minCount) break;
+    if (!lookup.hasSource(c.source)) {
+      items.push({
+        source: c.source,
+        where: c.where,
+        verdict: "missing",
+        detail: `材料库里查不到这个出处（${c.source}）——文件名或页码对不上，可能材料已删或页码写错`,
+      });
+      continue;
+    }
+    if (lookup.hasContent(c.source, c.snippet)) {
+      items.push({
+        source: c.source,
+        where: c.where,
+        verdict: "verified",
+        detail: "原文核对通过：该页确有这段内容",
+      });
+    } else {
+      // hasContent 在片段过短时会返回 true（判不了不指控）；走到这里说明片段够长却没命中
+      items.push({
+        source: c.source,
+        where: c.where,
+        verdict: "mismatch",
+        detail: "该页找不到这条记录的关键内容——可能是页码错了，或内容被改写/拼接",
+      });
+    }
+  }
+
+  const verified = items.filter((i) => i.verdict === "verified").length;
+  const failed = items.filter((i) => i.verdict === "missing" || i.verdict === "mismatch").length;
+  const skipped = items.filter((i) => i.verdict === "skipped").length;
+
+  return {
+    checked: items.length,
+    verified,
+    failed,
+    skipped,
+    items,
+    covered: items.length >= minCount && candidates.length >= minCount,
+  };
+}
+
 /**
  * 完成度检查（00b §2.4，7 项，不阻断）
  *
@@ -317,12 +491,68 @@ export function assessQuality(
  * @param limitations - 已知限制列表（M5）
  * @returns 完成度报告（8 项检查 + 缺失提醒列表）
  */
+/**
+ * 把抽查结果翻译成第 6 项检查的状态文案
+ *
+ * 三种情况分开说清楚，别混成一句"已抽查"：
+ * 全过 / 有对不上 / 覆盖不够。
+ */
+function buildSpotCheckItem(
+  hasSources: boolean,
+  spotCheck?: SourceSpotCheckReport,
+): CompletenessCheckItem {
+  if (!spotCheck) {
+    return {
+      id: 6,
+      name: "来源抽查",
+      status: hasSources ? "✅ 已抽查" : "⚠️ 未抽查",
+      risk: hasSources ? "—" : "证据可信度未验证",
+    };
+  }
+  if (spotCheck.checked === 0) {
+    return {
+      id: 6,
+      name: "来源抽查",
+      status: "⚠️ 无可抽查记录",
+      risk: "记录要么没有出处，要么内容太短无法回原文核对",
+    };
+  }
+  if (spotCheck.failed > 0) {
+    return {
+      id: 6,
+      name: "来源抽查",
+      status: `❌ ${spotCheck.verified}/${spotCheck.checked} 通过，${spotCheck.failed} 条对不上`,
+      risk: "对不上的记录其依据站不住，需回原文核对或改写",
+    };
+  }
+  if (!spotCheck.covered) {
+    return {
+      id: 6,
+      name: "来源抽查",
+      status: `⚠️ 已核对 ${spotCheck.verified} 条，未达 ${SPOT_CHECK_MIN} 条`,
+      risk: "抽查覆盖不足，整体证据质量仍不确定",
+    };
+  }
+  return {
+    id: 6,
+    name: "来源抽查",
+    status: `✅ 已核对 ${spotCheck.verified} 条，原文一致`,
+    risk: "—",
+  };
+}
+
 export function checkCompleteness(
   products: Product[],
   specParams: SpecParam[],
   capabilities: Capability[],
   boundaries: Boundary[],
   limitations: Limitation[],
+  /**
+   * 来源抽查结果（G-R3 真核对，变更表 #211）
+   *
+   * 不传则退化为旧的"有没有标来源"判断——领域层不碰数据库，检索由调用方注入。
+   */
+  spotCheck?: SourceSpotCheckReport,
 ): CompletenessReport {
   // 来源抽查：至少有一条记录带有来源标注
   const allRecords = [
@@ -392,13 +622,8 @@ export function checkCompleteness(
     risk: c.hasData ? "—" : c.risk,
   }));
 
-  // 第 6 项：来源抽查
-  items.push({
-    id: 6,
-    name: "来源抽查",
-    status: hasSources ? "✅ 已抽查" : "⚠️ 未抽查",
-    risk: hasSources ? "—" : "证据可信度未验证",
-  });
+  // 第 6 项：来源抽查（有真核对结果就按核对结果说，没有才退回"标没标来源"）
+  items.push(buildSpotCheckItem(hasSources, spotCheck));
 
   // 第 7 项：质量六维已评估
   items.push({
@@ -426,6 +651,20 @@ export function checkCompleteness(
       missing: "未进行来源抽查",
       impact: "证据可信度未验证",
       suggestion: "至少抽查 3 条来源并确认内容一致",
+    });
+  } else if (spotCheck && spotCheck.failed > 0) {
+    reminders.push({
+      table: "全局",
+      missing: `来源抽查有 ${spotCheck.failed} 条对不上`,
+      impact: "这几条依据可能在原文里站不住，后续结论会继承这个风险",
+      suggestion: "按右栏出处回原文核对，改页码或换一条有据的说法",
+    });
+  } else if (spotCheck && !spotCheck.covered) {
+    reminders.push({
+      table: "全局",
+      missing: `来源抽查只做了 ${spotCheck.checked} 条（要求至少 ${SPOT_CHECK_MIN} 条）`,
+      impact: "抽查覆盖不足，整体证据质量仍不确定",
+      suggestion: `补足到 ${SPOT_CHECK_MIN} 条以上`,
     });
   }
   if (!hasAssessment) {

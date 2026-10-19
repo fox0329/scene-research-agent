@@ -15,6 +15,7 @@ import {
   normalizeValue,
   planProductMerge,
   planSpecDedupe,
+  gradeSourceByCategory,
 } from "@scene/domain";
 import type { Product, SpecParam } from "@scene/contract";
 import type { DbInstance } from "@scene/infra";
@@ -129,6 +130,8 @@ export function resolveProductForModel(
   productLineId: string,
   fields: Record<string, unknown>,
   source: string,
+  /** 原始文件名（类目线索，变更表 #210） */
+  fileName?: string,
 ): ProductResolution {
   const model = String(fields["model"] ?? "");
   const products = db.productRepo.list({
@@ -156,7 +159,8 @@ export function resolveProductForModel(
     position_desc: String(fields["position_desc"] ?? ""),
     source_type: "AI提取",
     source,
-    source_authority: "T3",
+    // 按材料类目判权威性（变更表 #210）：国标→T1、厂商官方→T2、媒体→T3、自媒体→T4
+    source_authority: gradeSourceByCategory("AI提取", source, fileName).authority,
     evidence_level: "B",
   } as never);
   return { productId: created.id, created: true };
@@ -172,6 +176,8 @@ export function upsertSpecParam(
   productId: string,
   fields: Record<string, unknown>,
   source: string,
+  /** 原始文件名（类目线索，变更表 #210）；不传则只按来源串判 */
+  fileName?: string,
 ): boolean {
   const paramClass = String(fields["param_class"] ?? "");
   const paramName = String(fields["param_name"] ?? "");
@@ -193,7 +199,7 @@ export function upsertSpecParam(
       measured: (fields["measured"] as SpecParam["measured"]) ?? "未提及",
       source_type: "AI提取",
       source,
-      source_authority: "T3",
+      source_authority: gradeSourceByCategory("AI提取", source, fileName).authority,
       evidence_level: "B",
     } as never);
 

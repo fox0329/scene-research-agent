@@ -2,6 +2,8 @@ import { describe, it, expect } from "vitest";
 import {
   assessQuality,
   checkCompleteness,
+  spotCheckSources,
+  SPOT_CHECK_MIN,
   upsertFromAnalysis,
 } from "./material.js";
 import type {
@@ -666,5 +668,172 @@ describe("upsertFromAnalysis", () => {
     expect(op.type).toBe("update_maturity");
     // payload 只有 maturity 一个字段
     expect(Object.keys(op.payload)).toEqual(["maturity"]);
+  });
+});
+// ─── 来源抽查真核对（G-R3，变更表 #211） ─────────────────────
+
+/** 假材料库：refs 是"存在的出处"，contents 是"该出处页面里有的原文" */
+function fakeLookup(refs: string[], contents: Record<string, string[]>) {
+  return {
+    hasSource: (ref: string) => refs.includes(ref),
+    hasContent: (ref: string, snippet: string) =>
+      (contents[ref] ?? []).some((page) => page.includes(snippet)),
+  };
+}
+
+describe("spotCheckSources", () => {
+  it("出处存在且原文确有该内容 → verified", () => {
+    const report = spotCheckSources(
+      fakeLookup(["白皮书.pdf#3"], { "白皮书.pdf#3": ["智能摄像头 高端定位 面向工业场景"] }),
+      {
+        products: [makeProduct()],
+        specParams: [],
+        capabilities: [],
+        boundaries: [],
+        limitations: [],
+      },
+      1,
+    );
+    expect(report.items[0]?.verdict).toBe("verified");
+    expect(report.verified).toBe(1);
+    expect(report.failed).toBe(0);
+  });
+
+  it("出处查不到 → missing（材料已删或页码写错）", () => {
+    const report = spotCheckSources(fakeLookup([], {}), {
+      products: [makeProduct()],
+      specParams: [],
+      capabilities: [],
+      boundaries: [],
+      limitations: [],
+    });
+    expect(report.items[0]?.verdict).toBe("missing");
+    expect(report.items[0]?.detail).toContain("查不到");
+    expect(report.failed).toBe(1);
+  });
+
+  it("出处存在但那页没这句话 → mismatch（页码错或内容被改写）", () => {
+    const report = spotCheckSources(
+      fakeLookup(["白皮书.pdf#3"], { "白皮书.pdf#3": ["完全不相干的一段话"] }),
+      {
+        products: [makeProduct()],
+        specParams: [],
+        capabilities: [],
+        boundaries: [],
+        limitations: [],
+      },
+      1,
+    );
+    expect(report.items[0]?.verdict).toBe("mismatch");
+    expect(report.failed).toBe(1);
+  });
+
+  it("默认抽 3 条（G-R3 覆盖要求）", () => {
+    expect(SPOT_CHECK_MIN).toBe(3);
+    const report = spotCheckSources(
+      fakeLookup(["白皮书.pdf#3", "规格书.pdf#5", "能力表.pdf#3"], {
+        "白皮书.pdf#3": ["智能摄像头 高端定位"],
+        "规格书.pdf#5": ["CPU 4核 实测"],
+        "能力表.pdf#3": ["温湿度采集 实时采集温湿度"],
+      }),
+      {
+        products: [makeProduct()],
+        specParams: [makeSpecParam()],
+        capabilities: [makeCapability({ source: "能力表.pdf#3" })],
+        boundaries: [],
+        limitations: [],
+      },
+    );
+    expect(report.checked).toBe(3);
+    expect(report.covered).toBe(true);
+  });
+
+  it("同一出处只抽一次（同页抽两条等于只抽一条）", () => {
+    const report = spotCheckSources(
+      fakeLookup(["白皮书.pdf#3"], { "白皮书.pdf#3": ["智能摄像头 高端定位"] }),
+      {
+        products: [makeProduct(), makeProduct({ id: "p2", model: "IPC-4000" })],
+        specParams: [],
+        capabilities: [],
+        boundaries: [],
+        limitations: [],
+      },
+    );
+    expect(report.checked).toBe(1);
+  });
+
+  it("没有出处的记录不参与抽查（不算查过）", () => {
+    const report = spotCheckSources(fakeLookup([], {}), {
+      products: [makeProduct({ source: undefined })],
+      specParams: [],
+      capabilities: [],
+      boundaries: [],
+      limitations: [],
+    });
+    expect(report.checked).toBe(0);
+    expect(report.covered).toBe(false);
+  });
+
+  it("覆盖不足时 covered=false（不谎称查够了）", () => {
+    const report = spotCheckSources(
+      fakeLookup(["白皮书.pdf#3"], { "白皮书.pdf#3": ["智能摄像头 高端定位"] }),
+      {
+        products: [makeProduct()],
+        specParams: [],
+        capabilities: [],
+        boundaries: [],
+        limitations: [],
+      },
+    );
+    expect(report.checked).toBe(1);
+    expect(report.covered).toBe(false);
+  });
+});
+
+describe("checkCompleteness 的第 6 项（来源抽查）接真核对", () => {
+  it("全过 → ✅ 已核对 N 条，原文一致", () => {
+    const spot = spotCheckSources(
+      fakeLookup(["白皮书.pdf#3"], { "白皮书.pdf#3": ["智能摄像头 高端定位"] }),
+      {
+        products: [makeProduct()],
+        specParams: [],
+        capabilities: [],
+        boundaries: [],
+        limitations: [],
+      },
+      1,
+    );
+    const report = checkCompleteness(
+      [makeProduct()],
+      [],
+      [],
+      [],
+      [],
+      spot,
+    );
+    const item = report.items.find((i) => i.id === 6);
+    expect(item?.status).toContain("原文一致");
+    expect(item?.risk).toBe("—");
+  });
+
+  it("有对不上 → ❌ 并给出条数（不粉饰成已抽查）", () => {
+    const spot = spotCheckSources(fakeLookup([], {}), {
+      products: [makeProduct()],
+      specParams: [],
+      capabilities: [],
+      boundaries: [],
+      limitations: [],
+    });
+    const report = checkCompleteness([makeProduct()], [], [], [], [], spot);
+    const item = report.items.find((i) => i.id === 6);
+    expect(item?.status).toContain("❌");
+    expect(item?.status).toContain("1 条对不上");
+    expect(report.reminders.some((r) => r.missing.includes("对不上"))).toBe(true);
+  });
+
+  it("不传抽查结果时退回旧口径（标了来源就算已抽查）", () => {
+    const report = checkCompleteness([makeProduct()], [], [], [], []);
+    const item = report.items.find((i) => i.id === 6);
+    expect(item?.status).toBe("✅ 已抽查");
   });
 });

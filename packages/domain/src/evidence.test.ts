@@ -2,6 +2,9 @@ import { describe, it, expect } from "vitest";
 import {
   gradeAnalysisEvidence,
   gradeSource,
+  gradeByCategory,
+  gradeSourceByCategory,
+  classifySource,
   gradeEvidence,
   verifyCitation,
 } from "./evidence.js";
@@ -160,5 +163,108 @@ describe("gradeAnalysisEvidence — 分析行的证据分级（变更表 #167，
     ]);
     expect(all).not.toContain("D");
     expect(new Set(all)).toEqual(new Set(["A", "B", "C"]));
+  });
+});
+
+// ─── 来源类目分级（G-R1 类目级，变更表 #210） ────────────────
+
+describe("classifySource", () => {
+  it("标准号 → 法规标准（GB/ISO/IEC/RFC 等）", () => {
+    expect(classifySource("GB/T 22239-2019.pdf:12")).toBe("法规标准");
+    expect(classifySource("ISO 27001 认证要求.pdf:3")).toBe("法规标准");
+    expect(classifySource("https://www.iso.org/standard/54534.html")).toBe("法规标准");
+  });
+
+  it("法规名称 → 法规标准", () => {
+    expect(classifySource("数据安全管理办法.docx:5")).toBe("法规标准");
+    expect(classifySource("网络安全条例.pdf:1")).toBe("法规标准");
+  });
+
+  it("政府域名与机构 → 政府文件", () => {
+    expect(classifySource("https://www.miit.gov.cn/zwgk/art/2024.html")).toBe("政府文件");
+    expect(classifySource("工业和信息化部 通知.pdf:2")).toBe("政府文件");
+  });
+
+  it("交易所与年报 → 年报公告", () => {
+    expect(classifySource("https://www.cninfo.com.cn/new/disclosure/1")).toBe("年报公告");
+    expect(classifySource("某公司2024年年度报告.pdf:88")).toBe("年报公告");
+  });
+
+  it("厂商官方文档 → 厂商官方", () => {
+    expect(classifySource("产品规格书.pdf:7")).toBe("厂商官方");
+    expect(classifySource("https://docs.example.com/api/v2")).toBe("厂商官方");
+  });
+
+  it("咨询机构与行业报告 → 行业报告", () => {
+    expect(classifySource("IDC 中国物联网市场预测 2025.pdf:4")).toBe("行业报告");
+    expect(classifySource("智慧消防行业报告.pdf:1")).toBe("行业报告");
+  });
+
+  it("自媒体平台 → 自媒体（最低权威）", () => {
+    expect(classifySource("https://mp.weixin.qq.com/s/abc")).toBe("自媒体");
+    expect(classifySource("https://zhuanlan.zhihu.com/p/123")).toBe("自媒体");
+    expect(classifySource("https://blog.csdn.net/x/article/details/1")).toBe("自媒体");
+  });
+
+  it("用户口述 → 用户自述（没有材料可指）", () => {
+    expect(classifySource("用户补充")).toBe("用户自述");
+    expect(classifySource("手动录入")).toBe("用户自述");
+  });
+
+  it("空串 → 未知", () => {
+    expect(classifySource("")).toBe("未知");
+    expect(classifySource("   ")).toBe("未知");
+  });
+
+  it("文件名里的类目线索也算（source 只有页码时）", () => {
+    expect(classifySource("ingest-123.pdf:5", "GB50311-2016 综合布线.pdf")).toBe("法规标准");
+  });
+});
+
+describe("gradeByCategory", () => {
+  it("法规标准/政府文件 → T1", () => {
+    expect(gradeByCategory("法规标准")).toBe("T1");
+    expect(gradeByCategory("政府文件")).toBe("T1");
+  });
+
+  it("厂商官方/年报公告/行业报告 → T2", () => {
+    expect(gradeByCategory("厂商官方")).toBe("T2");
+    expect(gradeByCategory("年报公告")).toBe("T2");
+    expect(gradeByCategory("行业报告")).toBe("T2");
+  });
+
+  it("媒体 → T3，自媒体/口述/未知 → T4", () => {
+    expect(gradeByCategory("媒体")).toBe("T3");
+    expect(gradeByCategory("自媒体")).toBe("T4");
+    expect(gradeByCategory("用户自述")).toBe("T4");
+    expect(gradeByCategory("未知")).toBe("T4");
+  });
+});
+
+describe("gradeSourceByCategory（权威性只看依据本身，核实程度归 evidence_level）", () => {
+  it("国标材料即使是 AI 提取，也按类目给 T1（依据本身权威）", () => {
+    expect(gradeSourceByCategory("AI提取", "GB/T 22239-2019.pdf:12").authority).toBe("T1");
+  });
+
+  it("自媒体材料即使是用户补充，也按类目给 T4（不因用户说了就升权威）", () => {
+    const r = gradeSourceByCategory("用户补充", "https://mp.weixin.qq.com/s/abc");
+    expect(r.authority).toBe("T4");
+    expect(r.category).toBe("自媒体");
+  });
+
+  it("用户口述没有材料依据 → 退回来源标记（用户补充→T1）", () => {
+    expect(gradeSourceByCategory("用户补充", "用户补充").authority).toBe("T1");
+  });
+
+  it("AI 推断 + 自媒体 → T4", () => {
+    expect(gradeSourceByCategory("AI推断", "https://zhuanlan.zhihu.com/p/1").authority).toBe("T4");
+  });
+
+  it("AI 推断即使指向国标也是 T4（推断没有材料依据）", () => {
+    expect(gradeSourceByCategory("AI推断", "GB/T 22239-2019.pdf:12").authority).toBe("T4");
+  });
+
+  it("未知来源 → 退回标记映射，不误升权威", () => {
+    expect(gradeSourceByCategory("AI提取", "").authority).toBe("T3");
   });
 });

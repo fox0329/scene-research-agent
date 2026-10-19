@@ -59,6 +59,7 @@ import {
   checkProviderConnection,
   fetchProviderModels,
   deleteSourceIndex,
+  createSourceLookup,
   sourcePassages,
 } from "@scene/infra";
 import type { ProviderModelEntry } from "@scene/infra";
@@ -104,6 +105,7 @@ import { parseStage, streamEvents } from "./sse-stream.js";
 import {
   assessQuality,
   checkCompleteness,
+  spotCheckSources,
   getAffectedStages,
   expandHomePath,
 } from "@scene/domain";
@@ -1650,9 +1652,35 @@ function registerLibraryRoutes(app: FastifyInstance, deps: UiRoutesDeps) {
         listBy("M3"),
         listBy("M4"),
         listBy("M5"),
+        // 来源抽查真核对（G-R3，变更表 #211）；索引不可用时不阻断查询
+        safeSpotCheck(() =>
+          spotCheckSources(createSourceLookup(db.db), {
+            products: listBy<Product>("M1"),
+            specParams: listBy("M2"),
+            capabilities: listBy("M3"),
+            boundaries: listBy("M4"),
+            limitations: listBy("M5"),
+          }),
+        ),
       ),
     };
   });
+}
+
+/**
+ * 抽查的容错包装（G-R3，变更表 #211）：索引不可用时返回 undefined，不阻断接口
+ *
+ * 抽查是质量增强，不是查询前置条件——FTS 表缺失、老库未建索引都不该让
+ * 「完成度报告」整个 500。
+ */
+function safeSpotCheck(
+  run: () => import("@scene/domain").SourceSpotCheckReport,
+): import("@scene/domain").SourceSpotCheckReport | undefined {
+  try {
+    return run();
+  } catch {
+    return undefined;
+  }
 }
 
 /**

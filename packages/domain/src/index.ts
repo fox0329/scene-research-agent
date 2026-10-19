@@ -9,17 +9,24 @@
 // 阶段 0 — 证据采集与溯源
 export {
   gradeSource,
+  gradeByCategory,
+  gradeSourceByCategory,
+  classifySource,
   gradeEvidence,
   gradeAnalysisEvidence,
   verifyCitation,
 } from "./evidence.js";
+export type { SourceCategory } from "./evidence.js";
 
 // 阶段 0 — 材料解析与入表
 export {
   assessQuality,
   checkCompleteness,
+  spotCheckSources,
+  SPOT_CHECK_MIN,
   upsertFromAnalysis,
 } from "./material.js";
+export type { SourceSpotCheck, SourceSpotCheckReport } from "./material.js";
 export type {
   DimensionStatus,
   QualityDimension,

@@ -19,6 +19,7 @@ import type {
   OptionalMaterial,
 } from "@scene/contract";
 import type { ParseResult } from "@scene/infra";
+import { createSourceLookup } from "@scene/infra";
 import type { DbInstance } from "@scene/infra";
 import { resolveProductForModel, upsertSpecParam } from "./library-service.js";
 import { normalizeModel } from "@scene/domain";
@@ -26,7 +27,14 @@ import type {
   QualityAssessment,
   CompletenessReport,
 } from "@scene/domain";
-import { assessQuality, checkCompleteness } from "@scene/domain";
+import {
+  assessQuality,
+  checkCompleteness,
+  spotCheckSources,
+  gradeSourceByCategory,
+} from "@scene/domain";
+import type { SourceSpotCheckReport } from "@scene/domain";
+import type { Authority } from "@scene/contract";
 
 // ─── 依赖注入接口 ──────────────────────────────────────────
 
@@ -197,7 +205,7 @@ async function executeIngest(
   const validRows = validateRows(dshOutput, fileName);
 
   // 5. 写入数据库
-  const { inserted, tableCounts, mergedProducts } = writeRows(db, validRows, productLineId);
+  const { inserted, tableCounts, mergedProducts } = writeRows(db, validRows, productLineId, fileName);
 
   // 6. 质量评估 + 完成度检查
   const qualityAssessment = buildQualityAssessment(db, productLineId);
@@ -382,6 +390,7 @@ function writeRows(
   db: DbInstance,
   rows: ClassifiedRow[],
   productLineId: string,
+  fileName: string,
 ): { inserted: number; tableCounts: Record<string, number>; mergedProducts: number } {
   let inserted = 0;
   /** 并入已有型号的 M1 行数（没新建产品行，但材料内容已补进去） */
@@ -397,7 +406,7 @@ function writeRows(
   // 先遍历一次，把 M1 行落到产品（已有型号并入、没有才新建），收集 model → id 映射
   for (const row of rows) {
     if (row.table_code !== "M1") continue;
-    const { productId, created } = resolveProductForModel(db, productLineId, row.fields, row.source);
+    const { productId, created } = resolveProductForModel(db, productLineId, row.fields, row.source, fileName);
     if (!productId) continue;
     // 用归一型号做 key：材料里写出「在鸿 7885平板」时也要能接到已有「在鸿7885平板」
     modelToProductId.set(normalizeModel(String(row.fields["model"] ?? "")), productId);
@@ -411,29 +420,29 @@ function writeRows(
 
     switch (row.table_code) {
       case "M2": {
-        const ok = insertSpecParam(db, row, productLineId, modelToProductId);
+        const ok = insertSpecParam(db, row, productLineId, modelToProductId, fileName);
         if (ok) count("M2");
         break;
       }
       case "M3": {
-        const ok = insertCapability(db, row, productLineId);
+        const ok = insertCapability(db, row, productLineId, fileName);
         if (ok) count("M3");
         break;
       }
       case "M4": {
-        const ok = insertBoundary(db, row, productLineId);
+        const ok = insertBoundary(db, row, productLineId, fileName);
         if (ok) count("M4");
         break;
       }
       case "M5": {
-        const ok = insertLimitation(db, row, productLineId);
+        const ok = insertLimitation(db, row, productLineId, fileName);
         if (ok) count("M5");
         break;
       }
       default: {
         // O1-O6
         if (row.table_code.startsWith("O")) {
-          const ok = insertOptionalMaterial(db, row, productLineId);
+          const ok = insertOptionalMaterial(db, row, productLineId, fileName);
           if (ok) count(row.table_code);
         }
         break;
@@ -444,11 +453,47 @@ function writeRows(
   return { inserted, tableCounts, mergedProducts };
 }
 
+/**
+ * 一条入库记录的来源权威性（变更表 #210）
+ *
+ * 原来四处硬编码 "T3"：材料是国标还是自媒体，入库时全按「参考」算，
+ * 权威性分级形同虚设。现在按**材料类目**判（法规标准/政府文件→T1，
+ * 厂商官方/年报/行业报告→T2，媒体→T3，自媒体/口述→T4），
+ * 与"谁录进来的"（source_type）解耦。
+ */
+/**
+ * 抽查的容错包装：材料库反查不可用时返回 undefined（退化成旧口径），不抛错
+ *
+ * 为什么必须容错：入库是主流程，抽查只是质量增强。索引表缺失、假库、
+ * 老库未建 FTS 都可能让反查失败——为此把整次入库打挂是本末倒置。
+ */
+function safeSpotCheck(
+  db: DbInstance,
+  records: {
+    products: Product[];
+    specParams: SpecParam[];
+    capabilities: Capability[];
+    boundaries: Boundary[];
+    limitations: Limitation[];
+  },
+): SourceSpotCheckReport | undefined {
+  try {
+    return spotCheckSources(createSourceLookup(db.db), records);
+  } catch {
+    return undefined;
+  }
+}
+
+function authorityOf(source: string, fileName: string): Authority {
+  return gradeSourceByCategory("AI提取", source, fileName).authority;
+}
+
 function insertSpecParam(
   db: DbInstance,
   row: ClassifiedRow,
   _productLineId: string,
   modelToProductId: Map<string, string>,
+  fileName: string,
 ): boolean {
   const f = row.fields;
   const productModel = String(f["product_model"] ?? "");
@@ -459,7 +504,7 @@ function insertSpecParam(
   try {
     // upsert：同产品 + 同类别 + 同名称下，完全相同的不再写第二遍，
     // 新材料更完整时用完整那句覆盖（历史库里 843 行有 53 行完全重复就是这么来的）
-    return upsertSpecParam(db, productId, f as Record<string, unknown>, row.source);
+    return upsertSpecParam(db, productId, f as Record<string, unknown>, row.source, fileName);
   } catch {
     return false;
   }
@@ -469,6 +514,7 @@ function insertCapability(
   db: DbInstance,
   row: ClassifiedRow,
   productLineId: string,
+  fileName: string,
 ): boolean {
   const f = row.fields;
   try {
@@ -484,7 +530,7 @@ function insertCapability(
         : undefined,
       source_type: "AI提取",
       source: row.source,
-      source_authority: "T3",
+      source_authority: authorityOf(row.source, fileName),
       evidence_level: "B",
     });
     return true;
@@ -497,6 +543,7 @@ function insertBoundary(
   db: DbInstance,
   row: ClassifiedRow,
   productLineId: string,
+  fileName: string,
 ): boolean {
   const f = row.fields;
   try {
@@ -510,7 +557,7 @@ function insertBoundary(
       plan_date: f["plan_date"] ? String(f["plan_date"]) : undefined,
       source_type: "AI提取",
       source: row.source,
-      source_authority: "T3",
+      source_authority: authorityOf(row.source, fileName),
       evidence_level: "B",
     });
     return true;
@@ -523,6 +570,7 @@ function insertLimitation(
   db: DbInstance,
   row: ClassifiedRow,
   productLineId: string,
+  fileName: string,
 ): boolean {
   const f = row.fields;
   try {
@@ -537,7 +585,7 @@ function insertLimitation(
       owner: String(f["owner"] ?? ""),
       source_type: "AI提取",
       source: row.source,
-      source_authority: "T3",
+      source_authority: authorityOf(row.source, fileName),
       evidence_level: "B",
     });
     return true;
@@ -551,6 +599,7 @@ function insertOptionalMaterial(
   db: DbInstance,
   row: ClassifiedRow,
   productLineId: string,
+  fileName: string,
 ): boolean {
   // O1-O6 → category 映射
   const categoryMap: Record<string, OptionalMaterial["category"]> = {
@@ -572,7 +621,7 @@ function insertOptionalMaterial(
       payload: row.fields,
       source_type: "AI提取",
       source: row.source,
-      source_authority: "T3",
+      source_authority: authorityOf(row.source, fileName),
       evidence_level: "B",
     });
     return true;
@@ -637,11 +686,25 @@ function buildCompletenessReport(
     productIds.has(sp.product_id),
   );
 
+  // 来源抽查真核对（G-R3，变更表 #211）：逐条回原文验证出处与内容，
+  // 不再只看"有没有标来源"——标了但查不到，等于没核。
+  //
+  // 检索不可用时（如测试里的假库、或索引表缺失）**不阻断入库**：
+  // 抽查是质量增强，不是前置条件；拿不到结果就退化成旧口径。
+  const spotCheck = safeSpotCheck(db, {
+    products,
+    specParams: filteredSpecParams,
+    capabilities,
+    boundaries,
+    limitations,
+  });
+
   return checkCompleteness(
     products,
     filteredSpecParams,
     capabilities,
     boundaries,
     limitations,
+    spotCheck,
   );
 }
