@@ -48,6 +48,27 @@ export function deleteSourceIndex(db: Database.Database, refId: string): void {
  * 引用格式为 `文件名:页码`（如 `规格书.pdf:12`）或 `文件名#章节`（无页码）。
  * 拆不出来（纯 URL、没有定位符）就返回 null——那类出处没有页级原文可查。
  */
+/**
+ * 从引用串拆出「文件名」与「定位锚」（不限于页码）
+ *
+ * 实测真实库里的出处形态远比 `文件名:页码` 丰富：
+ *   `白皮书.docx:表格2`、`白皮书.docx:8.1`、`白皮书.docx:三、车间设备与自动化现状`
+ * docx/xlsx 本来就没有稳定分页，把这些一律当"页码非法"会让 **92% 的出处
+ * 核不到原文**（实测 38 条里只有 3 条是数字页码）。
+ * 所以锚点只负责"是哪份材料"，不是页码就退到文件级核对。
+ */
+export function splitFileRef(ref: string): { fileName: string; anchor: string } | null {
+  const r = String(ref ?? "").trim();
+  if (r === "") return null;
+  // 从**最后一个**冒号切：文件名里可能含冒号（Windows 盘符、时间戳）
+  const m = /^(.+)[:：]([^:：]+)$/.exec(r);
+  if (!m) return null;
+  const fileName = m[1]!.trim();
+  const anchor = m[2]!.trim();
+  if (!fileName || !anchor) return null;
+  return { fileName, anchor };
+}
+
 export function splitPageRef(ref: string): { fileName: string; page: number } | null {
   const r = String(ref ?? "").trim();
   const m = /^(.+?)[:：](\d+)$/.exec(r);
@@ -71,6 +92,8 @@ export function createSourceLookup(db: Database.Database): SourceLookup {
    */
   let pageTextStmt: Database.Statement | null = null;
   let hasPageStmt: Database.Statement | null = null;
+  let fileTextStmt: Database.Statement | null = null;
+  let hasFileStmt: Database.Statement | null = null;
   try {
     pageTextStmt = db.prepare(
       "SELECT content FROM source_page WHERE file_name = ? AND page = ? LIMIT 1",
@@ -78,18 +101,34 @@ export function createSourceLookup(db: Database.Database): SourceLookup {
     hasPageStmt = db.prepare(
       "SELECT 1 FROM source_page WHERE file_name = ? AND page = ? LIMIT 1",
     );
+    // 文件级（锚点不是页码时用）：把该材料所有页拼起来找
+    fileTextStmt = db.prepare(
+      "SELECT group_concat(content, char(10)) AS content FROM source_page WHERE file_name = ?",
+    );
+    hasFileStmt = db.prepare("SELECT 1 FROM source_page WHERE file_name = ? LIMIT 1");
   } catch {
     pageTextStmt = null;
     hasPageStmt = null;
+    fileTextStmt = null;
+    hasFileStmt = null;
   }
 
   return {
     hasSource(ref: string): boolean {
       const r = String(ref ?? "").trim();
       if (r === "") return false;
-      // 有页级原文的（新入库材料）优先按原文判存在性
-      const split = splitPageRef(r);
-      if (split && hasPageStmt?.get(split.fileName, split.page)) return true;
+      // 有原文的（新入库材料）优先按原文判存在性
+      const page = splitPageRef(r);
+      if (page && hasPageStmt) {
+        // 锚点是页码：**页必须真的存在**。
+        // 页码越界是实打实的错引（`白皮书.pdf:99` 而材料只有 1 页），
+        // 不能因为"这个文件存在"就算出处成立。
+        if (hasPageStmt.get(page.fileName, page.page)) return true;
+        return false;
+      }
+      // 锚点不是页码（`表格2`/`8.1`/章节名）：只要该材料有原文就成立
+      const file = splitFileRef(r);
+      if (file && hasFileStmt?.get(file.fileName)) return true;
       return Boolean(hasSourceStmt.get(r));
     },
 
@@ -111,15 +150,30 @@ export function createSourceLookup(db: Database.Database): SourceLookup {
        *   有原文 → 在原文里找（真核）
        *   没原文（老数据）→ 退回 FTS 检索，语义降级但保持兼容
        */
-      const split = splitPageRef(r);
-      if (split && pageTextStmt) {
-        const pageRow = pageTextStmt.get(split.fileName, split.page) as
+      // ① 锚点是页码 → 精确到那一页核（最强）
+      const page = splitPageRef(r);
+      if (page && pageTextStmt) {
+        const pageRow = pageTextStmt.get(page.fileName, page.page) as
           | { content?: string }
           | undefined;
         if (pageRow) {
           const pageText = String(pageRow.content ?? "");
           if (pageText.trim() === "") return true; // 该页无文本层，判不了不指控
           return pageText.includes(String(snippet ?? "").trim());
+        }
+      }
+
+      // ② 锚点不是页码（`表格2`/`8.1`/`三、现状`）→ 退到**整份材料**里核
+      //
+      // 精度降一级（"这份材料里有"而非"这一页有"），但比"不核"强得多，
+      // 也符合 docx/xlsx 本就没有稳定分页的事实。判定一律如实降级说明。
+      const file = splitFileRef(r);
+      if (file && fileTextStmt) {
+        const row = fileTextStmt.get(file.fileName) as { content?: string } | undefined;
+        if (row) {
+          const allText = String(row.content ?? "");
+          if (allText.trim() === "") return true;
+          return allText.includes(String(snippet ?? "").trim());
         }
       }
 

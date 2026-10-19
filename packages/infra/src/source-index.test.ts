@@ -5,6 +5,7 @@ import {
   deleteSourceIndex,
   ftsPhrase,
   splitPageRef,
+  splitFileRef,
   upsertSourcePages,
 } from "./source-index.js";
 import { sourcePassages } from "./sqlite-repo.js";
@@ -220,6 +221,75 @@ describe("hasContent 查的是原文，不是业务行自己（#212 核心修复
     const lookup = createSourceLookup(db);
     expect(lookup.hasSource("白皮书.pdf:1")).toBe(true);
     expect(lookup.hasSource("白皮书.pdf:99")).toBe(false);
+    db.close();
+  });
+});
+
+// ─── 真实出处形态：锚点不是页码（变更表 #212 补强） ─────────
+
+describe("splitFileRef", () => {
+  it("认得出真实库里那些非页码锚点", () => {
+    expect(splitFileRef("白皮书.docx:表格2")).toEqual({ fileName: "白皮书.docx", anchor: "表格2" });
+    expect(splitFileRef("白皮书.docx:8.1")).toEqual({ fileName: "白皮书.docx", anchor: "8.1" });
+    expect(splitFileRef("客户资料.docx:三、车间设备与自动化现状")).toEqual({
+      fileName: "客户资料.docx",
+      anchor: "三、车间设备与自动化现状",
+    });
+  });
+
+  it("从最后一个冒号切（文件名可能含冒号）", () => {
+    expect(splitFileRef("C:\\资料\\白皮书.pdf:12")).toEqual({
+      fileName: "C:\\资料\\白皮书.pdf",
+      anchor: "12",
+    });
+  });
+});
+
+describe("非页码锚点退到整份材料核对", () => {
+  function makeDb(): Database.Database {
+    const db = new Database(":memory:");
+    db.exec(`
+      CREATE VIRTUAL TABLE source_fts USING fts5(
+        ref_id, source, content, table_code, tokenize='trigram'
+      );
+      CREATE TABLE source_page (
+        id TEXT PRIMARY KEY, file_name TEXT NOT NULL, page INTEGER NOT NULL,
+        content TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, UNIQUE(file_name, page)
+      );
+    `);
+    const ins = db.prepare(
+      "INSERT INTO source_page (id, file_name, page, content, created_at) VALUES (?,?,?,?,?)",
+    );
+    ins.run("a", "白皮书.docx", 1, "第八章 产品能力\n智能摄像头支持边缘推理", new Date().toISOString());
+    ins.run("b", "白皮书.docx", 2, "附录A 参数表\n功耗 12W", new Date().toISOString());
+    return db;
+  }
+
+  it("`:表格2` 这类锚点在整份材料里找 → 找到为真", () => {
+    const db = makeDb();
+    const lookup = createSourceLookup(db);
+    expect(lookup.hasContent("白皮书.docx:表格2", "边缘推理")).toBe(true);
+    db.close();
+  });
+
+  it("`:8.1` 这类章节号锚点也核得到", () => {
+    const db = makeDb();
+    const lookup = createSourceLookup(db);
+    expect(lookup.hasContent("白皮书.docx:8.1", "功耗 12W")).toBe(true);
+    db.close();
+  });
+
+  it("材料里没有这句话 → false（不再自证）", () => {
+    const db = makeDb();
+    const lookup = createSourceLookup(db);
+    expect(lookup.hasContent("白皮书.docx:表格2", "支持 5G 双上行")).toBe(false);
+    db.close();
+  });
+
+  it("非页码锚点只要材料有原文，出处就算成立", () => {
+    const db = makeDb();
+    const lookup = createSourceLookup(db);
+    expect(lookup.hasSource("白皮书.docx:表格99")).toBe(true);
     db.close();
   });
 });
