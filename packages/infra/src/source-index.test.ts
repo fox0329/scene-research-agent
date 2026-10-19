@@ -343,3 +343,58 @@ describe("docx 的数字锚点是打印页码，不能当页码越界判错引",
     db.close();
   });
 });
+
+// ─── 严格模式：不许拿业务表派生的 FTS 自证（故障清单 #83） ────
+
+describe("严格模式", () => {
+  function makeDb(withPages: boolean): Database.Database {
+    const db = new Database(":memory:");
+    db.exec(`
+      CREATE VIRTUAL TABLE source_fts USING fts5(
+        ref_id, source, content, table_code, tokenize='trigram'
+      );
+      CREATE TABLE source_page (
+        id TEXT PRIMARY KEY, file_name TEXT NOT NULL, page INTEGER NOT NULL,
+        content TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, UNIQUE(file_name, page)
+      );
+    `);
+    // 触发器会把业务行的 source 写进 FTS——这正是自证的来源
+    db.prepare("INSERT INTO source_fts (ref_id, source, content, table_code) VALUES (?,?,?,?)")
+      .run("m1", "根本不存在的材料.docx:5", "编造的记录 量子加密", "M1");
+    if (withPages) {
+      db.prepare("INSERT INTO source_page (id, file_name, page, content, created_at) VALUES (?,?,?,?,?)")
+        .run("p1", "真材料.docx", 1, "真实原文内容", new Date().toISOString());
+    }
+    return db;
+  }
+
+  it("库里有原文时：出处只在业务行里出现过，不算存在", () => {
+    const db = makeDb(true);
+    const lookup = createSourceLookup(db);
+    // FTS 里有这条，但 source_page 里没有这个文件 → 严格模式判不存在
+    expect(lookup.hasSource("根本不存在的材料.docx:5")).toBe(false);
+    db.close();
+  });
+
+  it("库里有原文时：编造内容不能靠 FTS 自证", () => {
+    const db = makeDb(true);
+    const lookup = createSourceLookup(db);
+    expect(lookup.hasContent("根本不存在的材料.docx:5", "编造的记录 量子加密")).toBe(false);
+    db.close();
+  });
+
+  it("库里有原文时：真材料照常通过", () => {
+    const db = makeDb(true);
+    const lookup = createSourceLookup(db);
+    expect(lookup.hasSource("真材料.docx:1")).toBe(true);
+    expect(lookup.hasContent("真材料.docx:1", "真实原文内容")).toBe(true);
+    db.close();
+  });
+
+  it("老库还没回填（source_page 空）→ 兼容模式，退回 FTS 不误杀", () => {
+    const db = makeDb(false);
+    const lookup = createSourceLookup(db);
+    expect(lookup.hasSource("根本不存在的材料.docx:5")).toBe(true);
+    db.close();
+  });
+});

@@ -143,6 +143,26 @@ export function createSourceLookup(db: Database.Database): SourceLookup {
     hasFileStmt = null;
   }
 
+  /**
+   * 是否进入「严格模式」：库里已经有原文，出处就必须由原文背书
+   *
+   * 这是修「自证」的最后一道口子（故障清单 #83）：
+   * `source_fts` 由**业务表触发器**写入，所以只要有人把出处改成
+   * `根本不存在的材料.docx:5`，触发器立刻把它写进 FTS，`hasSource` 就为真——
+   * 出处"存在"仅仅因为它被写进了业务行，逻辑上等于没核。
+   *
+   * 规则：
+   *   `source_page` 有数据 → 严格模式，出处只认原文，FTS 不参与存在性判定
+   *   `source_page` 空（老库还没回填）→ 兼容模式，退回 FTS（语义降级，已知）
+   */
+  let strictMode = false;
+  try {
+    const c = db.prepare("SELECT COUNT(*) c FROM source_page").get() as { c?: number };
+    strictMode = Number(c?.c ?? 0) > 0;
+  } catch {
+    strictMode = false;
+  }
+
   return {
     hasSource(ref: string): boolean {
       const r = String(ref ?? "").trim();
@@ -159,6 +179,9 @@ export function createSourceLookup(db: Database.Database): SourceLookup {
       // 锚点不是页码（`表格2`/`8.1`/章节名）：只要该材料有原文就成立
       const file = splitFileRef(r);
       if (file && hasFileStmt?.get(file.fileName)) return true;
+
+      // 严格模式：原文里没有就是没有，**不许**拿业务表派生的 FTS 自证
+      if (strictMode) return false;
       return Boolean(hasSourceStmt.get(r));
     },
 
@@ -201,16 +224,24 @@ export function createSourceLookup(db: Database.Database): SourceLookup {
       // 也符合 docx/xlsx 本就没有稳定分页的事实。判定一律如实降级说明。
       const file = splitFileRef(r);
       if (file && fileTextStmt) {
-        const row = fileTextStmt.get(file.fileName) as { content?: string } | undefined;
-        if (row) {
-          const allText = String(row.content ?? "");
+        const row = fileTextStmt.get(file.fileName) as
+          | { content?: string | null }
+          | undefined;
+        // 注意：`group_concat` 在没有匹配行时**仍返回一行**（content 为 null），
+        // 不能用 `if (row)` 判断"这份材料有没有原文"，否则空聚合会被当成
+        // "有原文但为空"→ 按"判不了不指控"放行，自证又混进来了。
+        if (row && row.content != null) {
+          const allText = String(row.content);
           if (allText.trim() === "") return true;
           return matchContent(String(snippet ?? ""), allText).verdict !== "unsupported";
         }
       }
 
+      // 严格模式：原文里查不到就是查不到，不许退回"业务行自己说自己"的 FTS
+      if (strictMode) return false;
+
       try {
-        // 只在该出处那一页里找，避免"别的页写过"被当成这页写过
+        // 兼容模式（老库未回填）：只在该出处下找，避免"别的页写过"被当成这页写过
         return Boolean(hasContentStmt.get(r, phrase));
       } catch {
         // FTS 语法异常（极端片段）不应让自检本身崩掉：判不了就不指控
