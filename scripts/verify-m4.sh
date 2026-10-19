@@ -57,7 +57,7 @@ else
   FAIL=1
 fi
 
-PORT=4097
+PORT=46177
 SDIR=$(mktemp -d)
 APP_PORT=$PORT DB_PATH="$SDIR/verify.db" node apps/server/dist/index.js >"$SDIR/server.log" 2>&1 &
 SRV=$!
@@ -85,7 +85,7 @@ wait "$SRV" 2>/dev/null || true
 rm -rf "$SDIR"
 
 echo ""
-echo "=== [M4 验收] 5/6 交互端到端（Playwright · 构建产物 vite preview:4180）==="
+echo "=== [M4 验收] 5/6 交互端到端（Playwright · 构建产物 vite preview:46174）==="
 E2E_OUT=$(npm run test:e2e 2>&1) && E2E_OK=1 || E2E_OK=0
 if [ "$E2E_OK" = "1" ]; then
   EN=$(printf '%s' "$E2E_OUT" | grep -Eo "[0-9]+ passed" | tail -1 || echo "?")

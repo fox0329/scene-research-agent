@@ -5,7 +5,7 @@ set -euo pipefail
 PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 DSH_HOME_DIR="${PROJECT_DIR}/.dsh"
 PID_FILE="${DSH_HOME_DIR}/dsh.pid"
-PORT="${DSH_PORT:-3081}"
+PORT="${DSH_PORT:-46171}"
 
 stop_by_pid() {
   if [ -f "${PID_FILE}" ]; then

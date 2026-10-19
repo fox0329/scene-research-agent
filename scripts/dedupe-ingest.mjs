@@ -12,7 +12,7 @@
  *   node scripts/dedupe-ingest.mjs          # 演练：只打印清理计划
  *   node scripts/dedupe-ingest.mjs --apply  # 执行删除
  *
- * 环境变量：DB_PATH（默认 data/scene-master.db）、SCENE_API（默认 http://localhost:4081/api/v1）
+ * 环境变量：DB_PATH（默认 data/scene-master.db）、SCENE_API（默认 http://localhost:46172/api/v1）
  */
 
 import { readdirSync, readFileSync, statSync } from "node:fs";
@@ -26,7 +26,7 @@ const Database = require("better-sqlite3");
 
 const APPLY = process.argv.includes("--apply");
 const DB_PATH = process.env.DB_PATH ?? "data/scene-master.db";
-const API = process.env.SCENE_API ?? "http://localhost:4081/api/v1";
+const API = process.env.SCENE_API ?? "http://localhost:46172/api/v1";
 
 /** 资料表 → 表编号（O 表按行的 category） */
 const TABLES = {

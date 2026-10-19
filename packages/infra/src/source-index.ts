@@ -61,8 +61,24 @@ export function deleteSourceIndex(db: Database.Database, refId: string): void {
 export function splitFileRef(ref: string): { fileName: string; anchor: string } | null {
   const r = String(ref ?? "").trim();
   if (r === "") return null;
-  // 从**最后一个**冒号切：文件名里可能含冒号（Windows 盘符、时间戳）
-  const m = /^(.+)[:：]([^:：]+)$/.exec(r);
+  // URL 不是「文件+锚点」：`https://a.com/x` 会被冒号切成 fileName="https"
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(r)) return null;
+
+  // 按**扩展名边界**切，不按冒号位置切。
+  //
+  // 真实数据里有这种出处：
+  //   `客户资料.docx:5.1 OEE 不可测：估算值 65–75%，真实值未知`
+  // 里面有两个冒号——从最后一个冒号切会把文件名切成
+  // `客户资料.docx:5.1 OEE 不可测`，整条核对直接失效。
+  const byExt = /^(.+?\.(?:pdf|docx|xlsx|pptx|md|markdown|txt|csv|html?|json))\s*[:：]\s*([^]*)$/i.exec(r);
+  if (byExt) {
+    const fileName = byExt[1]!.trim();
+    const anchor = byExt[2]!.trim();
+    if (fileName && anchor) return { fileName, anchor };
+  }
+
+  // 兜底：没有可识别扩展名时按**第一个**冒号切（Windows 盘符 `C:\` 不参与）
+  const m = /^([^:：]+)[:：]([^]*)$/.exec(r);
   if (!m) return null;
   const fileName = m[1]!.trim();
   const anchor = m[2]!.trim();
@@ -71,12 +87,25 @@ export function splitFileRef(ref: string): { fileName: string; anchor: string } 
 }
 
 export function splitPageRef(ref: string): { fileName: string; page: number } | null {
-  const r = String(ref ?? "").trim();
-  const m = /^(.+?)[:：](\d+)$/.exec(r);
-  if (!m) return null;
-  const page = Number(m[2]);
+  const split = splitFileRef(ref);
+  if (!split) return null;
+  // 页码只认纯数字锚点；`表格2` `8.1` `三、现状` 都不是页码
+  if (!/^\d+$/.test(split.anchor)) return null;
+  const page = Number(split.anchor);
   if (!Number.isFinite(page) || page <= 0) return null;
-  return { fileName: m[1]!.trim(), page };
+  return { fileName: split.fileName, page };
+}
+
+/**
+ * 该格式有没有稳定分页
+ *
+ * PDF/PPT/Excel 有确定的页/幻灯片/sheet 号，锚点写几就必须真有第几页；
+ * docx/md/txt 没有稳定分页（同一份文档在不同 Word 版本、不同窗宽下页数都不同），
+ * 里面出现的数字锚点是"打印页码"，我们无法验证，只能退到整份材料核对
+ * ——**否则会把合法的 docx 页码引用一律判成错引**（实测就有一条 `白皮书.docx:9`）。
+ */
+function hasStablePaging(fileName: string): boolean {
+  return /\.(pdf|pptx|xlsx)$/i.test(String(fileName ?? "").trim());
 }
 
 export function createSourceLookup(db: Database.Database): SourceLookup {
@@ -120,8 +149,8 @@ export function createSourceLookup(db: Database.Database): SourceLookup {
       if (r === "") return false;
       // 有原文的（新入库材料）优先按原文判存在性
       const page = splitPageRef(r);
-      if (page && hasPageStmt) {
-        // 锚点是页码：**页必须真的存在**。
+      if (page && hasPageStmt && hasStablePaging(page.fileName)) {
+        // 锚点是页码且该格式有稳定分页：**页必须真的存在**。
         // 页码越界是实打实的错引（`白皮书.pdf:99` 而材料只有 1 页），
         // 不能因为"这个文件存在"就算出处成立。
         if (hasPageStmt.get(page.fileName, page.page)) return true;
@@ -151,9 +180,9 @@ export function createSourceLookup(db: Database.Database): SourceLookup {
        *   有原文 → 在原文里找（真核）
        *   没原文（老数据）→ 退回 FTS 检索，语义降级但保持兼容
        */
-      // ① 锚点是页码 → 精确到那一页核（最强）
+      // ① 锚点是页码且格式有稳定分页 → 精确到那一页核（最强）
       const page = splitPageRef(r);
-      if (page && pageTextStmt) {
+      if (page && pageTextStmt && hasStablePaging(page.fileName)) {
         const pageRow = pageTextStmt.get(page.fileName, page.page) as
           | { content?: string }
           | undefined;

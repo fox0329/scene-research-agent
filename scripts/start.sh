@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # 方案助手 DSH 实例启动脚本（从本地源码构建运行）
-# 端口 3081（可通过 DSH_PORT 环境变量覆盖）
+# 端口 46171（可通过 DSH_PORT 环境变量覆盖）
 # DSH_HOME 为项目内 .dsh/，不与用户本地 DSH(3080) 冲突
 set -euo pipefail
 
 PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 DSH_HOME_DIR="${PROJECT_DIR}/.dsh"
 DSH_CLI="${PROJECT_DIR}/vendor/deepseek-harness/apps/cli/lib/bin.js"
-PORT="${DSH_PORT:-3081}"
+PORT="${DSH_PORT:-46171}"
 PID_FILE="${DSH_HOME_DIR}/dsh.pid"
 
 # 检查本地构建是否存在

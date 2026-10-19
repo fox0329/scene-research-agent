@@ -7,7 +7,7 @@ cd "$(cd "$(dirname "$0")/.." && pwd)"
 STAMP="$(date +%Y%m%d-%H%M)"
 RELEASE_DIR="release"
 TARBALL="${RELEASE_DIR}/scene-master-${STAMP}.tgz"
-SMOKE_PORT="${SMOKE_PORT:-4099}"
+SMOKE_PORT="${SMOKE_PORT:-46179}"
 SMOKE_DB="$(mktemp -d)/smoke.db"
 
 echo "── 1/4 全量构建（tsc -b ×4 + vite build）──────────────"

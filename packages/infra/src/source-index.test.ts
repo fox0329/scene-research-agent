@@ -293,3 +293,53 @@ describe("非页码锚点退到整份材料核对", () => {
     db.close();
   });
 });
+
+// ─── 分页语义按格式区分（变更表 #212 补强） ──────────────────
+
+describe("docx 的数字锚点是打印页码，不能当页码越界判错引", () => {
+  function makeDb(): Database.Database {
+    const db = new Database(":memory:");
+    db.exec(`
+      CREATE VIRTUAL TABLE source_fts USING fts5(
+        ref_id, source, content, table_code, tokenize='trigram'
+      );
+      CREATE TABLE source_page (
+        id TEXT PRIMARY KEY, file_name TEXT NOT NULL, page INTEGER NOT NULL,
+        content TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, UNIQUE(file_name, page)
+      );
+    `);
+    // docx 整篇作第 1 页
+    db.prepare("INSERT INTO source_page (id, file_name, page, content, created_at) VALUES (?,?,?,?,?)")
+      .run("a", "白皮书.docx", 1, "第八章 产品能力\n边缘推理 6 TOPS", new Date().toISOString());
+    // pdf 真有 3 页
+    for (const p of [1, 2, 3]) {
+      db.prepare("INSERT INTO source_page (id, file_name, page, content, created_at) VALUES (?,?,?,?,?)")
+        .run(`x${p}`, "规格书.pdf", p, `第${p}页内容`, new Date().toISOString());
+    }
+    return db;
+  }
+
+  it("docx:9 退回整份材料核对 → 出处成立（实测遇到的真情况）", () => {
+    const db = makeDb();
+    const lookup = createSourceLookup(db);
+    expect(lookup.hasSource("白皮书.docx:9")).toBe(true);
+    expect(lookup.hasContent("白皮书.docx:9", "边缘推理 6 TOPS")).toBe(true);
+    db.close();
+  });
+
+  it("pdf:99 页码越界 → 出处不成立（有稳定分页就必须真有那页）", () => {
+    const db = makeDb();
+    const lookup = createSourceLookup(db);
+    expect(lookup.hasSource("规格书.pdf:2")).toBe(true);
+    expect(lookup.hasSource("规格书.pdf:99")).toBe(false);
+    db.close();
+  });
+
+  it("pdf 页码锚点只核那一页，不核别的页", () => {
+    const db = makeDb();
+    const lookup = createSourceLookup(db);
+    expect(lookup.hasContent("规格书.pdf:1", "第1页内容")).toBe(true);
+    expect(lookup.hasContent("规格书.pdf:1", "第2页内容")).toBe(false);
+    db.close();
+  });
+});

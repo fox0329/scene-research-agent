@@ -43,7 +43,8 @@
     "desktop:runtime": "node apps/desktop/scripts/prepare-server.mjs",
     "desktop:dev": "pnpm --filter @scene/desktop run start",
     "desktop:pack:mac": "pnpm --filter @scene/desktop run pack:mac",
-    "desktop:pack:win": "pnpm --filter @scene/desktop run pack:win"
+    "desktop:pack:win": "pnpm --filter @scene/desktop run pack:win",
+    "backfill:pages": "node scripts/backfill-source-pages.mjs"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
