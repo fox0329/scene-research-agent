@@ -29,8 +29,10 @@ files:
 asarUnpack:
   - runtime/**/*
 
-# 产物命名：中文名便于网盘分发时一眼认出来
-artifactName: 场景通-${version}-${arch}.${ext}
+# 产物命名必须是 ASCII（AGENTS.md G-0.2）：GitHub Release 会剥离非 ASCII 字符，
+# 中文名一旦被剥成 `-0.2.3-arm64.dmg` 就会和别的产物同名冲突。
+# 中文只出现在 dmgs 的卷标（dmg.title）与发布说明里。
+artifactName: SceneMaster-${version}-${arch}.${ext}
 
 mac:
   category: public.app-category.productivity
@@ -45,7 +47,7 @@ mac:
 
 dmg:
   title: 场景通 ${version}
-  artifactName: 场景通-${version}-mac-${arch}.${ext}
+  artifactName: SceneMaster-${version}-mac-${arch}.${ext}
 
 win:
   icon: build/icon.png
@@ -60,8 +62,8 @@ nsis:
   createDesktopShortcut: true
   createStartMenuShortcut: true
   shortcutName: 场景通
-  artifactName: 场景通-${version}-win-${arch}-安装版.${ext}
+  artifactName: SceneMaster-${version}-win-${arch}-setup.${ext}
 
 # 免安装版（绿色包，网盘分发友好）
 portable:
-  artifactName: 场景通-${version}-win-${arch}-免安装版.${ext}
+  artifactName: SceneMaster-${version}-win-${arch}-portable.${ext}

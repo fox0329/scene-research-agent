@@ -265,6 +265,37 @@ function assertNodeNativeStillWorks() {
 
 requireArtifacts();
 
+/**
+ * 装配服务端运行时必须用 pnpm 9
+ *
+ * pnpm 10/11 有两个不兼容变更，都会**静默**毁掉安装包（2026-10-19 真机踩到，
+ * 全局 pnpm 11.0.8，装出来的 app 是「新壳 + 旧运行时」，界面上看不到新功能）：
+ *   ① `pnpm deploy` 默认拒绝非注入工作区（ERR_PNPM_DEPLOY_NONINJECTED_WORKSPACE）；
+ *      加 `--legacy` 能过，但它会**忽略 lockfile**，装出来的依赖版本和开发时不一致。
+ *   ② 默认不执行依赖的安装脚本，better-sqlite3 的原生二进制不会被装上
+ *      （ERR_PNPM_IGNORED_BUILDS），deploy 直接退出码 1。
+ * 所以这里按主版本自动改用固定的 9.15.4，而不是让机器上装什么就用什么。
+ */
+const PINNED_PNPM = "9.15.4";
+
+/** 选一个能兼容 `pnpm deploy` 的命令：本机 pnpm 是 9 就用它，否则回退到 npx 拉固定版本 */
+function resolvePnpm() {
+  const local = isWin ? "pnpm.cmd" : "pnpm";
+  try {
+    const out = execFileSync(local, ["--version"], { encoding: "utf8", shell: isWin }).trim();
+    const major = Number(/^(\d+)\./.exec(out)?.[1] ?? 0);
+    if (major === 9) return { cmd: local, pre: [], note: `本机 pnpm ${out}` };
+    console.log(`    本机 pnpm ${out} 与 deploy 不兼容（需 9.x），改用 npx pnpm@${PINNED_PNPM}`);
+  } catch {
+    console.log(`    找不到 pnpm，改用 npx pnpm@${PINNED_PNPM}`);
+  }
+  return {
+    cmd: isWin ? "npx.cmd" : "npx",
+    pre: ["-y", `pnpm@${PINNED_PNPM}`],
+    note: `npx pnpm@${PINNED_PNPM}`,
+  };
+}
+
 console.log("── 1/4 装配服务端运行时（deploy --node-linker=hoisted）──");
 console.log(`    目标：${serverOut}`);
 mkdirSync(runtimeDir, { recursive: true });
@@ -275,10 +306,13 @@ const deployTmp = mkdtempSync(join(deployTmpRoot, "scene-deploy-"));
 /* Windows：pnpm 是 .cmd，node 直接 execFile 会 EINVAL，必须经 shell；而 shell 模式下参数不做转义，
    临时目录里一旦有空格（Windows 用户名常见）就会被拆开，所以自己加引号。 */
 const isWin = process.platform === "win32";
+const pnpmBin = resolvePnpm();
+console.log(`    deploy 使用：${pnpmBin.note}`);
 try {
   execFileSync(
-    isWin ? "pnpm.cmd" : "pnpm",
+    pnpmBin.cmd,
     [
+      ...pnpmBin.pre,
       "--filter",
       "@scene/server",
       "deploy",
