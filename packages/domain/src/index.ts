@@ -322,3 +322,27 @@ export type { PptOutlineParse, PptOutlineQualityCode, PptOutlineQualityIssue } f
 
 export { matchContent, bigramCoverage, extractHardTokens, COVERAGE_MIN } from "./content-match.js";
 export type { ContentVerdict, ContentMatchResult } from "./content-match.js";
+
+// ─── 联网检索：URL / 权威性 / 切块 / 注入检测（变更表 #216） ────
+export {
+  isHttpUrl,
+  normalizeUrl,
+  urlKey,
+  registeredDomain,
+  slugify,
+  cleanTitle,
+  snapshotFileName,
+  isBareUrlCitation,
+} from "./web-url.js";
+export {
+  gradeWebSource,
+  gradeWebSourceAuthority,
+  authorityOfCategory,
+  extractDocNo,
+  extractReprintSource,
+} from "./web-authority.js";
+export type { WebAuthorityVerdict, WebPageMeta, WebRuleId, DowngradeFactor, UpgradeFactor } from "./web-authority.js";
+export { chunkMarkdown, blocksToText, BLOCK_MAX, BLOCK_MIN } from "./web-chunk.js";
+export type { WebBlock } from "./web-chunk.js";
+export { scanInjection, shouldBlockInjection, BLOCK_AT_KINDS } from "./web-injection.js";
+export type { InjectionKind, InjectionScan } from "./web-injection.js";export { stripBoilerplate, extractPublishedAt } from "./web-clean.js";

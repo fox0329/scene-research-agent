@@ -394,3 +394,101 @@ CREATE TABLE IF NOT EXISTS source_page (
 );
 
 CREATE INDEX IF NOT EXISTS idx_source_page_file ON source_page(file_name);
+
+-- ═══════════════════════════════════════════════════════════════
+-- 网页来源（变更表 #216）
+--
+-- 设计依据：docs/技术调研-权威来源检索.md §6.3
+-- 一次抓取 = `web_source` 一行；一块 = `web_source_block` 一行 = 一「页」。
+-- 引用格式 `域名-标题.md:块号`，与材料引用同一套正则，hasSource/hasContent 不用改。
+--
+-- 与 `source_page`（材料原文）的区别：
+--   source_page 存本地材料的分页原文；web_source_block 存网页快照的分块原文。
+--   两者都是**真原文**，所以 G-R8「该页确有这句话」在两类来源上都成立。
+-- ═══════════════════════════════════════════════════════════════
+
+CREATE TABLE IF NOT EXISTS web_source (
+  id TEXT PRIMARY KEY,
+  /** 原始 URL */
+  url TEXT NOT NULL,
+  /** 规范化 URL 的散列（去追踪参数等）→ 缓存键 */
+  url_key TEXT NOT NULL UNIQUE,
+  /** 跟随重定向后的最终 URL */
+  final_url TEXT NOT NULL DEFAULT '',
+  /** 注册域（eTLD+1 近似） */
+  domain TEXT NOT NULL DEFAULT '',
+  title TEXT NOT NULL DEFAULT '',
+  /** 发布机构（og:site_name / 页脚） */
+  publisher TEXT NOT NULL DEFAULT '',
+  /** 页面声明的发布日期（ISO 8601） */
+  published_at TEXT NOT NULL DEFAULT '',
+  /** 抓取时间（ISO 8601，带时区） */
+  fetched_at TEXT NOT NULL,
+  http_status INTEGER NOT NULL DEFAULT 0,
+  content_type TEXT NOT NULL DEFAULT '',
+  etag TEXT NOT NULL DEFAULT '',
+  last_modified TEXT NOT NULL DEFAULT '',
+  /** 快照文件名（含 .md），就是引用里的「文件名」 */
+  snapshot_name TEXT NOT NULL DEFAULT '',
+  snapshot_sha256 TEXT NOT NULL DEFAULT '',
+  block_count INTEGER NOT NULL DEFAULT 0,
+  /** 文号 / 标准号 / 公告编号 */
+  doc_no TEXT NOT NULL DEFAULT '',
+  /** 复用 SourceCategory */
+  category TEXT NOT NULL DEFAULT '未知',
+  authority TEXT NOT NULL DEFAULT 'T4',
+  /** 命中的 P 规则 + 降级/升级因子（JSON，可审计） */
+  authority_reason TEXT NOT NULL DEFAULT '',
+  /** 降级因子（JSON 数组） */
+  trust_flags TEXT NOT NULL DEFAULT '',
+  /** 注入特征（JSON 数组） */
+  injection_flags TEXT NOT NULL DEFAULT '',
+  /** 有效 / 已变更 / 已删除 / 抓取失败 */
+  status TEXT NOT NULL DEFAULT '有效',
+  /** 产出这份快照的检索 query（便于回溯为什么抓它） */
+  query TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_web_source_key ON web_source(url_key);
+CREATE INDEX IF NOT EXISTS idx_web_source_domain ON web_source(domain);
+CREATE INDEX IF NOT EXISTS idx_web_source_status ON web_source(status);
+
+CREATE TABLE IF NOT EXISTS web_source_block (
+  id TEXT PRIMARY KEY,
+  web_source_id TEXT NOT NULL,
+  /** 块号，从 1 起，就是引用里的「页码」 */
+  block_no INTEGER NOT NULL,
+  /** 所属最近标题 */
+  heading TEXT NOT NULL DEFAULT '',
+  /** 该块原文（**真原文**，不是字段拼接） */
+  text TEXT NOT NULL DEFAULT '',
+  char_start INTEGER NOT NULL DEFAULT 0,
+  char_end INTEGER NOT NULL DEFAULT 0,
+  sha256 TEXT NOT NULL DEFAULT '',
+  UNIQUE(web_source_id, block_no),
+  FOREIGN KEY (web_source_id) REFERENCES web_source(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_web_block_source ON web_source_block(web_source_id);
+
+-- 网页块 → FTS（table_code = 'W'，不改现有 6 张表的触发器）
+--
+-- 与材料表触发器的关键区别：这里写进 `content` 的是**块的真实原文**，
+-- 所以网页来源上的 hasContent 名副其实。材料表那边是字段拼接（既有实现债，
+-- 已用 source_page 补偿，见变更表 #212）。
+CREATE TRIGGER IF NOT EXISTS trg_web_block_fts_insert AFTER INSERT ON web_source_block
+BEGIN
+  INSERT INTO source_fts (ref_id, source, content, table_code)
+  SELECT NEW.id,
+         ws.snapshot_name || ':' || NEW.block_no,
+         NEW.text,
+         'W'
+    FROM web_source ws
+   WHERE ws.id = NEW.web_source_id;
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_web_block_fts_delete AFTER DELETE ON web_source_block
+BEGIN
+  DELETE FROM source_fts WHERE ref_id = OLD.id;
+END;

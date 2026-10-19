@@ -101,6 +101,8 @@ import {
   reopenFlowStep,
 } from "./flow-service.js";
 import { createIngestCommand } from "./ingest.js";
+import { enrichWeb, listUsableWebSources, webPassagesOf, webEngineStatus } from "./web-enrich.js";
+import { saveWebSearchConfig } from "@scene/infra";
 import { parseStage, streamEvents } from "./sse-stream.js";
 import {
   assessQuality,
@@ -1630,6 +1632,77 @@ function registerLibraryRoutes(app: FastifyInstance, deps: UiRoutesDeps) {
   });
 
   // 六维总评 + 完成度（领域层计算）
+  // ─── 联网补证（变更表 #216） ────────────────────────────────
+  //
+  // 设计约束（调研文档 §6.5）：检索结果必须**先入库再允许引用**。
+  // 所以这里没有"直接把搜索结果返回给模型"的接口——只有
+  // 「补证（入库）」与「列已入库来源」两类。
+
+  /** 联网补证：按缺口主题检索 → 抓取 → 入库，返回可引用清单 */
+  app.post("/api/v1/web/enrich", async (request, reply) => {
+    const body = (request.body ?? {}) as {
+      topics?: unknown;
+      preferSites?: unknown;
+      explicitUrls?: unknown;
+      perTopic?: unknown;
+      includeSocial?: unknown;
+      trigger?: unknown;
+    };
+    const asStrings = (v: unknown): string[] =>
+      Array.isArray(v) ? v.map((x) => String(x ?? "").trim()).filter(Boolean) : [];
+    const topics = asStrings(body.topics);
+    const explicitUrls = asStrings(body.explicitUrls);
+    if (topics.length === 0 && explicitUrls.length === 0) {
+      return badRequest(reply, "请给出检索主题（topics）或显式链接（explicitUrls）");
+    }
+    const report = await enrichWeb(db, {
+      topics,
+      preferSites: asStrings(body.preferSites),
+      explicitUrls,
+      perTopic: typeof body.perTopic === "number" ? body.perTopic : undefined,
+      includeSocial: body.includeSocial === true,
+      trigger: typeof body.trigger === "string" ? body.trigger : "手动",
+    });
+    return report;
+  });
+
+  /** 联网能力探测：如实告诉用户能不能联网、为什么不能 */
+  app.get("/api/v1/web/engine", async () => {
+    return webEngineStatus();
+  });
+
+  /** 配置检索引擎（Tavily Key 等；落本地文件，不入版本控制） */
+  app.post("/api/v1/web/engine", async (request, reply) => {
+    const body = (request.body ?? {}) as { engine?: unknown; tavilyKey?: unknown };
+    const patch: { engine?: "deepseek-native" | "tavily" | "none"; tavilyKey?: string } = {};
+    if (typeof body.engine === "string") {
+      const allowed = ["deepseek-native", "tavily", "none"] as const;
+      if (!allowed.includes(body.engine as (typeof allowed)[number])) {
+        return badRequest(reply, `engine 只能是 ${allowed.join(" / ")}`);
+      }
+      patch.engine = body.engine as (typeof allowed)[number];
+    }
+    if (typeof body.tavilyKey === "string") patch.tavilyKey = body.tavilyKey.trim();
+    saveWebSearchConfig(patch);
+    return webEngineStatus();
+  });
+
+  /** 已入库的可用网页来源（自动排除 T4 与不可引用的） */
+  app.get("/api/v1/web/sources", async (request) => {
+    const q = request.query as { limit?: string };
+    const limit = Number(q.limit ?? 50);
+    return { sources: listUsableWebSources(db, Number.isFinite(limit) ? limit : 50) };
+  });
+
+  /** 按引用串取网页原文（右栏「看原文」） */
+  app.get("/api/v1/web/passages", async (request, reply) => {
+    const q = request.query as { citation?: string; limit?: string };
+    const citation = String(q.citation ?? "").trim();
+    if (citation === "") return badRequest(reply, "缺少 citation");
+    const limit = Number(q.limit ?? 3);
+    return { passages: webPassagesOf(db, citation, Number.isFinite(limit) ? limit : 3) };
+  });
+
   app.get("/api/v1/library/quality-summary", async (request, reply) => {
     const query = request.query as { product_line_id?: string };
     const plId = query.product_line_id ?? "";

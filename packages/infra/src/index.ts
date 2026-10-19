@@ -126,3 +126,6 @@ export {
   svgTextRects,
 } from "./ppt-quality.js";
 export type { PptQualityCode, PptQualityIssue, PptShapeBox, PptTextRect } from "./ppt-quality.js";
+export * from "./web-store.js";
+export * from "./web-fetch-client.js";
+export * from "./web-engine.js";

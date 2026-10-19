@@ -9,6 +9,11 @@ import {
   upsertSourcePages,
 } from "./source-index.js";
 import { sourcePassages } from "./sqlite-repo.js";
+import { readFileSync } from "node:fs";
+import { resolve, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const here = dirname(fileURLToPath(import.meta.url));
 
 /** 建一张和线上同构的 trigram FTS 表（schema 见 packages/infra/src/sql/001_init.sql） */
 function makeDb(): Database.Database {
@@ -395,6 +400,103 @@ describe("严格模式", () => {
     const db = makeDb(false);
     const lookup = createSourceLookup(db);
     expect(lookup.hasSource("根本不存在的材料.docx:5")).toBe(true);
+    db.close();
+  });
+});
+
+// ─── 网页快照的检出（变更表 #216） ─────────────────────────
+
+describe("网页快照接入 hasSource / hasContent", () => {
+  function dbWithWeb(): Database.Database {
+    const db = new Database(":memory:");
+    db.exec(readFileSync(resolve(here, "sql/001_init.sql"), "utf8"));
+    db.prepare(
+      "INSERT INTO web_source (id, url, url_key, domain, title, fetched_at, snapshot_name, block_count, created_at) VALUES (?,?,?,?,?,?,?,?,?)",
+    ).run(
+      "w1",
+      "https://www.gov.cn/a.htm",
+      "k1",
+      "gov.cn",
+      "国务院通知",
+      new Date().toISOString(),
+      "gov-cn-通知.md",
+      3,
+      new Date().toISOString(),
+    );
+    const ins = db.prepare(
+      "INSERT INTO web_source_block (id, web_source_id, block_no, heading, text, char_start, char_end, sha256) VALUES (?,?,?,?,?,?,?,?)",
+    );
+    ins.run("b1", "w1", 1, "", "国发〔2021〕29号 各省、自治区、直辖市人民政府：", 0, 20, "h1");
+    ins.run("b2", "w1", 2, "", "数字经济是继农业经济、工业经济之后的主要经济形态，是重组全球要素资源的关键力量。", 20, 60, "h2");
+    ins.run("b3", "w1", 3, "", "2020年，我国数字经济核心产业增加值占国内生产总值（GDP）比重达到7.8%。", 60, 96, "h3");
+    return db;
+  }
+
+  it("快照引用存在（块号真实）", () => {
+    const db = dbWithWeb();
+    const L = createSourceLookup(db);
+    expect(L.hasSource("gov-cn-通知.md:2")).toBe(true);
+    db.close();
+  });
+
+  it("块号越界 → 不存在（不能因为快照在就算）", () => {
+    const db = dbWithWeb();
+    const L = createSourceLookup(db);
+    expect(L.hasSource("gov-cn-通知.md:99")).toBe(false);
+    db.close();
+  });
+
+  it("不存在的快照 → 不存在", () => {
+    const db = dbWithWeb();
+    const L = createSourceLookup(db);
+    expect(L.hasSource("不存在-快照.md:1")).toBe(false);
+    db.close();
+  });
+
+  it("块里确有的内容 → 通过", () => {
+    const db = dbWithWeb();
+    const L = createSourceLookup(db);
+    expect(L.hasContent("gov-cn-通知.md:3", "2020年，我国数字经济核心产业增加值占国内生产总值（GDP）比重达到7.8%")).toBe(true);
+    db.close();
+  });
+
+  it("改数字 → 抓住", () => {
+    const db = dbWithWeb();
+    const L = createSourceLookup(db);
+    expect(L.hasContent("gov-cn-通知.md:3", "2020年，我国数字经济核心产业增加值占国内生产总值（GDP）比重达到9.9%")).toBe(false);
+    db.close();
+  });
+
+  it("编造内容 → 抓住", () => {
+    const db = dbWithWeb();
+    const L = createSourceLookup(db);
+    expect(L.hasContent("gov-cn-通知.md:2", "本文件要求所有企业强制部署量子加密")).toBe(false);
+    db.close();
+  });
+
+  it("块号精确：块3 查不到块2 的内容", () => {
+    const db = dbWithWeb();
+    const L = createSourceLookup(db);
+    expect(L.hasContent("gov-cn-通知.md:3", "重组全球要素资源的关键力量")).toBe(false);
+    db.close();
+  });
+
+  it("裸 URL 仍被判不可复核（不允许拿 URL 蒙混）", () => {
+    const db = dbWithWeb();
+    const L = createSourceLookup(db);
+    expect(L.hasSource("https://www.gov.cn/a.htm")).toBe(false);
+    db.close();
+  });
+
+  it("老库没有 web_source 表时优雅降级（不抛错）", () => {
+    const db = new Database(":memory:");
+    db.exec(`
+      CREATE VIRTUAL TABLE source_fts USING fts5(ref_id, source, content, table_code, tokenize='trigram');
+      INSERT INTO source_fts (ref_id, source, content, table_code) VALUES ('m1','a.docx:1','原文内容','M1');
+    `);
+    const L = createSourceLookup(db);
+    expect(() => L.hasSource("a.docx:1")).not.toThrow();
+    expect(() => L.hasContent("a.docx:1", "原文内容")).not.toThrow();
     db.close();
   });
 });

@@ -155,6 +155,35 @@ export function createSourceLookup(db: Database.Database): SourceLookup {
    *   `source_page` 有数据 → 严格模式，出处只认原文，FTS 不参与存在性判定
    *   `source_page` 空（老库还没回填）→ 兼容模式，退回 FTS（语义降级，已知）
    */
+  /**
+   * 网页快照语句（变更表 #216）
+   *
+   * 网页来源不在 `source_page` 里——它存在 `web_source_block`。
+   * 不补这组语句，网页引用会被判"出处不存在"（实测：真实政府页 47 块，
+   * `snapshot.md:3` 的 `hasSource` 返回 false），整套联网溯源就白做了。
+   */
+  let webSnapStmt: Database.Statement | null = null;
+  let webBlockStmt: Database.Statement | null = null;
+  let webBlockTextStmt: Database.Statement | null = null;
+  let webFileTextStmt: Database.Statement | null = null;
+  try {
+    webSnapStmt = db.prepare("SELECT id FROM web_source WHERE snapshot_name = ? LIMIT 1");
+    webBlockStmt = db.prepare(
+      "SELECT 1 FROM web_source_block b JOIN web_source w ON w.id = b.web_source_id WHERE w.snapshot_name = ? AND b.block_no = ? LIMIT 1",
+    );
+    webBlockTextStmt = db.prepare(
+      "SELECT b.text AS content FROM web_source_block b JOIN web_source w ON w.id = b.web_source_id WHERE w.snapshot_name = ? AND b.block_no = ? LIMIT 1",
+    );
+    webFileTextStmt = db.prepare(
+      "SELECT group_concat(b.text, char(10)) AS content FROM web_source_block b JOIN web_source w ON w.id = b.web_source_id WHERE w.snapshot_name = ?",
+    );
+  } catch {
+    webSnapStmt = null;
+    webBlockStmt = null;
+    webBlockTextStmt = null;
+    webFileTextStmt = null;
+  }
+
   let strictMode = false;
   try {
     const c = db.prepare("SELECT COUNT(*) c FROM source_page").get() as { c?: number };
@@ -167,6 +196,20 @@ export function createSourceLookup(db: Database.Database): SourceLookup {
     hasSource(ref: string): boolean {
       const r = String(ref ?? "").trim();
       if (r === "") return false;
+      // 网页快照：块号必须真实存在（不是"这份快照在就算"）
+      if (webSnapStmt && webBlockStmt && webBlockTextStmt) {
+        const web = splitPageRef(r);
+        if (web) {
+          // 用"这个文件名是否等于某个快照名"做判别，不靠扩展名猜
+          const snap = webSnapStmt.get(web.fileName) as { id?: string } | undefined;
+          if (snap?.id) {
+            // 数字 → 必须真有这一块；非数字锚点（标题等）→ 快照存在即可
+            if (web.page === null) return true;
+            return Boolean(webBlockStmt.get(web.fileName, web.page));
+          }
+        }
+      }
+
       // 有原文的（新入库材料）优先按原文判存在性
       const page = splitPageRef(r);
       if (page && hasPageStmt && hasStablePaging(page.fileName)) {
@@ -203,6 +246,26 @@ export function createSourceLookup(db: Database.Database): SourceLookup {
        *   有原文 → 在原文里找（真核）
        *   没原文（老数据）→ 退回 FTS 检索，语义降级但保持兼容
        */
+      // ⓿ 网页快照：块里就是**真原文**，精确到那一块核（最强）
+      if (webBlockTextStmt && webFileTextStmt) {
+        const web = splitPageRef(r);
+        if (web) {
+          const row = webBlockTextStmt.get(web.fileName, web.page ?? 1) as
+            | { content?: string | null }
+            | undefined;
+          if (row && row.content != null) {
+            return matchContent(String(snippet ?? ""), String(row.content)).verdict !== "unsupported";
+          }
+          // 没有该块（锚点不是块号）→ 退整份快照
+          const all = webFileTextStmt.get(web.fileName) as
+            | { content?: string | null }
+            | undefined;
+          if (all && all.content != null) {
+            return matchContent(String(snippet ?? ""), String(all.content)).verdict !== "unsupported";
+          }
+        }
+      }
+
       // ① 锚点是页码且格式有稳定分页 → 精确到那一页核（最强）
       const page = splitPageRef(r);
       if (page && pageTextStmt && hasStablePaging(page.fileName)) {
