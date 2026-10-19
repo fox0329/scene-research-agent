@@ -206,6 +206,20 @@ describe("classifySource", () => {
     expect(classifySource("https://blog.csdn.net/x/article/details/1")).toBe("自媒体");
   });
 
+  it("www. 前缀的自媒体站点仍是自媒体（不被厂商官方通配规则吃掉）", () => {
+    // 回归：2026-10-19 实测 bug —— www.zhihu.com 曾被判成「厂商官方 T2」
+    expect(classifySource("https://www.zhihu.com/question/123")).toBe("自媒体");
+    expect(gradeSourceByCategory("AI提取", "https://www.zhihu.com/question/123").authority).toBe("T4");
+    expect(classifySource("https://www.weibo.com/u/1")).toBe("自媒体");
+  });
+
+  it("多级文档子域仍判厂商官方（docs.aws.amazon.com 这类）", () => {
+    // 回归：2026-10-19 实测 bug —— 三级子域匹配不到，落到兜底「媒体 T3」
+    expect(classifySource("https://docs.aws.amazon.com/lambda/latest/dg/welcome.html")).toBe("厂商官方");
+    expect(classifySource("https://developer.mozilla.org/zh-CN/docs/Web")).toBe("厂商官方");
+    expect(gradeSourceByCategory("AI提取", "https://docs.aws.amazon.com/x").authority).toBe("T2");
+  });
+
   it("用户口述 → 用户自述（没有材料可指）", () => {
     expect(classifySource("用户补充")).toBe("用户自述");
     expect(classifySource("手动录入")).toBe("用户自述");

@@ -42,16 +42,54 @@ export function deleteSourceIndex(db: Database.Database, refId: string): void {
   db.prepare("DELETE FROM source_fts WHERE ref_id = ?").run(id);
 }
 
+/**
+ * 从引用串拆出「文件名」与「页码」
+ *
+ * 引用格式为 `文件名:页码`（如 `规格书.pdf:12`）或 `文件名#章节`（无页码）。
+ * 拆不出来（纯 URL、没有定位符）就返回 null——那类出处没有页级原文可查。
+ */
+export function splitPageRef(ref: string): { fileName: string; page: number } | null {
+  const r = String(ref ?? "").trim();
+  const m = /^(.+?)[:：](\d+)$/.exec(r);
+  if (!m) return null;
+  const page = Number(m[2]);
+  if (!Number.isFinite(page) || page <= 0) return null;
+  return { fileName: m[1]!.trim(), page };
+}
+
 export function createSourceLookup(db: Database.Database): SourceLookup {
   const hasSourceStmt = db.prepare("SELECT 1 FROM source_fts WHERE source = ? LIMIT 1");
   const hasContentStmt = db.prepare(
     "SELECT 1 FROM source_fts WHERE source = ? AND source_fts MATCH ? LIMIT 1",
   );
+  /**
+   * 页级原文（变更表 #212）：这才是 G-R8「该页确有这句话」的真依据
+   *
+   * 老库可能还没建 `source_page` 表（迁移在建库时跑，但只读副本/历史库未必有），
+   * 这时 prepared statement 会直接抛错、连 `hasSource` 都用不了。所以包一层：
+   * 建不出来就置 null，退回 FTS 语义（兼容优先，不能让溯源能力整体不可用）。
+   */
+  let pageTextStmt: Database.Statement | null = null;
+  let hasPageStmt: Database.Statement | null = null;
+  try {
+    pageTextStmt = db.prepare(
+      "SELECT content FROM source_page WHERE file_name = ? AND page = ? LIMIT 1",
+    );
+    hasPageStmt = db.prepare(
+      "SELECT 1 FROM source_page WHERE file_name = ? AND page = ? LIMIT 1",
+    );
+  } catch {
+    pageTextStmt = null;
+    hasPageStmt = null;
+  }
 
   return {
     hasSource(ref: string): boolean {
       const r = String(ref ?? "").trim();
       if (r === "") return false;
+      // 有页级原文的（新入库材料）优先按原文判存在性
+      const split = splitPageRef(r);
+      if (split && hasPageStmt?.get(split.fileName, split.page)) return true;
       return Boolean(hasSourceStmt.get(r));
     },
 
@@ -63,6 +101,28 @@ export function createSourceLookup(db: Database.Database): SourceLookup {
       const phrase = searchable.length < MIN_TRIGRAM ? null : ftsPhrase(snippet);
       // 太短无法用 trigram 判定：返回 true（"不能证明它没有"），宁可漏报不误伤
       if (r === "" || phrase === null) return true;
+
+      /**
+       * 优先查**页级原文**（变更表 #212）
+       *
+       * 原来只查 `source_fts`，而它的 content 是业务字段拼接（触发器
+       * `NEW.name || ' ' || NEW.position_desc`）——拿业务行跟自己比，永远为真，
+       * 等于没核。现在先看 `source_page` 里这一页的原文：
+       *   有原文 → 在原文里找（真核）
+       *   没原文（老数据）→ 退回 FTS 检索，语义降级但保持兼容
+       */
+      const split = splitPageRef(r);
+      if (split && pageTextStmt) {
+        const pageRow = pageTextStmt.get(split.fileName, split.page) as
+          | { content?: string }
+          | undefined;
+        if (pageRow) {
+          const pageText = String(pageRow.content ?? "");
+          if (pageText.trim() === "") return true; // 该页无文本层，判不了不指控
+          return pageText.includes(String(snippet ?? "").trim());
+        }
+      }
+
       try {
         // 只在该出处那一页里找，避免"别的页写过"被当成这页写过
         return Boolean(hasContentStmt.get(r, phrase));
@@ -72,4 +132,36 @@ export function createSourceLookup(db: Database.Database): SourceLookup {
       }
     },
   };
+}
+
+/**
+ * 写入/更新一页原文（变更表 #212）
+ *
+ * 同一材料同一页重复入库时覆盖（重新解析后页码内容可能变），不累积脏数据。
+ */
+export function upsertSourcePages(
+  db: Database.Database,
+  fileName: string,
+  pages: ReadonlyArray<{ page: number; text: string }>,
+): number {
+  const name = String(fileName ?? "").trim();
+  if (!name || pages.length === 0) return 0;
+  const stmt = db.prepare(
+    `INSERT INTO source_page (id, file_name, page, content, created_at)
+     VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT(file_name, page) DO UPDATE SET content = excluded.content`,
+  );
+  const now = new Date().toISOString();
+  let n = 0;
+  const tx = db.transaction(() => {
+    for (const p of pages) {
+      if (!Number.isFinite(p.page) || p.page <= 0) continue;
+      const text = String(p.text ?? "");
+      if (text.trim() === "") continue; // 空白页不占位，省空间也避免"有页但无内容"的假象
+      stmt.run(`${name}#${p.page}`, name, p.page, text, now);
+      n += 1;
+    }
+  });
+  tx();
+  return n;
 }

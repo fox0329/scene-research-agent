@@ -22,6 +22,14 @@ export interface ParsedTable {
   rows: string[][];
 }
 
+/** 一页（或一个可定位单元）的原文 */
+export interface ParsedPage {
+  /** 页码（PDF 为页号从 1 起；docx/xlsx/pptx 无稳定分页，用 1） */
+  page: number;
+  /** 该页原文（**材料原文**，不是业务字段拼接） */
+  text: string;
+}
+
 /** 文档解析结果 */
 export interface ParseResult {
   text: string;
@@ -30,6 +38,18 @@ export interface ParseResult {
     pageCount?: number;
     sheetCount?: number;
   };
+  /**
+   * 逐页原文（变更表 #212）
+   *
+   * 为什么必须有：`source_fts.content` 现在存的是**业务字段拼接**
+   * （`NEW.name || ' ' || NEW.position_desc`），于是 `hasContent(ref, snippet)`
+   * 等于拿业务行跟自己比——**自证**，永远为真。
+   * G-R8「该页确有这句话」要成立，必须先把原文按页存下来。
+   *
+   * 拿不到分页的格式（docx/xlsx/pptx）整篇作为第 1 页，语义退化为
+   * 「这篇材料里有没有这句话」，仍强于自证。
+   */
+  pages?: ParsedPage[];
 }
 
 /** 支持的文件扩展名 */
@@ -87,17 +107,25 @@ async function parsePdf(buffer: Buffer, filePath: string): Promise<ParseResult> 
   const { extractText } = await import("unpdf");
   // unpdf 要求 Uint8Array，不接受 Buffer
   const uint8 = new Uint8Array(buffer);
-  const result = await extractText(uint8, { mergePages: true });
+  // mergePages: false 才拿得到**逐页**文本（变更表 #212）
+  const result = await extractText(uint8, { mergePages: false });
 
-  // mergePages: true 时 text 为 string，但 overload 有时解析不完整，兜底处理
-  const text = Array.isArray(result.text)
-    ? result.text.join("\n")
-    : String(result.text);
+  // mergePages: false 时 text 为 string[]（每页一段）；overload 有时给 string，兜底
+  const pageTexts = Array.isArray(result.text)
+    ? result.text.map((t) => String(t ?? ""))
+    : [String(result.text ?? "")];
+  const text = pageTexts.join("\n");
   const pageCount = result.totalPages;
 
   // 图片型（扫描）PDF 无文本层：走 macOS Vision 识别（用户拍板路线）
   if (text.replace(/\s/g, "").length < SCANNED_TEXT_THRESHOLD && (pageCount ?? 0) > 0) {
-    return { text: ocrScannedPdf(filePath), tables: [], metadata: { pageCount } };
+    const ocrText = ocrScannedPdf(filePath);
+    return {
+      text: ocrText,
+      tables: [],
+      metadata: { pageCount },
+      pages: [{ page: 1, text: ocrText }],
+    };
   }
 
   return {
@@ -106,6 +134,8 @@ async function parsePdf(buffer: Buffer, filePath: string): Promise<ParseResult> 
     metadata: {
       pageCount,
     },
+    // 逐页原文：页码与引用里的 `文件名:页码` 对齐（从 1 起）
+    pages: pageTexts.map((t, i) => ({ page: i + 1, text: t })),
   };
 }
 
@@ -170,6 +200,8 @@ async function parseDocx(buffer: Buffer): Promise<ParseResult> {
     text: textResult.value,
     tables,
     metadata: {},
+    // docx 无稳定分页：整篇作第 1 页（引用 `文件.docx:1` 与现状一致）
+    pages: [{ page: 1, text: textResult.value }],
   };
 }
 
@@ -231,6 +263,8 @@ async function parseXlsx(rawBuffer: Buffer): Promise<ParseResult> {
 
   const tables: ParsedTable[] = [];
   const textParts: string[] = [];
+  /** 每个 sheet 的文本（变更表 #212：作为可定位的"页"） */
+  const sheetTexts: string[] = [];
 
   for (const ws of wb.worksheets) {
     const allRows: string[][] = [];
@@ -255,10 +289,9 @@ async function parseXlsx(rawBuffer: Buffer): Promise<ParseResult> {
       });
 
       // 生成可读文本
-      textParts.push(`[Sheet: ${ws.name}]`);
-      for (const row of allRows) {
-        textParts.push(row.join("\t"));
-      }
+      const sheetLines = [`[Sheet: ${ws.name}]`, ...allRows.map((row) => row.join("\t"))];
+      textParts.push(...sheetLines);
+      sheetTexts.push(sheetLines.join("\n"));
     }
   }
 
@@ -268,6 +301,8 @@ async function parseXlsx(rawBuffer: Buffer): Promise<ParseResult> {
     metadata: {
       sheetCount: wb.worksheets.length,
     },
+    // xlsx 的可定位单元是 sheet：按 sheet 切"页"，引用 `文件.xlsx:1` 指第一个 sheet
+    pages: sheetTexts.map((t, i) => ({ page: i + 1, text: t })),
   };
 }
 
@@ -371,6 +406,8 @@ async function parsePptx(buffer: Buffer): Promise<ParseResult> {
 
   const textParts: string[] = [];
   const tables: ParsedTable[] = [];
+  /** 每页幻灯片的文本（变更表 #212） */
+  const slideTexts: string[] = [];
 
   for (const slideFile of slideFiles) {
     const xml = await zip.file(slideFile)!.async("string");
@@ -381,17 +418,21 @@ async function parsePptx(buffer: Buffer): Promise<ParseResult> {
       .map((m) => unescapeXmlEntities(m[1] ?? "").trim())
       .filter((s) => s !== "");
 
+    const slideLines: string[] = [];
     if (texts.length > 0) {
-      textParts.push(`[Slide ${slideIndex}]`);
-      textParts.push(...texts);
+      slideLines.push(`[Slide ${slideIndex}]`, ...texts);
     }
 
     for (const table of extractTablesFromSlide(xml)) {
       tables.push(table);
       // 表格也补一份带结构的纯文本，与 xlsx 路径同一做法（模型两条路都能看到）
-      textParts.push(`[Slide ${slideIndex} 表格]`);
-      textParts.push(table.headers.join("\t"));
-      for (const row of table.rows) textParts.push(row.join("\t"));
+      slideLines.push(`[Slide ${slideIndex} 表格]`, table.headers.join("\t"));
+      for (const row of table.rows) slideLines.push(row.join("\t"));
+    }
+
+    if (slideLines.length > 0) {
+      textParts.push(...slideLines);
+      slideTexts.push(slideLines.join("\n"));
     }
   }
 
@@ -401,5 +442,7 @@ async function parsePptx(buffer: Buffer): Promise<ParseResult> {
     metadata: {
       pageCount: slideFiles.length,
     },
+    // pptx 的可定位单元是 slide：引用 `文件.pptx:3` 指第 3 页幻灯片
+    pages: slideTexts.map((t, i) => ({ page: i + 1, text: t })),
   };
 }

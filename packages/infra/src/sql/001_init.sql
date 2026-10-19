@@ -367,3 +367,30 @@ BEGIN
   INSERT INTO source_fts (ref_id, source, content, table_code)
   VALUES (NEW.id, NEW.source, NEW.payload, NEW.category);
 END;
+
+-- ═══════════════════════════════════════════════════════════════
+-- 材料原文页（变更表 #212）
+--
+-- 为什么必须单独存：`source_fts.content` 原来存的是**业务字段拼接**
+-- （触发器里 `NEW.name || ' ' || NEW.position_desc`），于是
+-- `hasContent(ref, snippet)` 等于拿业务行跟自己比——**自证**，永远为真。
+-- G-R8「该页确有这句话」要成立，必须把材料原文按页落库。
+--
+-- 语义：一行 = 某份材料的某一页（PDF 页号 / PPT 幻灯片号 / Excel sheet 号；
+-- docx 无稳定分页，整篇为第 1 页）。
+-- ═══════════════════════════════════════════════════════════════
+
+CREATE TABLE IF NOT EXISTS source_page (
+  id TEXT PRIMARY KEY,
+  /** 材料文件名（与引用里的 `文件名:页码` 对齐） */
+  file_name TEXT NOT NULL,
+  /** 页码/单元号，从 1 起 */
+  page INTEGER NOT NULL,
+  /** 该页原文 */
+  content TEXT NOT NULL DEFAULT '',
+  /** 入库时间 */
+  created_at TEXT NOT NULL,
+  UNIQUE(file_name, page)
+);
+
+CREATE INDEX IF NOT EXISTS idx_source_page_file ON source_page(file_name);

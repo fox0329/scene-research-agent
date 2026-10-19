@@ -19,7 +19,7 @@ import type {
   OptionalMaterial,
 } from "@scene/contract";
 import type { ParseResult } from "@scene/infra";
-import { createSourceLookup } from "@scene/infra";
+import { createSourceLookup, upsertSourcePages } from "@scene/infra";
 import type { DbInstance } from "@scene/infra";
 import { resolveProductForModel, upsertSpecParam } from "./library-service.js";
 import { normalizeModel } from "@scene/domain";
@@ -193,6 +193,19 @@ async function executeIngest(
   const parseResult = await docParser(filePath);
   // 真实文件名优先（上传路由传进来）；没有才退回路径的文件名
   const fileName = opts.fileName?.trim() || basename(filePath);
+
+  // 1.5 原文按页落库（变更表 #212）
+  //
+  // 为什么必须在入库时做：`source_fts.content` 是业务字段拼接，拿它核「该页确有
+  // 这句话」等于自证。原文只在这一刻还在手上（解析结果），落下来之后
+  // G-R8 与来源抽查才有真依据。失败不阻断入库——原文存储是溯源增强。
+  if (parseResult.pages?.length) {
+    try {
+      upsertSourcePages(db.db, fileName, parseResult.pages);
+    } catch {
+      // 老库没有 source_page 表 / 磁盘只读等情况：不影响本次入库
+    }
+  }
 
   // 2. 组 user prompt
   const userPrompt = buildUserPrompt(fileName, parseResult);

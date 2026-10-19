@@ -97,16 +97,22 @@ const CATEGORY_RULES: ReadonlyArray<{ re: RegExp; category: SourceCategory }> = 
   // 年报公告：交易所、巨潮资讯
   { re: /\b(cninfo\.com\.cn|sse\.com\.cn|szse\.cn|hkexnews\.hk|sec\.gov)\b/i, category: "年报公告" },
   { re: /(年度报告|年报|招股说明书|公告编号|临时公告)/, category: "年报公告" },
-  // 厂商官方：官方文档站、官网路径
+  // 自媒体**必须排在「厂商官方」之前**（2026-10-19 实测 bug）：
+  // `https://www.zhihu.com/question/123` 会被 `www.` 前缀规则命中判成「厂商官方 T2」，
+  // 于是知乎回答和厂商文档同档——权威性分级被一条通配规则击穿。
+  { re: /\b(mp\.weixin\.qq\.com|zhihu\.com|csdn\.net|jianshu\.com|baijiahao\.baidu\.com|toutiao\.com|sohu\.com|163\.com\/dy|weibo\.com|douban\.com|bilibili\.com|xiaohongshu\.com)\b/i, category: "自媒体" },
+  // 厂商官方：文档关键词优先，再按「文档类子域」判定
   { re: /(官方文档|产品手册|技术白皮书|datasheet|数据手册|规格书|用户手册|安装指南)/i, category: "厂商官方" },
-  { re: /\b(docs?|developer|support|www)\.[a-z0-9-]+\.(com|cn|io|org)\b/i, category: "厂商官方" },
+  // 文档类子域判定改为**两段式**（2026-10-19 实测 bug）：
+  // 原来只认 `docs.xxx.com` 这种二级结构，`docs.aws.amazon.com`（三级）匹配不到，
+  // 落到兜底「媒体 T3」——厂商官方文档被当成一般媒体。
+  // 现在只要求「域名里出现文档类标签」，不限制层级。
+  { re: /(^|\/\/)(docs?|developer|developers|support|help|api|reference|wiki)\./i, category: "厂商官方" },
   // 行业报告：咨询机构
   { re: /\b(idc|gartner|forrester|mckinsey|bcg|deloitte|pwc|赛迪|艾瑞|易观|头豹|亿欧)\b/i, category: "行业报告" },
   { re: /(行业报告|市场研究|调研报告|白皮书)/, category: "行业报告" },
-  // 自媒体：公众号、知乎、CSDN、百家号等
-  { re: /\b(mp\.weixin\.qq\.com|zhihu\.com|csdn\.net|jianshu\.com|baijiahao\.baidu\.com|toutiao\.com|sohu\.com|163\.com\/dy)\b/i, category: "自媒体" },
-  // 媒体
-  { re: /\b(xinhuanet\.com|people\.com\.cn|36kr\.com|huxiu\.com|jiemian\.com|caixin\.com|yicai\.com)\b/i, category: "媒体" },
+  // 媒体（权威媒体名单见调研文档 §五）
+  { re: /\b(xinhuanet\.com|people\.com\.cn|36kr\.com|huxiu\.com|jiemian\.com|caixin\.com|yicai\.com|thepaper\.cn|stcn\.com)\b/i, category: "媒体" },
 ];
 
 /** 用户直接口述/手写（没有材料文件可指）时的来源串特征 */
