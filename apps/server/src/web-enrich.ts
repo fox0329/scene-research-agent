@@ -104,6 +104,30 @@ function resolveEngineNow(): { engine: ResolvedEngine; cfg: WebSearchConfig } {
 }
 
 /**
+ * 命中是否落在指定站点内
+ *
+ * 为什么需要后置过滤：实测 Bing **不严格遵守 `site:`**——查询
+ * `十四五数字经济发展规划 国务院 site:gov.cn` 仍返回了 toutiao.com 与
+ * baike.baidu.com。把 `site:` 交给引擎只是"建议"，落库前必须自己再筛一遍，
+ * 否则"只在权威站里搜"就是一句空话。
+ */
+export function matchesSites(url: string, sites: string[]): boolean {
+  const list = sites.map((x) => x.trim().toLowerCase()).filter(Boolean);
+  if (list.length === 0) return true;
+  let host = "";
+  try {
+    host = new URL(url).hostname.toLowerCase();
+  } catch {
+    return false;
+  }
+  return list.some((s) => {
+    // 允许写 `gov.cn` / `.gov.cn` / `www.gov.cn`
+    const site = s.replace(/^\*?\./, "").replace(/^\./, "");
+    return host === site || host.endsWith(`.${site}`);
+  });
+}
+
+/**
  * 生成检索 query（确定性模板）
  *
  * 把站点限定拼成 `site:` 算子——调研文档 §4.2 选 DeepSeek 的核心理由之一
@@ -148,6 +172,7 @@ export async function enrichWeb(db: DbInstance, input: EnrichInput): Promise<Enr
   }
 
   const perTopic = Math.min(Math.max(input.perTopic ?? 6, 1), 10);
+  const preferSites = (input.preferSites ?? []).map((x) => String(x ?? "").trim()).filter(Boolean);
 
   // ── ① 收集候选 URL ──
   const candidates: Array<{ url: string; query: string; title?: string; content?: string; publishedAt?: string }> = [];
@@ -173,6 +198,11 @@ export async function enrichWeb(db: DbInstance, input: EnrichInput): Promise<Enr
         if (!r.ok) continue;
         for (const hit of r.hits) {
           if (shouldSkipUrl(hit.url)) {
+            report.filtered += 1;
+            continue;
+          }
+          // 站点限定后置过滤（引擎可能不听话，见 matchesSites 注释）
+          if (preferSites.length > 0 && !matchesSites(hit.url, preferSites)) {
             report.filtered += 1;
             continue;
           }

@@ -129,3 +129,4 @@ export type { PptQualityCode, PptQualityIssue, PptShapeBox, PptTextRect } from "
 export * from "./web-store.js";
 export * from "./web-fetch-client.js";
 export * from "./web-engine.js";
+export * from "./web-bing.js";

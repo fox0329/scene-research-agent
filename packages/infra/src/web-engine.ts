@@ -22,6 +22,7 @@
 
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { resolve, dirname } from "node:path";
+import { searchBing } from "./web-bing.js";
 import {
   fetchPage,
   searchWeb,
@@ -33,7 +34,7 @@ import {
 } from "./web-fetch-client.js";
 
 /** 引擎种类 */
-export type EngineKind = "deepseek-native" | "tavily" | "none";
+export type EngineKind = "deepseek-native" | "tavily" | "bing-html" | "none";
 
 /** 引擎配置（落 `data/web-search.local.json`，不入版本控制） */
 export interface WebSearchConfig {
@@ -132,6 +133,13 @@ export function resolveEngine(
           detail: "配置指定 DeepSeek 官方检索，但当前供应商不是 api.deepseek.com 或缺少 Key",
         };
   }
+  if (cfg.engine === "bing-html") {
+    return {
+      kind: "bing-html",
+      canSearch: true,
+      detail: "已按配置使用 Bing 网页搜索（免注册，非官方接口）",
+    };
+  }
   if (cfg.engine === "none") {
     return { kind: "none", canSearch: false, detail: "已关闭联网检索（只能抓你显式给的链接）" };
   }
@@ -143,12 +151,13 @@ export function resolveEngine(
   if (cfg.tavilyKey) {
     return { kind: "tavily", canSearch: true, detail: "自动识别：当前供应商无检索接口，改用 Tavily" };
   }
+  // 免注册兜底：Bing 网页搜索（非官方接口，可能失效，故排在最后）
   return {
-    kind: "none",
-    canSearch: false,
+    kind: "bing-html",
+    canSearch: true,
     detail:
-      "当前模型供应商没有联网检索接口（OpenAI 兼容代理只透传 /chat/completions），" +
-      "且未配置 Tavily Key。联网补证不可用，但可以直接粘贴链接抓取，主流程不受影响。",
+      "免注册模式：用 Bing 网页搜索（非官方接口，可能随改版失效）。" +
+      "配上 Tavily 或官方 DeepSeek 会更稳。",
   };
 }
 
@@ -228,6 +237,13 @@ export async function searchByEngine(
   limit = 8,
 ): Promise<{ ok: boolean; hits: Array<SearchHit & { publishedAt?: string }>; error?: string }> {
   if (!engine.canSearch) return { ok: false, hits: [], error: engine.detail };
+  if (engine.kind === "bing-html") {
+    if (counters.searches >= budget.maxSearches) {
+      return { ok: false, hits: [], error: `已达检索次数上限（${budget.maxSearches}）` };
+    }
+    counters.searches += 1;
+    return searchBing(query, budget, limit);
+  }
   if (engine.kind === "tavily") {
     if (!cfg.tavilyKey) return { ok: false, hits: [], error: "Tavily Key 未配置" };
     if (counters.searches >= budget.maxSearches) {
