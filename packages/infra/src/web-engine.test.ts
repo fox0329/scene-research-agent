@@ -40,11 +40,13 @@ describe("resolveEngine — 自动选", () => {
     expect(e.canSearch).toBe(true);
   });
 
-  it("代理且无 Tavily → none，且说明要和用户讲清原因", () => {
+  it("代理且无 Tavily → 退到免注册 Bing（用户不必去注册）", () => {
     const e = resolveEngine({}, { baseUrl: "https://llm.talkweb.com.cn/v1", apiKey: "sk-x" });
-    expect(e.kind).toBe("none");
-    expect(e.canSearch).toBe(false);
-    expect(e.detail).toContain("没有联网检索接口");
+    expect(e.kind).toBe("bing-html");
+    expect(e.canSearch).toBe(true);
+    expect(e.detail).toContain("免注册");
+    // 必须如实说明这是非官方接口、可能失效
+    expect(e.detail).toContain("非官方");
   });
 
   it("代理但有 Tavily → tavily", () => {
@@ -58,10 +60,10 @@ describe("resolveEngine — 自动选", () => {
     expect(e.kind).toBe("deepseek-native");
   });
 
-  it("完全没有供应商 → none（不抛错）", () => {
+  it("完全没有供应商 → 仍退到免注册 Bing（不抛错）", () => {
     const e = resolveEngine({}, undefined);
-    expect(e.kind).toBe("none");
-    expect(e.canSearch).toBe(false);
+    expect(e.kind).toBe("bing-html");
+    expect(e.canSearch).toBe(true);
   });
 });
 
