@@ -11,6 +11,7 @@
  */
 
 import Database from "better-sqlite3";
+import { matchContent } from "@scene/domain";
 import type { SourceLookup } from "@scene/domain";
 
 /** trigram 分词器最少 3 字符才能检索；比这短的片段无法判定，不倒扣（不能凭空指控） */
@@ -159,7 +160,9 @@ export function createSourceLookup(db: Database.Database): SourceLookup {
         if (pageRow) {
           const pageText = String(pageRow.content ?? "");
           if (pageText.trim() === "") return true; // 该页无文本层，判不了不指控
-          return pageText.includes(String(snippet ?? "").trim());
+          // 用「关键要素 + 覆盖率」判，不用裸字符串包含：
+          // 业务行是归纳改写，裸比对实测 53% 误杀（见 domain/content-match.ts）
+          return matchContent(String(snippet ?? ""), pageText).verdict !== "unsupported";
         }
       }
 
@@ -173,7 +176,7 @@ export function createSourceLookup(db: Database.Database): SourceLookup {
         if (row) {
           const allText = String(row.content ?? "");
           if (allText.trim() === "") return true;
-          return allText.includes(String(snippet ?? "").trim());
+          return matchContent(String(snippet ?? ""), allText).verdict !== "unsupported";
         }
       }
 

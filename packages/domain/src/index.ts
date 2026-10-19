@@ -319,3 +319,6 @@ export {
   parsePptOutline,
 } from "./ppt-outline.js";
 export type { PptOutlineParse, PptOutlineQualityCode, PptOutlineQualityIssue } from "./ppt-outline.js";
+
+export { matchContent, bigramCoverage, extractHardTokens, COVERAGE_MIN } from "./content-match.js";
+export type { ContentVerdict, ContentMatchResult } from "./content-match.js";
