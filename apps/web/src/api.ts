@@ -404,6 +404,92 @@ export class ApiError extends Error {
   }
 }
 
+// ─── 联网补证（变更表 #216 / #219）────────────────────────────
+
+/** 检索引擎状态：能不能联网、为什么不能 */
+export interface ApiWebEngine {
+  engine: string;
+  canSearch: boolean;
+  detail: string;
+  hasTavilyKey: boolean;
+  sourceCount: number;
+}
+
+/** 一条补证结果 */
+export interface ApiWebEnrichItem {
+  url: string;
+  ok: boolean;
+  snapshotName?: string;
+  blockCount?: number;
+  authority?: string;
+  category?: string;
+  citation?: string;
+  blocked?: boolean;
+  reasons?: string[];
+  error?: string;
+}
+
+/** 一次补证的结果 */
+export interface ApiWebEnrichReport {
+  performed: boolean;
+  skipReason?: string;
+  searches: number;
+  fetches: number;
+  items: ApiWebEnrichItem[];
+  usable: number;
+  filtered: number;
+  engine?: string;
+  engineDetail?: string;
+}
+
+/** 已入库的可用网页来源 */
+export interface ApiWebSource {
+  id: string;
+  url: string;
+  domain: string;
+  title: string;
+  authority: string;
+  category: string;
+  blockCount: number;
+  fetchedAt: string;
+  status: string;
+}
+
+/** 查引擎状态（不联网，只读配置） */
+export function getWebEngine(): Promise<ApiWebEngine> {
+  return req<ApiWebEngine>("/web/engine");
+}
+
+/** 保存引擎配置（Tavily Key 等） */
+export function saveWebEngine(patch: { engine?: string; tavilyKey?: string }): Promise<ApiWebEngine> {
+  return req<ApiWebEngine>("/web/engine", { method: "POST", body: patch });
+}
+
+/** 联网补证：按主题检索 → 抓取 → 入库 */
+export function enrichWeb(input: {
+  topics?: string[];
+  preferSites?: string[];
+  explicitUrls?: string[];
+  perTopic?: number;
+}): Promise<ApiWebEnrichReport> {
+  return req<ApiWebEnrichReport>("/web/enrich", { method: "POST", body: input });
+}
+
+/** 已入库的可用网页来源 */
+export function listWebSources(limit = 50): Promise<{ sources: ApiWebSource[] }> {
+  return req<{ sources: ApiWebSource[] }>(`/web/sources?limit=${limit}`);
+}
+
+/** 按引用串取网页原文（右栏「看原文」） */
+export function webPassages(
+  citation: string,
+  limit = 3,
+): Promise<{ passages: Array<{ blockNo: number; heading: string; text: string }> }> {
+  return req<{ passages: Array<{ blockNo: number; heading: string; text: string }> }>(
+    `/web/passages?citation=${encodeURIComponent(citation)}&limit=${limit}`,
+  );
+}
+
 /** 来源原文段落（`/sources/passages`，变更表 #179） */
 export interface ApiSourcePassage {
   source: string;

@@ -2548,3 +2548,26 @@ td.ed {
   color: var(--ct2);
   line-height: 1.6;
 }
+
+/* ─── 联网补证结果列表（变更表 #219）──────────────────────────
+   视觉值一律走 Token；url/标题过长时省略，完整值放 title 属性 */
+.enrich-list {
+  margin: var(--s2) 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--ts);
+}
+.enrich-list li {
+  padding: var(--s1) 0;
+  border-bottom: 1px solid var(--cb);
+  line-height: 1.5;
+}
+.enrich-list li:last-child { border-bottom: none; }
+.enrich-url {
+  color: var(--ct2);
+  word-break: break-all;
+}
+.enrich-list code {
+  font-size: var(--txs);
+  color: var(--ct);
+}
