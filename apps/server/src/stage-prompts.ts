@@ -25,6 +25,7 @@ import {
   type TableColumn,
   type TableDef,
 } from "@scene/contract";
+import { gatesOf, gateRequirementText } from "@scene/contract";
 
 export interface StagePrompt {
   system: string;
@@ -247,6 +248,9 @@ export function renderTableSpec(t: TableDef, category?: string): string {
   }
   if (t.groupBy) lines.push(`分组维度：\`${t.groupBy}\`（不进列，按它分组）`);
   lines.push(`完整度规则：${t.completeness.map((c, i) => `${i + 1}) ${c}`).join(" ")}`);
+  /* 输出门限：与完整度规则一起进提示词——完整度说"该写成什么样"，门限说"什么样的会被判不达标" */
+  const gateLines = gatesOf(t.code).map((g, i) => `${i + 1}) ${gateRequirementText(g)}`);
+  if (gateLines.length) lines.push(`输出门限（生成后逐条机器核对）：${gateLines.join(" ")}`);
   return lines.join("\n");
 }
 

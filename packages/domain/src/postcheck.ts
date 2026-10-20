@@ -21,6 +21,7 @@ import { CURRENT_STATE_TABLES, TABLES_BY_CODE, middleColumns } from "@scene/cont
 import { judgeGate } from "./gate-check.js";
 import { judgeConstraint } from "./constraint-check.js";
 import { judgeRowValue } from "./value-check.js";
+import { evaluateGates } from "./output-gates.js";
 import type { InfoRow } from "./completeness.js";
 
 // ─── 类型 ────────────────────────────────────────────────
@@ -54,6 +55,13 @@ export type PostcheckKind =
   | "约束不成立"
   /** 整行没有实质内容（全占位词/空话）——「有内容」不等于「有价值」 */
   | "行无价值"
+  /**
+   * 没通过该表的输出门限（`TABLE_GATES`，变更表 #231）
+   *
+   * 门槛三问、约束判定、行无价值这三类已有专门 kind，这里只承接其余门限
+   * （数值、具名、条数、去重、覆盖、跨表、合计、空话、派生行），避免重复报。
+   */
+  | "不达门限"
   /**
    * 产出行校验（`validateIncomingRows`）的机械违规（变更表 #163）
    *
@@ -837,6 +845,24 @@ export function runDeterministicPostcheck(input: PostcheckInput): PostcheckFindi
       }
     }
   }
+  /* 输出门限：整表跑一遍（去重/覆盖/合计/跨表这类规则需要全表才判得准）。
+     门槛三问、约束判定、行无价值已有专门 kind，这里跳过以免同一问题报两遍。 */
+  const alreadyCovered = /门槛三问|可执行|行必须有实质内容/;
+  for (const f of evaluateGates(
+    input.rows.map((r) => ({ id: r.rowId, tableCode: r.tableCode, row: r.row as Record<string, unknown> })),
+  )) {
+    if (alreadyCovered.test(f.gate)) continue;
+    findings.push({
+      tableCode: f.tableCode,
+      rowId: f.rowId,
+      label: f.label,
+      kind: "不达门限",
+      detail: `${f.gate}——${f.detail}`,
+      /* 必填缺失属「完整性」问题，完整度检查已经会报，这里不重复判硬伤 */
+      severity: f.kind === "non-empty" ? "存疑" : f.severity,
+    });
+  }
+
   return findings;
 }
 

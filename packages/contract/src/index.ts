@@ -534,3 +534,4 @@ export * from "./flow.js";
 export * from "./ppt.js";
 export * from "./ingest.js";
 export * from "./upstream.js";
+export * from "./gates.js";

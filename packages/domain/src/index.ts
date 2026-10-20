@@ -349,3 +349,4 @@ export { chunkMarkdown, blocksToText, BLOCK_MAX, BLOCK_MIN } from "./web-chunk.j
 export type { WebBlock } from "./web-chunk.js";
 export { scanInjection, shouldBlockInjection, BLOCK_AT_KINDS } from "./web-injection.js";
 export type { InjectionKind, InjectionScan } from "./web-injection.js";export { stripBoilerplate, extractPublishedAt } from "./web-clean.js";
+export { evaluateGates, type GateFinding, type GateRow } from "./output-gates.js";

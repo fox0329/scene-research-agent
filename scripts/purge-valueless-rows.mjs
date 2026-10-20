@@ -30,6 +30,7 @@ const Database = require(join(pnpmDir, bsq, "node_modules", "better-sqlite3"));
 const { judgeConstraint } = require("../packages/domain/dist/constraint-check.js");
 const { judgeRowValue } = require("../packages/domain/dist/value-check.js");
 const { middleColumns, TABLES } = require("../packages/contract/dist/index.js");
+const { evaluateGates } = require("../packages/domain/dist/output-gates.js");
 
 const argv = process.argv.slice(2);
 const apply = argv.includes("--apply");
@@ -68,11 +69,25 @@ const db = new Database(dbPath);
 const defs = new Map((Array.isArray(TABLES) ? TABLES : Object.values(TABLES)).map((t) => [t.code, t]));
 const rows = db.prepare("SELECT id, table_code, row FROM stage_data").all();
 
+/* 派生行（合计/总分/综合赢面）由门限判定：它们不是发现，删掉不影响任何结论——
+   合计由门限核对，不需要单独占一行 */
+const derivedIds = new Set(
+  evaluateGates(
+    rows.map((r) => ({ id: r.id, scenarioId: r.scenario_id, tableCode: r.table_code, row: JSON.parse(r.row) })),
+  )
+    .filter((f) => f.kind === "no-aggregate-row")
+    .map((f) => f.rowId),
+);
+
 const doomed = [];
 for (const r of rows) {
   const def = defs.get(r.table_code);
   if (!def) continue;
   const o = JSON.parse(r.row);
+  if (derivedIds.has(r.id)) {
+    doomed.push({ id: r.id, table: r.table_code, label: String(Object.values(o)[0] ?? ""), why: "派生行（合计/总分）：不是发现，合计由门限核对" });
+    continue;
+  }
   if (r.table_code === "表2-5") {
     const c = judgeConstraint(o);
     if (!c.isConstraint) {

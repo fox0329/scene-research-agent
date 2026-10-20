@@ -8,6 +8,7 @@
  * 组成：`05 = preamble(手写) + renderTables(生成) + appendix(手写) + renderSummary(生成) + version(手写)`
  */
 
+import { gatesOf, gateRequirementText } from "./gates.js";
 import {
   blockLabel,
   TABLES,
@@ -161,6 +162,11 @@ function renderTable(t: TableDef): string {
   }
 
   L.push(`- **完整度规则**：${t.completeness.map((c, i) => `${i + 1}. ${c}`).join("；")}`);
+  /* 输出门限：与完整度规则并列——完整度是"该写成什么样"，门限是"机器会怎么判" */
+  const gates = gatesOf(t.code);
+  if (gates.length) {
+    L.push(`- **输出门限（${gates.length} 条，生成后逐条机器核对）**：${gates.map((g, i) => `${i + 1}. ${gateRequirementText(g)}`).join("；")}`);
+  }
   L.push(`- **被谁引用**：${stageNames(t.consumedBy)}`);
   L.push("");
   return L.join("\n");
