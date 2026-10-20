@@ -151,6 +151,23 @@ function requireArtifacts() {
     const newestDist = walk(distDir).reduce((acc, f) => Math.max(acc, statSync(f).mtimeMs), 0);
     if (newestSrc > newestDist) stale.push(`${pkgDir}/dist 比 src 旧`);
   }
+  /* 前端产物单独判：`vite build` 不在 tsc 的增量图里，改了契约（表定义/枚举）必须重打前端，
+     否则装出来的应用是「**新后端 + 旧前端**」——服务端知道表2-7 删了，界面还在列它。
+     真实踩过（故障清单 #93）：手工四步打包只跑了壳构建，界面停在旧版本。 */
+  const webDist = join(repo, "apps/web/dist");
+  if (existsSync(webDist)) {
+    const newestWebDist = walk(webDist).reduce((acc, f) => Math.max(acc, statSync(f).mtimeMs), 0);
+    /* 前端把 @scene/contract 打进 bundle，所以契约源码变了也算「前端该重打」 */
+    const webInputs = ["apps/web/src", "packages/contract/src", "packages/domain/src"];
+    const newestWebSrc = webInputs.flatMap((d) => {
+      const dir = join(repo, d);
+      return existsSync(dir) ? walk(dir).filter((f) => !/\.(test|spec|stories)\.tsx?$/u.test(f)) : [];
+    }).reduce((acc, f) => Math.max(acc, statSync(f).mtimeMs), 0);
+    if (newestWebSrc > newestWebDist) {
+      stale.push("apps/web/dist 比 src（含 @scene/contract / @scene/domain）旧——前端要重打：pnpm --filter @scene/web build");
+    }
+  }
+
   if (stale.length) {
     fail(`构建产物不是最新的，先跑 pnpm build：\n    ${stale.join("\n    ")}`);
   }
