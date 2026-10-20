@@ -17,11 +17,12 @@ import { fileURLToPath } from "node:url";
 const here = dirname(fileURLToPath(import.meta.url));
 const releaseDir = resolve(here, "..", "release");
 
+/* 无参时清默认产物目录（mac-arm64 / mac / win-unpacked 等常见名），
+   有参时只清指定的——打包脚本里常常直接无参调用，
+   以前它打印用法并 exit 1，靠管道吞掉退出码才没中断（故障清单 #94）。 */
+const DEFAULT_TARGETS = ["mac-arm64", "mac", "mac-universal", "win-unpacked", "linux-unpacked"];
 const targets = process.argv.slice(2);
-if (targets.length === 0) {
-  console.error("用法：node scripts/clean-release.mjs <release 下的目录名>...");
-  process.exit(1);
-}
+if (targets.length === 0) targets.push(...DEFAULT_TARGETS);
 
 for (const name of targets) {
   /* 破坏性操作围栏：只允许删 release/ 下的一级目录，且名字里不许出现路径分隔符 */
