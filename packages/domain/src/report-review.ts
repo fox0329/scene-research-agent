@@ -312,6 +312,50 @@ export interface FixGuardInput {
   missingBefore: readonly string[];
   /** 改后该章还缺哪些方案构件 */
   missingAfter: readonly string[];
+  /**
+   * 允许动表格（变更表 #244）
+   *
+   * 「表格与正文不一致」「前后矛盾」常常要靠改表格那一格才能消解；若仍按"未被点名的段落
+   * 逐字不变"卡死，这类改动永远采纳不了（实测：压铸 3 条硬伤两轮全被这条挡回）。
+   * 只对这两类硬伤放开**含表格的段落**，其余段落仍逐字不动。
+   */
+  allowTableEdits?: boolean;
+}
+
+/**
+ * 矛盾类硬伤的确定性复核（变更表 #244 补丁）
+ *
+ * 终检模型报"前后矛盾"时会把**它自己的疑问**也报进来（"需确认依据""口径未统一"），
+ * 实测压铸一轮 13 条里过半属于这种；直接照单升硬伤，等于让模型的主观判断卡住交付物。
+ * 所以升级前先做一道便宜的确定性检查：`note` 里必须**引用两处不同取值**（引号/书名号包起来
+ * 的原文，或带单位的数字），且两处都真的在这份报告里出现、且不相等。
+ * 复核不过 → 仍按存疑记提示，不进第二轮回炉、不判未通过。
+ */
+export function contradictionCheck(
+  issue: { type: string; note: string },
+  markdown: string,
+): { confirmed: boolean; reason: string } {
+  /* 模型有时先写"两处一致；但……"，再提一个疑问——那不是互斥，是它自己没想清楚 */
+  if (/两处一致|口径一致|完全一致|内容一致|不直接冲突|不冲突/.test(issue.note)) {
+    return { confirmed: false, reason: "note 自己说明两处一致/不冲突，不算互斥取值" };
+  }
+  const flat = markdown.replace(/\s/g, "");
+  const quoted = [...issue.note.matchAll(/[「“"『《`]([^」”"』》`]{2,40})[」”"』》`]/g)]
+    .map((m) => m[1]!.replace(/\s/g, ""))
+    .filter((v) => v.length >= 2);
+  const values = new Set<string>(quoted);
+  for (const m of issue.note.matchAll(/(?:第\s*)?\d+(?:\.\d+)?\s*(?:[–\-—~至]\s*\d+(?:\.\d+)?)?\s*(?:周|个月|月|天|日|小时|分钟|%|人天|万元|元)/g)) {
+    values.add(m[0]!.replace(/\s/g, ""));
+  }
+  const present = [...values].filter((v) => flat.includes(v));
+  const distinct = new Set(present);
+  if (distinct.size < 2) {
+    return {
+      confirmed: false,
+      reason: distinct.size === 0 ? "note 里没引用可核对的取值" : "note 里只有一处取值，看不出两个互斥值",
+    };
+  }
+  return { confirmed: true, reason: `两处取值都在正文里：${[...distinct].slice(0, 2).join(" / ")}` };
 }
 
 /** 被点名段落的字数允许变化幅度（只改病句，不该整章变胖变瘦） */
@@ -326,12 +370,13 @@ const FIX_LENGTH_TOLERANCE = 0.25;
  * 4. 方案构件不比改前少（缺构件是硬伤，比病句严重）。
  */
 export function fixAccepted(input: FixGuardInput): { ok: boolean; reason?: string } {
-  const { before, after, anchors, missingBefore, missingAfter } = input;
+  const { before, after, anchors, missingBefore, missingAfter, allowTableEdits } = input;
   if (after.trim() === "") return { ok: false, reason: "改后是空的" };
 
   const afterParas = paragraphs(after);
   for (const para of paragraphs(before)) {
     if (isNamed(para, anchors)) continue;
+    if (allowTableEdits === true && /^\s*\|/m.test(para)) continue;
     if (!afterParas.includes(para)) return { ok: false, reason: "改动了没被点名的段落" };
   }
 

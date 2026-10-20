@@ -44,7 +44,7 @@ const ISSUES = JSON.stringify({
       chapter: "建设背景与必要性",
       anchor: "这句话前后矛盾",
       type: "前后矛盾",
-      note: "与上文冲突",
+      note: "「这句话前后矛盾，要改掉」与「智慧会议室分散在总部与各园区」两处说法对不上",
     },
   ],
 });
@@ -208,15 +208,64 @@ describe("reviewReport — 通读 → 逐章修 → 复查", () => {
     expect(out.markdown).toBe(MD);
   });
 
-  it("复查说仍存疑 → 只记提示，不再改（改过的部分保留）", async () => {
-    const { out } = await runReview(
-      responding(CHAPTER_FIXED, '{"unresolved":[{"anchor":"这句话前后矛盾","note":"还读不通"}]}'),
+  it("矛盾类两轮都没修好 → 记硬伤（hard: true），这份不算通过", async () => {
+    const mock = responding(
+      CHAPTER_FIXED,
+      '{"unresolved":[{"anchor":"这句话前后矛盾","note":"还读不通"}]}',
     );
+    const { out, progress } = await runReview(mock);
     expect(out.fixed).toBe(0);
     expect(out.remaining).toBe(1);
     // 改动本身已经落进正文（复查只影响提示，不回滚）
     expect(out.markdown).toContain("本方案先统一预约入口");
-    expect(out.violations.some((v) => v.kind === "终检问题")).toBe(true);
+    // 通读 + 改章 + 复查 + 第二轮回炉 + 第二轮复查
+    expect(mock.calls).toHaveLength(5);
+    const v = out.violations.find((x) => x.kind === "终检问题");
+    expect(v?.hard).toBe(true);
+    expect(v?.detail).toContain("两轮未消除");
+    expect(progress.some((m) => m.includes("第二轮回炉"))).toBe(true);
+    expect(progress.some((m) => m.includes("不算通过"))).toBe(true);
+  });
+
+  it("第二轮才修好的：不记硬伤，按已解决计", async () => {
+    let verifies = 0;
+    const mock = dshMock((input) => {
+      if (input.user.includes(REVIEW_PROMPT_MARKER)) return ISSUES;
+      if (input.user.includes(VERIFY_PROMPT_MARKER)) {
+        verifies += 1;
+        return verifies === 1
+          ? '{"unresolved":[{"anchor":"这句话前后矛盾","note":"还读不通"}]}'
+          : '{"unresolved":[]}';
+      }
+      if (input.user.includes(FIX_PROMPT_MARKER)) return CHAPTER_FIXED;
+      return "";
+    });
+    const { out, progress } = await runReview(mock);
+    expect(out.fixed).toBe(1);
+    expect(out.remaining).toBe(0);
+    expect(out.violations.some((v) => v.kind === "终检问题")).toBe(false);
+    expect(progress.some((m) => m.includes("矛盾类硬伤"))).toBe(true);
+  });
+
+  it("空话套话这类软问题仍是提示，不进第二轮回炉（hard: false）", async () => {
+    const softIssues = JSON.stringify({
+      issues: [
+        { chapter: "建设背景与必要性", anchor: "这句话前后矛盾", type: "空话套话", note: "没有信息" },
+      ],
+    });
+    const mock = dshMock((input) => {
+      if (input.user.includes(REVIEW_PROMPT_MARKER)) return softIssues;
+      if (input.user.includes(VERIFY_PROMPT_MARKER)) {
+        return '{"unresolved":[{"anchor":"这句话前后矛盾","note":"还空"}]}';
+      }
+      if (input.user.includes(FIX_PROMPT_MARKER)) return CHAPTER_FIXED;
+      return "";
+    });
+    const { out } = await runReview(mock);
+    expect(out.remaining).toBe(1);
+    const v = out.violations.find((x) => x.kind === "终检问题");
+    expect(v?.hard).toBe(false);
+    expect(v?.detail).toContain("终检存疑");
   });
 
   it("终检时在整篇上再跑一遍确定性判据（断头段是硬伤，带 from: 终检）", async () => {

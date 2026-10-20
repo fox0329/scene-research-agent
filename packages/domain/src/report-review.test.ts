@@ -10,6 +10,7 @@ import { describe, expect, it } from "vitest";
 import {
   MAX_REVIEW_ISSUES,
   chapterBlocks,
+  contradictionCheck,
   deterministicReviewFindings,
   duplicateSentences,
   fixAccepted,
@@ -226,6 +227,45 @@ describe("leadParagraphProblems / deterministicReviewFindings — 章首段与�
   });
 });
 
+describe("contradictionCheck — 矛盾类硬伤先过确定性复核", () => {
+  const md = "## 现状\n\n实施要点写第14–18周验收，表格写第17–20周。\n\n质保期 24 个月。";
+  const issue = (note: string) => ({ type: "前后矛盾", note });
+
+  it("note 引了两处都真实存在且不同的取值 → 确认", () => {
+    const r = contradictionCheck(issue("正文写「第14–18周」，表格写「第17–20周」"), md);
+    expect(r.confirmed).toBe(true);
+  });
+
+  it("只引一处取值 / 两处取值相同 / 取值正文里没有 → 都不确认（退回存疑）", () => {
+    expect(contradictionCheck(issue("正文写「第14–18周」，与表格口径需核对"), md).confirmed).toBe(false);
+    expect(contradictionCheck(issue("「24 个月」与「24 个月」对不上"), md).confirmed).toBe(false);
+    expect(contradictionCheck(issue("「第1–2周」与「第3–4周」对不上"), md).confirmed).toBe(false);
+  });
+
+  it("note 自己说「两处一致；但……」→ 不确认（那是疑问，不是互斥）", () => {
+    const doc = "## 现状\n\n本方案对象是「2 座污水厂与 6 座泵站」，按「6 个关键环节」展开。";
+    const r = contradictionCheck(
+      issue("A 处写「2 座污水厂与 6 座泵站」，B 处写「2 座污水厂与 6 座泵站」，两处一致；但数量口径混用"),
+      doc,
+    );
+    expect(r.confirmed).toBe(false);
+    expect(r.reason).toContain("不算互斥");
+  });
+
+  it("空话式 note（没有可核对取值）→ 不确认", () => {
+    const r = contradictionCheck(issue("口径没统一，建议核对是否一致"), md);
+    expect(r.confirmed).toBe(false);
+    expect(r.reason).toContain("没引用");
+  });
+
+  it("带单位数字也算取值（无需引号）：第 3–5 周 vs 第 5–9 周", () => {
+    const doc = "## 路径\n\n试点第 3–5 周，接入第 5–9 周。";
+    expect(
+      contradictionCheck(issue("试点写第 3–5 周，表格写第 5–9 周"), doc).confirmed,
+    ).toBe(true);
+  });
+});
+
 describe("fixAccepted — 终检改动的四道关卡", () => {
   const before = [
     "## 建设背景与必要性",
@@ -269,6 +309,38 @@ describe("fixAccepted — 终检改动的四道关卡", () => {
     const r = fixAccepted({ before, after, anchors, missingBefore: [], missingAfter: [] });
     expect(r.ok).toBe(false);
     expect(r.reason).toContain("章首段");
+  });
+
+  it("矛盾类硬伤允许改表格那一格（allowTableEdits）", () => {
+    const withTable = [
+      "## 建设背景与必要性",
+      "",
+      "这句前后矛盾的话要改掉。",
+      "",
+      "| 阶段 | 周次 |",
+      "|---|---|",
+      "| 联调验收 | 第14–18周 |",
+      "",
+      "第二段是结论，逐字不许动；这段话还有一些铺垫与说明，用来把这一段的字数撑起来。",
+    ].join("\n");
+    const anchors2 = ["这句前后矛盾的话要改掉"];
+    const after = withTable
+      .replace("这句前后矛盾的话要改掉。", "本方案以感知与研判两条主线覆盖关键环节。")
+      .replace("第14–18周", "第17–20周");
+    // 不放开表格 → 判成"改动了没被点名的段落"
+    const strict = fixAccepted({ before: withTable, after, anchors: anchors2, missingBefore: [], missingAfter: [] });
+    expect(strict.ok).toBe(false);
+    expect(strict.reason).toContain("没被点名");
+    // 放开表格（矛盾类硬伤）→ 采纳
+    const loose = fixAccepted({
+      before: withTable,
+      after,
+      anchors: anchors2,
+      missingBefore: [],
+      missingAfter: [],
+      allowTableEdits: true,
+    });
+    expect(loose.ok).toBe(true);
   });
 
   it("改后方案构件变少 → 不采纳；改后是空的也不采纳", () => {

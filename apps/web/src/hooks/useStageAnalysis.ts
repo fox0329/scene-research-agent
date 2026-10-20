@@ -150,7 +150,22 @@ export function useStageAnalysis(opts: {
               const tablesNeedMaterial = Array.isArray(ev.tablesNeedMaterial)
                 ? (ev.tablesNeedMaterial as string[])
                 : [];
+              /* 交付物门限（变更表 #244）：硬伤未消除就不算通过，必须让用户看见 */
+              const hardViolations = Array.isArray(ev.violations)
+                ? (ev.violations as { kind?: string; detail?: string; hard?: boolean }[]).filter(
+                    (v) => v.hard === true,
+                  )
+                : [];
               const notes = [
+                ev.passed === false
+                  ? `【未通过】还有 ${hardViolations.length} 处硬伤没消除：` +
+                    hardViolations
+                      .slice(0, 3)
+                      .map((v) => String(v.detail ?? v.kind ?? ""))
+                      .join("；") +
+                    (hardViolations.length > 3 ? "；…" : "") +
+                    "（报告已出，但不算通过，请先改上面的问题）"
+                  : "",
                 tablesFailed.length > 0
                   ? `${tablesFailed.join("、")} 未生成成功（沿用原有内容）`
                   : "",

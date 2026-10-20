@@ -641,6 +641,9 @@ export function createDeliverableReportCommand(deps: DeliverableReportDeps) {
       },
       sources: result.sources,
       violations: result.violations,
+      // 门限结论（变更表 #244）：有硬伤（含两轮未消除的矛盾类终检问题）就是**没通过**，
+      // 前端据此明说，不许把"留提示"当成"通过了"
+      passed: result.passed,
       // 终检小结（变更表 #139）：每份一行「发现几处、改了几处、留几处提示」
       review: result.review,
     };

@@ -283,6 +283,7 @@ export {
   leadParagraphProblems,
   deterministicReviewFindings,
   fixAccepted,
+  contradictionCheck,
 } from "./report-review.js";
 export type {
   ReviewIssue,
