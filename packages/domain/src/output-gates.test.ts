@@ -21,10 +21,17 @@ describe("门限登记完整性（契约层）", () => {
   it("门限引用的列都真实存在（key 打错会让门限永远静默通过）", () => {
     const bad: string[] = [];
     for (const [code, gates] of Object.entries(TABLE_GATES)) {
-      const keys = new Set(tableDef(code).columns.map((c) => c.key));
+      const def = tableDef(code);
+      /* 一张表可能装多种 payload（可选材料 O1–O6），payload 里的列也算真实列 */
+      const keys = new Set([
+        ...def.columns.map((c) => c.key),
+        ...Object.values(def.payloads ?? {}).flatMap((cols) => cols.map((c) => c.key)),
+        ...("payloads" in def ? [] : []),
+      ]);
       for (const g of gates) {
         const cols: string[] =
           "columns" in g ? [...g.columns] : "column" in g ? [g.column] : [];
+        if ("when" in g && g.when) cols.push(g.when.column);
         for (const c of cols) if (!keys.has(c)) bad.push(`${code}.${c}`);
       }
     }

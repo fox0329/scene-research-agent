@@ -26,7 +26,7 @@ describe("flow — 流程定义（取自注册表）", () => {
     const s2 = flowStep(2);
     expect(s2.title).toBe("认识场景");
     expect(s2.tables).not.toContain("表1-1");
-    expect(s2.tables.length).toBe(5); // 阶段 1 共 6 张，减去场景锚（表1-2 已迁到阶段 3）
+    expect(s2.tables.length).toBe(4); // 阶段 1 共 5 张，减去场景锚（表1-2 已迁到阶段 3；表2-3 已并入表2-4）
     expect(s2.kind).toBe("分析");
   });
 

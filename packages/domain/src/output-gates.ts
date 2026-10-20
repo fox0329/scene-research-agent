@@ -111,8 +111,12 @@ function judgeRowGates(
     const g = raw;
     /* 作用域：一张表装两类行时（表5-1 架构行/接口行），门限只对相应那类生效 */
     if (raw.when) {
-      const has = !isBlank(row[raw.when.column]);
-      if (has !== raw.when.present) continue;
+      if (raw.when.equals !== undefined) {
+        if (text(row[raw.when.column]) !== raw.when.equals) continue;
+      } else {
+        const has = !isBlank(row[raw.when.column]);
+        if (has !== raw.when.present) continue;
+      }
     }
     switch (g.kind) {
       case "non-empty": {

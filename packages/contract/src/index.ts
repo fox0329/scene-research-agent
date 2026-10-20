@@ -85,7 +85,7 @@ export const STAGE1_TABLES = ["表1-1", "表1-2", "表1-3", "表1-4", "表1-5"] 
  */
 export const CURRENT_STATE_TABLES = ["表1-2"] as const;
 /** 阶段 2 表号 */
-export const STAGE2_TABLES = ["表2-1", "表2-2", "表2-3", "表2-4", "表2-5", "表2-6", "表2-7", "表2-8"] as const;
+export const STAGE2_TABLES = ["表2-1", "表2-2", "表2-4", "表2-5", "表2-6", "表2-7", "表2-8"] as const;
 /** 阶段 3 表号 */
 export const STAGE3_TABLES = ["表3-1", "表3-2", "表3-3", "表3-4", "表3-5", "表3-6", "表3-7", "表3-8", "表3-9", "表3-10"] as const;
 /** 阶段 4 表号 */

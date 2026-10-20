@@ -17,7 +17,10 @@
 /** 门限的生效范围：仅当某列有值/为空时才判（一张表装两类行时用） */
 export interface GateScope {
   column: string;
-  present: boolean;
+  /** 有值/为空时才判（缺省按 equals 分支） */
+  present?: boolean;
+  /** 等于某值时才判（同一张表装多种 payload 时用，如可选材料的 O1/O2/O3） */
+  equals?: string;
 }
 
 export type GateSpec =
@@ -74,7 +77,10 @@ export const TABLE_GATES: Readonly<Record<string, readonly ScopedGate[]>> = {
     { kind: "not-vague", columns: ["description"], text: "限制须是可复现缺陷（什么工况出现、影响什么），免责话术不算" }
   ],
   可选材料: [
-    { kind: "enum-of-column", column: "category", text: "材料类别取该列枚举" }
+    { kind: "enum-of-column", column: "category", text: "材料类别取该列枚举" },
+    { kind: "non-empty", columns: ["cert_no", "valid_until", "issuer"], text: "认证类材料须给证书号、有效期与发证机构（无证书号视为未取得）", when: { column: "category", equals: "O1认证" } },
+    { kind: "non-empty", columns: ["delivered_at", "acceptance"], text: "案例类材料须给交付时间与可验收指标（「效果良好」不算）", when: { column: "category", equals: "O2案例" } },
+    { kind: "has-number", columns: ["price"], text: "价格须给金额与计价单位（含税口径写右栏）", when: { column: "category", equals: "O3价格" } }
   ],
 
   "表1-1": [
@@ -91,16 +97,12 @@ export const TABLE_GATES: Readonly<Record<string, readonly ScopedGate[]>> = {
     { kind: "has-number", columns: ["price_range"], text: "价格须给人民币金额量级（元/千元/万元/百万元）；纯比例或纯规格值不算" },
     { kind: "unique", columns: ["element_name"], text: "同一要素只登记一行" }
   ],
-  "表2-3": [
-    { kind: "non-empty", columns: ["layer", "components", "interface"], text: "层级/组件/接口必填" },
-    { kind: "min-items", column: "components", min: 2, text: "每层至少 2 个具名组件（写得出型号或产品线名）" },
-    { kind: "named", columns: ["interface"], text: "接口须给协议名或「无外接口（原因）」，不许「标准协议」了事" }
-  ],
   "表2-4": [
     { kind: "non-empty", columns: ["interaction_type", "from_to", "method"], text: "类型/起终点/方式必填" },
     { kind: "cross-ref", column: "from_to", table: "表2-2", target: "element_name", text: "关系两端须点名要素或具名外部主体（监管平台/电网/运营商/上级平台放行），禁「各类/各系统」" },
     { kind: "named", columns: ["method"], text: "方式须落到协议名/标准号，或「私有协议（厂商：X）」" },
-    { kind: "not-vague", columns: ["from_to"], text: "起终点须是具名主体，不许写「各类设备/各系统/若干」" }
+    { kind: "not-vague", columns: ["from_to"], text: "起终点须是具名主体，不许写「各类设备/各系统/若干」" },
+    { kind: "not-vague", columns: ["method"], text: "方式须写清协议 + 经哪一层/哪一网段 + 谁开放接口，不许「经院内网对接」这类无主体写法" }
   ],
   "表2-5": [
     { kind: "constraint-check", text: "每行须可执行（数值/等级/清单至少一样）+ 点明适用对象，且不是门槛复述" },

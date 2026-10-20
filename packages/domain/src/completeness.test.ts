@@ -19,11 +19,11 @@ describe("completeness — 取值判定", () => {
 });
 
 describe("completeness — 阶段级", () => {
-  it("阶段 1 无数据时列出 6 张缺表，完整度 0%", () => {
+  it("阶段 1 无数据时列出 5 张缺表，完整度 0%", () => {
     const r = checkStageCompleteness({ stage: 1, rowsByTable: {} });
-    expect(r.expectedTables).toBe(6);
+    expect(r.expectedTables).toBe(5);
     expect(r.tablesWithData).toBe(0);
-    expect(r.missingTables).toHaveLength(6);
+    expect(r.missingTables).toHaveLength(5);
     expect(r.missingTables).toContain("表1-1");
     // 2026-10-14 契约变更：客户现状（表1-2 场景环节地图）迁到阶段 3 能力匹配
     // 2026-10-20：表2-7 交付与运维现状已删除（变更表 #226）
@@ -201,13 +201,13 @@ describe("completeness — 单表规则", () => {
     expect(r.gaps.some((g) => g.kind === "推断未标注" && g.tableCode === "M3")).toBe(true);
   });
 
-  it("过程表不强制来源（表2-3 缺 source 不报缺来源）", () => {
+  it("过程表不强制来源（表2-4 缺 source 不报缺来源）", () => {
     const r = checkStageCompleteness({
       stage: 1,
-      rowsByTable: { "表2-3": [{ layer: "感知层", components: "仪表", interface: "Modbus" }] },
+      rowsByTable: { "表2-4": [{ interaction_type: "数据采集", from_to: "仪表→PLC", method: "Modbus RTU" }] },
     });
-    expect(r.gaps.some((g) => g.kind === "缺来源" && g.tableCode === "表2-3")).toBe(false);
-    expect(r.gaps.some((g) => g.kind === "推断未标注" && g.tableCode === "表2-3")).toBe(false);
+    expect(r.gaps.some((g) => g.kind === "缺来源" && g.tableCode === "表2-4")).toBe(false);
+    expect(r.gaps.some((g) => g.kind === "推断未标注" && g.tableCode === "表2-4")).toBe(false);
   });
 
   it("条件必填（requiredWhen）不做机器判定，不报缺列", () => {

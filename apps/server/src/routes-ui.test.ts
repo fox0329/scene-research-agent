@@ -420,7 +420,7 @@ describe("项目路由", () => {
     };
     expect(body.rows[0]!.table_code).toBe("表1-3");
     // 阶段 1 共 6 张表（表1-2、表2-7 已移到阶段 3）；完整度只给缺口，不给判定
-    expect(body.completeness.expectedTables).toBe(6);
+    expect(body.completeness.expectedTables).toBe(5);
     expect(body.completeness.tablesWithData).toBe(1);
     expect(body.completeness.gaps.length).toBeGreaterThan(0);
     expect(body.summary_ready).toBe(false);
@@ -694,7 +694,7 @@ describe("右栏总结与完整度：只针对当前步骤（v2.9）", () => {
     expect(stageMd).toContain("上下游衔接");
   });
 
-  it("?step=2 的完整度只算本步 5 张表（表1-1 归第 1 步）", async () => {
+  it("?step=2 的完整度只算本步 4 张表（表1-1 归第 1 步）", async () => {
     const { scenarioId } = seedScenario(h.db, "完整度范围场景");
     const stepC = (await h.app.inject({
       method: "GET",
@@ -705,7 +705,7 @@ describe("右栏总结与完整度：只针对当前步骤（v2.9）", () => {
       url: `/api/v1/projects/${scenarioId}/stages/1/completeness`,
     })).json() as { expectedTables: number };
     expect(stepC.expectedTables).toBe(stageC.expectedTables - 1);
-    expect(stepC.expectedTables).toBe(5);
+    expect(stepC.expectedTables).toBe(4);
   });
 
   it("阶段面板 ?step=2 也按本步表集给完整度", async () => {
@@ -715,7 +715,7 @@ describe("右栏总结与完整度：只针对当前步骤（v2.9）", () => {
       url: `/api/v1/projects/${scenarioId}/stages/1?step=2`,
     });
     expect(res.statusCode).toBe(200);
-    expect((res.json() as { completeness: { expectedTables: number } }).completeness.expectedTables).toBe(5);
+    expect((res.json() as { completeness: { expectedTables: number } }).completeness.expectedTables).toBe(4);
   });
 });
 

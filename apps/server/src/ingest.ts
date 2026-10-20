@@ -154,13 +154,14 @@ const SYSTEM_PROMPT = `你是产品资料解析专家。你的任务是将输入
 字段：product_name(产品名称), description(限制描述), impact(高/中/低), fix_status(已修复/修复中/无计划/硬件限制), external_visible(可提/内部可提/不可提), owner(负责人)
 必填：product_name, description, impact, fix_status, external_visible, owner
 
-## O1-O6 可选材料
-- O1认证：fields 含 cert_name, cert_body, cert_date, scope
-- O2案例：fields 含 project_name, client, year, scale, summary
-- O3价格：fields 含 model, price, currency, channel, date
-- O4SDK：fields 含 name, version, language, url, maturity
-- O5路线图：fields 含 feature, expected_release, priority
-- O6生态：fields 含 partner_name, integration_type, maturity
+## O1-O6 可选材料（fields 的键名必须逐字用下面这些，否则入不了表）
+- O1认证：model(型号), cert_type(证书类型), cert_no(证书号), valid_until(有效期至), issuer(发证机构), covered_models(覆盖型号)
+- O2案例：name(案例名), scene(场景), delivered_at(交付时间), acceptance(验收指标与结果)
+- O3价格：item(产品/服务), pricing_model(计价方式), price(价格或区间)
+- O4SDK：product(产品), doc_name(资料名称) 及其余开发资料字段（见表格定义）
+- O5路线图：feature(功能), expected_release(预计时间), priority(优先级)
+- O6生态：partner_name(伙伴名称), integration_type(集成方式), maturity(成熟度)
+注意：证书号、有效期、发证机构、交付时间、验收指标都是必填，材料里没有就写「未提及」，不要换键名。
 
 ## 来源标注规则
 每条记录的 source 字段必须包含"文件名:页码"（如 whitepaper.pdf:12）。
@@ -281,10 +282,17 @@ function runIngestGates(
   )) {
     rows.push({ id: r.id, tableCode: "M5", row: r });
   }
-  for (const r of q<{ id: string; category: string }>(
-    "SELECT id, category FROM optional_material WHERE product_line_id = ?",
+  for (const r of q<{ id: string; category: string; payload: string }>(
+    "SELECT id, category, payload FROM optional_material WHERE product_line_id = ?",
   )) {
-    rows.push({ id: r.id, tableCode: "可选材料", row: r });
+    /* payload 是 JSON，必须摊平：证书号/有效期/发证机构都在里面，不摊平永远判不到 */
+    let body: Record<string, unknown> = {};
+    try {
+      body = JSON.parse(r.payload ?? "{}") as Record<string, unknown>;
+    } catch {
+      body = {};
+    }
+    rows.push({ id: r.id, tableCode: "可选材料", row: { ...body, category: r.category } });
   }
 
   return evaluateGates(rows).map((f) => ({

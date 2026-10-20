@@ -134,7 +134,7 @@ describe("row-validation — 来源与证据归属", () => {
 
   it("过程表不强制来源", () => {
     const v = validateIncomingRows(1, [
-      { table_code: "表2-3", fields: { layer: "感知层", components: "仪表", interface: "Modbus" } },
+      { table_code: "表2-4", fields: { interaction_type: "采集", from_to: "仪表→PLC", method: "Modbus RTU" } },
     ]);
     expect(v.some((x) => x.kind === "缺来源")).toBe(false);
   });

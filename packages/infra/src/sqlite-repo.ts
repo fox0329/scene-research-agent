@@ -151,7 +151,7 @@ function runMigrations(db: Database.Database): void {
    *
    * 幂等：DELETE 到空为止，第二次启动是空操作。
    */
-  db.exec("DELETE FROM stage_data WHERE table_code IN ('表2-7', '表3-6')");
+  db.exec("DELETE FROM stage_data WHERE table_code IN ('表2-7', '表3-6', '表2-3')");
   /* 表1-3 删除「行业通行处置」列（变更表 #228，用户定调「这列删掉」）：
      列没了还留着 JSON 键，导出与自检都会读到幽灵字段，所以连数据一起清。 */
   db.exec("UPDATE stage_data SET row = json_remove(row, '$.industry_practice') WHERE table_code = '表1-3'");

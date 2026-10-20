@@ -253,7 +253,6 @@ const ROW_TEXT: Record<string, (r: Record<string, unknown>) => string> = {
   "表1-1": (r) => `**${cell(r.item)}**：${cell(r.content)}`,
   "表1-2": (r) => `**${cell(r.link)}** — ${segs([["现在由", truncate(r.owner_now, 30)], ["用", truncate(r.current_tool, 46)], ["做法：", truncate(r.current_flow, 60)]])}`,
   "表2-2": (r) => `**${cell(r.element_name)}**${r.element_type ? `（${cell(r.element_type)}）` : ""}：${segs([["", truncate(r.function, 44)], ["量级", truncate(r.price_range, 26)]])}`,
-  "表2-3": (r) => `**${cell(r.layer)}**：${segs([["包含", r.components], ["接口", r.interface]])}`,
   "表2-5": (r) => `**${cell(r.constraint_item)}**：${segs([["要求", r.required_value], ["适用", r.standard_no]])}`,
   "表3-1": (r) => `**${cell(r.link)}**：毛利率 ${cell(r.gross_margin)}${r.representative ? `（代表 ${cell(r.representative)}）` : ""}`,
   "表3-2": (r) => `**${cell(r.form)}**：${segs([["", r.key_points], ["主导者", r.leader], ["适用", r.fit_for]])}`,

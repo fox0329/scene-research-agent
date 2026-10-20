@@ -92,8 +92,8 @@ describe("@scene/contract 表编号常量", () => {
     expect(STAGE1_TABLES[0]).toBe("表1-1");
   });
 
-  it("STAGE2 8 张表", () => {
-    expect(STAGE2_TABLES).toHaveLength(8);
+  it("STAGE2 7 张表", () => {
+    expect(STAGE2_TABLES).toHaveLength(7);
   });
 
   it("STAGE3 10 张表", () => {
