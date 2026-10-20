@@ -473,6 +473,7 @@ function hardVerdictWithoutBasis(r: PostcheckRow): PostcheckFinding | null {
 function opponentsWithoutBasis(
   rows: readonly PostcheckRow[],
   known: readonly string[],
+  lookup?: { hasContent(ref: string, phrase: string): boolean },
 ): PostcheckFinding[] {
   const out: PostcheckFinding[] = [];
   const pool = known.join("\n");
@@ -487,7 +488,15 @@ function opponentsWithoutBasis(
       .split(/[、,，/及]/)
       .map((x) => x.trim())
       .filter((x) => x.length >= 2);
-    const missing = names.filter((n) => !pool.includes(n));
+    /* 第二类合法来源：本行引用的材料页里确实提到这家厂商（竞品情报按页引用） */
+    /* 行上出处有两处：数据库 source 列与行内 source 字段（表4-4 的 source 是右栏列），两处都认 */
+    const citedRefs = `${String(r.source ?? "")}；${String(r.row["source"] ?? "")}`
+      .split(/[；;\n]/)
+      .map((x) => x.trim())
+      .filter((x) => x !== "");
+    const groundedInSource = (name: string): boolean =>
+      lookup !== undefined && citedRefs.some((ref) => lookup.hasContent(ref, name));
+    const missing = names.filter((n) => !pool.includes(n) && !groundedInSource(n));
     if (missing.length === 0) continue;
     out.push({
       tableCode: r.tableCode,
@@ -674,7 +683,7 @@ export function runDeterministicPostcheck(input: PostcheckInput): PostcheckFindi
   // 跨表校验先跑（判据要对照整批行，不能只看当前行）
   findings.push(...ledgerContradictions(input.rows));
   if (input.knownOpponents && input.knownOpponents.length > 0) {
-    findings.push(...opponentsWithoutBasis(input.rows, input.knownOpponents));
+    findings.push(...opponentsWithoutBasis(input.rows, input.knownOpponents, input.lookup));
   }
   for (const r of input.rows) {
     const hard = hardVerdictWithoutBasis(r);

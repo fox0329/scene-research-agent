@@ -1113,6 +1113,28 @@ export function collectUpstreamData(
     );
   }
 
+  /* 竞品情报（2026-10-20）：材料库里以「竞品情报」开头的材料，作为阶段 3 起的对手出处
+   *
+   * 为什么单独一块：模型的上下文只带 M1–M5 与上游表，不带材料原文；对手要具名就必须
+   * 有可回查的出处（用户定调「没调研到写未知可以」）。约定：调研报告命名 **竞品情报-**，
+   * 按页注入，引用写 `文件名:页码`。
+   */
+  if (stage >= 3) {
+    try {
+      const pages = db.db
+        .prepare(
+          "SELECT file_name, page, content FROM source_page WHERE file_name LIKE '竞品情报%' ORDER BY file_name, page LIMIT 16",
+        )
+        .all() as { file_name: string; page: number; content: string }[];
+      data["竞品情报"] = pages.map((r) => ({
+        出处: `${r.file_name}:${r.page}`,
+        内容: String(r.content ?? "").replace(/\s+/g, " ").slice(0, 600),
+      }));
+    } catch {
+      /* 老库没有 source_page：没有竞品情报就不注入，不影响生成 */
+    }
+  }
+
   /* 阶段 2 之后的上游结论（变更表 #225）
    *
    * 审计（docs/表格精简审计.md §3.1）发现这里原来只带 M1–M5 与阶段 1，

@@ -519,6 +519,29 @@ describe("postcheck — 表4-4 对手必须有出处（2026-10-20 用户定调�
     expect(f.some((x) => x.kind === "对手无出处")).toBe(false);
   });
 
+  it("对手写在竞品情报页里（本行 source 引用该页）→ 不点名", () => {
+    const row = pick("数益工联、鼎捷数智");
+    const f = runDeterministicPostcheck({
+      rows: [{ ...row, source: "竞品情报-压铸OEE.md:3" }],
+      lookup: {
+        hasSource: () => true,
+        hasContent: (ref, phrase) => ref === "竞品情报-压铸OEE.md:3" && "数益工联 鼎捷数智 布勒".includes(phrase),
+      },
+      knownOpponents: KNOWN,
+    });
+    expect(f.some((x) => x.kind === "对手无出处")).toBe(false);
+  });
+
+  it("对手既不在表3-2 名单、引用页里也没有 → 点名", () => {
+    const row = pick("聚光科技");
+    const f = runDeterministicPostcheck({
+      rows: [{ ...row, source: "竞品情报-压铸OEE.md:3" }],
+      lookup: { hasSource: () => true, hasContent: () => false },
+      knownOpponents: KNOWN,
+    });
+    expect(f.some((x) => x.kind === "对手无出处")).toBe(true);
+  });
+
   it("没传表3-2 名单时不做该判定（表3-2 未生成不误伤）", () => {
     const f = runDeterministicPostcheck({ rows: [pick("聚光科技、力合科技")], lookup: fakeLookup({}) });
     expect(f.some((x) => x.kind === "对手无出处")).toBe(false);

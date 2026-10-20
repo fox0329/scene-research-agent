@@ -185,7 +185,7 @@ export const TABLE_GATES: Readonly<Record<string, readonly ScopedGate[]>> = {
     { kind: "unique", columns: ["sub_scene"], text: "一个细分一行，细分名不许重复" },
     { kind: "enum-of-column", column: "value_density", text: "价值密度只取 高/中/低（理由写右栏）" },
     { kind: "enum-of-column", column: "win_loss", text: "胜负只取 强/平/弱/未知（未知须在右栏写缺哪类信息）" },
-    { kind: "has-number", columns: ["entry_action"], text: "切入动作须带一个量（试点台数/周期/中标条件），不许「加强推广」" },
+    { kind: "not-vague", columns: ["entry_action"], text: "切入动作须是可执行的第一件事（试点范围/周期/提交对象），不许「加强推广」「持续跟踪」" },
     { kind: "no-aggregate-row", column: "sub_scene", text: "不许写「合计/平均/综合赢面」这类派生行" }
   ],
 
