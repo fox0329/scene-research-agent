@@ -56,8 +56,8 @@ describe("解决方案提示词（变更表 #112 / #136）", () => {
     const { system, user } = buildReportPrompt("solution", base);
     expect(user).toContain("方案构件");
     expect(user).toContain("不要写成前面内容的总结");
-    // 价值是四列表格（含怎么核）——内部版那种「价值N/度量口径」段落已随 #136 退场
-    for (const word of ["设计原则", "编号", "怎么核", "| 价值 | 现在 | 采用后 | 怎么核 |"]) {
+    // 价值验证阶段已删除：价值表不再是本章构件
+    for (const word of ["设计原则", "编号"]) {
       expect(system, word).toContain(word);
     }
   });
@@ -80,9 +80,9 @@ describe("解决方案提示词（变更表 #112 / #136）", () => {
     expect(system).toContain("「典型问题」：**章下直接写，不要单独加 `###` 标题**");
     expect(system).toContain("`### 设计原则`");
     expect(system).toContain("`### 实施要点`");
-    // 价值表后面不再要求写四条边界段落（用户定稿已删，变更表 #131/#136），只剩那句禁令
+    // 价值章已随价值验证阶段删除（变更表 #243）
     expect(system).not.toContain("表格下面**再写四条边界**");
-    expect(system).toContain("**不要**再写「不替代 / 不参与 / 不承担 / 受限条件」四条边界段落");
+    expect(system).not.toContain("| 价值 | 现在 | 采用后 | 怎么核 |");
   });
 
   it("原料、场景锚、缺口表都带给模型（不让它自己猜表）", () => {
@@ -115,11 +115,10 @@ describe("解决方案提示词（变更表 #112 / #136）", () => {
     expect(chapter.user).toContain("第一段是本章总纲");
   });
 
-  it("逐章回炉线是变更表 #136 定下的那一档（solution 五章）", () => {
+  it("逐章回炉线是变更表 #136 定下的那一档（solution 四章）", () => {
     expect(chapterProseBudget("solution", "status")).toBe(1000);
     expect(chapterProseBudget("solution", "problems")).toBe(300);
     expect(chapterProseBudget("solution", "solution")).toBe(1350);
-    expect(chapterProseBudget("solution", "value")).toBe(200);
     expect(chapterProseBudget("solution", "next")).toBe(400);
     expect(chapterProseBudget("solution", "不存在的章")).toBe(450);
   });
@@ -210,11 +209,11 @@ describe("建设工作方案提示词（变更表 #137）", () => {
   it("construction 总上限 5000，且逐章预算之和不超过总上限（solution 预算与上限未动）", () => {
     const sum = (kind: ReportKind): number =>
       reportChapters(kind).reduce((acc, c) => acc + chapterProseBudget(kind, c.key), 0);
-    // construction：650+600+1600+700+200+550+250 = 4,550 ≤ 5,000（#139 补丁后只是写作指引，贴近目标 4,300）
-    expect(sum("construction")).toBe(4_550);
+    // construction：650+600+1600+700+200+550 = 4,300 ≤ 5,000（#139 补丁后只是写作指引）
+    expect(sum("construction")).toBe(4_300);
     expect(sum("construction")).toBeLessThanOrEqual(reportMaxChars("construction"));
-    // solution 的预算与上限都没动：1000+300+1350+200+400 = 3,250 < 4,500
-    expect(sum("solution")).toBe(3_250);
+    // solution：1000+300+1350+400 = 3,050 < 4,500（价值章随阶段删除）
+    expect(sum("solution")).toBe(3_050);
     expect(sum("solution")).toBeLessThanOrEqual(reportMaxChars("solution"));
   });
 
@@ -260,7 +259,6 @@ describe("建设工作方案提示词（变更表 #137）", () => {
     expect(chapterProseBudget("construction", "path")).toBe(700);
     expect(chapterProseBudget("construction", "schedule")).toBe(200);
     expect(chapterProseBudget("construction", "safeguards")).toBe(550);
-    expect(chapterProseBudget("construction", "outlook")).toBe(250);
     expect(chapterProseBudget("construction", "不存在的章")).toBe(450);
     // 隔离：解决方案的章 key 在建设方案口径里没有预算 → 兜底
     expect(chapterProseBudget("construction", "status")).toBe(450);

@@ -11,14 +11,14 @@ import type { StageId } from "@scene/contract";
 
 // ─── 阶段常量 ─────────────────────────────────────────────────
 
-/** 全部阶段编号（**现行 0-7**；老 00b 的 0-8 已收窄，门槛并入「认识场景」、交付物为阶段 7） */
-export const STAGES: readonly StageId[] = [0, 1, 2, 3, 4, 5, 6, 7];
+/** 全部阶段编号（**现行 0-5**；老 00b 的 0-8、价值验证阶段均已删除，交付物为阶段 5） */
+export const STAGES: readonly StageId[] = [0, 1, 2, 3, 4, 5];
 
 /** 首阶段 */
 export const FIRST_STAGE: StageId = 0;
 
-/** 终态阶段（阶段 7 · 最终交付物，无后继） */
-export const LAST_STAGE: StageId = 7;
+/** 终态阶段（阶段 5 · 最终交付物，无后继） */
+export const LAST_STAGE: StageId = 5;
 
 // ─── 资料失效标记类型 ─────────────────────────────────────────
 
@@ -38,7 +38,7 @@ export interface StaleMark {
 
 // ─── 内部工具 ─────────────────────────────────────────────────
 
-/** 校验阶段编号在 0-7 范围内（JS 边界的参数防御） */
+/** 校验阶段编号在 0-5 范围内（JS 边界的参数防御） */
 function assertValidStage(stage: number, label: string): asserts stage is StageId {
   if (!Number.isInteger(stage) || stage < FIRST_STAGE || stage > LAST_STAGE) {
     throw new Error(`${label}非法：${stage}（合法范围 ${FIRST_STAGE}-${LAST_STAGE}）`);
@@ -55,13 +55,13 @@ function assertNonBlank(value: string, label: string): void {
 // ─── 公共接口 ─────────────────────────────────────────────────
 
 /**
- * 推进到下一阶段（0→1→…→7）
+ * 推进到下一阶段（0→1→…→5）
  *
  * 仅做状态迁移计算，不含质量关判定——是否推进由用户决定（核心原则）。
  *
  * @param currentStage - 当前阶段
  * @returns 下一阶段编号
- * @throws 当前阶段为 7（终态）或编号非法时抛错
+ * @throws 当前阶段为 5（终态）或编号非法时抛错
  */
 export function advance(currentStage: StageId): StageId {
   assertValidStage(currentStage, "当前阶段");
@@ -72,10 +72,10 @@ export function advance(currentStage: StageId): StageId {
 }
 
 /**
- * 是否可推进（阶段 7 是终态）
+ * 是否可推进（阶段 5 是终态）
  *
  * @param currentStage - 当前阶段
- * @returns 0-7 返回 true；8 返回 false
+ * @returns 0-5 返回 true
  */
 export function canAdvance(currentStage: StageId): boolean {
   assertValidStage(currentStage, "当前阶段");
@@ -223,8 +223,8 @@ export const TABLE_DEPENDENCIES: Record<string, StageId[]> = {
   "M2": [3, 4], // 规格书 → 阶段3 选型对照、阶段4 选型
   "M3": [1, 3], // 能力清单 → 阶段1 环节角色、阶段3 表4-1 能力底账
   "M4": [1, 3], // 边界声明 → 阶段1 环节能否参与、阶段3 我方参与地图
-  "M5": [4, 5], // 已知限制 → 阶段4 实施风险、阶段5 验收约束
-  "O2": [3, 6], // 已交付案例 → 阶段3 能力证明、阶段6 对外材料
+  "M5": [4], // 已知限制 → 阶段4 实施风险
+  "O2": [3, 5], // 已交付案例 → 阶段3 能力证明、阶段5 交付物
   "O3": [4], // 价格与授权 → 阶段4 定价
 
   // 阶段 1
@@ -242,11 +242,6 @@ export const TABLE_DEPENDENCIES: Record<string, StageId[]> = {
   "表4-3": [4], // 匹配矩阵 → 阶段4 方案范围
   "表4-4": [4], // 优先级矩阵 → 阶段4 先做哪个细分
 
-  // 阶段 4
-  "表5-6": [5, 6], // 竞品价格对照 → 阶段5 价值测算、阶段6 对外材料
-
-  // 阶段 5
-  "表6-3": [6], // 投资回报估算 → 阶段6 内部报告结论
 };
 /**
  * 根据表名反查受影响的阶段列表

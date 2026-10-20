@@ -82,9 +82,10 @@ describe("streamEvents 收尾", () => {
     expect(raw.writableEnded).toBe(true);
   });
 
-  it("阶段编号解析：只认契约里的 0-7", () => {
+  it("阶段编号解析：只认契约里的 0-5", () => {
     expect(parseStage("0")).toBe(0);
-    expect(parseStage("7")).toBe(7);
+    expect(parseStage("5")).toBe(5);
+    expect(parseStage("6")).toBeUndefined();
     expect(parseStage("8")).toBeUndefined();
     expect(parseStage("-1")).toBeUndefined();
     expect(parseStage("abc")).toBeUndefined();

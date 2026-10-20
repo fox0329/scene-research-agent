@@ -84,7 +84,7 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
 
   /* 当前选中的表（表1-1 由常驻区负责，不参与切换）；传了 tables 时只渲染本步表集 */
   const stageTables = useMemo(() => {
-    const code = (stage >= 7 ? 6 : stage) as InfoStageId;
+    const code = (stage >= 6 ? 5 : stage) as InfoStageId;
     const all = tablesOfStage(code).filter((t) => t.code !== "表1-1");
     return tables ? all.filter((t) => tables.includes(t.code)) : all;
   }, [stage, tables]);

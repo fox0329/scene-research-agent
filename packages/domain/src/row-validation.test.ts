@@ -155,16 +155,13 @@ describe("row-validation — 来源与证据归属", () => {
 
   it("AI提取 / AI推断 是合法来源标记", () => {
     for (const st of ["AI提取", "AI推断"]) {
-      const v = validateIncomingRows(5, [
-        ok("表6-1", {
-          benefit: "省电",
-          metric: "kWh",
-          baseline: "100",
-          expected: "80",
-          evidence_level: "C",
-          user_feeling: "电费少了",
-          how_to_measure: "读电表",
-          metric_type: "成本",
+      const v = validateIncomingRows(4, [
+        ok("表5-3", {
+          item: "边缘采集",
+          content: "装网关，接 28 台设备",
+          window: "第 1–2 周",
+          man_days: "10",
+          rollback: "拆除网关，1 天恢复",
         }, { source_type: st }),
       ]);
       expect(v.some((x) => x.kind === "自称用户确认")).toBe(false);
@@ -174,16 +171,13 @@ describe("row-validation — 来源与证据归属", () => {
 
 describe("row-validation — 汇总", () => {
   it("全通过时概览文案明确", () => {
-    const v = validateIncomingRows(5, [
-      ok("表6-1", {
-        benefit: "省电",
-        metric: "kWh",
-        baseline: "100",
-        expected: "80",
-        evidence_level: "C",
-        user_feeling: "电费少了",
-          how_to_measure: "读电表",
-          metric_type: "成本",
+    const v = validateIncomingRows(4, [
+      ok("表5-3", {
+        item: "边缘采集",
+        content: "装网关，接 28 台设备",
+        window: "第 1–2 周",
+        man_days: "10",
+        rollback: "拆除网关，1 天恢复",
       }),
     ]);
     expect(v).toEqual([]);
@@ -191,18 +185,15 @@ describe("row-validation — 汇总", () => {
   });
 
   it("核实两列缺一不可（v1.27：每条信息都要带核实判定）", () => {
-    const v = validateIncomingRows(5, [
+    const v = validateIncomingRows(4, [
       {
-        table_code: "表6-1",
+        table_code: "表5-3",
         fields: {
-          benefit: "省电",
-          metric: "kWh",
-          baseline: "100",
-          expected: "80",
-          evidence_level: "C",
-          user_feeling: "电费少了",
-          how_to_measure: "读电表",
-          metric_type: "成本",
+          item: "边缘采集",
+          content: "装网关，接 28 台设备",
+          window: "第 1–2 周",
+          man_days: "10",
+          rollback: "拆除网关，1 天恢复",
         },
       },
     ]);
@@ -213,7 +204,7 @@ describe("row-validation — 汇总", () => {
 
   it("把核实推给读者（待核实／建议抽查／请用户确认）→ 核实推诿", () => {
     const punt = (text: string) =>
-      validateIncomingRows(5, [ok("表6-1", { benefit: "省电", verification: text })]).find(
+      validateIncomingRows(4, [ok("表5-3", { item: "边缘采集", verification: text })]).find(
         (x) => x.kind === "核实推诿",
       );
     expect(punt("本客户基线未提供，待核实")?.kind).toBe("核实推诿");

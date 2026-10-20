@@ -10,7 +10,6 @@
  *  - 来源真实性：引用的出处必须能在材料库里查到，且该页确实有这句话（`SourceLookup` 注入，
  *    实现见 `@scene/infra` 的 source-index —— 用 trigram 全文索引真查，不是让模型自述）
  *  - 表述准确/客观：绝对化措辞、把行业推断写成本客户事实
- *  - 有价值：价值类表必须有可测指标 + 本客户基线，否则"价值不可验证"
  *  - 兜底：三轮自检后模型仍没改掉的硬伤，按实降级（不许继续挂「已核实」）
  *
  * 模型侧的"三问×3 轮"在应用层（`apps/server/src/postcheck-pass.ts`）跑，本文件给它提供
@@ -162,47 +161,6 @@ const CUSTOMER_FACT_PATTERNS: readonly RegExp[] = [
   /该客户(已|已经|均|都)/,
   /本项目(已|已经)(部署|上线|采用|具备|完成)/,
 ];
-
-/**
- * 价值类表：**从列结构推导**，不手写表号
- *
- * 教训（v1.28 实跑）：第一版把手写的 `["表6-1","表6-4"]` 当价值表，而表6-4（试点与验收）
- * 根本没有「指标/基线」列——于是 20 行全部被扣上"价值不可验证"，模型照着假问题白改了一批内容。
- * 判据必须是"这张表**有没有**这两列"，而不是"我记不记得它是价值表"。
- */
-function isValueTable(code: string): boolean {
-  const t = TABLES_BY_CODE[code];
-  if (!t) return false;
-  const keys = new Set(t.columns.map((c) => c.key));
-  return keys.has("metric") && keys.has("baseline");
-}
-
-/** 基线列的"空"值：这些等于没有基线 */
-const EMPTY_BASELINE: readonly string[] = ["", "未提供", "暂无", "无", "未给出", "未知", "行业通例", "-", "—"];
-
-/**
- * "本客户基线拿不到"的补白写法：出现这些词就等于没有真基线
- *
- * 为什么不能只比 `EMPTY_BASELINE`：真机上还有「行业通例：目标达成率提升 20%，
- * 本客户实测值未提供」这种——耍个花招补一句"未提供"就让判据失效，等于形同虚设。
- * 括注先剥掉（`未提供（本客户材料未含）` → `未提供`），剩下的正文里出现这些词同样算没基线。
- */
-const NO_BASELINE_PATTERNS: readonly RegExp[] = [/未提供/, /未给出/, /暂无/, /待补/];
-
-/**
- * 这一行有没有**本客户基线**（G-R8「价值主张必须有指标 + 本客户基线」的唯一判据）
- *
- * 一处判据三处共用，避免口径漂移：① 自检「价值不可验证」；② 报告「价值」章导语的
- * 「其中 N 条有基线」（不许把"未提供"数成有基线）；③ 完整度「无基线行强制标 C 级假设」
- * 说明的是同一件事。**按列 key 取值，与列摆在中栏还是右栏无关**（变更表 #153）。
- */
-export function hasCustomerBaseline(value: unknown): boolean {
-  const text = String(value ?? "").trim();
-  if (text === "") return false;
-  const bare = text.replace(/[（(][^）)]*[）)]/g, "").trim();
-  if (EMPTY_BASELINE.includes(bare)) return false;
-  return !NO_BASELINE_PATTERNS.some((re) => re.test(bare));
-}
 
 /** 判为"行情类"的核实结论：这些结论下行文不能写成本客户事实 */
 const GENERAL_VERDICTS: readonly string[] = ["行业通例", "无法核实", "未核", ""];
@@ -886,32 +844,8 @@ export function runDeterministicPostcheck(input: PostcheckInput): PostcheckFindi
         severity: "存疑",
       });
     }
-
-    // ⑥ 有价值：价值类表的收益必须"可验证"（有指标、有本客户基线）
-    if (isValueTable(r.tableCode)) {
-      const metric = String(r.row["metric"] ?? "").trim();
-      const baseline = String(r.row["baseline"] ?? "").trim();
-      const missing: string[] = [];
-      if (metric === "") missing.push("指标");
-      // 「未提供（本客户材料未含）」这类**说明性写法**同样是"没有本客户基线"：
-      // 模型只要在基线上补一句"未提供"就能让检查通过的话，这条判据就形同虚设——
-      // 用户要看到的恰恰是"这条收益没有本客户基线，所以不可验证"。
-      // 判据统一走 `hasCustomerBaseline`（与报告导语、完整度规则同源）。
-      if (!hasCustomerBaseline(baseline)) {
-        missing.push(`基线（现为「${baseline || "空"}」）`);
-      }
-      if (missing.length > 0) {
-        findings.push({
-          tableCode: r.tableCode,
-          rowId: r.rowId,
-          label: r.label,
-          kind: "价值不可验证",
-          detail: `价值主张缺 ${missing.join("、")}——没有本客户基线的收益无法验证有没有价值`,
-          severity: "存疑",
-        });
-      }
-    }
   }
+
   /* 输出门限：整表跑一遍（去重/覆盖/合计/跨表这类规则需要全表才判得准）。
      门槛三问、约束判定、行无价值已有专门 kind，这里跳过以免同一问题报两遍。 */
   const alreadyCovered = /门槛三问|可执行|行必须有实质内容/;

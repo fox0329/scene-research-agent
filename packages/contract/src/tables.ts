@@ -18,7 +18,7 @@
 // ─── 阶段（8 阶段方法论骨架，0-7） ──────────────────────────
 
 /** 阶段编号（0-7）：阶段 0 材料入库 → 阶段 7 最终交付物 */
-export type InfoStageId = 0 | 1 | 2 | 3 | 4 | 5 | 6;
+export type InfoStageId = 0 | 1 | 2 | 3 | 4 | 5;
 
 /** 表级别：决定中栏默认状态与右栏归属（**不再表示"是否需要决策"**） */
 export type TableTier = "重要" | "支撑" | "过程";
@@ -270,19 +270,11 @@ export const STAGE_DEFS: readonly StageDef[] = [
   },
   {
     id: 5,
-    name: "价值与验证",
-    producedBy: "模型分析",
-    goal: "收益对应指标、怎么测、基线、预期改善、用户感受、试点设计与验收口径",
-    tableCodes: ["表6-1", "表6-4"],
-    summaryTitle: "⑥ 价值与验证总结",
-  },
-  {
-    id: 6,
     name: "最终交付物",
     producedBy: "系统组装",
     goal: "《<场景>解决方案》+《<场景>建设工作方案》（文档产出，非表）",
     tableCodes: [],
-    summaryTitle: "⑦ 交付说明",
+    summaryTitle: "⑥ 交付说明",
   },
 ];
 
@@ -561,7 +553,7 @@ const TABLES_STAGE_1: readonly TableDef[] = [
       "其余 5 项由智能体从业务角度写出；买方/采购类应带来源",
       "允许抽象、可留「待定」——不阻断后续阶段",
     ],
-    consumedBy: [2, 3, 4, 5, 6, 6],
+    consumedBy: [2, 3, 4, 5],
   },
   {
     code: "表1-3",
@@ -588,9 +580,9 @@ const TABLES_STAGE_1: readonly TableDef[] = [
       "每行必须过后面的门槛三问：否决者是外部主体 + 判据有可核验凭据 + 不满足就出局（写出「否则…」的后果）",
       "criteria 含具体等级/标准号/数值（禁『较高』『相关』）",
       "只针对本场景能问到的事实；没有材料依据的门槛照行业通例写，不猜本客户的合规结论",
-      "经不起三问的（技术难度、一次性成本、环境约束、内部态度）不许进本表——按性质归表2-5/表3-5/表6-1/表4-2",
+      "经不起三问的（技术难度、一次性成本、环境约束、内部态度）不许进本表——按性质归表2-5/表3-5/表4-2",
     ],
-    consumedBy: [4, 6],
+    consumedBy: [4, 5],
   },
   {
     code: "表2-2",
@@ -728,7 +720,7 @@ const TABLES_STAGE_2: readonly TableDef[] = [
       "代表企业 ≥2 家具名；出现「…」「等」视为未完成",
       "与表3-5 的「上游环节」不得逐字同名（一个是价值链段，一个是我方采购件）",
     ],
-    consumedBy: [6],
+    consumedBy: [5],
   },
   {
     code: "表3-2",
@@ -760,7 +752,7 @@ const TABLES_STAGE_2: readonly TableDef[] = [
       "price_band 数字区间 + 单位 + 口径；「未获取」≤2 行，右栏写缺哪类样本",
       "fit_for ≤40 字且含一个数字（产线数/预算/规模）",
     ],
-    consumedBy: [3, 6],
+    consumedBy: [3, 5],
   },
   {
     code: "表3-3",
@@ -861,7 +853,7 @@ const TABLES_STAGE_2: readonly TableDef[] = [
       "右栏 consequence 必填且含数字 + 单位；cross_validation 非空",
       "缺口来自同行坑时，右栏写 symptom/root_cause（坑不再单独成表）",
     ],
-    consumedBy: [3, 6],
+    consumedBy: [3, 5],
   },
 ];
 
@@ -896,7 +888,7 @@ const TABLES_STAGE_3: readonly TableDef[] = [
       "≥4 个环节（含仍在用人工的环节）；环节名用动宾短语且唯一，生成后冻结",
       "谁在做写岗位；用什么写系统/设备/表单名（含「纸质台账」）",
       "现状问题写「哪一步、错/慢/漏多少」；没有明确问题写「未发现明确问题」",],
-    consumedBy: [4, 6],
+    consumedBy: [4, 5],
   },
   {
     code: "表4-1",
@@ -919,7 +911,7 @@ const TABLES_STAGE_3: readonly TableDef[] = [
       "限制绑定型号/产品线（CT15 无 NPU；AI Box 6TOPS）；无限制写「无已知限制（依据 …）」",],
     /* 客户现状表已移到本阶段（2026-10-14）：现成现状，再谈能不能满足 */
     dependsOnTables: ["表1-2"],
-    consumedBy: [6],
+    consumedBy: [5],
   },
   {
     code: "表4-2",
@@ -949,7 +941,7 @@ const TABLES_STAGE_3: readonly TableDef[] = [
       "依据写「【表4-1|能力项】+ 事实」，不写行业套话、不复述结论；缺算法与缺硬件分开写",],
     /* 客户现状表已移到本阶段（2026-10-14）：现成现状，再谈能不能满足 */
     dependsOnTables: ["表1-2"],
-    consumedBy: [4, 5, 6],
+    consumedBy: [4, 5],
   },
   {
     code: "表4-3",
@@ -973,7 +965,7 @@ const TABLES_STAGE_3: readonly TableDef[] = [
       "gap_ref 逐字复述表3-8 缺口原文（写编号不算）",
       "需补齐写补什么 + 人天；不能做写转分包或弃标建议；能力依据（右栏）写【表4-1|能力项】",],
     dependsOnTables: ["表4-1", "表1-2"],
-    consumedBy: [6],
+    consumedBy: [5],
   },
   {
     code: "表4-4",
@@ -1014,7 +1006,7 @@ const TABLES_STAGE_3: readonly TableDef[] = [
     ],
     /* 跨阶段的表3-2/表3-8 通过上游上下文注入，不写进 dependsOnTables（同阶段依赖才写这里） */
     dependsOnTables: ["表1-2"],
-    consumedBy: [6],
+    consumedBy: [5],
   },
 ];
 
@@ -1042,7 +1034,7 @@ const TABLES_STAGE_4: readonly TableDef[] = [
       "架构块一行一层；接口块一行一接口（接口名称/类型/协议 + 对端系统 + 新增/改造/沿用）",
       "边界声明一行一项（我方不做X／客户负责Y／第三方负责Z），不写「以实际为准」",
       "本表不写人天（归表5-3）、不写 SLA（归表5-4）",],
-    consumedBy: [6],
+    consumedBy: [5],
   },
   {
     code: "表5-3",
@@ -1065,7 +1057,7 @@ const TABLES_STAGE_4: readonly TableDef[] = [
       "人天给 ≥1 的整数，不含折扣；回退写清回退点 + 触发条件 + 耗时",
       "表1-3 每道门槛须有一行「门槛应对：<门槛名>」，写拿证路径/周期/责任人，或明写放弃",],
     dependsOnTables: ["表5-1"],
-    consumedBy: [6],
+    consumedBy: [5],
   },
   {
     code: "表5-4",
@@ -1085,72 +1077,11 @@ const TABLES_STAGE_4: readonly TableDef[] = [
       "SLA 给三项：响应 ≤X 小时、恢复 ≤Y 小时、可用率 ≥Z%（或到场 ≤W 小时）",
       "SLA 写计量口径：起算时点（报障/工单受理）、服务时段（7×24 或 5×8）、超时处置",
       "只写交付物与服务承诺，不写实施步骤（归表5-3）",],
-    consumedBy: [6],
+    consumedBy: [5],
   },
 ];
 
-// ─── 阶段 5 · 价值与验证（2 张） ────────────────────────
-
-const TABLES_STAGE_5: readonly TableDef[] = [
-  {
-    code: "表6-1",
-    name: "价值与指标",
-    stage: 5,
-    tier: "重要",
-    rowUnit: "一项收益/指标",
-    purpose: "收益怎么测、基线在哪",
-    columns: [
-      mid("benefit", "收益", { required: true, type: "longText", truncate: TRUNCATE_DEFAULT }),
-      mid("metric", "对应指标", { required: true }),
-      /* 基线归**右栏补充说明**（变更表 #153，用户选定）：客户基线在调研阶段通常拿不到，
-         真机两个项目 19 行里 19 行都是「未提供」——一个 required 的长文本列白占中栏。
-         挪位后三件事**都不受影响**（判据一律按列 key `baseline` 读，与栏位无关）：
-           ① G-R8「价值主张必须有指标 + 本客户基线」的落点（`postcheck.ts` 按 key 取值）；
-           ② 完整度「baseline/how_to_measure/user_feeling 非空」与「无基线行强制标 C 级假设」
-              （`completeness.ts` 按列定义判必填；规则原文见本表 completeness）；
-           ③ 报告「价值」章的映射列（`REPORT_CHAPTERS` 的 `cols` 含 baseline，装配按 key 取——
-              见 `packages/infra/src/md-export.ts` 的 `renderBlock`：显式列出的 key 从**全部列**里取，
-              不按中栏/右栏过滤，否则挪到右栏的报告就再也看不到基线）。
-         `required` 保留：拿不到就如实写「未提供（本客户材料未含）」并标 C 级假设，不许填行情数字冒充。
-         不传 `truncate`：它只服务中栏单行单元格的截断（`TableColumn.truncate` 的定义），
-         右栏是「可增高多行编辑器」，长文本全文显示，截断在这里没有落点。 */
-      sup("baseline", "基线", { required: true, type: "longText" }),
-      mid("expected", "预期改善", { required: true, type: "longText", truncate: TRUNCATE_DEFAULT }),
-      mid("how_to_measure", "怎么测", { required: true, type: "longText", truncate: TRUNCATE_DEFAULT }),
-      mid("user_feeling", "用户感受", { required: true, type: "longText", truncate: TRUNCATE_DEFAULT, note: "必须用客户语言" }),
-      sup("evidence_level", "证据级", { required: true, enum: "evidence_level" }),
-      sup("metric_type", "指标类型", { required: true }),
-      sup("duration", "测多久"),
-      sup("auto_collect", "自动采集方案"),
-      sup("source", "来源", { required: true }),
-    ],
-    completeness: ["≥2 条", "baseline/how_to_measure/user_feeling 非空", "无基线行强制标 C 级假设",
-      "预期改善给数值 + 单位 + 方向，与基线同单位同口径（不许「提升30%」与「60分到80分」混用）",
-      "基线缺失写「未提供（本客户材料未含）」，预期改为「目标值（假设，待基线校准）」，证据级降为 C",
-      "指标须落到取数系统；取不到的写「人工统计，月度」；用户感受写客户原话或角色+场景",],
-    consumedBy: [6],
-  },
-  {
-    code: "表6-4",
-    name: "试点与验收",
-    stage: 5,
-    tier: "重要",
-    rowUnit: "一个验证要素",
-    purpose: "怎么验证、算不算成功、怎么验收",
-    columns: [
-      mid("kind", "要素类型", { required: true, enum: "pilot_kind" }),
-      mid("content", "内容", { required: true, type: "longText", truncate: TRUNCATE_DEFAULT }),
-      sup("source", "来源"),
-    ],
-    completeness: ["kind 覆盖『成功判据』与『验收口径』两类",
-      "六类各一行：试点范围（产线/点位数/用户数）、试点时长、成功判据（指标+阈值+取数+判定人）、风险、验收口径（验收物+签字方+不通过怎么办）、合同条款",
-      "成功判据一律「指标 + 阈值 + 怎么取数 + 谁签字」，不许「运行稳定」「客户满意」",
-      "验收口径逐条对表1-3 门槛与表3-7 坑：拿证/指标写进验收物清单",],
-    consumedBy: [6],
-  },
-];
-
-// ─── 35 张表总表（阶段 0–6） ───────────────────────────────────────────
+// ─── 全部信息表（阶段 0–5） ───────────────────────────────────────────
 
 /**
  * 核实两列：**每张表每一行**都要回答「这条信息准确吗、客观吗、为什么」
@@ -1186,7 +1117,6 @@ export const TABLES: readonly TableDef[] = [
   ...TABLES_STAGE_2,
   ...TABLES_STAGE_3,
   ...TABLES_STAGE_4,
-  ...TABLES_STAGE_5,
 ].map((t) =>
   // 表1-1（场景概述）例外：用户定调 v1.35（2026-10-09）「表1-1 只有项和内容两列，不需要核实」。
   // 它是固定 6 行的画像概览，不是用来记录"这条信息核实过没有"的分析表；
@@ -1221,15 +1151,6 @@ export const COVERAGE_RULES: Readonly<Record<string, readonly CoverageRule[]>> =
   "表3-5": [{ kind: "min-rows", min: 3, label: "≥3 个我方采购/依赖的上游环节" }],
   "表3-8": [{ kind: "min-rows", min: 3, label: "需求缺口 ≥3 条" }],
   "表4-4": [{ kind: "min-rows", min: 2, label: "细分场景 ≥2 个" }],
-  "表6-1": [{ kind: "min-rows", min: 2, label: "价值与指标 ≥2 条" }],
-  "表6-4": [
-    {
-      kind: "enum-complete",
-      column: "kind",
-      values: ["成功判据", "验收口径"],
-      label: "覆盖『成功判据』与『验收口径』两类",
-    },
-  ],
 };
 
 // ─── 派生助手 ──────────────────────────────────────────────
@@ -1441,7 +1362,7 @@ export function registryIssues(): readonly string[] {
   }
 
   // 最后一步（交付物）无表：它是系统组装，不产信息表
-  if (tablesOfStage(6).length !== 0) issues.push("交付物阶段（6）不应有信息表（它是文档组装）");
+  if (tablesOfStage(5).length !== 0) issues.push("交付物阶段（5）不应有信息表（它是文档组装）");
 
   // 覆盖度规则只能挂在存在的表上，且列名必须真实存在
   for (const [code, rules] of Object.entries(COVERAGE_RULES)) {
@@ -1608,26 +1529,12 @@ export const REPORT_CHAPTERS: Record<ReportKind, readonly ReportChapter[]> = {
     ],
   },
   {
-    key: "value",
-    label: "价值",
-    /* 用户定稿：章下直接写一张四列价值表（价值 / 现在 / 采用后 / 怎么核），无小节标题 */
-    sections: [
-      { title: "核心价值", keywords: ["价值", "收益"], artifacts: ["value-table"], noHeading: true },
-    ],
-    blocks: [
-      { code: "表6-1", heading: "收益 → 指标 → 基线与预期", as: "table", cols: ["benefit", "metric", "baseline", "expected", "how_to_measure"] },
-      { code: "表4-4", heading: "先打哪个细分、对谁强/弱", as: "table", cols: ["sub_scene", "opponent", "win_loss", "rank"] },
-      { code: "表6-4", heading: "试点与验收", cols: ["kind", "content"] },
-    ],
-  },
-  {
     key: "next",
     label: "下一步",
     sections: [{ title: "步骤与交付物", keywords: ["步骤", "交付物", "计划", "安排"], artifacts: ["table"] }],
     blocks: [
       { code: "表5-3", heading: "实施安排", cols: ["item", "content", "window"] },
       { code: "表5-4", heading: "交付与运维", cols: ["item", "content", "sla"] },
-      { code: "表6-4", heading: "试点与验收", cols: ["kind", "content"] },
     ],
   },
   ],
@@ -1661,7 +1568,6 @@ export const REPORT_CHAPTERS: Record<ReportKind, readonly ReportChapter[]> = {
       ],
       blocks: [
         { code: "表3-8", heading: "要解决的需求（目标要对得上）", cols: ["gap", "who_hurts", "pain_level"] },
-        { code: "表6-1", heading: "收益 → 指标 → 基线与预期", as: "table", cols: ["benefit", "metric", "baseline", "expected"] },
         { code: "表4-4", heading: "哪些细分我们自己能扛", as: "table", cols: ["sub_scene", "opponent", "win_loss"] },
       ],
     },
@@ -1677,8 +1583,7 @@ export const REPORT_CHAPTERS: Record<ReportKind, readonly ReportChapter[]> = {
         { code: "表5-1", heading: "方案架构与接口", cols: ["layer", "components", "interface", "integration", "boundary"] },
         { code: "表4-2", heading: "我方在哪些环节参与、以什么角色", cols: ["link", "our_role", "our_scope"] },
         { code: "表4-3", heading: "需求-能力对照", cols: ["gap_ref", "match", "our_product", "action"] },
-          { code: "表6-1", heading: "收益 → 指标 → 基线与预期", as: "table", cols: ["benefit", "metric", "baseline", "expected"] },
-      ],
+        ],
     },
     {
       key: "path",
@@ -1703,7 +1608,6 @@ export const REPORT_CHAPTERS: Record<ReportKind, readonly ReportChapter[]> = {
       ],
       blocks: [
         { code: "表5-3", heading: "实施安排（阶段与时间窗口）", cols: ["item", "content", "window"] },
-        { code: "表6-4", heading: "试点与验收", cols: ["kind", "content"] },
         { code: "表5-4", heading: "交付与运维", cols: ["item", "content", "sla"] },
       ],
     },
@@ -1719,15 +1623,6 @@ export const REPORT_CHAPTERS: Record<ReportKind, readonly ReportChapter[]> = {
       blocks: [
         { code: "表4-4", heading: "哪些细分要借外力", as: "table", cols: ["sub_scene", "opponent", "win_loss", "entry_action"] },
         { code: "表5-4", heading: "交付与运维", cols: ["item", "content", "sla"] },
-      ],
-    },
-    {
-      key: "outlook",
-      label: "监管协同展望",
-      /* 章下直接写 1–2 段（参照件如此），不再套一个与章同名的小节 */
-      sections: [],
-      blocks: [
-        { code: "表6-4", heading: "试点与验收", cols: ["kind", "content"] },
       ],
     },
   ],

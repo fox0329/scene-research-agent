@@ -183,7 +183,7 @@ export function findDanglingConversations(
 
 // ─── 内部工具 ──────────────────────────────────────────────
 
-const STAGE_NUMBERS: readonly StageId[] = [0, 1, 2, 3, 4, 5, 6, 7];
+const STAGE_NUMBERS: readonly StageId[] = [0, 1, 2, 3, 4, 5];
 
 function recomputeHint(stages: StageId[]): string {
   if (stages.length === 0) return "";

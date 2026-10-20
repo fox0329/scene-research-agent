@@ -46,7 +46,7 @@ import {
   type ReportKind,
   type StageData,
 } from "@scene/contract";
-import { hasCustomerBaseline, repairProseHeads } from "@scene/domain";
+import { repairProseHeads } from "@scene/domain";
 
 // ─── 覆盖留档 ──────────────────────────────────────────────
 
@@ -265,7 +265,6 @@ const ROW_TEXT: Record<string, (r: Record<string, unknown>) => string> = {
   "表5-1": (r) => `**${cell(r.layer) || cell(r.interface_name)}**：${segs([["组件", truncate(r.components, 50)], ["接口", truncate(r.interface, 40)], ["对接", truncate(r.integration, 40)], ["协议", truncate(r.protocol, 30)], ["边界", truncate(r.boundary, 50)]])}`,
   "表5-3": (r) => `**${cell(r.item)}**：${truncate(r.content, 60)}${segs([["窗口", r.window], ["人天", r.man_days], ["回退", r.rollback]]) ? `（${segs([["窗口", r.window], ["人天", r.man_days], ["回退", r.rollback]])}）` : ""}`,
   "表5-4": (r) => `**${cell(r.item)}**：${truncate(r.content, 60)}${blank(r.sla) ? "" : `（SLA：${truncate(r.sla, 30)}）`}`,
-  "表6-4": (r) => `**${cell(r.kind)}**：${truncate(r.content, 70)}`,
 };
 
 /** 章节导语：由数据算，不写空话 */
@@ -275,17 +274,6 @@ function chapterLead(chapter: ReportChapter, stageData: readonly StageData[]): s
   const pains = valuesOf(stageData, "表1-2", "pain").length;
   const gaps = countRows(stageData, "表3-8");
   const participate = valuesOf(stageData, "表4-2", "our_role");
-  const benefits = countRows(stageData, "表6-1");
-  /**
-   * 有基线的条数按 `hasCustomerBaseline` 算（不是"非空"）
-   *
-   * 真机事实（变更表 #153）：基线列里全是「未提供（本客户材料未含）」这类补白，
-   * 按"非空"数出来是"条条有基线"——把缺口说成了成绩。写"未提供"就必须如实数成没有基线，
-   * 否则这条导语本身就是在编。
-   */
-  const withBaseline = stageData.filter(
-    (r) => r.table_code === "表6-1" && hasCustomerBaseline(r.row["baseline"]),
-  ).length;
   switch (chapter.key) {
     case "status":
       return links > 0
@@ -297,10 +285,6 @@ function chapterLead(chapter: ReportChapter, stageData: readonly StageData[]): s
         : "";
     case "solution":
       return `我方可在 ${participate.length > 0 ? participate.join(" / ") : "待判定"} 的环节参与；下面对照每条需求说明给什么产品、边界在哪。`;
-    case "value":
-      return benefits > 0
-        ? `${benefits} 条收益对应指标已经写清；其中 ${withBaseline} 条有基线。`
-        : "";
     default:
       return "";
   }

@@ -188,7 +188,7 @@ export function collectStageSummaries(
 ): { stage: number; title: string; markdown: string }[] {
   const out: { stage: number; title: string; markdown: string }[] = [];
   for (const def of STAGE_DEFS) {
-    if (def.id === 6) continue; // 交付物阶段本身不是总结内容
+    if (def.id === 5) continue; // 交付物阶段本身不是总结内容
     const r = generateStageSummary(db, scenario, def.id);
     out.push({ stage: def.id, title: def.name, markdown: r.markdown });
   }

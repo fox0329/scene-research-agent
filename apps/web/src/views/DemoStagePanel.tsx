@@ -50,7 +50,7 @@ export const DemoStagePanel: React.FC<DemoStagePanelProps> = ({
   pick,
   onTableChange,
 }) => {
-  const id = (stage >= 7 ? 6 : stage) as InfoStageId;
+  const id = (stage >= 6 ? 5 : stage) as InfoStageId;
   const stageTables = useMemo(() => {
     const all = tablesOfStage(id).filter((t) => t.code !== "表1-1");
     return tables ? all.filter((t) => tables.includes(t.code)) : all;

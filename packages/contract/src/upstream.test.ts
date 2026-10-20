@@ -48,8 +48,8 @@ describe("上游依赖表 UPSTREAM_DEPS", () => {
     }
   });
 
-  it("阶段 3–6 都必须有上游依赖（链路不能是空的）", () => {
-    for (const stage of [3, 4, 5, 6]) {
+  it("阶段 3–5 都必须有上游依赖（链路不能是空的）", () => {
+    for (const stage of [3, 4, 5]) {
       expect(upstreamDepsOf(stage).length, `阶段${stage} 没有上游依赖`).toBeGreaterThan(0);
     }
   });
@@ -59,8 +59,8 @@ describe("上游依赖表 UPSTREAM_DEPS", () => {
     expect(deps.some((d) => d.table === "表3-8")).toBe(true);
   });
 
-  it("阶段 5 必须依赖表4-3：收益只能挂在判「真能解」的缺口上", () => {
-    expect(upstreamDepsOf(5).some((d) => d.table === "表4-3")).toBe(true);
+  it("阶段 5（交付物）必须依赖表4-2：报告要讲清我方以什么角色进场景", () => {
+    expect(upstreamDepsOf(5).some((d) => d.table === "表4-2")).toBe(true);
   });
 
   it("不带冗余元数据列（核实说明/证据等级/来源）", () => {

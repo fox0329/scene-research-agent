@@ -98,35 +98,8 @@ export const UPSTREAM_DEPS: Record<number, readonly UpstreamDep[]> = {
       why: "「为什么现在能打」的具名窗口决定实施排期（表5-3 的「窗口」列）",
     },
   ],
-  // 阶段 5（价值验证）：要证明收益，必须知道「解了哪个缺口」「方案由什么构成」
+  // 阶段 5（交付物）：报告要引前序结论，而不只是表1-1
   5: [
-    {
-      table: "表3-8",
-      columns: ["rank", "gap", "who_hurts", "pain_level"],
-      maxRows: 10,
-      why: "收益必须挂在具体缺口上，不能凭空写「提升效率 30%」",
-    },
-    {
-      table: "表4-3",
-      columns: ["gap_ref", "match", "our_product", "action"],
-      maxRows: 16,
-      why: "只有判「真能解」的缺口才允许写收益预期，否则是过度宣称（G-R2 的 D 类）",
-    },
-    {
-      table: "表5-1",
-      columns: ["layer", "components", "interface", "integration"],
-      maxRows: 14,
-      why: "指标的可测量性取决于方案里有没有采集点（自动采集方案要落在组件上）",
-    },
-    {
-      table: "表5-3",
-      columns: ["item", "content", "window", "man_days"],
-      maxRows: 14,
-      why: "验证周期与试点时长要与实施计划对齐，否则验收口径和排期打架",
-    },
-  ],
-  // 阶段 6（交付物）：报告要引前序结论，而不只是表1-1/表6-1
-  6: [
     {
       table: "表4-2",
       columns: ["link", "our_role", "our_scope"],

@@ -209,7 +209,6 @@ describe("exportDeliverables — <场景>解决方案（变更表 #136）", () =
       "## 现状",
       "## 场景与问题",
       "## 方案",
-      "## 价值",
       "## 下一步",
     ]) {
       expect(report, title).toContain(title);
@@ -226,24 +225,23 @@ describe("exportDeliverables — <场景>解决方案（变更表 #136）", () =
       ...input,
       chapters: [
         { key: "problems", markdown: "模型归纳：问题集中在三处。" },
-        { key: "value", markdown: "模型归纳：价值集中在两处。" },
+        { key: "next", markdown: "模型归纳：下一步三件事。" },
       ],
     }, "solution");
     expect(report).toContain("模型归纳：问题集中在三处。");
-    expect(report).toContain("模型归纳：价值集中在两处。");
+    expect(report).toContain("模型归纳：下一步三件事。");
     // 没给模型的章仍用要点版兜底（章节齐全）
     expect(report).toContain("## 现状");
     expect(report).not.toContain("附录");
   });
 
-  it("正文恰好五章（不再有内部版的「主要风险点」章）", async () => {
+  it("正文恰好四章（不再有内部版的「主要风险点」章）", async () => {
     const report = await exportDeliverables(makeInput(), "solution");
     const h2 = report.match(/^## .*$/gm) ?? [];
     expect(h2.map((h) => h.replace(/^## /, ""))).toEqual([
       "现状",
       "场景与问题",
       "方案",
-      "价值",
       "下一步",
     ]);
     expect(report).not.toContain("附录");
@@ -270,8 +268,8 @@ describe("exportDeliverables — 只渲染中栏（对外口径）", () => {
     const report = await exportDeliverables(makeInput(), "solution");
     // 变更表 #132：一级标题与文件名统一
     expect(report).toMatch(/^# 智慧水务解决方案$/m);
-    // 只有这一份骨架：现状 / 场景与问题 / 方案 / 价值 / 下一步（变更表 #136）
-    for (const t of ["## 现状", "## 场景与问题", "## 方案", "## 价值", "## 下一步"]) {
+    // 只有这一份骨架：现状 / 场景与问题 / 方案 / 下一步（价值验证阶段删除后，价值章一并删除）
+    for (const t of ["## 现状", "## 场景与问题", "## 方案", "## 下一步"]) {
       expect(report, t).toContain(t);
     }
     expect(report).not.toContain("主要风险点");
@@ -312,56 +310,6 @@ describe("exportDeliverables — 只渲染中栏（对外口径）", () => {
     }, "solution");
     // 缺表的章给出「本节信息待补充：表号」，而不是静默留空
     expect(report).toContain("本节信息待补充");
-  });
-});
-
-describe("报告装配 — 表6-1「基线」挪到右栏补充后仍取得到（变更表 #153）", () => {
-  /* 这一组是本次变更的**防回归重点**：基线从 `mid` 改成 `sup` 之后，
-     装配若按「中栏列」过滤（旧实现是 `middleColumns(t).filter(block.cols)`），
-     报告的价值章就会**静默丢掉基线**——用户既看不到基线，也看不到"基线未提供"的如实说明。
-     现在 `renderBlock` 按映射里写明的 key 从**全部列**里取，这里证明取得到。 */
-
-  const baselineCell = "18%"; // makeInput() 里 表6-1 的基线
-
-  it("solution：价值章素材仍带「基线」列，且基线原文出现", () => {
-    const value = reportChapterDigest("solution", makeInput().stageData, { full: true })
-      .find((d) => d.key === "value");
-    expect(value, "价值章必须存在").toBeDefined();
-    expect(value!.markdown).toContain("| 收益 | 对应指标 | 基线 | 预期改善 | 怎么测 |");
-    expect(value!.markdown).toContain(baselineCell);
-  });
-
-  it("construction：两处映射（建设目标 / 建设内容）都取得到基线", () => {
-    const digests = reportChapterDigest("construction", makeConstructionInput().stageData, { full: true });
-    for (const key of ["goals", "content"]) {
-      const chapter = digests.find((d) => d.key === key);
-      expect(chapter, key).toBeDefined();
-      expect(chapter!.markdown, key).toContain("基线");
-      expect(chapter!.markdown, key).toContain(baselineCell);
-    }
-  });
-
-  it("基线写「未提供（本客户材料未含）」时带进报告（如实说明，不是静默丢列）", () => {
-    const input = makeInput();
-    const stageData = input.stageData.map((r) =>
-      r.table_code === "表6-1" ? { ...r, row: { ...r.row, baseline: "未提供（本客户材料未含）" } } : r,
-    );
-    const value = reportChapterDigest("solution", stageData, { full: true }).find((d) => d.key === "value");
-    expect(value!.markdown).toContain("未提供（本客户材料未含）");
-  });
-
-  it("导语按「本客户基线」口径计数：全是未提供就写 0 条（不把缺口说成成绩）", () => {
-    const input = makeInput();
-    const stageData = input.stageData.map((r) =>
-      r.table_code === "表6-1" ? { ...r, row: { ...r.row, baseline: "未提供（本客户材料未含）" } } : r,
-    );
-    const value = reportChapterDigest("solution", stageData).find((d) => d.key === "value");
-    expect(value!.markdown).toContain("1 条收益对应指标已经写清；其中 0 条有基线。");
-  });
-
-  it("有真基线时导语照实计 1 条", () => {
-    const value = reportChapterDigest("solution", makeInput().stageData).find((d) => d.key === "value");
-    expect(value!.markdown).toContain("其中 1 条有基线。");
   });
 });
 
@@ -434,7 +382,7 @@ describe("exportDeliverables — 空数据", () => {
 // ─── 第二份交付物：<场景>建设工作方案（变更表 #137） ──────────
 
 describe("exportDeliverables — <场景>建设工作方案（变更表 #137）", () => {
-  it("reportChapterDigest 按口径出章节：construction 七章，标题来自契约", () => {
+  it("reportChapterDigest 按口径出章节：construction 六章，标题来自契约", () => {
     const digests = reportChapterDigest("construction", makeConstructionInput().stageData);
     expect(digests.map((d) => d.title)).toEqual([
       "建设背景与必要性",
@@ -443,14 +391,12 @@ describe("exportDeliverables — <场景>建设工作方案（变更表 #137）"
       "建设路径",
       "工作安排",
       "保障措施",
-      "监管协同展望",
     ]);
     // 两份口径各是各的章节，不是同一套换个名字
     expect(reportChapterDigest("solution", []).map((d) => d.title)).toEqual([
       "现状",
       "场景与问题",
       "方案",
-      "价值",
       "下一步",
     ]);
   });
@@ -464,7 +410,7 @@ describe("exportDeliverables — <场景>建设工作方案（变更表 #137）"
     expect(report).not.toContain("**生成日期**");
   });
 
-  it("七章齐全且顺序固定，章标题不带「一、」这类手写序号", async () => {
+  it("六章齐全且顺序固定，章标题不带「一、」这类手写序号", async () => {
     const report = await exportDeliverables(makeConstructionInput(), "construction");
     const h2 = (report.match(/^## .*$/gm) ?? []).map((h) => h.replace(/^## /, ""));
     expect(h2).toEqual([
@@ -474,7 +420,6 @@ describe("exportDeliverables — <场景>建设工作方案（变更表 #137）"
       "建设路径",
       "工作安排",
       "保障措施",
-      "监管协同展望",
     ]);
     for (const title of h2) {
       expect(title, title).not.toMatch(/^[一二三四五六七八九十]+[、.．]/);
@@ -489,7 +434,6 @@ describe("exportDeliverables — <场景>建设工作方案（变更表 #137）"
       "## 建设路径",
       "## 工作安排",
       "## 保障措施",
-      "## 监管协同展望",
     ]) {
       expect(report, title).toContain(title);
     }
@@ -596,7 +540,7 @@ describe("exportDeliverables — <场景>建设工作方案（变更表 #137）"
     expect(report).not.toContain("表3-1");
   });
 
-  it("无任何阶段数据也能出七章骨架（逐章待补充，不是空章）", async () => {
+  it("无任何阶段数据也能出六章骨架（逐章待补充，不是空章）", async () => {
     const report = await exportDeliverables({
       scenario: {
         id: "s3",
@@ -611,8 +555,8 @@ describe("exportDeliverables — <场景>建设工作方案（变更表 #137）"
       generatedAt: "2026-09-25",
     }, "construction");
     expect(report).toMatch(/^# 空场景建设工作方案$/m);
-    expect(report).toContain("## 监管协同展望");
-    expect(report.match(/本节信息待补充/g)?.length).toBe(7);
+    expect(report).toContain("## 保障措施");
+    expect(report.match(/本节信息待补充/g)?.length).toBe(6);
     expect(report).not.toContain("（本节内容待补）");
   });
 });

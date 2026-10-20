@@ -28,34 +28,33 @@ describe("表定义注册表 — 完整性", () => {
     expect(registryIssues()).toEqual([]);
   });
 
-  it("共 27 张表，且表号唯一", () => {
-    /* 35 → 34（删 表5-5，变更表 #105）→ 33（删 M6 内部费率，变更表 #106）
-     * → 31（删 表2-7、表3-6 并入表3-4，变更表 #226）→ 31（表2-3 恢复，变更表 #235）
-     * → 28（阶段 2 收成 5 张：删 表3-4/3-7/3-9，变更表 #237） */
-    expect(TABLES).toHaveLength(27);
-    expect(new Set(TABLES.map((t) => t.code)).size).toBe(27);
-    expect(Object.keys(TABLES_BY_CODE)).toHaveLength(27);
+  it("共 25 张表，且表号唯一", () => {
+    /* 35 → 34（删 表5-5）→ 33（删 M6）→ 28（阶段 2 收成 5 张）
+     * → 27（阶段 3 精简）→ 25（删除价值验证阶段：表6-1/表6-4，变更表 #243） */
+    expect(TABLES).toHaveLength(25);
+    expect(new Set(TABLES.map((t) => t.code)).size).toBe(25);
+    expect(Object.keys(TABLES_BY_CODE)).toHaveLength(25);
   });
 
-  it("级别分布：重要 17 / 支撑 9 / 过程 1", () => {
+  it("级别分布：重要 15 / 支撑 9 / 过程 1", () => {
     const count = (tier: string): number => TABLES.filter((t) => t.tier === tier).length;
-    expect(count("重要")).toBe(17);
+    expect(count("重要")).toBe(15);
     expect(count("支撑")).toBe(9);
     expect(count("过程")).toBe(1);
   });
 
-  it("阶段分布：0→6张、1→6张、2→5张、3→5张、4→3张、5→2张、6→0张", () => {
+  it("阶段分布：0→6张、1→6张、2→5张、3→5张、4→3张、5→0张", () => {
     /* 表1-2 属"客户现状"，已从阶段 1 移到阶段 3（用户定调 2026-10-14）
      * 表2-7 交付与运维现状已删除（变更表 #226，用户定调「没价值的直接删」） */
-    const dist = [0, 1, 2, 3, 4, 5, 6].map((s) => tablesOfStage(s as 0).length);
-    expect(dist).toEqual([6, 6, 5, 5, 3, 2, 0]);
+    const dist = [0, 1, 2, 3, 4, 5].map((s) => tablesOfStage(s as 0).length);
+    expect(dist).toEqual([6, 6, 5, 5, 3, 0]);
   });
 
   it("阶段定义的 tableCodes 与实际表一致（含交付物阶段无表）", () => {
     for (const s of STAGE_DEFS) {
       expect(tablesOfStage(s.id).map((t) => t.code).sort()).toEqual([...s.tableCodes].sort());
     }
-    expect(stageDef(6).tableCodes).toEqual([]);
+    expect(stageDef(5).tableCodes).toEqual([]);
   });
 });
 
@@ -360,51 +359,7 @@ describe("dependsOnTables — 本步内的真实依赖（按表并发的调度�
   });
 });
 
-describe("表6-1 价值与指标 — 基线归右栏补充说明（变更表 #153）", () => {
-  const t = tableDef("表6-1");
-
-  it("基线是右栏补充列：中栏只剩 5 列；key / 表头 / 必填 / 长文本都不许变", () => {
-    /* 为什么挪：真机两个项目 19 行里 19 行的基线都是「未提供」——required 的长文本白占中栏一列。
-       key `baseline` 不许改：章节映射、完整度规则、PPT 与报告都按这个名字取。 */
-    expect(middleColumns(t).map((c) => c.key)).toEqual([
-      "benefit",
-      "metric",
-      "expected",
-      "how_to_measure",
-      "user_feeling",
-    ]);
-    expect(middleColumns(t).map((c) => c.key)).not.toContain("baseline");
-    expect(supplementColumns(t).map((c) => c.key)).toContain("baseline");
-    const baseline = t.columns.find((c) => c.key === "baseline");
-    expect(baseline, "baseline 列必须还在（只是换栏位）").toBeDefined();
-    expect(baseline?.label).toBe("基线");
-    expect(baseline?.slot).toBe("右栏补充");
-    expect(baseline?.required, "仍是必填：拿不到就如实写「未提供」并降 C 级假设").toBe(true);
-    expect(baseline?.type).toBe("longText");
-  });
-
-  it("完整度两条规则原文不变（baseline 非空 / 无基线行强制标 C 级假设）", () => {
-    expect(t.completeness).toContain("baseline/how_to_measure/user_feeling 非空");
-    expect(t.completeness).toContain("无基线行强制标 C 级假设");
-  });
-
-  it("章节映射把 baseline 列在表里（solution 一处 / construction 两处），且两处都取得到", () => {
-    const hits: Array<{ kind: string; chapter: string; cols: readonly string[] }> = [];
-    for (const kind of ["solution", "construction"] as const) {
-      for (const chapter of reportChapters(kind)) {
-        for (const b of chapter.blocks) {
-          if (b.code === "表6-1" && b.cols) hits.push({ kind, chapter: chapter.key, cols: b.cols });
-        }
-      }
-    }
-    expect(hits.map((h) => `${h.kind}/${h.chapter}`)).toEqual([
-      "solution/value",
-      "construction/goals",
-      "construction/content",
-    ]);
-    for (const h of hits) expect(h.cols, `${h.kind}/${h.chapter}`).toContain("baseline");
-  });
-
+describe("章节映射与表定义一致", () => {
   it("所有章节映射声明的列都能在表里解到（含右栏补充列）——否则报告会静默丢列", () => {
     /* 防回归（变更表 #153）：装配层 `renderBlock` 按映射里显式写明的 key 取列（不按中栏/右栏过滤）。
        这条用例守住"映射里写的 key 一定存在于表定义"，任何一侧改坏都会在这里被点名。 */

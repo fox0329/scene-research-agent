@@ -62,7 +62,7 @@ function kindsOf(kind: ReportKind, markdown: string): string[] {
 }
 
 describe("报告确定性校验（变更表 #112 / #113）：solution 口径", () => {
-  it("章节齐 + 方案构件齐 → 通过（五章：现状 / 场景与问题 / 方案 / 价值 / 下一步）", () => {
+  it("章节齐 + 方案构件齐 → 通过（四章：现状 / 场景与问题 / 方案 / 下一步）", () => {
     const r = checkReport("solution", goodReport("solution"));
     expect(r.ok).toBe(true);
     expect(r.kind).toBe("solution");
@@ -71,13 +71,12 @@ describe("报告确定性校验（变更表 #112 / #113）：solution 口径", (
       "现状",
       "场景与问题",
       "方案",
-      "价值",
       "下一步",
     ]);
   });
 
   it("缺章是硬伤（模型漏写一章不能就这么交付）", () => {
-    const r = checkReport("solution", withoutChapter("solution", "价值"));
+    const r = checkReport("solution", withoutChapter("solution", "方案"));
     expect(r.ok).toBe(false);
     expect(r.violations.some((v) => v.kind === "缺章" && v.hard)).toBe(true);
   });
@@ -157,24 +156,6 @@ describe("报告确定性校验（变更表 #112 / #113）：solution 口径", (
     expect(v).toBeUndefined();
   });
 
-  it("价值章逐条写「待补/未提供」→ 硬伤（那是缺口清单，不是价值）", () => {
-    const bad = goodReport("solution")
-      .replace("| 预约时间与就绪时间戳差 |", "| 本客户基线未提供 |")
-      .replace("| 按月比对预约与实际通电 |", "| 本客户基线未提供 |")
-      .replace("| 工单上门次数对比 |", "| 本客户基线未提供 |");
-    const v = checkReport("solution", bad).violations.find((x) => x.kind === "价值写成缺口清单");
-    expect(v?.hard).toBe(true);
-  });
-
-  it("价值章只在章末交代一次基线 → 不算缺口清单", () => {
-    const ok = goodReport("solution").replace(
-      "价值一 ……度量口径：单次巡检人天。",
-      "价值一：采用后现场巡检减少。现在：靠人工巡检。（怎么核：巡检人天）\n" +
-        "本客户基线未提供，以上为行业通例量级。",
-    );
-    expect(kindsOf("solution", ok)).not.toContain("价值写成缺口清单");
-  });
-
   it("篇幅不足只提示，不当硬伤", () => {
     const v = checkReport("solution", goodReport("solution")).violations.find(
       (x) => x.kind === "篇幅不足",
@@ -189,12 +170,12 @@ describe("报告确定性校验（变更表 #112 / #113）：solution 口径", (
 });
 
 describe("建设工作方案口径（变更表 #137）", () => {
-  /** 七章：建设背景与必要性 / 建设目标与思路 / 建设内容 / 建设路径 / 工作安排 / 保障措施 / 监管协同展望 */
-  it("七章齐 + 构件齐 → 通过", () => {
+  /** 六章：建设背景与必要性 / 建设目标与思路 / 建设内容 / 建设路径 / 工作安排 / 保障措施 */
+  it("六章齐 + 构件齐 → 通过", () => {
     const r = checkReport("construction", goodReport("construction"));
     expect(r.ok).toBe(true);
     expect(r.kind).toBe("construction");
-    expect(r.chapters.length).toBe(7);
+    expect(r.chapters.length).toBe(6);
     expect(reportChapters("construction").map((c) => c.label)).toEqual([
       "建设背景与必要性",
       "建设目标与思路",
@@ -202,7 +183,6 @@ describe("建设工作方案口径（变更表 #137）", () => {
       "建设路径",
       "工作安排",
       "保障措施",
-      "监管协同展望",
     ]);
   });
 

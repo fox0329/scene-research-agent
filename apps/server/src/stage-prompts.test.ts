@@ -222,8 +222,8 @@ describe("stage-prompts — 输出契约（补契约空壳）", () => {
     expect(c.properties.rows.items.properties.source_type.enum).toEqual(["AI提取", "AI推断"]);
   });
 
-  it("阶段 6（交付物）不要求 rows，而要两份交付物（变更表 #137）", () => {
-    const c = getStageOutputContract(6) as { required: string[]; properties: Record<string, unknown> };
+  it("阶段 5（交付物）不要求 rows，而要两份交付物（变更表 #137）", () => {
+    const c = getStageOutputContract(5) as { required: string[]; properties: Record<string, unknown> };
     expect(c.required).toEqual(["solution_report", "construction_report"]);
     expect(c.properties["rows"]).toBeUndefined();
   });
@@ -282,13 +282,13 @@ describe("stage-prompts — 流程步限定表集（v1.5）", () => {
 });
 
 describe("stage-prompts — 阶段元信息", () => {
-  it("stageMeta 覆盖 7 阶段（0-6）且表清单与注册表一致", () => {
+  it("stageMeta 覆盖 6 阶段（0-5）且表清单与注册表一致", () => {
     const meta = stageMeta();
-    expect(meta).toHaveLength(7);
+    expect(meta).toHaveLength(6);
     for (const m of meta) {
       expect(m.name.length).toBeGreaterThan(0);
       expect(m.tables).toEqual(tablesOfStage(m.id as 0).map((t) => t.code));
     }
-    expect(meta[6]?.tables).toEqual([]); // 交付物阶段无表
+    expect(meta[5]?.tables).toEqual([]); // 交付物阶段无表
   });
 });

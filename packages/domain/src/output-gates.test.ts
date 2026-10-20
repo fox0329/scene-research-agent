@@ -166,33 +166,11 @@ describe("evaluateGates — 真实缺陷能被点名", () => {
     expect(ok).toEqual([]);
   });
 
-  it("表6-1 预期写「显著提升」→ 点名；写「提升 15%」→ 达标", () => {
-    expect(
-      evaluateGates([row("表6-1", { benefit: "OEE", metric: "OEE 提升", expected: "显著提升", how_to_measure: "按班次统计", user_feeling: "班组长：不用再手抄" })]).some(
-        (x) => x.gate.includes("数值"),
-      ),
-    ).toBe(true);
-    expect(
-      evaluateGates([row("表6-1", { benefit: "OEE", metric: "OEE 提升", expected: "提升 15 个百分点", how_to_measure: "按班次统计", user_feeling: "班组长：不用再手抄" })]),
-    ).toEqual([]);
-  });
-
   it("整行占位词 → 硬伤「行必须有实质内容」", () => {
     const f = evaluateGates([row("表5-4", { item: "交付", content: "未提供", sla: "待补" })]);
     expect(f.some((x) => x.severity === "硬伤")).toBe(true);
   });
 
-  it("表6-4 缺成功判据/验收口径 → 覆盖度点名", () => {
-    const f = evaluateGates([
-      row("表6-4", { kind: "试点范围", content: "1 个车间、28 台设备、12 名用户" }),
-      row("表6-4", { kind: "试点时长", content: "连续 3 个月" }),
-      row("表6-4", { kind: "成功判据", content: "OEE 提升 ≥10 个百分点，按班次统计，生产经理签字" }),
-      row("表6-4", { kind: "验收口径", content: "按连续 3 个月数据可用率 ≥99% 验收，客户设备部签字" }),
-    ]);
-    expect(f).toEqual([]);
-    const f2 = evaluateGates([row("表6-4", { kind: "试点范围", content: "1 个车间、28 台设备" })]);
-    expect(f2.some((x) => x.gate.includes("成功判据"))).toBe(true);
-  });
 });
 
 describe("跨表门限（2026-10-20 用户定调「所有的输出都应该有门限卡住」）", () => {

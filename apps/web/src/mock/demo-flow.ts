@@ -283,17 +283,6 @@ export const DEMO_ROWS: Record<string, InfoRow[]> = {
       boundary: "不承担安全责任",
     },
   ],
-  "表6-1": [
-    {
-      benefit: "降低漏损率",
-      metric: "漏损率",
-      baseline: "18%",
-      expected: "12%",
-      how_to_measure: "分区计量（DMA）",
-      user_feeling: "水费与投诉下降",
-      evidence_level: "C",
-    },
-  ],
 };
 
 /** 某表集在演示数据下的产出规模（与联真 `progress` 同形状） */

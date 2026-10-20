@@ -84,22 +84,6 @@ export type {
   SubScenePriority,
 } from "./capability-match.js";
 
-// 阶段 6 — 价值验证
-export {
-  calcRoi,
-  verifyPilotCriteria,
-  validateMetric,
-} from "./value-verify.js";
-export type {
-  RoiResult,
-  PilotCriterion,
-  PilotResult,
-  PilotVerification,
-  CriterionCheck,
-  ValueMetric,
-  MetricValidation,
-} from "./value-verify.js";
-
 // 全局 — 工作流编排
 export {
   advance,
@@ -248,7 +232,6 @@ export {
   keyPhrases,
   splitMidCitations,
   hasMidCitation,
-  hasCustomerBaseline,
   hasCustomerFacts,
   missingMaterialHint,
   MID_CELL_MAX_CHARS,

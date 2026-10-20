@@ -496,15 +496,15 @@ async function* executeAdvanceStage(
     message: `开始阶段 ${stage} 分析`,
   });
 
-  // 非模型阶段守卫（v1.4 起为 8 阶段口径）：
+  // 非模型阶段守卫（2026-10-20 起为 6 阶段口径：0-5）：
   //   阶段 0 = 解析入库（材料流水线确定性填 M 表，不调用模型）
-  //   阶段 6 = 系统组装（交付物按「章节 ← 表映射」生成，不调用模型）
-  // 兼容旧数据：历史 current_stage = 8（老 9 阶段口径）或 7（老口径：交付物）都视为现行阶段 6；
-  // 老 6（总结沉淀）已删除，历史值按 6（交付物）处理——那一步本来就不填表。
-  // StageId 已收窄为 0-7，但**运行期数据可能仍是老编号**——数据比类型活得久，
+  //   阶段 5 = 系统组装（交付物按「章节 ← 表映射」生成，不调用模型）
+  // 兼容旧数据：历史 current_stage ≥ 6（含价值验证 5、交付物 6/7/8 的老口径）都视为现行阶段 5；
+  // 价值验证阶段已删除（变更表 #243），历史值一律按交付物处理——那一步本来就不填表。
+  // StageId 已收窄为 0-5，但**运行期数据可能仍是老编号**——数据比类型活得久，
   // 所以这里按数值比较（不要为了类型好看把这层兼容删掉）。
   const rawStage = stage as number;
-  const effectiveStage = (rawStage >= 7 ? 6 : rawStage) as InfoStageId;
+  const effectiveStage = (rawStage >= 6 ? 5 : rawStage) as InfoStageId;
   if (!isModelStage(effectiveStage)) {
     yield emit({
       type: "progress",

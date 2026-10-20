@@ -33,8 +33,8 @@ describe("completeness — 阶段级", () => {
     expect(r.gaps.every((g) => g.kind === "缺表")).toBe(true);
   });
 
-  it("交付物阶段（6）没有信息表，视为齐备（它是文档组装）", () => {
-    const r = checkStageCompleteness({ stage: 6, rowsByTable: {} });
+  it("交付物阶段（5）没有信息表，视为齐备（它是文档组装）", () => {
+    const r = checkStageCompleteness({ stage: 5, rowsByTable: {} });
     expect(r.expectedTables).toBe(0);
     expect(r.percent).toBe(100);
     expect(r.gaps).toEqual([]);
@@ -42,12 +42,12 @@ describe("completeness — 阶段级", () => {
 
   it("完整度 = 有数据的表 / 应产出表", () => {
     const r = checkStageCompleteness({
-      stage: 5, // 阶段 5 两张表
-      rowsByTable: { "表6-1": [row({ benefit: "省电", metric: "kWh", baseline: "100", expected: "80", how_to_measure: "电表", user_feeling: "电费少了" })] },
+      stage: 4, // 阶段 4 三张表（表5-1 / 表5-3 / 表5-4）
+      rowsByTable: { "表5-3": [row({ item: "边缘采集", content: "装网关", window: "第 1–2 周", man_days: "10", rollback: "拆除，1 天恢复" })] },
     });
-    expect(r.expectedTables).toBe(2);
+    expect(r.expectedTables).toBe(3);
     expect(r.tablesWithData).toBe(1);
-    expect(r.percent).toBe(50);
+    expect(r.percent).toBe(33);
   });
 
   it("缺口全部带属主（用户 / 智能体）——没有属主的缺口不允许产生", () => {
@@ -107,38 +107,6 @@ describe("completeness — 单表规则", () => {
     const g = r.gaps.find((x) => x.kind === "缺必填列" && x.column === "who_supplies");
     expect(g?.count).toBe(1);
     expect(r.gaps.some((x) => x.kind === "缺必填列" && x.column === "link")).toBe(true);
-  });
-
-  it("表6-1「基线」挪到右栏补充列后仍是必填：空着照样报缺（变更表 #153）", () => {
-    /* 完整度按**列定义**判必填，不看列摆在中栏还是右栏——
-       基线挪栏位是为了不占中栏列预算，不是为了放开必填（G-R7 必填优先）。 */
-    const r = checkStageCompleteness({
-      stage: 5,
-      rowsByTable: {
-        "表6-1": [
-          row({
-            benefit: "降低漏损",
-            metric: "漏损率",
-            baseline: "", // 空着 → 缺必填列
-            expected: "12%",
-            how_to_measure: "分区计量",
-            user_feeling: "水费下降",
-          }),
-          row({
-            benefit: "减少巡线工时",
-            metric: "人工工时",
-            baseline: "未提供", // 补白也算空（isEmptyValue）
-            expected: "省 30%",
-            how_to_measure: "工单口径",
-            user_feeling: "巡线员少跑腿",
-          }),
-        ],
-      },
-    });
-    const g = r.gaps.find((x) => x.kind === "缺必填列" && x.column === "baseline");
-    expect(g, "基线列必须仍在必填列检查范围内").toBeDefined();
-    expect(g?.detail).toContain("基线");
-    expect(g?.count).toBe(2);
   });
 
   it("覆盖度：min-rows（表1-2 业务环节 ≥3）——表1-2 迁到阶段 3 后规则仍生效", () => {
@@ -228,7 +196,7 @@ describe("completeness — 输出到总结文档", () => {
     // 缺表/缺必填列都由智能体侧补 → 只出现「我将补充」，不向用户要东西
     expect(lines.some((l) => l.includes("我将补充"))).toBe(true);
     expect(lines.some((l) => l.includes("需要你补充"))).toBe(false);
-    const clean = checkStageCompleteness({ stage: 6, rowsByTable: {} }); // 交付物阶段无表 = 齐备
+    const clean = checkStageCompleteness({ stage: 5, rowsByTable: {} }); // 交付物阶段无表 = 齐备
     expect(gapsToSummaryLines(clean)[0]).toContain("齐备");
   });
 

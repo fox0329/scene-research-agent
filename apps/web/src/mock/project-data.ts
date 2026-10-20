@@ -85,11 +85,10 @@ export const projects: Project[] = [
     id: "p3",
     name: "智慧园区",
     status: "done",
-    stage: 6, // 交付物（旧口径 8 = 交付物，v1.31 收到阶段 6）
+    stage: 5, // 交付物（2026-10-20 价值验证阶段删除后，交付物为阶段 5）
     productLine: "综合解决方案",
     conversations: [
       { id: "p3c1", name: "生成交付物" },
-      { id: "p3c2", name: "价值验证完成" },
       { id: "p3c3", name: "方案与成本分析" },
     ],
   },

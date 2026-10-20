@@ -24,16 +24,16 @@ describe("advance", () => {
     expect(advance(0)).toBe(1);
   });
 
-  it("逐阶段推进 0→7 全链", () => {
+  it("逐阶段推进 0→5 全链", () => {
     let stage = 0 as Parameters<typeof advance>[0];
-    for (const next of [1, 2, 3, 4, 5, 6, 7]) {
+    for (const next of [1, 2, 3, 4, 5]) {
       stage = advance(stage);
       expect(stage).toBe(next);
     }
   });
 
-  it("阶段 7 是终态，推进抛错", () => {
-    expect(() => advance(7)).toThrow("终态");
+  it("阶段 5 是终态，推进抛错", () => {
+    expect(() => advance(5)).toThrow("终态");
   });
 
   it("非法阶段编号抛错（JS 边界防御）", () => {
@@ -46,14 +46,14 @@ describe("advance", () => {
 // ─── canAdvance ──────────────────────────────────────────────
 
 describe("canAdvance", () => {
-  it("阶段 0-6 均可推进（阶段 7 是终态）", () => {
-    for (const stage of [0, 1, 2, 3, 4, 5, 6]) {
+  it("阶段 0-4 均可推进（阶段 5 是终态）", () => {
+    for (const stage of [0, 1, 2, 3, 4]) {
       expect(canAdvance(stage as Parameters<typeof canAdvance>[0])).toBe(true);
     }
   });
 
-  it("阶段 7 不可推进", () => {
-    expect(canAdvance(7)).toBe(false);
+  it("阶段 5 不可推进", () => {
+    expect(canAdvance(5)).toBe(false);
   });
 
   it("非法阶段编号抛错", () => {
@@ -66,7 +66,7 @@ describe("canAdvance", () => {
 describe("rollback", () => {
   it("回退到更早阶段，返回目标阶段", () => {
     expect(rollback(5, 2)).toBe(2);
-    expect(rollback(7, 0)).toBe(0);
+    expect(rollback(5, 0)).toBe(0);
     expect(rollback(1, 0)).toBe(0);
   });
 
@@ -186,8 +186,8 @@ describe("getRiskChain", () => {
 // ─── 常量 ────────────────────────────────────────────────────
 
 describe("STAGES 常量", () => {
-  it("包含 0-7 共 8 个阶段", () => {
-    expect(STAGES).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
+  it("包含 0-5 共 6 个阶段（价值验证阶段已删除）", () => {
+    expect(STAGES).toEqual([0, 1, 2, 3, 4, 5]);
   });
 });
 
@@ -198,8 +198,8 @@ describe("getAffectedStages", () => {
     expect(getAffectedStages("M1")).toEqual([3, 4]);
   });
 
-  it("M5 已知限制 → 阶段 4,5（阶段4 实施风险、阶段5 验收约束）", () => {
-    expect(getAffectedStages("M5")).toEqual([4, 5]);
+  it("M5 已知限制 → 阶段 4（实施风险；验收约束随价值验证阶段删除）", () => {
+    expect(getAffectedStages("M5")).toEqual([4]);
   });
 
   it("表3-6 替代方案 → 阶段 4", () => {

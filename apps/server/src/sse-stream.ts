@@ -10,7 +10,7 @@ import type { StageId } from "@scene/contract";
 import type { SseHub } from "./sse-hub.js";
 
 /** 最后一个阶段编号（现行 8 阶段 0-7；老的 9 阶段 0-8 已收窄） */
-export const LAST_STAGE_ID: StageId = 7;
+export const LAST_STAGE_ID: StageId = 5;
 
 export function parseStage(raw: string): StageId | undefined {
   const n = Number(raw);

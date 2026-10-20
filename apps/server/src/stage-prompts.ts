@@ -7,8 +7,9 @@
  *   - 输出契约的 `table_code` 枚举与 `fields` 合法字段名 → 由注册表派生
  *   - 产出行由 `@scene/domain` 的 `validateIncomingRows` 本地校验（补「契约空壳」）
  *
- * 阶段口径：**7 阶段（0-6）**——阶段 1-5 是分析步，阶段 6 是最终交付物（系统组装，不填表）。
- * v1.31 删掉原阶段 6「总结沉淀」（只产表7-1，且回写没有执行路径），交付物由阶段 7 收到阶段 6；
+ * 阶段口径：**6 阶段（0-5）**——阶段 1-4 是分析步，阶段 5 是最终交付物（系统组装，不填表）。
+ * 2026-10-20 用户定调删除「价值验证」阶段（变更表 #243）。
+ * v1.31 删掉原阶段 6「总结沉淀」；2026-10-20 再删「价值验证」，交付物为阶段 5。
  * 老编号 8（交付物）与老编号 7（总结沉淀）都以 8/7 调用会被拦下并给出可执行的修正提示。
  */
 
@@ -57,7 +58,7 @@ function stageScopeRules(stage: StageId): string {
    **市场量级**（「万元级」「十万元级」；不是"客户采购价"）、竞争激烈度按行业格局判断。
    给不出精确值就给量级并标明口径；实在判断不了写「**量级待确认（行业口径）**」，
    **不许**写「未提供（本客户…）」——那是把行业问题答成了客户问题。
-3. **第 1 条第 3 点里"价值必须有本客户基线"的要求本步不适用**（只对价值与验证阶段与交付物生效）。
+3. **第 1 条第 3 点里"价值必须有本客户基线"的要求本步不适用**（只对交付物阶段生效）。
 `;
 }
 
@@ -348,10 +349,8 @@ export function buildStagePrompt(
 ): StagePrompt {
   // StageId 已收窄为 0-6，但**运行期仍可能被塞进老编号 7/8**（老数据/老调用）：
   // 这里按数值比较主动拦截并给出可执行的修正提示
-  if ((stage as number) === 7 || (stage as number) === 8) {
-    throw new Error(
-      "阶段 7/8 都是老编号：总结沉淀（老 6）已删除，交付物现为阶段 6——请改用 0-6",
-    );
+  if ((stage as number) > 5) {
+    throw new Error("阶段 6 以上都是老编号：价值验证与总结沉淀已删除，交付物现为阶段 5——请改用 0-5");
   }
   const id = stage as InfoStage;
   const def = stageDef(id);
@@ -422,13 +421,13 @@ export function getStageOutputContract(
   stage: StageId,
   allowedTables?: readonly string[],
 ): Record<string, unknown> {
-  if ((stage as number) === 7 || (stage as number) === 8) {
-    throw new Error("阶段 7/8 都是老编号（总结沉淀已删除、交付物现为阶段 6）——请改用 0-6");
+  if ((stage as number) > 5) {
+    throw new Error("阶段 6 以上都是老编号（价值验证/总结沉淀已删除、交付物现为阶段 5）——请改用 0-5");
   }
   const all = tablesOfStage(stage as InfoStage);
   const tables = allowedTables ? all.filter((t) => allowedTables.includes(t.code)) : all;
   if (tables.length === 0) {
-    // 阶段 6（交付物）：不填表，产出**两份**客户可读的交付物——「<场景>解决方案」与
+    // 阶段 5（交付物）：不填表，产出**两份**客户可读的交付物——「<场景>解决方案」与
     // 「<场景>建设工作方案」（变更表 #137；#136 曾收敛成一份，本次再加第二份）
     return {
       type: "object",

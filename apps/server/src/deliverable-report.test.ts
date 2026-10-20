@@ -129,7 +129,7 @@ function makeHarness(): Harness {
   const scenario = db.scenarioRepo.insert({
     name: "智慧会议室",
     status: "进行中",
-    current_stage: 6,
+    current_stage: 5,
   });
   // 两条真实数据即可（报告装配需要 stageData 非空）
   db.stageDataRepo.insert({
@@ -252,10 +252,10 @@ describe("交付物报告生成（两份：模型撰写 + 确定性校验）", (
     const done = events.find((e) => e.type === "done")!;
     expect(done).toBeDefined();
     const sources = done["sources"] as { kind: string; key: string; from: string }[];
-    // 解决方案 5 章 + 建设工作方案 7 章，两份都来自模型
-    expect(sources).toHaveLength(12);
-    expect(sources.filter((s) => s.kind === "solution")).toHaveLength(5);
-    expect(sources.filter((s) => s.kind === "construction")).toHaveLength(7);
+    // 解决方案 4 章 + 建设工作方案 6 章，两份都来自模型（价值验证阶段删除后各少一章）
+    expect(sources).toHaveLength(10);
+    expect(sources.filter((s) => s.kind === "solution")).toHaveLength(4);
+    expect(sources.filter((s) => s.kind === "construction")).toHaveLength(6);
     expect(sources.every((s) => s.from === "模型")).toBe(true);
 
     const report = done["report"] as { solution_chars: number; construction_chars: number };
@@ -284,7 +284,6 @@ describe("交付物报告生成（两份：模型撰写 + 确定性校验）", (
     const solution = readFileSync(solutionPath, "utf8");
     expect(solution).toContain("## 现状");
     expect(solution).toContain("## 方案");
-    expect(solution).toContain("## 价值");
     expect(solution).toContain("## 下一步");
     // 章标题不带手写序号（编号交给 Word 自动编号）
     expect(solution).not.toContain("## 一、");
@@ -303,7 +302,6 @@ describe("交付物报告生成（两份：模型撰写 + 确定性校验）", (
     // 解决方案的章也不许跑进建设工作方案
     expect(construction).not.toContain("## 现状");
     expect(construction).not.toContain("## 下一步");
-    expect(construction).not.toContain("## 价值");
     expect(construction).not.toContain("主要风险点");
   });
 
@@ -598,7 +596,7 @@ describe("交付物报告生成（两份：模型撰写 + 确定性校验）", (
     const sc = empty.scenarioRepo.insert({
       name: "空场景",
       status: "进行中",
-      current_stage: 6,
+      current_stage: 5,
     });
     const { client, calls } = dshOf([goodReport("solution")]);
     const events = await run(empty, client, sc.id);
@@ -636,7 +634,7 @@ describe("报告服务：两份各自的正式版优先，未生成则留空（�
     expect(after.solution.generated_at).toBeTruthy();
     expect(after.construction.generated_at).toBeTruthy();
     // 读到的是模型撰写的正式版（各自的 `<id>.<kind>.md`），不是即时推导的要点版
-    expect(after.solution.markdown).toContain("价值一：会前不再逐台开机");
+    expect(after.solution.markdown).toContain("## 方案");
     expect(getReport(db, scenario, "construction").markdown).toContain("## 建设路径");
     expect(getReport(db, scenario, "construction").kind).toBe("construction");
   });

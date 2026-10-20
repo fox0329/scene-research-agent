@@ -28,7 +28,7 @@ export type EvidenceLevel = "A" | "B" | "C" | "D";
  * 现行模型把门槛并入「认识场景」，最终交付物是**阶段 7**，`8` 已不存在。
  * （2026-09-25 收窄；用户库实测无 stage=8 数据，迁移可安全进行。）
  */
-export type StageId = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7;
+export type StageId = 0 | 1 | 2 | 3 | 4 | 5;
 
 // InfoTableCode 由 ./tables.js 导出并在文件末尾 re-export；此处仅作类型引用
 type InfoTableCode = import("./tables.js").InfoTableCode;

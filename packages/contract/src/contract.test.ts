@@ -54,9 +54,9 @@ describe("@scene/contract 通用枚举", () => {
     expect(v).toHaveLength(4);
   });
 
-  it("StageId 0-7（现行 8 个阶段）", () => {
-    const v: StageId[] = [0, 1, 2, 3, 4, 5, 6, 7];
-    expect(v).toHaveLength(8);
+  it("StageId 0-5（现行 6 个阶段：价值验证阶段已删除）", () => {
+    const v: StageId[] = [0, 1, 2, 3, 4, 5];
+    expect(v).toHaveLength(6);
   });
 
   it("DecisionAction 四种动作", () => {

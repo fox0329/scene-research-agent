@@ -153,13 +153,13 @@ describe("planResume 动作判定", () => {
 
   it("项目已完成 → complete，优先于其他动作", () => {
     const plan = planResume({
-      scenario: makeScenario({ status: "已完成", current_stage: 7 }),
+      scenario: makeScenario({ status: "已完成", current_stage: 5 }),
       stageRows: [makeStageRow(3)], // 阶段 3 无完成消息，但项目已完成
       conversations: [],
       messages: [],
     });
     expect(plan.action).toBe("complete");
-    expect(plan.stage).toBe(7); // 交付物=阶段 7（老 9 阶段口径的 8 已收窄）
+    expect(plan.stage).toBe(5); // 交付物=阶段 5（价值验证阶段已删除）
     expect(plan.needsRecompute).toEqual([3]);
     expect(plan.banner).toContain("已完成");
     expect(plan.banner).toContain("阶段 3");

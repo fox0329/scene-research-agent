@@ -258,16 +258,6 @@ export const TABLE_GATES: Readonly<Record<string, readonly ScopedGate[]>> = {
     { kind: "min-items", column: "sla", min: 2, text: "SLA 至少两项时限（响应 + 恢复/到场）" }
   ],
 
-  "表6-1": [
-    { kind: "non-empty", columns: ["benefit", "metric", "expected", "how_to_measure", "user_feeling"], text: "收益/指标/预期/怎么测/用户感受必填" },
-    { kind: "has-number", columns: ["expected"], text: "预期改善须数值+单位（≤2 小时／↓30%／98.5%），不接受「提升至…」「显著提升」" },
-    { kind: "unique", columns: ["metric"], text: "同一指标不许重复登记（防一条收益拆三条）" }
-  ],
-  "表6-4": [
-    { kind: "non-empty", columns: ["kind", "content"], text: "类别与内容必填" },
-    { kind: "coverage", column: "kind", values: ["试点范围", "试点时长", "成功判据", "验收口径"], text: "须覆盖试点范围、试点时长、成功判据、验收口径" },
-    { kind: "not-vague", columns: ["content"], text: "成功判据须给阈值+取数方式+判定人，不许「运行稳定/客户满意」" }
-  ],
 };
 
 /** 某张表的门限（没有登记的返回空数组，测试会拦） */

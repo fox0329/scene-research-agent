@@ -134,23 +134,13 @@ export const FLOW_STEPS: readonly FlowStep[] = [
   },
   {
     id: 6,
-    key: "stage5",
-    title: "价值与验证",
-    short: "价值验证",
-    goal: "价值与指标、基线、验证方式；试点与验收口径",
-    kind: "分析",
-    tables: tablesOfStage(5).map((t) => t.code),
-    stage: 5,
-  },
-  {
-    id: 7,
     key: "delivery",
     title: "交付物",
     short: "交付物",
     goal: "输出《<场景>解决方案》与《<场景>建设工作方案》两份客户可读文档",
     kind: "组装",
     tables: [],
-    stage: 6,
+    stage: 5,
   },
 ];
 

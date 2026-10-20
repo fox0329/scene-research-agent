@@ -230,7 +230,7 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
    */
   const gen = useStageAnalysis({
     projectId: projectId ?? "",
-    stage: 6,
+    stage: 5,
     stepId: FLOW_TOTAL,
     openStream: (lastEventId, signal) => {
       const sink = { lastId: lastEventId };
