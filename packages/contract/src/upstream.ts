@@ -8,7 +8,7 @@
  * 下游一次都没读过**。后果不是「不好看」，而是几处设计承诺直接不成立：
  *
  * - 表4-3 声称「缺口（来自表3-8）」「覆盖表3-8 每条」——生成时读不到表3-8，只能重猜；
- * - 表3-4 写「不写我方，对照在表4-5」、表4-5 写「我方与对手对照」——两边互指却彼此看不见；
+ * - 表3-2 写「不写我方，对照在表4-4」、表4-4 写「我方与对手对照」——两边互指却彼此看不见；
  * - 表3-7 写「我们方案里怎么避」——它自己在下游不可见，「怎么避」不影响任何产出。
  *
  * ## 设计约束
@@ -56,7 +56,7 @@ export const UPSTREAM_DEPS: Record<number, readonly UpstreamDep[]> = {
       table: "表3-2",
       columns: ["key_points", "players", "position", "price_band", "fit_for"],
       maxRows: 12,
-      why: "表4-5 的对照对象取自表3-2 的 players；价格带决定我方报价定位",
+      why: "表4-4 的主要对手取自表3-2 的 players；价格带决定我方报价定位",
     },
     {
       table: "表3-5",
@@ -75,13 +75,13 @@ export const UPSTREAM_DEPS: Record<number, readonly UpstreamDep[]> = {
     },
     {
       table: "表4-2",
-      columns: ["link", "can_touch", "our_role", "role_reason"],
+      columns: ["link", "our_role", "our_scope"],
       maxRows: 16,
-      why: "参与程度与角色决定方案边界（只能配合的环节不该出整包方案）",
+      why: "我方角色决定方案边界（只能配合的环节不该出整包方案）",
     },
     {
       table: "表4-3",
-      columns: ["gap_ref", "match", "our_product", "ability_basis", "boundary_note"],
+      columns: ["gap_ref", "match", "our_product", "action"],
       maxRows: 16,
       why: "匹配判定为「不能做」的缺口，方案里必须留边界声明，不能装作能解",
     },
@@ -108,7 +108,7 @@ export const UPSTREAM_DEPS: Record<number, readonly UpstreamDep[]> = {
     },
     {
       table: "表4-3",
-      columns: ["gap_ref", "match", "our_product", "ability_basis"],
+      columns: ["gap_ref", "match", "our_product", "action"],
       maxRows: 16,
       why: "只有判「真能解」的缺口才允许写收益预期，否则是过度宣称（G-R2 的 D 类）",
     },
@@ -129,15 +129,15 @@ export const UPSTREAM_DEPS: Record<number, readonly UpstreamDep[]> = {
   6: [
     {
       table: "表4-2",
-      columns: ["link", "can_touch", "our_role"],
+      columns: ["link", "our_role", "our_scope"],
       maxRows: 16,
       why: "交付物要讲「我方以什么角色进这个场景」，这是客户最关心的一句",
     },
     {
-      table: "表4-5",
-      columns: ["dimension", "weight", "score", "basis"],
+      table: "表4-4",
+      columns: ["sub_scene", "opponent", "win_loss", "entry_action"],
       maxRows: 12,
-      why: "赢面结论要能复算（权重×评分），不能只给一句结论",
+      why: "赢面要给到「对谁、强还是弱、第一件事做什么」，不给伪精度的加权总分",
     },
     {
       table: "表3-8",

@@ -101,8 +101,8 @@ describe("@scene/contract 表编号常量", () => {
     expect(STAGE3_TABLES).toEqual(["表3-1", "表3-2", "表3-3", "表3-5", "表3-8"]);
   });
 
-  it("STAGE4 6 张表", () => {
-    expect(STAGE4_TABLES).toHaveLength(6);
+  it("STAGE4 4 张表（4-5 已并入 4-4）", () => {
+    expect(STAGE4_TABLES).toHaveLength(4);
     expect(STAGE4_TABLES[0]).toBe("表4-1");
   });
 
@@ -145,7 +145,7 @@ describe("@scene/contract 表号 → 流程步（横幅文案用）", () => {
 
   it("阶段 3/4 的表分别落在第 4 步与第 5 步（用户看到的就是这两步）", () => {
     expect(flowStepOfTable("表4-1")?.id).toBe(4);
-    expect(flowStepOfTable("表4-5")?.id).toBe(4);
+    expect(flowStepOfTable("表4-4")?.id).toBe(4);
     expect(flowStepOfTable("表5-1")?.id).toBe(5);
     expect(flowStepOfTable("表5-4")?.id).toBe(5);
   });

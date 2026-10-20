@@ -149,8 +149,8 @@ describe("completeness — 单表规则", () => {
     const g = r.gaps.find((x) => x.kind === "覆盖度不足" && x.tableCode === "表1-2");
     expect(g?.detail).toContain("≥3");
     expect(g?.count).toBe(1);
-    // 阶段 3 = 表1-2 + 表4-1..4-5 共 6 张（表2-7 已删除，变更表 #226）
-    expect(r.expectedTables).toBe(6);
+    // 阶段 3 = 表1-2 + 表4-1..4-4 共 5 张（表4-5 已并入表4-4，变更表 #239）
+    expect(r.expectedTables).toBe(5);
     expect(r.missingTables).toContain("表4-1");
   });
 

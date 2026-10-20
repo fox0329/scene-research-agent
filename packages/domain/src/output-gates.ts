@@ -120,7 +120,14 @@ function judgeRowGates(
     }
     switch (g.kind) {
       case "non-empty": {
-        const blanks = g.columns.filter((c) => isBlank(row[c]));
+        /* 枚举列里「未知」是合法取值（表4-4 的胜负允许未知），占位词检测不该把它算空；
+           其余列照旧把「未知/未提供」当空 */
+        const blanks = g.columns.filter((c) => {
+          if (!isBlank(row[c])) return false;
+          const enumKey = def.columns.find((x) => x.key === c)?.enum;
+          const allowed: readonly string[] = enumKey ? (ENUMS[enumKey] ?? []) : [];
+          return !allowed.includes(text(row[c]));
+        });
         if (blanks.length) {
           const labels = blanks.map((c) => def.columns.find((x) => x.key === c)?.label ?? c);
           out.push({ kind: g.kind, gate: g.text, detail: `这些格是空的或只写了占位词：${labels.join("、")}`, severity: "硬伤" });

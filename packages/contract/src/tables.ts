@@ -39,6 +39,9 @@ export const ENUMS = {
   barrier_type: ["技术", "行业准入", "经济", "生态锁定", "一票否决者"],
   can_touch: ["可以碰", "只能配合", "不能碰"],
   our_role: ["替代", "辅助", "外围", "不参与"],
+  value_density: ["高", "中", "低"],
+  win_loss: ["强", "平", "弱", "未知"],
+  stock_maturity: ["空白", "零散", "拥挤"],
   match: ["真能解", "需补齐", "不能做"],
   level_hml: ["高", "中", "低"],
   optional_category: ["O1认证", "O2案例", "O3价格", "O4SDK", "O5路线图", "O6生态"],
@@ -254,7 +257,7 @@ export const STAGE_DEFS: readonly StageDef[] = [
     name: "能力匹配",
     producedBy: "模型分析",
     goal: "客户现状底数（现在谁在做、用什么、怎么交付运维）、我方能力底账、客户每条需求能否满足、细分优先级、竞争力评分",
-    tableCodes: ["表1-2", "表4-1", "表4-2", "表4-3", "表4-4", "表4-5"],
+    tableCodes: ["表1-2", "表4-1", "表4-2", "表4-3", "表4-4"],
     summaryTitle: "④ 能力匹配总结",
   },
   {
@@ -700,7 +703,7 @@ const TABLES_STAGE_1: readonly TableDef[] = [
 const TABLES_STAGE_2: readonly TableDef[] = [
   /* 2026-10-20 用户定调「不超过 5 张表」：8 张 → 5 张。
      保留 3-1/3-2/3-3/3-5/3-8；3-7 的坑并入 3-8（坑是缺口的证据，两处维护必然漏改）；
-     3-4 的厂商与价格事实拆进 3-2，逐维对比归阶段3 表4-5（那里才有「我方」这一列）；
+     3-4 的厂商与价格事实拆进 3-2，逐维对比归阶段3 表4-4（那里才有「我方 vs 对手」这一行）；
      3-9 整表删除（16 行全是「行业通例/AI 推断」，无可定位出处）。 */
   {
     code: "表3-1",
@@ -752,7 +755,7 @@ const TABLES_STAGE_2: readonly TableDef[] = [
     completeness: [
       "≥5 种形态；若有基线形态（什么都不做/沿用现状），排第一行",
       "key_points 唯一、≤40 字；第一句就是形态名（交付物 + 边界词：只/仅/不含/除外/不做），不写价格",
-      "players 2–3 家具名；与表4-5 的对照对象同池",
+      "players 2–3 家具名；与表4-4 的「主要对手」同池",
       "position 只取扩张/稳定/收缩/未知；至少 1 行「扩张」，全行业无扩张时单列一行「无扩张形态」并在右栏给判据",
       "price_band 数字区间 + 单位 + 口径；「未获取」≤2 行，右栏写缺哪类样本",
       "fit_for ≤40 字且含一个数字（产线数/预算/规模）",
@@ -927,16 +930,19 @@ const TABLES_STAGE_3: readonly TableDef[] = [
     purpose: "公司能力进场的第一步：逐环节看这个场景我方能不能碰、以什么角色参与",
     columns: [
       mid("link", "业务环节", { required: true, note: "与表1-2 的环节一致" }),
-      mid("can_touch", "我方可参与程度", { required: true, enum: "can_touch" }),
-      mid("our_role", "我方角色", { required: true, enum: "our_role" }),
-      mid("role_reason", "角色判定依据", { required: true, type: "longText", truncate: TRUNCATE_DEFAULT, note: "依据 M3 能力清单 / M4 边界 / M5 已知限制；对得上的写清型号或产品线" }),
+      /* 2026-10-20 用户定调「精简」：能否碰 与 我方角色 是同一判定的两种编码（不参与＝不能碰），
+         合并为一列；能否碰原判定降右栏保留，不丢存量数据 */
+      mid("our_role", "我方角色", { required: true, enum: "our_role", note: "替代/辅助/外围/不参与；「不参与」就是不能碰" }),
+      mid("our_scope", "我方承担", { required: true, note: "≤40 字：我们做哪块、不做哪块（做 X，不做 Y），不许只写「配合」「支持」" }),
+      sup("can_touch", "能否碰（原判定）", { enum: "can_touch" }),
+      sup("role_reason", "角色判定依据", { type: "longText", truncate: TRUNCATE_DEFAULT, note: "依据 M3 能力清单 / M4 边界 / M5 已知限制；写清型号或产品线（依据属右栏，不进中栏）" }),
       sup("source", "来源", { required: true }),
       sup("evidence_level", "证据等级", { required: true, enum: "evidence_level" }),
       sup("authority", "来源权威性", { required: true, enum: "authority" }),
     ],
     completeness: [
       "每个环节一行（对齐表1-2）",
-      "can_touch 与 our_role 非空且取值合法",
+      "our_role 非空且取值合法；our_scope 写「做 X、不做 Y」，不写空话",
       "判定依据须引用 M3/M4/M5 的具体条目",
     
       "环节与表1-2 一一对应、逐字同名；写「不能碰」必须给底账查找结论与反证型号",
@@ -956,72 +962,61 @@ const TABLES_STAGE_3: readonly TableDef[] = [
       mid("gap_ref", "缺口（来自表3-8）", { required: true, type: "ref", refTable: "表3-8" }),
       mid("match", "匹配判定", { required: true, enum: "match" }),
       mid("our_product", "我方产品", { required: true }),
-      mid("ability_basis", "能力依据", { required: true, type: "ref", refTable: "表4-1" }),
-      mid("boundary_note", "边界说明", { required: true, type: "longText", truncate: TRUNCATE_DEFAULT }),
+      /* 2026-10-20 精简：原「能力依据」是引用痕迹（G-R9 应归右栏）；「边界说明」升级为「处置」，
+         直接写下一步怎么办（能解→交付形态 / 需补齐→补什么+人天 / 不能做→转分包或弃标） */
+      mid("action", "处置", { required: true, note: "能解→交付形态；需补齐→补什么 + 人天；不能做→转分包/弃标" }),
+      sup("ability_basis", "能力依据", { required: true, type: "ref", refTable: "表4-1" }),
       sup("risk", "风险"),
       sup("source", "来源", { required: true }),
     ],
-    completeness: ["match 取值合法", "覆盖表3-8 每条缺口", "boundary_note 非空", "ability_basis 可回溯表4-1",
+    completeness: ["match 取值合法", "覆盖表3-8 每条缺口", "action 非空且能照着做（含人天或去向）", "ability_basis 可回溯表4-1",
       "gap_ref 逐字复述表3-8 缺口原文（写编号不算）",
-      "需补齐写补什么 + 人天；不能做写转分包或弃标建议；能力依据写【表4-1|能力项】",],
+      "需补齐写补什么 + 人天；不能做写转分包或弃标建议；能力依据（右栏）写【表4-1|能力项】",],
     dependsOnTables: ["表4-1", "表1-2"],
     consumedBy: [6],
   },
   {
     code: "表4-4",
-    name: "细分优先级",
+    name: "细分打法与赢面",
     stage: 3,
     tier: "重要",
     rowUnit: "一个细分场景",
-    purpose: "先打哪个细分——公司能力进场后，把市场形态与我方能力对起来",
+    /* 2026-10-20 用户定调「精简」：原表4-4（四维打分）+ 表4-5（每行一个评分维度）并成一张。
+       4-5 的行粒度是评分模板——照着填得出一堆 25/20/20/15/10 的伪精度权重，对手却藏在右栏看不见；
+       4-4 的四维（价值密度/契合度/难度/成熟度）本来是 表3-8×表3-2×表4-2×表4-3 的再编码。
+       合并后：一行一个细分，一眼看到「先打哪个 + 对谁强/弱 + 第一件事做什么」。 */
+    purpose: "先打哪个细分、打不打得过——把市场形态、我方能力与对手摆在同一行",
     columns: [
       mid("sub_scene", "细分场景", { required: true }),
-      mid("value_density", "价值密度", { required: true }),
-      mid("fit", "我方契合度", { required: true }),
-      mid("difficulty", "进入难度", { required: true }),
-      mid("stock_maturity", "存量成熟度", { required: true }),
-      mid("rank", "综合排序", { required: true }),
-      sup("market_form", "对应市场形态", { note: "引用表3-2 的形态；规则类变化引表3-3 右栏 decision_basis" }),
-      sup("entry_note", "我方切入点／对我方含义", { type: "longText", note: "承接表3-2 的形态与表3-3 的决策依据" }),
-      sup("strategy", "策略"),
-      sup("source", "来源", { required: true }),
-    ],
-    completeness: ["≥2 个细分场景", "四维度非空", "必须给出排名第一的结论",
-      "≥2 个细分；价值密度/契合度取 高/中/低，存量成熟度取 空白/零散/拥挤，定档依据写右栏",
-      "综合排序 1..n 连续不重复；第一行注明「首打」及理由",],
-    /* 客户现状表已移到本阶段（2026-10-14）：现成现状，再谈能不能满足 */
-    dependsOnTables: ["表1-2"],
-    consumedBy: [6],
-  },
-  {
-    code: "表4-5",
-    name: "竞争力判断",
-    stage: 3,
-    tier: "重要",
-    rowUnit: "一个评分维度（不写合计/总分派生行，加权由系统算）",
-    purpose: "与对手/替代方案比，赢面评分与依据（我方对照全在这里）",
-    columns: [
-      mid("dimension", "维度", { required: true }),
-      mid("weight", "权重", { required: true, type: "number" }),
-      mid("score", "评分(1-5)", { required: true, type: "number" }),
-      mid("basis", "打分依据", { required: true, type: "longText", truncate: TRUNCATE_DEFAULT }),
-      sup("compared_with", "对照对象", { note: "与表3-2 的 players 之一，或「客户现状（自建/手工）」比" }),
+      mid("value_density", "价值密度", { required: true, enum: "value_density", note: "只填 高/中/低，理由写右栏" }),
+      mid("opponent", "主要对手", { required: true, note: "具名 1–2 家（取表3-2 的 players）或「客户现状（自建/手工）」" }),
+      mid("win_loss", "胜负", { required: true, enum: "win_loss", note: "对上面这个对手：强/平/弱" }),
+      mid("entry_action", "切入动作", { required: true, note: "≤40 字：第一件事做什么（试点/标杆/联合投标/换型替换）" }),
+      mid("rank", "首打顺序", { required: true, type: "number", note: "1=首打；同项目内 1..n 连续不重复" }),
+      sup("fit", "我方契合度", { note: "高/中/低 + 一句依据" }),
+      sup("difficulty", "进入难度", { note: "高/中/低 + 一句依据" }),
+      sup("stock_maturity", "存量成熟度", { note: "空白/零散/拥挤" }),
+      sup("four_dim", "四维对照（技术/交付/价格/服务）", { type: "longText", note: "逐维写我方 vs 该对手：谁强、差多少（数字/案例）" }),
       sup("advantage", "我方优势"),
       sup("weakness", "我方劣势"),
       sup("implication", "对我方意味着什么", { type: "longText" }),
-      sup("source", "来源"),
+      sup("market_form", "对应市场形态", { note: "引用表3-2 的形态；规则类变化引表3-3 右栏 decision_basis" }),
+      sup("entry_note", "我方切入点", { type: "longText", note: "承接表3-2 的形态与表3-3 的决策依据" }),
+      sup("strategy", "策略"),
+      sup("source", "来源", { required: true }),
     ],
-    completeness: ["维度 ≥4 个", "权重之和 = 100%", "总分 = Σ(权重 × 评分)",
-      "维度 4–6 个，至少覆盖 技术匹配/交付实施/价格/本地服务；每维一个对照对象（表3-2 的玩家或客户现状）",
-      "权重为整数百分比、合计 100；评分只填 1–5 整数（1 明显劣势、3 持平、5 明显优势）",
-      "打分依据只写事实（型号/案例/报价区间/条款），不复述评分；不写合计行",],
-    /* 客户现状表已移到本阶段（2026-10-14）：现成现状，再谈能不能满足 */
+    completeness: [
+      "≥2 个细分场景；每个细分一行，sub_scene 唯一",
+      "value_density 只取 高/中/低；opponent 必须具名或写「客户现状」，禁「竞争对手」",
+      "win_loss 只取 强/平/弱；entry_action ≤40 字、是一件能立刻做的事",
+      "rank 1..n 连续不重复；第一行注明「首打」+ 可验证理由（已有案例/已招标/对手缺席）",
+      "四维对照、契合度/难度/成熟度定档依据写右栏；不写权重、不写总分（不做伪精度）",
+    ],
+    /* 跨阶段的表3-2/表3-8 通过上游上下文注入，不写进 dependsOnTables（同阶段依赖才写这里） */
     dependsOnTables: ["表1-2"],
     consumedBy: [6],
   },
 ];
-
-// ─── 阶段 4 · 方案与实现（3 张） ────────────────────────────
 
 const TABLES_STAGE_4: readonly TableDef[] = [
   {
@@ -1226,7 +1221,6 @@ export const COVERAGE_RULES: Readonly<Record<string, readonly CoverageRule[]>> =
   "表3-5": [{ kind: "min-rows", min: 3, label: "≥3 个我方采购/依赖的上游环节" }],
   "表3-8": [{ kind: "min-rows", min: 3, label: "需求缺口 ≥3 条" }],
   "表4-4": [{ kind: "min-rows", min: 2, label: "细分场景 ≥2 个" }],
-  "表4-5": [{ kind: "min-rows", min: 4, label: "竞争力维度 ≥4 个" }],
   "表6-1": [{ kind: "min-rows", min: 2, label: "价值与指标 ≥2 条" }],
   "表6-4": [
     {
@@ -1606,8 +1600,8 @@ export const REPORT_CHAPTERS: Record<ReportKind, readonly ReportChapter[]> = {
       { title: "实施要点", keywords: ["实施", "要点", "部署"] },
     ],
     blocks: [
-      { code: "表4-2", heading: "我方在哪些环节参与、以什么角色", cols: ["link", "can_touch", "our_role"] },
-      { code: "表4-3", heading: "需求-能力对照", cols: ["gap_ref", "match", "our_product", "boundary_note"] },
+      { code: "表4-2", heading: "我方在哪些环节参与、以什么角色", cols: ["link", "our_role", "our_scope"] },
+      { code: "表4-3", heading: "需求-能力对照", cols: ["gap_ref", "match", "our_product", "action"] },
       { code: "表5-1", heading: "方案架构与接口", cols: ["layer", "components", "interface", "integration", "boundary", "interface_name", "type", "protocol"] },
       { code: "表5-3", heading: "实施安排", cols: ["item", "content", "window"] },
       { code: "表5-4", heading: "交付与运维", cols: ["item", "content", "sla"] },
@@ -1622,7 +1616,7 @@ export const REPORT_CHAPTERS: Record<ReportKind, readonly ReportChapter[]> = {
     ],
     blocks: [
       { code: "表6-1", heading: "收益 → 指标 → 基线与预期", as: "table", cols: ["benefit", "metric", "baseline", "expected", "how_to_measure"] },
-      { code: "表4-5", heading: "能力与竞争力自评", as: "table", cols: ["dimension", "weight", "score"] },
+      { code: "表4-4", heading: "先打哪个细分、对谁强/弱", as: "table", cols: ["sub_scene", "opponent", "win_loss", "rank"] },
       { code: "表6-4", heading: "试点与验收", cols: ["kind", "content"] },
     ],
   },
@@ -1668,7 +1662,7 @@ export const REPORT_CHAPTERS: Record<ReportKind, readonly ReportChapter[]> = {
       blocks: [
         { code: "表3-8", heading: "要解决的需求（目标要对得上）", cols: ["gap", "who_hurts", "pain_level"] },
         { code: "表6-1", heading: "收益 → 指标 → 基线与预期", as: "table", cols: ["benefit", "metric", "baseline", "expected"] },
-        { code: "表4-5", heading: "我方能力自评（哪些能自己扛）", as: "table", cols: ["dimension", "weight", "score"] },
+        { code: "表4-4", heading: "哪些细分我们自己能扛", as: "table", cols: ["sub_scene", "opponent", "win_loss"] },
       ],
     },
     {
@@ -1681,8 +1675,8 @@ export const REPORT_CHAPTERS: Record<ReportKind, readonly ReportChapter[]> = {
       ],
       blocks: [
         { code: "表5-1", heading: "方案架构与接口", cols: ["layer", "components", "interface", "integration", "boundary"] },
-        { code: "表4-2", heading: "我方在哪些环节参与、以什么角色", cols: ["link", "can_touch", "our_role"] },
-        { code: "表4-3", heading: "需求-能力对照", cols: ["gap_ref", "match", "our_product", "boundary_note"] },
+        { code: "表4-2", heading: "我方在哪些环节参与、以什么角色", cols: ["link", "our_role", "our_scope"] },
+        { code: "表4-3", heading: "需求-能力对照", cols: ["gap_ref", "match", "our_product", "action"] },
           { code: "表6-1", heading: "收益 → 指标 → 基线与预期", as: "table", cols: ["benefit", "metric", "baseline", "expected"] },
       ],
     },
@@ -1697,7 +1691,7 @@ export const REPORT_CHAPTERS: Record<ReportKind, readonly ReportChapter[]> = {
         { code: "表5-1", heading: "方案架构与接口（采集点位落在哪一层）", cols: ["layer", "components", "interface"] },
         { code: "表5-3", heading: "实施安排", cols: ["item", "content", "window"] },
         { code: "表5-4", heading: "交付与运维", cols: ["item", "content", "sla"] },
-        { code: "表4-2", heading: "我方在哪些环节参与、以什么角色", cols: ["link", "can_touch", "our_role"] },
+        { code: "表4-2", heading: "我方在哪些环节参与、以什么角色", cols: ["link", "our_role", "our_scope"] },
       ],
     },
     {
@@ -1723,7 +1717,7 @@ export const REPORT_CHAPTERS: Record<ReportKind, readonly ReportChapter[]> = {
         { title: "人才保障", keywords: ["人才", "培训", "能力建设"] },
       ],
       blocks: [
-        { code: "表4-5", heading: "我方能力自评（哪些要借外力）", as: "table", cols: ["dimension", "weight", "score"] },
+        { code: "表4-4", heading: "哪些细分要借外力", as: "table", cols: ["sub_scene", "opponent", "win_loss", "entry_action"] },
         { code: "表5-4", heading: "交付与运维", cols: ["item", "content", "sla"] },
       ],
     },

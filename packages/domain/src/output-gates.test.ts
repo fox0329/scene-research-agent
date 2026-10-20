@@ -113,21 +113,18 @@ describe("evaluateGates — 真实缺陷能被点名", () => {
     expect(f).toEqual([]);
   });
 
-  it("表4-5 权重合计只有 90 → 点名", () => {
+  it("表4-4 首打顺序重复 → 点名（不再有权重伪精度）", () => {
     const f = evaluateGates([
-      row("表4-5", { dimension: "老机取数", weight: 25, score: 3, basis: "YS-GW2100 旁路取数" }),
-      row("表4-5", { dimension: "算法口径", weight: 20, score: 2, basis: "自研 OEE 引擎" }),
-      row("表4-5", { dimension: "交付窗口", weight: 20, score: 4, basis: "周末停线窗口交付" }),
-      row("表4-5", { dimension: "合规", weight: 15, score: 4, basis: "私有化部署" }),
-      row("表4-5", { dimension: "加分项", weight: 10, score: 3, basis: "视觉质检在路线图" }),
+      row("表4-4", { sub_scene: "整机厂联网", value_density: "高", opponent: "海康", win_loss: "强", entry_action: "先做 2 条线试点", rank: 1 }),
+      row("表4-4", { sub_scene: "园区多厂", value_density: "中", opponent: "客户现状（自建）", win_loss: "平", entry_action: "联合投标 1 次", rank: 1 }),
     ]);
-    expect(f.some((x) => x.gate.includes("权重合计"))).toBe(true);
+    expect(f.some((x) => x.gate.includes("首打顺序不许重复"))).toBe(true);
   });
 
-  it("表4-5 写了「综合赢面（加权总分）」派生行 → 点名，且不计入合计", () => {
+  it("表4-4 写了「综合赢面（加权总分）」派生行 → 点名", () => {
     const f = evaluateGates([
-      row("表4-5", { dimension: "老机取数", weight: 100, score: 3, basis: "YS-GW2100" }),
-      row("表4-5", { dimension: "综合赢面（加权总分）", weight: 100, score: 3.15, basis: "加权计算" }),
+      row("表4-4", { sub_scene: "整机厂联网", value_density: "高", opponent: "海康", win_loss: "强", entry_action: "先做 2 条线试点", rank: 1 }),
+      row("表4-4", { sub_scene: "综合赢面（加权总分）", value_density: "高", opponent: "海康", win_loss: "强", entry_action: "加权计算 1 次", rank: 2 }),
     ]);
     expect(f.some((x) => x.detail.includes("派生值"))).toBe(true);
   });

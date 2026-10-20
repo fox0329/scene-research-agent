@@ -167,26 +167,26 @@ export const TABLE_GATES: Readonly<Record<string, readonly ScopedGate[]>> = {
     { kind: "cross-ref", column: "ability", table: "M3", target: "name", text: "能力项须逐字用 M3 能力清单的名字（改名即视为新能力，会虚高）" }
   ],
   "表4-2": [
-    { kind: "non-empty", columns: ["link", "can_touch", "our_role", "role_reason"], text: "环节/能否碰/我方角色/依据必填" },
+    { kind: "non-empty", columns: ["link", "our_role", "our_scope"], text: "环节/我方角色/我方承担必填" },
     { kind: "cross-ref", column: "link", table: "表1-2", target: "link", text: "环节须与表1-2 逐字同名" },
-    { kind: "enum-of-column", column: "can_touch", text: "能否碰取该列枚举" },
-    { kind: "enum-of-column", column: "our_role", text: "我方角色取该列枚举" }
+    { kind: "enum-of-column", column: "our_role", text: "我方角色取该列枚举" },
+    { kind: "not-vague", columns: ["our_scope"], text: "我方承担须写「做 X、不做 Y」，不许只写配合/支持/参与" }
   ],
   "表4-3": [
-    { kind: "non-empty", columns: ["gap_ref", "match", "our_product", "ability_basis"], text: "缺口/匹配结论/我方产品/依据必填" },
+    { kind: "non-empty", columns: ["gap_ref", "match", "our_product", "action"], text: "缺口/匹配结论/我方产品/处置必填" },
     { kind: "cross-ref", column: "gap_ref", table: "表3-8", target: "gap", text: "缺口须逐字复述表3-8 缺口原文（写编号不算），源表改字必须重跑本表" },
     { kind: "enum-of-column", column: "match", text: "匹配结论取该列枚举" },
-    { kind: "unique", columns: ["gap_ref"], text: "同一缺口只对照一次" }
+    { kind: "unique", columns: ["gap_ref"], text: "同一缺口只对照一次" },
+    { kind: "has-number", columns: ["action"], text: "处置须给量：需补齐写人天，能解写验收/交付口径，不能做写转分包对象" }
   ],
   "表4-4": [
-    { kind: "non-empty", columns: ["sub_scene", "value_density", "fit", "difficulty", "stock_maturity", "rank"], text: "细分/四维度/综合排序必填" },
-    { kind: "unique", columns: ["rank"], text: "排名不许重复（1、1、1 视为未排序）" }
-  ],
-  "表4-5": [
-    { kind: "non-empty", columns: ["dimension", "weight", "score", "basis"], text: "维度/权重/评分/依据必填" },
-    { kind: "enum", column: "score", values: ["1", "2", "3", "4", "5"], text: "评分只填 1-5 整数（1 明显劣势、3 持平、5 明显优势）" },
-    { kind: "no-aggregate-row", column: "dimension", text: "不许写「合计/总计/综合赢面」这类派生行（合计由门限核对）" },
-    { kind: "sum-to", column: "weight", target: 100, tolerance: 0.5, text: "权重合计须为 100" }
+    { kind: "non-empty", columns: ["sub_scene", "value_density", "opponent", "win_loss", "entry_action", "rank"], text: "细分/价值密度/主要对手/胜负/切入动作/首打顺序必填" },
+    { kind: "unique", columns: ["rank"], text: "首打顺序不许重复（1、1、1 视为未排序）" },
+    { kind: "unique", columns: ["sub_scene"], text: "一个细分一行，细分名不许重复" },
+    { kind: "enum-of-column", column: "value_density", text: "价值密度只取 高/中/低（理由写右栏）" },
+    { kind: "enum-of-column", column: "win_loss", text: "胜负只取 强/平/弱/未知（未知须在右栏写缺哪类信息）" },
+    { kind: "has-number", columns: ["entry_action"], text: "切入动作须带一个量（试点台数/周期/中标条件），不许「加强推广」" },
+    { kind: "no-aggregate-row", column: "sub_scene", text: "不许写「合计/平均/综合赢面」这类派生行" }
   ],
 
   "表5-1": [

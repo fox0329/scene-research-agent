@@ -389,7 +389,9 @@ function basisFluff(r: PostcheckRow): string[] {
   }
   const out: string[] = [];
   for (const c of def.columns) {
-    if (c.slot !== "中栏" || !BASIS_LABEL_RE.test(c.label)) continue;
+    /* 只按列名认「依据」列，不再限中栏——依据列 2026-10-20 起多数归右栏（如角色判定依据），
+       但「依据里不许写废话」这条与栏位无关 */
+    if (!BASIS_LABEL_RE.test(c.label)) continue;
     const text = String(r.row[c.key] ?? "");
     if (text.trim() === "") continue;
     for (const v of verdicts) {
@@ -427,7 +429,10 @@ function hardVerdictWithoutBasis(r: PostcheckRow): PostcheckFinding | null {
   if (!def) return null;
   const verdictCol = def.columns.find((c) => c.key === "verification_verdict");
   if (!verdictCol) return null;
-  const canTouch = String(r.row["can_touch"] ?? "").trim();
+  /* 2026-10-20：中栏只留「我方角色」，「能否碰」降右栏——老数据读 can_touch，
+     新数据从 our_role 反推（不参与＝不能碰），两条路都认，避免硬结论校验失效 */
+  const role = String(r.row["our_role"] ?? "").trim();
+  const canTouch = String(r.row["can_touch"] ?? "").trim() || (role === "不参与" ? "不能碰" : "");
   const verdict = String(r.row["verification_verdict"] ?? "").trim();
   if (canTouch !== "不能碰") return null;
   if (verdict !== "无法核实" && verdict !== "有反证") return null;
@@ -471,8 +476,9 @@ function ledgerContradictions(
     if (!hardNo) continue;
     const def = TABLES_BY_CODE[r.tableCode];
     if (!def) continue;
+    /* 不限于中栏：硬结论的依据 2026-10-20 起多在右栏（角色判定依据），
+       而「无 X 能力」正是写在依据里的 */
     for (const c of def.columns) {
-      if (c.slot !== "中栏") continue;
       const text = String(r.row[c.key] ?? "");
       if (text === "") continue;
       const terms = [
