@@ -101,6 +101,13 @@ export interface PostcheckRunnerDeps {
   /** 本次生成随机种子/会话标题用 */
   scenarioName: string;
   stage: StageId;
+  /**
+   * 表3-2 的 players 原文（同一场景）。
+   *
+   * 表4-4 的「主要对手」只有两个合法来源：表3-2 名单或本客户材料；两处都没有就只能写
+   * 「未知」。传空/不传 = 不做该判定（表3-2 未生成时不误伤）。
+   */
+  knownOpponents?: () => readonly string[];
 }
 
 export interface PostcheckOutcome {
@@ -472,7 +479,12 @@ export async function runPostcheck(deps: PostcheckRunnerDeps): Promise<Postcheck
   // 产出行校验的机械违规同样并入（变更表 #163）——判定仍在确定性层，只是不再漏掉它们
   const violationsOf = deps.listViolations ?? ((): readonly PostcheckFinding[] => []);
   let findings = [
-    ...runDeterministicPostcheck({ rows: all, lookup, stage: deps.stage }),
+    ...runDeterministicPostcheck({
+      rows: all,
+      lookup,
+      stage: deps.stage,
+      knownOpponents: deps.knownOpponents?.(),
+    }),
     ...violationsOf(),
   ];
   progress(`生成后自检：初查 ${all.length} 行，命中 ${findings.length} 处待处理`);
@@ -543,7 +555,12 @@ export async function runPostcheck(deps: PostcheckRunnerDeps): Promise<Postcheck
 
       // 改完再判一遍——判定权始终在确定性层（产出行校验也重判，改没改掉由它说了算）
       findings = [
-        ...runDeterministicPostcheck({ rows: all, lookup, stage: deps.stage }),
+        ...runDeterministicPostcheck({
+      rows: all,
+      lookup,
+      stage: deps.stage,
+      knownOpponents: deps.knownOpponents?.(),
+    }),
         ...violationsOf(),
       ];
       allFindings.push(...findings);

@@ -901,6 +901,15 @@ async function* executeAdvanceStage(
       );
     },
     lookup: makeSourceLookup(db),
+    /* 表4-4 的对手必须能回查到表3-2 的 players（用户定调：「没调研到写未知可以」） */
+    knownOpponents: () =>
+      db.stageDataRepo
+        .list({
+          where: "scenario_id = ? AND table_code = ?",
+          params: [scenarioId, "表3-2"],
+        })
+        .map((r) => String((r.row as Record<string, unknown>)["players"] ?? ""))
+        .filter((x) => x.trim() !== ""),
     dshClient,
     applyFix: (rowId, patch) => {
       db.stageDataRepo.update(rowId, patch);

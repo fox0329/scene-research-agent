@@ -487,6 +487,44 @@ describe("postcheck — 依据列不许写废话（v1.32 追加）", () => {
   });
 });
 
+describe("postcheck — 表4-4 对手必须有出处（2026-10-20 用户定调「没调研到写未知可以」）", () => {
+  const pick = (opponent: string, winLoss = "强"): PostcheckRow => ({
+    tableCode: "表4-4",
+    rowId: "r44",
+    label: "曝气优化",
+    row: { sub_scene: "曝气优化", value_density: "高", opponent, win_loss: winLoss, entry_action: "1 座 5 万吨级厂试点 3 个月", rank: 1 },
+    source: "表3-2",
+    sourceType: "AI提取",
+  });
+  const KNOWN = ["中控技术、和利时、施耐德电气", "威派格、新奥数能"];
+
+  it("对手写在表3-2 名单里 → 不点名", () => {
+    const f = runDeterministicPostcheck({ rows: [pick("中控技术、和利时")], lookup: fakeLookup({}), knownOpponents: KNOWN });
+    expect(f.some((x) => x.kind === "对手无出处")).toBe(false);
+  });
+
+  it("对手是行业常识补的厂商（名单里查不到）→ 点名，要求改未知", () => {
+    const f = runDeterministicPostcheck({ rows: [pick("聚光科技、力合科技")], lookup: fakeLookup({}), knownOpponents: KNOWN });
+    const hit = f.find((x) => x.kind === "对手无出处");
+    expect(hit).toBeTruthy();
+    expect(hit?.detail).toContain("未知");
+  });
+
+  it("对手写「未知」或「客户现状」→ 是诚实写法，不点名", () => {
+    const f = runDeterministicPostcheck({
+      rows: [pick("未知（无竞品情报）", "未知"), pick("客户现状（自建/手工）")],
+      lookup: fakeLookup({}),
+      knownOpponents: KNOWN,
+    });
+    expect(f.some((x) => x.kind === "对手无出处")).toBe(false);
+  });
+
+  it("没传表3-2 名单时不做该判定（表3-2 未生成不误伤）", () => {
+    const f = runDeterministicPostcheck({ rows: [pick("聚光科技、力合科技")], lookup: fakeLookup({}) });
+    expect(f.some((x) => x.kind === "对手无出处")).toBe(false);
+  });
+});
+
 describe("postcheck — 硬结论必须有依据（v1.33，用户质问「结论没有核实吗」）", () => {
   const ledgerRow = (ability: string, limitation = ""): PostcheckRow => ({
     tableCode: "表4-1",

@@ -40,6 +40,8 @@ export type PostcheckKind =
   | "依据未落到事实"
   | "硬结论无依据"
   | "判定与能力底账矛盾"
+  /** 表4-4 的主要对手不在表3-2 的 players 里，也没有本客户材料支撑（2026-10-20） */
+  | "对手无出处"
   /**
    * 表1-3 的门槛没通过三问（变更表 #228）
    *
@@ -123,6 +125,12 @@ export interface PostcheckInput {
    * 因此这两步的中栏不该出现「本客户／我方」这类客户侧口径。
    */
   stage?: number;
+  /**
+   * 表3-2 的 players 原文（同一场景）。给了就做「对手出处」判定：
+   * 具名对手必须能在这份名单里找到，否则只能写「未知」+ 右栏写缺什么情报。
+   * 不传 = 不做该判定（表3-2 未生成时不误伤）。
+   */
+  knownOpponents?: readonly string[];
 }
 
 // ─── 常量 ────────────────────────────────────────────────
@@ -454,6 +462,45 @@ function hardVerdictWithoutBasis(r: PostcheckRow): PostcheckFinding | null {
  * 「边缘 AI 推理算力（AI Box 边缘算力，6TOPS NPU）」已交付；同一张表 4-2 的另一行
  * 还写着「边缘侧有 AI 推理能力」判"可以碰"。判据不看措辞、只看底账对不对得上。
  */
+/**
+ * 跨表确定性校验③：**对手无出处**（用户定调 2026-10-20：「如果没有调研到写未知可以」）
+ *
+ * 表4-4 的「主要对手」只能来自两个地方：表3-2 的 players，或本客户材料。
+ * 实跑里同一个字段两个项目两套口径——市政项目 6 行有 4 行具名，其中「聚光科技、力合科技」
+ * 并不在表3-2 名单里（模型用行业常识补的）；压铸项目 9 行全写「未提供」。前者是**编的名字**，
+ * 后者才是老实。规则不是"必须填"，而是"填了就得有出处，没有就写未知"。
+ */
+function opponentsWithoutBasis(
+  rows: readonly PostcheckRow[],
+  known: readonly string[],
+): PostcheckFinding[] {
+  const out: PostcheckFinding[] = [];
+  const pool = known.join("\n");
+  for (const r of rows) {
+    if (r.tableCode !== "表4-4") continue;
+    const raw = String(r.row["opponent"] ?? "");
+    if (raw.trim() === "") continue;
+    // 「未知／未提供／客户现状（自建·手工）」都是诚实的写法，不算编
+    if (/未知|未提供|客户现状/.test(raw)) continue;
+    const names = raw
+      .replace(/（[^）]*）/g, "")
+      .split(/[、,，/及]/)
+      .map((x) => x.trim())
+      .filter((x) => x.length >= 2);
+    const missing = names.filter((n) => !pool.includes(n));
+    if (missing.length === 0) continue;
+    out.push({
+      tableCode: r.tableCode,
+      rowId: r.rowId,
+      label: r.label,
+      kind: "对手无出处",
+      detail: `主要对手「${missing.join("、")}」在表3-2 的 players 里查不到，也无本客户材料出处——没调研到就写「未知」，右栏注明缺竞品名单/报价/中标记录；不许用行业常识补厂商名（G-R2）`,
+      severity: "存疑",
+    });
+  }
+  return out;
+}
+
 function ledgerContradictions(
   rows: readonly PostcheckRow[],
 ): PostcheckFinding[] {
@@ -626,6 +673,9 @@ export function runDeterministicPostcheck(input: PostcheckInput): PostcheckFindi
   const findings: PostcheckFinding[] = [];
   // 跨表校验先跑（判据要对照整批行，不能只看当前行）
   findings.push(...ledgerContradictions(input.rows));
+  if (input.knownOpponents && input.knownOpponents.length > 0) {
+    findings.push(...opponentsWithoutBasis(input.rows, input.knownOpponents));
+  }
   for (const r of input.rows) {
     const hard = hardVerdictWithoutBasis(r);
     if (hard) findings.push(hard);

@@ -260,8 +260,8 @@ const ROW_TEXT: Record<string, (r: Record<string, unknown>) => string> = {
   "表3-3": (r) => `**${cell(r.customer_type)}**：${segs([["拍板", r.decision_maker], ["钱从哪出", r.budget], ["默认选", r.default_choice], ["周期", r.decision_cycle]])}`,
   "表3-5": (r) => `**${cell(r.link)}**：${segs([["供给方", r.who_supplies], ["集中度", r.concentration], ["可替代性", r.substitutability], ["卡点", r.supply_risk]])}`,
   "表3-8": (r) => `${r.rank ? `${cell(r.rank)}. ` : ""}**${truncate(r.gap, 60)}**${r.pain_level ? `（痛度：${cell(r.pain_level)}）` : ""} —— 谁在痛：${truncate(r.who_hurts, 30)}；验收：${truncate(r.acceptance, 40)}`,
-  "表4-2": (r) => `**${cell(r.link)}**：${cell(r.can_touch)}${blank(r.our_role) ? "" : ` ｜ 我方角色：${truncate(r.our_role, 24)}`}${blank(r.role_reason) ? "" : ` ｜ 依据：${truncate(r.role_reason, 60)}`}`,
-  "表4-3": (r) => `**${truncate(r.gap_ref, 46)}** → ${cell(r.match)}：${truncate(r.our_product, 46)}${blank(r.boundary_note) ? "" : `（边界：${truncate(r.boundary_note, 46)}）`}${blank(r.risk) ? "" : `（风险：${truncate(r.risk, 40)}）`}`,
+  "表4-2": (r) => `**${cell(r.link)}**：${cell(r.our_role)}${blank(r.our_scope) ? "" : ` ｜ 承担：${truncate(r.our_scope, 60)}`}${blank(r.role_reason) ? "" : ` ｜ 依据：${truncate(r.role_reason, 60)}`}`,
+  "表4-3": (r) => `**${truncate(r.gap_ref, 46)}** → ${cell(r.match)}：${truncate(r.our_product, 46)}${blank(r.action) ? "" : `（处置：${truncate(r.action, 46)}）`}${blank(r.risk) ? "" : `（风险：${truncate(r.risk, 40)}）`}`,
   "表5-1": (r) => `**${cell(r.layer) || cell(r.interface_name)}**：${segs([["组件", truncate(r.components, 50)], ["接口", truncate(r.interface, 40)], ["对接", truncate(r.integration, 40)], ["协议", truncate(r.protocol, 30)], ["边界", truncate(r.boundary, 50)]])}`,
   "表5-3": (r) => `**${cell(r.item)}**：${truncate(r.content, 60)}${segs([["窗口", r.window], ["人天", r.man_days], ["回退", r.rollback]]) ? `（${segs([["窗口", r.window], ["人天", r.man_days], ["回退", r.rollback]])}）` : ""}`,
   "表5-4": (r) => `**${cell(r.item)}**：${truncate(r.content, 60)}${blank(r.sla) ? "" : `（SLA：${truncate(r.sla, 30)}）`}`,
@@ -274,7 +274,7 @@ function chapterLead(chapter: ReportChapter, stageData: readonly StageData[]): s
   const elements = countRows(stageData, "表2-2");
   const pains = valuesOf(stageData, "表1-2", "pain").length;
   const gaps = countRows(stageData, "表3-8");
-  const participate = valuesOf(stageData, "表4-2", "can_touch");
+  const participate = valuesOf(stageData, "表4-2", "our_role");
   const benefits = countRows(stageData, "表6-1");
   /**
    * 有基线的条数按 `hasCustomerBaseline` 算（不是"非空"）

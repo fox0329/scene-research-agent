@@ -179,8 +179,8 @@ describe("stage-summary — 阶段级六段骨架（交付物装配口径）", (
       generatedAt: "2026-09-25",
     });
     expect(md3).toContain("# 阶段 3 · 能力匹配 — 总结");
-    expect(md3).toContain("信息完整度：1/6 张表齐备");
-    expect(md3).toContain("本阶段产出：表1-2、表4-1、表4-2、表4-3、表4-4、表4-5");
+    expect(md3).toContain("信息完整度：1/5 张表齐备");
+    expect(md3).toContain("本阶段产出：表1-2、表4-1、表4-2、表4-3、表4-4");
     expect(md3).toContain("**表1-2 场景环节地图**：3 行——制水；输配；原水取水");
     expect(md3).toContain("**表4-1 能力底账**：尚无数据");
     expect(md3).not.toContain("表1-3"); // 门槛与合规留在阶段 1

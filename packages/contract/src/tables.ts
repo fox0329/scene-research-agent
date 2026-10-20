@@ -1007,7 +1007,7 @@ const TABLES_STAGE_3: readonly TableDef[] = [
     ],
     completeness: [
       "≥2 个细分场景；每个细分一行，sub_scene 唯一",
-      "value_density 只取 高/中/低；opponent 必须具名或写「客户现状」，禁「竞争对手」",
+      "value_density 只取 高/中/低；opponent 只认表3-2 的 players 或本客户材料点名的厂商，禁「竞争对手」；调研不到写「未知」并在右栏写缺哪类情报",
       "win_loss 只取 强/平/弱；entry_action ≤40 字、是一件能立刻做的事",
       "rank 1..n 连续不重复；第一行注明「首打」+ 可验证理由（已有案例/已招标/对手缺席）",
       "四维对照、契合度/难度/成熟度定档依据写右栏；不写权重、不写总分（不做伪精度）",
