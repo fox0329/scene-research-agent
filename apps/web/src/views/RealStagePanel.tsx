@@ -301,7 +301,6 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
   }
 
   const completeness = data?.completeness;
-  const activeDef = activeTable ? tableDef(activeTable) : undefined;
   return (
     <>
       {/* 本步的表：表名一行（不带表号/条数）+ SchemaTable */}
@@ -339,9 +338,8 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
               />
             ) : null}
 
-            {activeDef ? (
-              <p className="schema-table-note">完整度规则：{activeDef.completeness.join("；")}</p>
-            ) : null}
+            {/* 用户定调 2026-10-20：「表格下面的完整度规则…可以不显示吧？」
+                填写要求是生成时的内部约束，不进界面；界面上只留表格本身 */}
           </div>
         </div>
       ) : (

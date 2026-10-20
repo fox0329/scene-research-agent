@@ -232,9 +232,7 @@ export const DemoStagePanel: React.FC<DemoStagePanelProps> = ({
                 onRowFocus={(rowId) => focusRow(rowId, "mid")}
               />
             ) : null}
-            {activeDef ? (
-              <p className="schema-table-note">完整度规则：{activeDef.completeness.join("；")}</p>
-            ) : null}
+            {/* 完整度规则是生成时的内部约束，界面不显示（用户定调 2026-10-20） */}
           </div>
         </div>
       ) : null}
