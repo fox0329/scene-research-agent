@@ -253,6 +253,7 @@ export {
   missingMaterialHint,
   MID_CELL_MAX_CHARS,
 } from "./postcheck.js";
+export { judgeGate, findFakeGates, type GateVerdict } from "./gate-check.js";
 export type {
   MidSweepResult,
   PostcheckFinding,

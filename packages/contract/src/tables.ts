@@ -36,7 +36,6 @@ export const ENUMS = {
   maturity: ["已交付", "组件具备", "在研", "规划"],
   measured: ["实测", "宣称", "未提及"],
   barrier_type: ["技术", "行业准入", "经济", "生态锁定", "一票否决者"],
-  industry_practice: ["正面满足", "换技术路径", "借道合作", "等窗口", "行业普遍不做"],
   can_touch: ["可以碰", "只能配合", "不能碰"],
   our_role: ["替代", "辅助", "外围", "不参与"],
   match: ["真能解", "需补齐", "不能做"],
@@ -555,13 +554,12 @@ const TABLES_STAGE_1: readonly TableDef[] = [
     stage: 1,
     tier: "重要",
     rowUnit: "一道门槛（一票否决者类为一个角色；认证类为一项认证要求）",
-    purpose: "五类门槛是什么、判据是什么、卡在谁手里、行业里一般怎么过（不写我方的行动，也不猜本客户的合规结论）",
+    purpose: "真正能卡住进场的门槛：谁在卡、拿不出什么就不能进场、判据是什么（不写我方的行动，也不猜本客户的合规结论）",
     columns: [
       mid("barrier_type", "门槛类型", { required: true, enum: "barrier_type" }),
       mid("barrier_name", "门槛", { required: true }),
       mid("veto_holder", "否决者", { requiredWhen: "生态锁定类除外" }),
       mid("criteria", "判据", { required: true, type: "longText", truncate: TRUNCATE_DEFAULT }),
-      mid("industry_practice", "行业通行处置", { enum: "industry_practice", note: "行业里这道门槛一般怎么过（市场知识）" }),
       /* 变更表 #84（用户拍板）保留：可由门槛判据 + 行业通例推断，实测 26% 有真值，不是空列 */
       sup("cert_gap", "认证差距", { requiredWhen: "认证类必填" }),
       sup("source", "来源", { required: true }),
@@ -569,9 +567,13 @@ const TABLES_STAGE_1: readonly TableDef[] = [
       sup("authority", "来源权威性", { required: true, enum: "authority" }),
     ],
     completeness: [
-      "五类门槛各 ≥1 行",
+      /* 用户定调 2026-10-20：「所谓的门槛一定是要真实，而且重要的，比如防爆等级、装备承制资格这种，
+         只是普通的要求不能叫门槛」——据此**取消"五类各 ≥1 行"配额**：配额会逼模型凑数，
+         实测 19 行里 11 行是难度/成本/风险。某类为空是正常结果。 */
+      "每行必须过后面的门槛三问：否决者是外部主体 + 判据有可核验凭据 + 不满足就出局",
       "criteria 含具体等级/标准号/数值（禁『较高』『相关』）",
       "只针对本场景能问到的事实；没有材料依据的门槛照行业通例写，不猜本客户的合规结论",
+      "经不起三问的（技术难度、一次性成本、环境约束、内部态度）不许进本表——按性质归表2-5/表3-5/表6-1/表4-2",
     ],
     consumedBy: [4, 6],
   },
@@ -1153,14 +1155,7 @@ export type CoverageRule =
 
 export const COVERAGE_RULES: Readonly<Record<string, readonly CoverageRule[]>> = {
   "表1-2": [{ kind: "min-rows", min: 3, label: "业务环节 ≥3 个" }],
-  "表1-3": [
-    {
-      kind: "enum-complete",
-      column: "barrier_type",
-      values: ENUMS.barrier_type,
-      label: "五类门槛各 ≥1 行",
-    },
-  ],
+  /* 表1-3 不再设配额（变更表 #228）：门槛是发现出来的，不是凑出来的 */
   "表3-1": [{ kind: "min-rows", min: 3, label: "覆盖 ≥3 个产业链环节" }],
   "表3-2": [{ kind: "min-rows", min: 3, label: "≥3 种方案形态" }],
   "表3-4": [

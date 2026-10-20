@@ -18,6 +18,7 @@
  */
 
 import { CURRENT_STATE_TABLES, TABLES_BY_CODE, middleColumns } from "@scene/contract";
+import { judgeGate } from "./gate-check.js";
 import type { InfoRow } from "./completeness.js";
 
 // ─── 类型 ────────────────────────────────────────────────
@@ -36,6 +37,13 @@ export type PostcheckKind =
   | "依据未落到事实"
   | "硬结论无依据"
   | "判定与能力底账矛盾"
+  /**
+   * 表1-3 的门槛没通过三问（变更表 #228）
+   *
+   * 用户定调：「所谓的门槛一定是要真实，而且重要的……只是普通的要求不能叫门槛」。
+   * 判定由 `gate-check.ts` 出，这里只把它接进同一份问题清单，走同一套修复轮。
+   */
+  | "门槛不成立"
   /**
    * 产出行校验（`validateIncomingRows`）的机械违规（变更表 #163）
    *
@@ -600,6 +608,21 @@ export function runDeterministicPostcheck(input: PostcheckInput): PostcheckFindi
     const citations = parseCitations(r.source);
     const verdict = verdictOf(r);
     const prose = proseOf(r);
+
+    /* ⓪ 门槛成立性：表1-3 的行必须过三问（外部主体/可核验凭据/出局后果） */
+    if (r.tableCode === "表1-3") {
+      const gate = judgeGate(r.row as Record<string, unknown>);
+      if (!gate.isGate) {
+        findings.push({
+          tableCode: r.tableCode,
+          rowId: r.rowId,
+          label: r.label,
+          kind: "门槛不成立",
+          detail: `${gate.failures.join("；")}。按性质应归 ${gate.suggestTable ?? "其他表"}，不是门槛`,
+          severity: "存疑",
+        });
+      }
+    }
 
     // ① 来源真实性：声称有据，却给不出出处
     if (isMaterialClaim(r) && citations.length === 0) {

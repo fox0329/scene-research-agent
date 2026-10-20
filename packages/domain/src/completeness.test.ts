@@ -154,7 +154,7 @@ describe("completeness — 单表规则", () => {
     expect(r.missingTables).toContain("表4-1");
   });
 
-  it("覆盖度：enum-complete（表1-3 五类门槛各 ≥1 行）列出缺类别", () => {
+  it("表1-3 不再设「五类各 ≥1 行」配额（变更表 #228）——缺几类都不报缺口", () => {
     const r = checkStageCompleteness({
       stage: 1,
       rowsByTable: {
@@ -164,11 +164,10 @@ describe("completeness — 单表规则", () => {
         ],
       },
     });
+    /* 配额会逼模型凑数（实测 19 行里 10 行是难度/成本/风险），
+       门槛是发现出来的：某类为空是正常结果，不该算「覆盖度不足」 */
     const g = r.gaps.find((x) => x.kind === "覆盖度不足" && x.tableCode === "表1-3");
-    expect(g?.detail).toContain("行业准入");
-    expect(g?.detail).toContain("生态锁定");
-    expect(g?.detail).toContain("一票否决者");
-    expect(g?.count).toBe(3);
+    expect(g).toBeUndefined();
   });
 
   it("覆盖度：all-columns-non-empty（表3-4 竞品 A/B/C 均填）", () => {

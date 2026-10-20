@@ -69,9 +69,9 @@ describe("stage-prompts — 内容由注册表派生", () => {
     // 输出契约里同样带取值，模型两条通路都看得到
     const contract = JSON.stringify(p.outputContract);
     expect(contract).toContain("只能取：");
-    /* 表2-2「竞争激烈度」已删除（变更表 #226），改断言本阶段仍在的枚举取值：
-     * 表1-3「行业通行处置」的五档必须随契约下发，模型才编不出别的话 */
-    expect(contract).toContain("正面满足");
+    /* 表1-3「行业通行处置」列与枚举已删除（变更表 #228），改断言本阶段仍在的枚举取值：
+     * 门槛五类必须随契约下发，模型才编不出「资质门槛」这种自造值 */
+    expect(contract).toContain("一票否决者");
   });
 
   it("表1-1 的固定行逐个列出，且只给「场景名称」标「用户输入」", () => {
