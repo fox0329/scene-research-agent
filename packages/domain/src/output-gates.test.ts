@@ -97,6 +97,14 @@ describe("evaluateGates — 真实缺陷能被点名", () => {
     expect(f.filter((x) => x.gate.includes("重复登记")).length).toBe(2);
   });
 
+  it("表3-1 两条「器件（…）」是不同环节，不算重复（去重看整格原文）", () => {
+    const f = evaluateGates([
+      row("表3-1", { link: "器件（在线仪表与传感器）", gross_margin: "40%–60%（测算）", representative: "聚光科技、力合科技" }),
+      row("表3-1", { link: "器件（PLC/DCS 控制器）", gross_margin: "30%–45%（测算）", representative: "西门子、施耐德" }),
+    ]);
+    expect(f.filter((x) => x.gate.includes("环节不许重复"))).toEqual([]);
+  });
+
   it("不同场景复用同一能力不算重复（跨场景去重会误杀）", () => {
     const f = evaluateGates([
       { ...row("表4-1", { ability: "多协议设备接入", maturity: "已交付" }, "a"), scenarioId: "s1" },

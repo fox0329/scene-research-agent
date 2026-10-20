@@ -232,6 +232,11 @@ function judgeRowGates(
 }
 
 /** 名目归一：去掉空白、括号注、标点，用于跨表与去重比对 */
+/** 只做空白与大小写归一，保留括注——用于「不许重复」这类需要看整格原文的判定 */
+function canonKeepNotes(value: unknown): string {
+  return String(value ?? "").replace(/\s+/g, "").toLowerCase();
+}
+
 function canon(value: unknown): string {
   return text(value)
     .replace(/[（(][^）)]*[)）]/g, "")
@@ -299,7 +304,10 @@ export function evaluateGates(rows: readonly GateRow[]): GateFinding[] {
       if (g.kind === "unique") {
         const seen = new Map<string, string[]>();
         for (const r of tableRows) {
-          const key = g.columns.map((c) => canon(r.row[c])).join("|");
+          /* 去重看「整格原文」，不能像 enum 那样剥括注：
+             表3-1 的环节形如「器件（在线仪表与传感器…）」「器件（PLC/DCS…）」，
+             两条都是真实存在的不同环节，剥掉括注只剩「器件」会误判重复。 */
+          const key = g.columns.map((c) => canonKeepNotes(r.row[c])).join("|");
           if (!key.replace(/\|/g, "")) continue;
           seen.set(key, [...(seen.get(key) ?? []), r.id]);
         }
