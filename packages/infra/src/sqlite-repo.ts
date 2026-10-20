@@ -142,6 +142,16 @@ function runMigrations(db: Database.Database): void {
   if (scCols.some((c) => c.name === "product_line_id")) {
     rebuildScenarioWithoutOwnLine(db);
   }
+  /**
+   * 删除已废弃表的数据（变更表 #226，用户定调「没价值的直接删」）
+   *
+   * 表2-7「交付与运维现状」与表5-4 是同一批项在「现状/交付」各写一遍，表3-6「替代方案」
+   * 与表3-4「竞争对手对照」是同一判断的两面——两张表已从注册表移除，库里残留的行也一并清掉，
+   * 否则界面上会出现「表定义里没有、数据里有」的幽灵表。
+   *
+   * 幂等：DELETE 到空为止，第二次启动是空操作。
+   */
+  db.exec("DELETE FROM stage_data WHERE table_code IN ('表2-7', '表3-6')");
 }
 
 /**

@@ -245,7 +245,7 @@ export const STAGE_DEFS: readonly StageDef[] = [
     name: "理解商业",
     producedBy: "模型分析",
     goal: "钱怎么分、有哪些方案形态、客户怎么买、对手位势、替代方案与价格、别人踩过的坑、没被满足的需求、行业趋势",
-    tableCodes: ["表3-1", "表3-2", "表3-3", "表3-4", "表3-5", "表3-6", "表3-7", "表3-8", "表3-9"],
+    tableCodes: ["表3-1", "表3-2", "表3-3", "表3-4", "表3-5", "表3-7", "表3-8", "表3-9"],
     summaryTitle: "③ 商业格局总结",
   },
   {
@@ -253,7 +253,7 @@ export const STAGE_DEFS: readonly StageDef[] = [
     name: "能力匹配",
     producedBy: "模型分析",
     goal: "客户现状底数（现在谁在做、用什么、怎么交付运维）、我方能力底账、客户每条需求能否满足、细分优先级、竞争力评分",
-    tableCodes: ["表1-2", "表2-7", "表4-1", "表4-2", "表4-3", "表4-4", "表4-5"],
+    tableCodes: ["表1-2", "表4-1", "表4-2", "表4-3", "表4-4", "表4-5"],
     summaryTitle: "④ 能力匹配总结",
   },
   {
@@ -361,8 +361,6 @@ const TABLES_STAGE_0: readonly TableDef[] = [
       mid("name", "产品名", { required: true }),
       mid("status", "状态", { required: true, enum: "product_status" }),
       mid("launch_date", "上市/计划时间", { type: "date" }),
-      sup("former_name", "曾用名/代号"),
-      sup("material_sync", "资料同步"),
       sup("position_desc", "一句话定位", { type: "longText" }),
       sup("source", "来源", { required: true }),
     ],
@@ -417,7 +415,6 @@ const TABLES_STAGE_0: readonly TableDef[] = [
     columns: [
       mid("description", "不做的事", { required: true, type: "longText", truncate: TRUNCATE_DEFAULT }),
       mid("has_plan", "有无计划", { required: true, enum: "has_plan" }),
-      mid("plan_date", "计划时间", { type: "date" }),
       sup("reason", "原因", { required: true, type: "longText" }),
       sup("response", "客户要求时怎么办", { required: true, type: "longText" }),
       sup("owner", "填写人"),
@@ -440,7 +437,6 @@ const TABLES_STAGE_0: readonly TableDef[] = [
       mid("external_visible", "对外可否提及", { required: true, enum: "visibility" }),
       sup("description", "已知限制或缺陷", { required: true, type: "longText" }),
       sup("owner", "填写人"),
-      sup("date", "日期", { type: "date" }),
       sup("source", "来源", { required: true }),
     ],
     completeness: ["四项必填非空", "source_type ≥『用户确认』"],
@@ -566,6 +562,7 @@ const TABLES_STAGE_1: readonly TableDef[] = [
       mid("veto_holder", "否决者", { requiredWhen: "生态锁定类除外" }),
       mid("criteria", "判据", { required: true, type: "longText", truncate: TRUNCATE_DEFAULT }),
       mid("industry_practice", "行业通行处置", { enum: "industry_practice", note: "行业里这道门槛一般怎么过（市场知识）" }),
+      /* 变更表 #84（用户拍板）保留：可由门槛判据 + 行业通例推断，实测 26% 有真值，不是空列 */
       sup("cert_gap", "认证差距", { requiredWhen: "认证类必填" }),
       sup("source", "来源", { required: true }),
       sup("evidence_level", "证据等级", { required: true, enum: "evidence_level" }),
@@ -591,7 +588,6 @@ const TABLES_STAGE_1: readonly TableDef[] = [
       mid("function", "功能", { required: true, type: "longText", truncate: TRUNCATE_DEFAULT }),
       mid("vendor", "主要供应商"),
       mid("price_range", "价格量级"),
-      mid("competition", "竞争激烈度", { enum: "competition" }),
       sup("key_params", "关键技术参数", { type: "longText" }),
       sup("served_role", "服务的对象角色"),
       sup("touchpoint", "触点"),
@@ -729,7 +725,7 @@ const TABLES_STAGE_2: readonly TableDef[] = [
   },
   {
     code: "表3-4",
-    name: "竞争对手对照",
+    name: "竞争对手与替代方案",
     stage: 2,
     tier: "支撑",
     rowUnit: "一个对照维度（固定 4 列：竞品 A/B/C/D）",
@@ -766,25 +762,6 @@ const TABLES_STAGE_2: readonly TableDef[] = [
     ],
     completeness: ["≥3 个上游环节（覆盖关键器件、基础软件、集成服务）", "link/who_supplies/supply_risk 非空", "每条有来源"],
     consumedBy: [4, 5],
-  },
-  {
-    code: "表3-6",
-    name: "替代方案",
-    stage: 2,
-    tier: "重要",
-    rowUnit: "一个可对照方案（必须含「什么都不做」）",
-    purpose: "客户手上还有什么可选项、各自什么价格",
-    columns: [
-      mid("alternative", "替代方案", { required: true, note: "必须含『什么都不做』" }),
-      mid("customer_gets", "客户得到什么", { required: true, type: "longText", truncate: TRUNCATE_DEFAULT }),
-      mid("cost_structure", "成本结构", { required: true }),
-      mid("unit_cost", "单位成本", { required: true, type: "number" }),
-      mid("chosen_when", "谁在用、什么条件下选它", { required: true, note: "这类方案的实际采用者与采用条件" }),
-      sup("no", "编号"),
-      sup("source", "来源", { required: true }),
-    ],
-    completeness: ["≥2 个对照方案（含「什么都不做」）", "alternative/customer_gets/cost_structure/unit_cost/chosen_when 非空", "成本须有来源或标『估算』"],
-    consumedBy: [3, 4, 6],
   },
   {
     code: "表3-7",
@@ -880,22 +857,6 @@ const TABLES_STAGE_3: readonly TableDef[] = [
     consumedBy: [4, 6],
   },
   {
-    code: "表2-7",
-    name: "交付与运维现状",
-    stage: 3,
-    tier: "过程",
-    rowUnit: "一个现状项",
-    purpose: "客户现有的交付与运维方式，供交付模式设计参照",
-    columns: [
-      mid("item", "项", { required: true }),
-      mid("status", "现状", { required: true, type: "longText", truncate: TRUNCATE_DEFAULT }),
-      sup("note", "说明"),
-      sup("source", "出处", { required: true }),
-    ],
-    completeness: ["item/status 非空", "status 须说明『谁在做、什么形式、周期如何』"],
-    consumedBy: [4],
-  },
-  {
     code: "表4-1",
     name: "能力底账",
     stage: 3,
@@ -912,7 +873,7 @@ const TABLES_STAGE_3: readonly TableDef[] = [
     ],
     completeness: ["ability/maturity/proof 非空", "已交付行须有案例或验收数据"],
     /* 客户现状表已移到本阶段（2026-10-14）：现成现状，再谈能不能满足 */
-    dependsOnTables: ["表1-2", "表2-7"],
+    dependsOnTables: ["表1-2"],
     consumedBy: [6],
   },
   {
@@ -937,7 +898,7 @@ const TABLES_STAGE_3: readonly TableDef[] = [
       "判定依据须引用 M3/M4/M5 的具体条目",
     ],
     /* 客户现状表已移到本阶段（2026-10-14）：现成现状，再谈能不能满足 */
-    dependsOnTables: ["表1-2", "表2-7"],
+    dependsOnTables: ["表1-2"],
     consumedBy: [4, 5, 6],
   },
   {
@@ -957,7 +918,7 @@ const TABLES_STAGE_3: readonly TableDef[] = [
       sup("source", "来源", { required: true }),
     ],
     completeness: ["match 取值合法", "覆盖表3-8 每条缺口", "boundary_note 非空", "ability_basis 可回溯表4-1"],
-    dependsOnTables: ["表4-1", "表1-2", "表2-7"],
+    dependsOnTables: ["表4-1", "表1-2"],
     consumedBy: [6],
   },
   {
@@ -981,7 +942,7 @@ const TABLES_STAGE_3: readonly TableDef[] = [
     ],
     completeness: ["≥2 个细分场景", "四维度非空", "必须给出排名第一的结论"],
     /* 客户现状表已移到本阶段（2026-10-14）：现成现状，再谈能不能满足 */
-    dependsOnTables: ["表1-2", "表2-7"],
+    dependsOnTables: ["表1-2"],
     consumedBy: [6],
   },
   {
@@ -1004,7 +965,7 @@ const TABLES_STAGE_3: readonly TableDef[] = [
     ],
     completeness: ["维度 ≥4 个", "权重之和 = 100%", "总分 = Σ(权重 × 评分)"],
     /* 客户现状表已移到本阶段（2026-10-14）：现成现状，再谈能不能满足 */
-    dependsOnTables: ["表1-2", "表2-7"],
+    dependsOnTables: ["表1-2"],
     consumedBy: [6],
   },
 ];
@@ -1210,7 +1171,6 @@ export const COVERAGE_RULES: Readonly<Record<string, readonly CoverageRule[]>> =
       label: "竞品 ≥3 家（A/B/C 均填）",
     },
   ],
-  "表3-6": [{ kind: "min-rows", min: 2, label: "≥2 个对照方案（含我方方案行）" }],
   "表3-7": [{ kind: "min-rows", min: 2, label: "失败反模式 ≥2 条" }],
   "表3-8": [{ kind: "min-rows", min: 3, label: "需求缺口 ≥3 条" }],
   "表4-4": [{ kind: "min-rows", min: 2, label: "细分场景 ≥2 个" }],
@@ -1568,7 +1528,6 @@ export const REPORT_CHAPTERS: Record<ReportKind, readonly ReportChapter[]> = {
       { code: "表1-1", heading: "场景锚（在讲哪个场景）" },
       { code: "表1-2", heading: "业务环节与现在的做法", cols: ["link", "owner_now", "current_tool"] },
       { code: "表2-3", heading: "系统怎么连（分层架构）", cols: ["layer", "components", "interface"] },
-      { code: "表2-7", heading: "现在怎么交付与运维", cols: ["item", "status"] },
       { code: "表3-9", heading: "行业趋势", cols: ["trend", "impact"] },
     ],
   },

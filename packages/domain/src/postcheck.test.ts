@@ -631,26 +631,30 @@ describe("中栏引用清理 — 不许把缺材料的说明啃成病句（故�
 });
 
 /**
- * 现状类表（表1-2 / 表2-7）缺客户材料时的判据
+ * 现状类表（表1-2）缺客户材料时的判据
+ *
+ * 表2-7 交付与运维现状已删除（变更表 #226），原用例改用 表1-2 的真实列。
  *
  * 用户定调 2026-10-14：「干脆不生成，直接提示需要先补材料」——没有客户材料时，
  * 模型只能写行业通例 + 把答案标成「未提供（本客户材料未含）」，整表读起来像没填。
  */
 describe("hasCustomerFacts — 现状类表有没有客户事实（确定性判据）", () => {
-  it("表2-7 答案整格是「未提供（本客户材料未含）」→ 没有客户事实", () => {
+  it("表1-2 答案整格是「未提供（本客户材料未含）」→ 没有客户事实", () => {
     expect(
-      hasCustomerFacts("表2-7", {
-        item: "会议室设备与系统运维责任方",
-        status: "未提供（本客户材料未含）",
+      hasCustomerFacts("表1-2", {
+        link: "会议室设备与系统运维",
+        owner_now: "未提供（本客户材料未含）",
+        current_flow: "未提供（本客户材料未含）",
       }),
     ).toBe(false);
   });
 
-  it("表2-7 写了真实现状 → 有客户事实", () => {
+  it("表1-2 写了真实现状 → 有客户事实", () => {
     expect(
-      hasCustomerFacts("表2-7", {
-        item: "会议室设备与系统运维责任方",
-        status: "行政部兼管，音视频设备由集成商季度巡检",
+      hasCustomerFacts("表1-2", {
+        link: "会议室设备与系统运维",
+        owner_now: "行政部兼管",
+        current_flow: "音视频设备由集成商季度巡检",
       }),
     ).toBe(true);
   });
@@ -662,8 +666,8 @@ describe("hasCustomerFacts — 现状类表有没有客户事实（确定性判�
   });
 
   it("字段空着不算「缺客户事实」（空值归完整性检查管，不许误删）", () => {
-    expect(hasCustomerFacts("表2-7", { item: "现状项" })).toBe(true);
-    expect(hasCustomerFacts("表1-2", { link: "视频监控", can_touch: "可以碰" })).toBe(true);
+    expect(hasCustomerFacts("表1-2", { link: "现状项" })).toBe(true);
+    expect(hasCustomerFacts("表1-2", { link: "视频监控", owner_now: "可以碰" })).toBe(true);
   });
 
   it("非现状类表不参与此判据（一律视为有事实，避免误删）", () => {

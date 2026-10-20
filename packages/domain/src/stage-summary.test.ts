@@ -122,7 +122,7 @@ describe("stage-summary — 阶段级六段骨架（交付物装配口径）", (
     expect(md).toContain("**表1-1 场景概述**：2 行——场景名称·智慧水务；客户类型/行业·市政水务集团");
     expect(md).toContain("**表1-3 门槛与合规**：5 行——技术·等保三级；行业准入·计量认证；经济·预算科目 …");
     expect(md).toContain("**表2-2 场景要素清单**：尚无数据");
-    // 客户现状（表1-2 场景环节地图 / 表2-7 交付与运维现状）归阶段 3，阶段 1 的清单里不该出现
+    // 客户现状（表1-2 场景环节地图）归阶段 3，阶段 1 的清单里不该出现（表2-7 已删除，变更表 #226）
     expect(md).not.toContain("表1-2");
     expect(md).not.toContain("表2-7");
   });
@@ -165,10 +165,9 @@ describe("stage-summary — 阶段级六段骨架（交付物装配口径）", (
     expect(md).toContain("上游依据：M3、M4");
   });
 
-  it("表1-2 / 表2-7 的总结归阶段 3（能力匹配）：产出清单与行样例都在那里", () => {
+  it("表1-2 的总结归阶段 3（能力匹配）：产出清单与行样例都在那里", () => {
     const rows: Record<string, InfoRow[]> = {
       "表1-2": stage1Rows["表1-2"] ?? [],
-      "表2-7": [row({ item: "驻场运维", status: "运维班组每周巡检一次" })],
     };
     const md3 = buildStageSummary({
       stage: 3,
@@ -180,10 +179,9 @@ describe("stage-summary — 阶段级六段骨架（交付物装配口径）", (
       generatedAt: "2026-09-25",
     });
     expect(md3).toContain("# 阶段 3 · 能力匹配 — 总结");
-    expect(md3).toContain("信息完整度：2/7 张表齐备");
-    expect(md3).toContain("本阶段产出：表1-2、表2-7、表4-1、表4-2、表4-3、表4-4、表4-5");
+    expect(md3).toContain("信息完整度：1/6 张表齐备");
+    expect(md3).toContain("本阶段产出：表1-2、表4-1、表4-2、表4-3、表4-4、表4-5");
     expect(md3).toContain("**表1-2 场景环节地图**：3 行——制水；输配；原水取水");
-    expect(md3).toContain("**表2-7 交付与运维现状**：1 行——驻场运维·运维班组每周巡检一次");
     expect(md3).toContain("**表4-1 能力底账**：尚无数据");
     expect(md3).not.toContain("表1-3"); // 门槛与合规留在阶段 1
   });

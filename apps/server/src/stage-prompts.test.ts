@@ -69,7 +69,9 @@ describe("stage-prompts — 内容由注册表派生", () => {
     // 输出契约里同样带取值，模型两条通路都看得到
     const contract = JSON.stringify(p.outputContract);
     expect(contract).toContain("只能取：");
-    expect(contract).toContain("高 / 中 / 低");
+    /* 表2-2「竞争激烈度」已删除（变更表 #226），改断言本阶段仍在的枚举取值：
+     * 表1-3「行业通行处置」的五档必须随契约下发，模型才编不出别的话 */
+    expect(contract).toContain("正面满足");
   });
 
   it("表1-1 的固定行逐个列出，且只给「场景名称」标「用户输入」", () => {
@@ -229,16 +231,15 @@ describe("stage-prompts — 输出契约（补契约空壳）", () => {
 
 describe("stage-prompts — 流程步限定表集（v1.5）", () => {
   it("限定表集后：system 只渲染本步的表，契约 enum 也只含本步表号", () => {
-    /* 第 2 步（认识场景）= 阶段 1 减去场景锚：客户现状（表1-2、表2-7）已迁到阶段 3 */
+    /* 第 2 步（认识场景）= 阶段 1 减去场景锚：客户现状（表1-2）已迁到阶段 3 */
     const step2 = ["表1-3", "表2-2", "表2-3", "表2-4", "表2-5"];
     const p = buildStagePrompt(1, {}, scenario, { tables: step2 });
     // 不再出现场景锚（它属第 1 步，由起草 + 用户确认产生）
     expect(p.system).not.toContain("### 表1-1");
     expect(p.system).toContain("### 表1-3");
     expect(p.system).toContain("### 表2-2");
-    // 现状类表（表1-2 / 表2-7）属阶段 3，本步一个都不许渲染
+    // 现状类表（表1-2）属阶段 3，本步一个都不许渲染
     expect(p.system).not.toContain("### 表1-2");
-    expect(p.system).not.toContain("### 表2-7");
     const c = p.outputContract as {
       properties: { rows: { items: { properties: { table_code: { enum: string[] } } } } };
     };
@@ -254,14 +255,13 @@ describe("stage-prompts — 流程步限定表集（v1.5）", () => {
     expect(p.system).toContain("### 表2-3");
     expect(p.system).toContain("### 表2-4");
     expect(p.system).toContain("### 表2-5");
-    // 客户现状（现在谁在做/用什么、怎么交付运维）移到阶段 3：阶段 1 明确不含这两张
+    // 客户现状（现在谁在做/用什么）移到阶段 3：阶段 1 明确不含这张
     expect(p.system).not.toContain("表1-2");
-    expect(p.system).not.toContain("表2-7");
   });
 
-  it("阶段 3（能力匹配）承接客户现状：表1-2 / 表2-7 与表4-1..表4-5 一起渲染", () => {
+  it("阶段 3（能力匹配）承接客户现状：表1-2 与表4-1..表4-5 一起渲染", () => {
     const p = buildStagePrompt(3, {}, scenario);
-    for (const code of ["表1-2", "表2-7", "表4-1", "表4-2", "表4-3", "表4-4", "表4-5"]) {
+    for (const code of ["表1-2", "表4-1", "表4-2", "表4-3", "表4-4", "表4-5"]) {
       expect(p.system, code).toContain(`### ${code}`);
     }
     // 现状类表的必填列在阶段 3 的提示词里说清（谁在做 / 用什么 / 怎么做）
@@ -273,7 +273,6 @@ describe("stage-prompts — 流程步限定表集（v1.5）", () => {
     };
     expect(c.properties.rows.items.properties.table_code.enum).toEqual([
       "表1-2",
-      "表2-7",
       "表4-1",
       "表4-2",
       "表4-3",
