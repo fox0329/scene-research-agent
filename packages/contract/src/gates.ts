@@ -130,8 +130,8 @@ export const TABLE_GATES: Readonly<Record<string, readonly ScopedGate[]>> = {
     { kind: "named", columns: ["representative"], text: "代表企业须具名 ≥2 家，禁「等/…/多家」" },
   ],
   "表3-2": [
-    { kind: "non-empty", columns: ["form", "key_points", "players", "position", "price_band", "fit_for"], text: "形态/要点/主要玩家/地位/价格带/适用条件必填" },
-    { kind: "unique", columns: ["form"], text: "一种形态一行，形态名不许重复或写成编号" },
+    { kind: "non-empty", columns: ["key_points", "players", "position", "price_band", "fit_for"], text: "形态/主要玩家/地位/价格带/适用条件必填" },
+    { kind: "unique", columns: ["key_points"], text: "一种形态一行，形态写法不许重复或写成编号" },
     { kind: "enum-of-column", column: "position", text: "当前地位只取 扩张/稳定/收缩/未知" },
     { kind: "min-items", column: "players", min: 2, text: "主要玩家至少 2 家具名（顿号分隔）" },
     { kind: "not-vague", columns: ["players", "key_points"], text: "玩家须具名、要点须写清交付与边界，禁「多家厂商/各类方案」" },

@@ -54,7 +54,7 @@ export const UPSTREAM_DEPS: Record<number, readonly UpstreamDep[]> = {
     },
     {
       table: "表3-2",
-      columns: ["form", "players", "position", "price_band", "fit_for"],
+      columns: ["key_points", "players", "position", "price_band", "fit_for"],
       maxRows: 12,
       why: "表4-5 的对照对象取自表3-2 的 players；价格带决定我方报价定位",
     },

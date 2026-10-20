@@ -256,7 +256,7 @@ const ROW_TEXT: Record<string, (r: Record<string, unknown>) => string> = {
   "表2-3": (r) => `**${cell(r.layer)}**：${segs([["包含", r.components], ["接口", r.interface]])}`,
   "表2-5": (r) => `**${cell(r.constraint_item)}**：${segs([["要求", r.required_value], ["适用", r.standard_no]])}`,
   "表3-1": (r) => `**${cell(r.link)}**：毛利率 ${cell(r.gross_margin)}${r.representative ? `（代表 ${cell(r.representative)}）` : ""}`,
-  "表3-2": (r) => `**${cell(r.form)}**：${segs([["", r.key_points], ["玩家", r.players], ["地位", r.position], ["价格带", r.price_band]])}`,
+  "表3-2": (r) => `**${cell(r.key_points)}**：${segs([["玩家", r.players], ["地位", r.position], ["价格带", r.price_band], ["适用", r.fit_for]])}`,
   "表3-3": (r) => `**${cell(r.customer_type)}**：${segs([["拍板", r.decision_maker], ["钱从哪出", r.budget], ["默认选", r.default_choice], ["周期", r.decision_cycle]])}`,
   "表3-5": (r) => `**${cell(r.link)}**：${segs([["供给方", r.who_supplies], ["集中度", r.concentration], ["可替代性", r.substitutability], ["卡点", r.supply_risk]])}`,
   "表3-8": (r) => `${r.rank ? `${cell(r.rank)}. ` : ""}**${truncate(r.gap, 60)}**${r.pain_level ? `（痛度：${cell(r.pain_level)}）` : ""} —— 谁在痛：${truncate(r.who_hurts, 30)}；验收：${truncate(r.acceptance, 40)}`,

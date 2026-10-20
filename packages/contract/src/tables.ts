@@ -712,7 +712,6 @@ const TABLES_STAGE_2: readonly TableDef[] = [
     columns: [
       mid("link", "环节", { required: true }),
       mid("gross_margin", "毛利率", { required: true, note: "区间或单值 + 口径，如「20%–30%（测算）」；禁「较高/较低/行业口径」" }),
-      mid("pool_size", "利润规模", { note: "选填：数字 + 亿元/年 + 年份；补不到留空" }),
       mid("representative", "代表企业", { required: true, note: "≥2 家具名，禁「等/…/多家」" }),
       sup("source", "数据来源", { required: true }),
       sup("margin_basis", "毛利口径与样本", { note: "哪一年、几家、什么口径（年报/项目成交/集采后/测算）" }),
@@ -724,7 +723,6 @@ const TABLES_STAGE_2: readonly TableDef[] = [
       "一行一环节，link 唯一；环节名首词受控（器件/整机/软件/集成/运维/渠道）",
       "毛利率必须是「区间/单值 + 口径」；口径只取年报/项目成交/经销/集采后/测算，禁单写「行业口径」",
       "代表企业 ≥2 家具名；出现「…」「等」视为未完成",
-      "利润规模填了就必须带单位与年份；全表 ≥3 行有值，才允许阶段 6 引用规模",
       "与表3-5 的「上游环节」不得逐字同名（一个是价值链段，一个是我方采购件）",
     ],
     consumedBy: [6],
@@ -737,8 +735,8 @@ const TABLES_STAGE_2: readonly TableDef[] = [
     rowUnit: "一种方案形态（一种打法）",
     purpose: "市面有几种打法、谁在做、卖什么价、适合什么客户——决定主推哪种形态、和谁正面撞、价格带怎么定",
     columns: [
-      mid("form", "形态", { required: true, note: "按「交付物 + 边界」命名，3–12 字；禁 F1/形态一" }),
-      mid("key_points", "要点", { required: true, note: "≤40 字，必须写清交付什么 + 不交付什么（只/不含/除外）" }),
+      /* 2026-10-20 用户定调：原「形态」列被「要点」列逐字包含（要点一开头就是形态名），删掉形态列 */
+      mid("key_points", "形态（交付什么·不做什么）", { required: true, note: "≤40 字，一句话就是这行的名字：交付什么 + 不交付什么（只/不含/除外）；不写价格" }),
       mid("players", "主要玩家", { required: true, note: "2–3 家具名，顿号分隔；这是阶段 3 的对手池" }),
       mid("position", "当前地位", { required: true, enum: "position" }),
       mid("price_band", "价格带", { required: true, note: "数字区间 + 单位 + 口径（项目成交/框架协议/年费/单机）；无价格材料写「未获取（缺哪类样本）」" }),
@@ -753,8 +751,7 @@ const TABLES_STAGE_2: readonly TableDef[] = [
     ],
     completeness: [
       "≥5 种形态；若有基线形态（什么都不做/沿用现状），排第一行",
-      "form 唯一、3–12 字；不得是编号或「形态一」",
-      "key_points ≤40 字且同时有交付物与边界词（只/仅/不含/除外/不做）",
+      "key_points 唯一、≤40 字；第一句就是形态名（交付物 + 边界词：只/仅/不含/除外/不做），不写价格",
       "players 2–3 家具名；与表4-5 的对照对象同池",
       "position 只取扩张/稳定/收缩/未知；至少 1 行「扩张」，全行业无扩张时单列一行「无扩张形态」并在右栏给判据",
       "price_band 数字区间 + 单位 + 口径；「未获取」≤2 行，右栏写缺哪类样本",
