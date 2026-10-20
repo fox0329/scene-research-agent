@@ -1,3 +1,8 @@
 packages:
   - "apps/*"
   - "packages/*"
+# pnpm 10+ 默认不跑依赖的安装脚本，better-sqlite3 的原生二进制就装不出来
+# （装配时表现为 ERR_PNPM_IGNORED_BUILDS，见故障清单 #89）。
+# pnpm 9 忽略本字段，不影响现有打包流程。
+allowBuilds:
+  better-sqlite3: true
