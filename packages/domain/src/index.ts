@@ -254,6 +254,8 @@ export {
   MID_CELL_MAX_CHARS,
 } from "./postcheck.js";
 export { judgeGate, findFakeGates, type GateVerdict } from "./gate-check.js";
+export { judgeConstraint, findWeakConstraints, type ConstraintVerdict } from "./constraint-check.js";
+export { judgeRowValue, type ValueVerdict } from "./value-check.js";
 export type {
   MidSweepResult,
   PostcheckFinding,

@@ -644,7 +644,7 @@ const TABLES_STAGE_1: readonly TableDef[] = [
     stage: 1,
     tier: "支撑",
     rowUnit: "一个约束项",
-    purpose: "这个场景的硬约束（要求与出处；怎么落地由后面的方案表回答）",
+    purpose: "设计要满足的硬约束：要满足多少（数值/等级/清单）、依据哪条标准、多久一次；回答「怎么设计」而非「能不能进」（能不能进看表1-3）",
     columns: [
       mid("constraint_item", "约束项", { required: true }),
       mid("required_value", "具体要求值", { required: true }),
@@ -654,7 +654,13 @@ const TABLES_STAGE_1: readonly TableDef[] = [
       sup("evidence_level", "证据等级", { required: true, enum: "evidence_level" }),
       sup("authority", "来源权威性", { required: true, enum: "authority" }),
     ],
-    completeness: ["constraint_item/required_value 非空且为具体数值或等级", "约束类须 T1"],
+    completeness: [
+      /* 用户定调 2026-10-20：「不用合成一张表，要区分边界，同时要确认表格内容是否真有价值」。 */
+      "每行必须可执行：给出数值、等级或具名清单之一（只引标准号不说要求多少，不算约束）",
+      "不得复述准入门槛（须持证/须通过认证/须列入名录）——那是表1-3；本表只写设计要满足什么值",
+      "一行一项：多个约束项拆开写，否则下游无法逐条对照",
+      "约束类须 T1",
+    ],
     consumedBy: [2, 4],
   },
 ];

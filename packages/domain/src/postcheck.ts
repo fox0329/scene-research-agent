@@ -19,6 +19,8 @@
 
 import { CURRENT_STATE_TABLES, TABLES_BY_CODE, middleColumns } from "@scene/contract";
 import { judgeGate } from "./gate-check.js";
+import { judgeConstraint } from "./constraint-check.js";
+import { judgeRowValue } from "./value-check.js";
 import type { InfoRow } from "./completeness.js";
 
 // ─── 类型 ────────────────────────────────────────────────
@@ -44,6 +46,14 @@ export type PostcheckKind =
    * 判定由 `gate-check.ts` 出，这里只把它接进同一份问题清单，走同一套修复轮。
    */
   | "门槛不成立"
+  /**
+   * 表2-5 的行没通过「约束 vs 门槛」边界判定与「可执行判据」判定（变更表 #229）
+   *
+   * 用户定调：「不用合成一张表，要区分边界，同时要确认表格内容是否真有价值」。
+   */
+  | "约束不成立"
+  /** 整行没有实质内容（全占位词/空话）——「有内容」不等于「有价值」 */
+  | "行无价值"
   /**
    * 产出行校验（`validateIncomingRows`）的机械违规（变更表 #163）
    *
@@ -621,6 +631,39 @@ export function runDeterministicPostcheck(input: PostcheckInput): PostcheckFindi
           detail: `${gate.failures.join("；")}。按性质应归 ${gate.suggestTable ?? "其他表"}，不是门槛`,
           severity: "存疑",
         });
+      }
+    }
+
+    /* ⓪-b 约束成立性：表2-5 的行必须是可执行约束，不是准入门槛的复述 */
+    if (r.tableCode === "表2-5") {
+      const c = judgeConstraint(r.row as Record<string, unknown>);
+      if (!c.isConstraint) {
+        findings.push({
+          tableCode: r.tableCode,
+          rowId: r.rowId,
+          label: r.label,
+          kind: "约束不成立",
+          detail: `${c.failures.join("；")}${c.suggestTable ? `。去向：${c.suggestTable}` : ""}`,
+          severity: "存疑",
+        });
+      }
+    }
+
+    /* ⓪-c 价值：整行没实质内容的，别占着一行让用户白读（判据只看中栏） */
+    {
+      const def = TABLES_BY_CODE[r.tableCode];
+      if (def) {
+        const v = judgeRowValue(middleColumns(def).map((c) => (r.row as Record<string, unknown>)[c.key]));
+        if (!v.hasValue) {
+          findings.push({
+            tableCode: r.tableCode,
+            rowId: r.rowId,
+            label: r.label,
+            kind: "行无价值",
+            detail: v.reason ?? "整行没有实质内容",
+            severity: "存疑",
+          });
+        }
       }
     }
 
