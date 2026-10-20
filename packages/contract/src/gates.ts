@@ -51,7 +51,53 @@ export type GateSpec =
   /** 定制判定：门槛三问（表1-3） */
   | { kind: "gate-questions"; text: string }
   /** 定制判定：约束成立性（表2-5） */
-  | { kind: "constraint-check"; text: string };
+  | { kind: "constraint-check"; text: string }
+  /**
+   * 跨表覆盖：另一张表里（可按条件筛选）的每一项，必须在本表某列的文本里出现
+   *
+   * 用途（2026-10-20 用户定调「所有的输出都应该有门限卡住」）：阶段 4 的方案必须
+   * 覆盖阶段 3 判定的高价值细分／「不参与」的环节——否则方案可以另起炉灶，
+   * 能力匹配白做。匹配用**最长公共子串 ≥ minMatch**（中文标签常带括注与修饰，全等会误杀）。
+   */
+  | {
+      kind: "cross-coverage";
+      table: string;
+      sourceColumn: string;
+      targetColumns: readonly string[];
+      /** 只判源表里满足条件的行（如 value_density=高） */
+      where?: { column: string; in: readonly string[] };
+      minMatch?: number;
+      text: string;
+    }
+  /**
+   * 跨表合计一致性：本表某数值列合计，须落在另一张表若干单元格「人天」总和的区间内
+   *
+   * 用途：表5-3 的 `man_days` 合计要覆盖表4-3 判「需补齐」的处置人天——
+   * 方案里少写一半工作量，是最典型的「两套账」（实测市政污水 110 vs 180–280）。
+   */
+  | {
+      kind: "cross-sum";
+      table: string;
+      sourceColumn: string;
+      where?: { column: string; in: readonly string[] };
+      column: string;
+      minRatio: number;
+      maxRatio: number;
+      text: string;
+    }
+  /**
+   * 否定性覆盖：整表**没有一行**给出否定判定时提示（边界声明可能缺失）
+   *
+   * 不阻断、只提示：全部环节都「能做」在少数项目上成立，但多数时候意味着没敢下否定结论
+   * （G-R10）。用户定调 2026-10-20：宁可提示让人看一眼。
+   */
+  | {
+      kind: "absence-hint";
+      column: string;
+      values: readonly string[];
+      minRows: number;
+      text: string;
+    };
 
 /** 带作用域的门限 */
 export type ScopedGate = GateSpec & { when?: GateScope };
@@ -170,14 +216,16 @@ export const TABLE_GATES: Readonly<Record<string, readonly ScopedGate[]>> = {
     { kind: "non-empty", columns: ["link", "our_role", "our_scope"], text: "环节/我方角色/我方承担必填" },
     { kind: "cross-ref", column: "link", table: "表1-2", target: "link", text: "环节须与表1-2 逐字同名" },
     { kind: "enum-of-column", column: "our_role", text: "我方角色取该列枚举" },
-    { kind: "not-vague", columns: ["our_scope"], text: "我方承担须写「做 X、不做 Y」，不许只写配合/支持/参与" }
+    { kind: "not-vague", columns: ["our_scope"], text: "我方承担须写「做 X、不做 Y」，不许只写配合/支持/参与" },
+    { kind: "absence-hint", column: "our_role", values: ["不参与"], minRows: 5, text: "全部环节都判「替代/辅助/外围」，没有一行「不参与」——边界声明可能缺失（不必凑数，但要想清楚真的都能碰？）" }
   ],
   "表4-3": [
     { kind: "non-empty", columns: ["gap_ref", "match", "our_product", "action"], text: "缺口/匹配结论/我方产品/处置必填" },
     { kind: "cross-ref", column: "gap_ref", table: "表3-8", target: "gap", text: "缺口须逐字复述表3-8 缺口原文（写编号不算），源表改字必须重跑本表" },
     { kind: "enum-of-column", column: "match", text: "匹配结论取该列枚举" },
     { kind: "unique", columns: ["gap_ref"], text: "同一缺口只对照一次" },
-    { kind: "has-number", columns: ["action"], text: "处置须给量：需补齐写人天，能解写验收/交付口径，不能做写转分包对象" }
+    { kind: "has-number", columns: ["action"], text: "处置须给量：需补齐写人天，能解写验收/交付口径，不能做写转分包对象" },
+    { kind: "absence-hint", column: "match", values: ["不能做"], minRows: 5, text: "缺口全部「真能解/需补齐」，没有一行「不能做」——要么真的都能做，要么没敢下否定结论（G-R10）" }
   ],
   "表4-4": [
     { kind: "non-empty", columns: ["sub_scene", "value_density", "opponent", "win_loss", "entry_action", "rank"], text: "细分/价值密度/主要对手/胜负/切入动作/首打顺序必填" },
@@ -193,13 +241,16 @@ export const TABLE_GATES: Readonly<Record<string, readonly ScopedGate[]>> = {
     { kind: "non-empty", columns: ["layer", "components", "interface", "integration"], text: "架构块：层/组件/接口/对接方式必填", when: { column: "interface_name", present: false } },
     { kind: "non-empty", columns: ["interface_name", "type", "protocol"], text: "接口块：接口名称/类型/协议必填", when: { column: "interface_name", present: true } },
     { kind: "named", columns: ["interface"], text: "架构块的接口须给协议名或标准号，不许「标准协议」", when: { column: "interface_name", present: false } },
-    { kind: "not-vague", columns: ["boundary"], text: "边界声明须写清我方不做X／客户负责Y／第三方负责Z，不许「以实际为准」", when: { column: "interface_name", present: false } }
+    { kind: "not-vague", columns: ["boundary"], text: "边界声明须写清我方不做X／客户负责Y／第三方负责Z，不许「以实际为准」", when: { column: "interface_name", present: false } },
+    { kind: "cross-coverage", table: "表4-4", sourceColumn: "sub_scene", where: { column: "value_density", in: ["高"] }, targetColumns: ["layer", "components", "interface", "integration", "boundary"], minMatch: 3, text: "阶段 3 判「高价值」的细分，方案里必须有对应层/组件/接口（没覆盖＝方案另起炉灶）" },
+    { kind: "cross-coverage", table: "表4-2", sourceColumn: "link", where: { column: "our_role", in: ["不参与"] }, targetColumns: ["boundary", "components"], minMatch: 3, text: "判「不参与」的环节，边界声明里必须出现（否则等于没声明不碰）" }
   ],
   "表5-3": [
     { kind: "non-empty", columns: ["item", "content", "window", "man_days", "rollback"], text: "事项/内容/时间窗/人天/回退必填（回退写清回退点与触发条件）" },
     { kind: "has-number", columns: ["man_days"], text: "人天须为整数（≥1），不许 0、约、待评估" },
     { kind: "unique", columns: ["item"], text: "同一实施项不许重复登记（拆行会虚增人天）" },
-    { kind: "not-vague", columns: ["rollback"], text: "回退须给回退点 + 触发条件 + 耗时，不许「按需回退」" }
+    { kind: "not-vague", columns: ["rollback"], text: "回退须给回退点 + 触发条件 + 耗时，不许「按需回退」" },
+    { kind: "cross-sum", table: "表4-3", sourceColumn: "action", where: { column: "match", in: ["需补齐", "不能做"] }, column: "man_days", minRatio: 0.6, maxRatio: 3, text: "实施人天合计须覆盖表4-3 判「需补齐」的处置人天（少一半＝两套账，多三倍＝重复计工）" }
   ],
   "表5-4": [
     { kind: "non-empty", columns: ["item", "content", "sla"], text: "交付项/内容/SLA 必填" },

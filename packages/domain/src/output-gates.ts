@@ -232,6 +232,9 @@ function judgeRowGates(
       case "coverage":
       case "cross-ref":
       case "sum-to":
+      case "cross-coverage":
+      case "cross-sum":
+      case "absence-hint":
         break;
     }
   }
@@ -428,7 +431,120 @@ export function evaluateGates(rows: readonly GateRow[]): GateFinding[] {
           });
         }
       }
+
+      /* 跨表覆盖（2026-10-20）：源表里筛选出的每一项都要在本表文本里落地 */
+      if (g.kind === "cross-coverage") {
+        const scenario = groupKey.split("|")[0] ?? "__single__";
+        const sourceRows = byTable.get(`${scenario}|${g.table}`) ?? [];
+        if (!sourceRows.length) continue; // 源表未生成不判，避免级联报错
+        const targets = sourceRows.filter(
+          (r) => !g.where || g.where.in.includes(text(r.row[g.where.column])),
+        );
+        if (!targets.length) continue;
+        const haystack = tableRows
+          .map((r) => g.targetColumns.map((c) => text(r.row[c])).join(" "))
+          .join(" ");
+        const miss = targets.filter(
+          (r) => longestCommonSubstring(text(r.row[g.sourceColumn]), haystack) < (g.minMatch ?? 3),
+        );
+        if (miss.length) {
+          findings.push({
+            tableCode,
+            rowId: "",
+            label: "（整表）",
+            kind: g.kind,
+            gate: g.text,
+            detail: `${g.table} 的 ${miss.length}/${targets.length} 项在本表找不到落点：${miss
+              .map((r) => text(r.row[g.sourceColumn]).slice(0, 18))
+              .join("、")}`,
+            severity: "存疑",
+          });
+        }
+      }
+
+      /* 跨表合计（2026-10-20）：本表数值合计要覆盖源表的「人天」区间 */
+      if (g.kind === "cross-sum") {
+        const scenario = groupKey.split("|")[0] ?? "__single__";
+        const sourceRows = byTable.get(`${scenario}|${g.table}`) ?? [];
+        if (!sourceRows.length) continue;
+        let low = 0;
+        let high = 0;
+        for (const r of sourceRows) {
+          if (g.where && !g.where.in.includes(text(r.row[g.where.column]))) continue;
+          const range = parseManDays(text(r.row[g.sourceColumn]));
+          if (!range) continue;
+          low += range[0];
+          high += range[1];
+        }
+        if (low === 0 && high === 0) continue; // 源表没写人天：本门限不适用（由源表自己的 has-number 管）
+        const total = tableRows
+          .map((r) => Number.parseFloat(text(r.row[g.column]).replace(/[^\d.]/g, "")))
+          .filter((n) => Number.isFinite(n) && n > 0)
+          .reduce((a, b) => a + b, 0);
+        const tooLow = total < low * g.minRatio;
+        const tooHigh = total > high * g.maxRatio;
+        if (tooLow || tooHigh) {
+          findings.push({
+            tableCode,
+            rowId: "",
+            label: "（整表）",
+            kind: g.kind,
+            gate: g.text,
+            detail: `本表合计 ${Math.round(total)} 人天，${g.table} 的处置人天 ${low}–${high}：${
+              tooLow ? "少写了（两套账）" : "多写了（重复计工？）"
+            }`,
+            severity: "存疑",
+          });
+        }
+      }
+
+      /* 否定性覆盖（2026-10-20）：整表没有否定判定时提示，不阻断 */
+      if (g.kind === "absence-hint") {
+        if (tableRows.length < g.minRows) continue;
+        const hasNegative = tableRows.some((r) => g.values.includes(text(r.row[g.column])));
+        if (!hasNegative) {
+          findings.push({
+            tableCode,
+            rowId: "",
+            label: "（整表）",
+            kind: g.kind,
+            gate: g.text,
+            detail: `${tableRows.length} 行里没有一行取「${g.values.join("/")}」`,
+            severity: "存疑",
+          });
+        }
+      }
     }
   }
   return findings;
+}
+
+/** 最长公共子串长度（中文标签常有括注与修饰，全等匹配会误杀） */
+function longestCommonSubstring(a: string, b: string): number {
+  const A = canonKeepNotes(a);
+  const B = canonKeepNotes(b);
+  if (!A || !B) return 0;
+  let best = 0;
+  let prev = new Array<number>(B.length + 1).fill(0);
+  for (let i = 1; i <= A.length; i++) {
+    const cur = new Array<number>(B.length + 1).fill(0);
+    for (let j = 1; j <= B.length; j++) {
+      if (A[i - 1] === B[j - 1]) {
+        cur[j] = prev[j - 1]! + 1;
+        if (cur[j]! > best) best = cur[j]!;
+      }
+    }
+    prev = cur;
+  }
+  return best;
+}
+
+/** 「8–12 人天」「估算 60 人天」→ [低, 高]；没有数字返回 null */
+function parseManDays(text: string): [number, number] | null {
+  const nums = [...text.matchAll(/(\d+(?:\.\d+)?)/g)].map((m) => Number(m[1]));
+  if (nums.length === 0) return null;
+  if (!/人天|人·天|人日/.test(text)) return null;
+  const low = nums[0]!;
+  const high = nums.length > 1 ? Math.max(low, nums[1]!) : low;
+  return [low, high];
 }

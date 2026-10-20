@@ -31,6 +31,9 @@ describe("门限登记完整性（契约层）", () => {
         const cols: string[] =
           "columns" in g ? [...g.columns] : "column" in g ? [g.column] : [];
         if ("when" in g && g.when) cols.push(g.when.column);
+        /* where.column 属于源表，在「跨表引用的目标列」用例里校验 */
+        if (g.kind === "cross-coverage") cols.push(...g.targetColumns);
+        if (g.kind === "absence-hint") cols.push(g.column);
         for (const c of cols) if (!keys.has(c)) bad.push(`${code}.${c}`);
       }
     }
@@ -41,9 +44,18 @@ describe("门限登记完整性（契约层）", () => {
     const bad: string[] = [];
     for (const [code, gates] of Object.entries(TABLE_GATES)) {
       for (const g of gates) {
-        if (g.kind !== "cross-ref") continue;
-        const target = tableDef(g.table);
-        if (!target.columns.some((c) => c.key === g.target)) bad.push(`${code}→${g.table}.${g.target}`);
+        if (g.kind === "cross-ref") {
+          const target = tableDef(g.table);
+          if (!target.columns.some((c) => c.key === g.target)) bad.push(`${code}→${g.table}.${g.target}`);
+        }
+        if (g.kind === "cross-coverage" || g.kind === "cross-sum") {
+          const target = tableDef(g.table);
+          const col = g.kind === "cross-coverage" ? g.sourceColumn : g.sourceColumn;
+          if (!target.columns.some((c) => c.key === col)) bad.push(`${code}→${g.table}.${col}`);
+          if (g.where && !target.columns.some((c) => c.key === g.where!.column)) {
+            bad.push(`${code}→${g.table}.${g.where.column}`);
+          }
+        }
       }
     }
     expect(bad).toEqual([]);
@@ -180,6 +192,63 @@ describe("evaluateGates — 真实缺陷能被点名", () => {
     expect(f).toEqual([]);
     const f2 = evaluateGates([row("表6-4", { kind: "试点范围", content: "1 个车间、28 台设备" })]);
     expect(f2.some((x) => x.gate.includes("成功判据"))).toBe(true);
+  });
+});
+
+describe("跨表门限（2026-10-20 用户定调「所有的输出都应该有门限卡住」）", () => {
+  const row = (tableCode: string, id: string, fields: Record<string, unknown>): GateRow => ({
+    id,
+    tableCode,
+    row: fields,
+    scenarioId: "s1",
+  });
+  const hit = (findings: { gate: string }[], needle: string): number =>
+    findings.filter((f) => f.gate.includes(needle)).length;
+
+  it("表5-1 漏掉「高价值」细分会被点名", () => {
+    const rows: GateRow[] = [
+      row("表4-4", "a", { sub_scene: "曝气系统溶解氧按需调节与曝气能耗优化", value_density: "高", opponent: "未知（无竞品情报）", win_loss: "未知", entry_action: "先做试点", rank: "1" }),
+      row("表5-1", "b", { layer: "平台层", components: "设备管理平台", interface: "OPC UA", integration: "南向采集", boundary: "不做施工总包" }),
+    ];
+    const f = evaluateGates(rows);
+    expect(hit(f, "方案里必须有对应层")).toBe(1);
+  });
+
+  it("方案里覆盖到该细分时不点名（中文标签允许括注与修饰）", () => {
+    const rows: GateRow[] = [
+      row("表4-4", "a", { sub_scene: "曝气系统溶解氧按需调节与曝气能耗优化", value_density: "高", opponent: "未知（无竞品情报）", win_loss: "未知", entry_action: "先做试点", rank: "1" }),
+      row("表5-1", "b", { layer: "控制层", components: "曝气系统变频与溶解氧闭环", interface: "OPC UA", integration: "南向采集", boundary: "不做施工总包" }),
+    ];
+    expect(hit(evaluateGates(rows), "方案里必须有对应层")).toBe(0);
+  });
+
+  it("表5-3 人天少写一半会被点名（两套账）", () => {
+    const rows: GateRow[] = [
+      row("表4-3", "g1", { gap_ref: "缺口甲", match: "需补齐", our_product: "YS-EC3200", action: "补算法，估算 60–90 人天" }),
+      row("表4-3", "g2", { gap_ref: "缺口乙", match: "真能解", our_product: "YS-GW2100", action: "旁路接入交付" }),
+      row("表5-3", "p1", { item: "边缘采集", content: "装网关", window: "第 1–2 周", man_days: "30", rollback: "拆除网关，1 天恢复" }),
+    ];
+    const f = evaluateGates(rows);
+    expect(hit(f, "处置人天")).toBe(1);
+    expect(f.find((x) => x.gate.includes("处置人天"))?.detail).toContain("两套账");
+  });
+
+  it("人天在同一量级时不点名", () => {
+    const rows: GateRow[] = [
+      row("表4-3", "g1", { gap_ref: "缺口甲", match: "需补齐", our_product: "YS-EC3200", action: "补算法，估算 60–90 人天" }),
+      row("表5-3", "p1", { item: "边缘采集", content: "装网关", window: "第 1–2 周", man_days: "70", rollback: "拆除网关，1 天恢复" }),
+    ];
+    expect(hit(evaluateGates(rows), "处置人天")).toBe(0);
+  });
+
+  it("整表没有否定判定时只提示、不阻断", () => {
+    const mk = (role: string): GateRow =>
+      row("表4-2", `r${role}`, { link: "曝气控制", our_role: role, our_scope: "做采集，不做 PLC 程序" });
+    const noNegative = evaluateGates([mk("辅助"), mk("替代"), mk("辅助"), mk("辅助"), mk("外围")]);
+    expect(hit(noNegative, "没有一行「不参与」")).toBe(1);
+    expect(noNegative.find((f) => f.gate.includes("没有一行「不参与」"))?.severity).toBe("存疑");
+    const withNegative = evaluateGates([mk("辅助"), mk("替代"), mk("辅助"), mk("辅助"), mk("不参与")]);
+    expect(hit(withNegative, "没有一行「不参与」")).toBe(0);
   });
 });
 
