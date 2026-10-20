@@ -26,7 +26,6 @@ describe("门限登记完整性（契约层）", () => {
       const keys = new Set([
         ...def.columns.map((c) => c.key),
         ...Object.values(def.payloads ?? {}).flatMap((cols) => cols.map((c) => c.key)),
-        ...("payloads" in def ? [] : []),
       ]);
       for (const g of gates) {
         const cols: string[] =

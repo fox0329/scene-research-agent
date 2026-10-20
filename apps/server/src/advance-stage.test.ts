@@ -347,7 +347,7 @@ async function collectEvents(
  * 阶段 1（认识场景）的样例输出
  *
  * 表集 = 表1-1（场景锚，由「场景诉求 → 起草 → 用户确认」写入，**不在本阶段模型产出里**）、
- * 表1-3、表2-2、表2-4、表2-5（表2-3 已并入表2-4，变更表 #234）。**客户现状（表1-2 场景环节地图）
+ * 表1-3、表2-2、表2-3、表2-4、表2-5。**客户现状（表1-2 场景环节地图）
  * 已迁到阶段 3**（用户定调 2026-10-14：阶段 1/2 只梳理场景与行业本身），所以这里没有它们的行。
  */
 function makeStage1DshOutput() {
@@ -383,11 +383,11 @@ function makeStage1DshOutput() {
         source: "选型手册.pdf:8",
       },
       {
-        table_code: "表2-4",
+        table_code: "表2-3",
         fields: {
-          interaction_type: "视频流上送",
-          from_to: "网络摄像机→NVR",
-          method: "ONVIF/RTSP，感知层｜视频专网",
+          layer: "感知层",
+          components: "摄像机、门禁、周界",
+          interface: "ONVIF/RTSP",
         },
         source: "架构设计.pptx:3",
       },
@@ -670,7 +670,7 @@ describe("createAdvanceStageCommand", () => {
       const cmd = createAdvanceStageCommand(deps);
       await collectEvents(cmd.execute({ scenarioId: "sc-1", stage: 1 }));
 
-      // 4 条 stage1 输出行（表1-3 两条、表2-2、表2-4 各一条；表1-2 已迁到阶段 3）
+      // 4 条 stage1 输出行（表1-3 两条、表2-2、表2-3 各一条；表1-2 已迁到阶段 3）
       expect(db.stageDataRepo.insert).toHaveBeenCalledTimes(4);
 
       // 验证第一条
@@ -705,8 +705,8 @@ describe("createAdvanceStageCommand", () => {
         violations: unknown[];
       };
       expect(ev).toBeDefined();
-      // 阶段 1 共 5 张表（表1-1、表1-3、表2-2、表2-4、表2-5；表2-3 已并入表2-4）
-      expect(ev.completeness.expectedTables).toBe(5);
+      // 阶段 1 共 6 张表（表1-1、表1-3、表2-2、表2-3、表2-4、表2-5）
+      expect(ev.completeness.expectedTables).toBe(6);
       expect(Array.isArray(ev.completeness.gaps)).toBe(true);
       expect(Array.isArray(ev.violations)).toBe(true);
       // 缺口文案不得含通过/不通过等判定
@@ -726,7 +726,7 @@ describe("createAdvanceStageCommand", () => {
     it("按流程步限定表集：本步表集外的产出行不入库（场景锚不重复产出）", async () => {
       const cmd = createAdvanceStageCommand(deps);
       // 第 2 步（认识场景）= 阶段 1 减去场景锚；表1-2 属阶段 3，不在本步
-      const step2 = ["表1-3", "表2-2", "表2-4", "表2-5"];
+      const step2 = ["表1-3", "表2-2", "表2-3", "表2-4", "表2-5"];
       await collectEvents(
         cmd.execute({ scenarioId: "sc-1", stage: 1, tables: step2 }),
       );
@@ -1108,15 +1108,15 @@ describe("createAdvanceStageCommand", () => {
 
       await collectEvents(createAdvanceStageCommand(deps).execute({ scenarioId: "sc-1", stage: 1 }));
 
-      // 阶段 1 共 5 张表：无依赖的那些一起跑（默认上限 5）
+      // 阶段 1 共 6 张表：无依赖的那些一起跑（默认上限 5）
       expect(probe.calls()).toBeGreaterThanOrEqual(5);
       expect(probe.peak()).toBeGreaterThanOrEqual(2);
     });
 
     it("就绪队列：前置一完成就放行下游，不等整轮", () => {
-      const codes = ["表1-2", "表2-2", "表2-4", "表2-5"];
+      const codes = ["表1-2", "表2-2", "表2-3", "表2-4"];
       const depsOf = (c: string): readonly string[] =>
-        c === "表2-4" ? ["表2-2"] : c === "表2-5" ? ["表2-2"] : [];
+        c === "表2-3" || c === "表2-4" ? ["表2-2"] : [];
       // 表2-2 还在跑（已开始、未完成）时下游不许起跑——只判"开始"会让下游拿到空依赖
       expect(
         readyTables({
@@ -1136,7 +1136,7 @@ describe("createAdvanceStageCommand", () => {
           finished: new Set(["表1-2", "表2-2"]),
           limit: 5,
         }),
-      ).toEqual(["表2-4", "表2-5"]);
+      ).toEqual(["表2-3", "表2-4"]);
       // 表2-2 还没起跑时，先起它
       expect(
         readyTables({
@@ -1177,7 +1177,7 @@ describe("createAdvanceStageCommand", () => {
     });
 
     it("最后才起始的依赖表也必须落库（不准「全部开始了」就收工）", async () => {
-      // 事故回归：调度循环原来以"全部开始"为退出条件，表2-2/表2-4 刚起始就被丢下——
+      // 事故回归：调度循环原来以"全部开始"为退出条件，表2-3/表2-4 刚起始就被丢下——
       // 整步报 done、用户却少了两张表的数据（实机：本次只落了 5 张表 60 行）。
       db = createMockDb({ scenario: { current_stage: 1 } });
       dshClient = {
@@ -1188,7 +1188,7 @@ describe("createAdvanceStageCommand", () => {
         ): AsyncGenerator<FollowEvent> {
           const code = allowedTablesOf(input.outputContract)[0] ?? "";
           // 依赖表故意慢：不修的话它们一定还在跑
-          await new Promise((r) => setTimeout(r, code === "表2-4" ? 60 : 10));
+          await new Promise((r) => setTimeout(r, code === "表2-3" || code === "表2-4" ? 60 : 10));
           const rows = makeStage1DshOutput().rows.filter((r) => r["table_code"] === code);
           yield { type: "text", text: JSON.stringify({ rows }) };
           yield { type: "done" };
@@ -1202,7 +1202,7 @@ describe("createAdvanceStageCommand", () => {
       );
 
       const rows = events.filter((e) => e.type === "row").map((e) => String(e.tableCode));
-      expect(rows).toContain("表2-4"); // 样本里 表2-4 有一行：它必须落库
+      expect(rows).toContain("表2-3"); // 样本里 表2-3 有一行：它必须落库
       expect(db.stageDataRepo.insert).toHaveBeenCalledTimes(4);
       expect(events.at(-1)!.type).toBe("done");
     });

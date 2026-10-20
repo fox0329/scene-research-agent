@@ -99,7 +99,7 @@ describe("stage-summary — 阶段级六段骨架（交付物装配口径）", (
     expect(md).toContain("# 阶段 1 · 认识场景（含门槛与合规） — 总结");
     expect(md).toContain("场景：智慧水务");
     expect(md).toContain("产品线：感知与控制");
-    expect(md).toContain("信息完整度：2/5 张表齐备"); // 阶段 1 = 表1-1、表1-3、表2-2..2-5（有数据的 2 张）
+    expect(md).toContain("信息完整度：2/6 张表齐备"); // 阶段 1 = 表1-1、表1-3、表2-2..2-5（有数据的 2 张）
     expect(md).toContain("用户诉求（第一输入，唯一基准）");
     expect(md).toContain("想搞清楚什么：值不值得进");
   });
@@ -112,7 +112,7 @@ describe("stage-summary — 阶段级六段骨架（交付物装配口径）", (
   });
 
   it("一、信息摘要含表数/行数/来源分布/假设与推断计数", () => {
-    expect(md).toContain("5 张表 / 7 行"); // 表1-1 两行 + 表1-3 五行；表1-2 不算在阶段 1
+    expect(md).toContain("6 张表 / 7 行"); // 表1-1 两行 + 表1-3 五行；表1-2 不算在阶段 1
     expect(md).toContain("来源分布 T1");
     expect(md).toContain("C 级假设的条目 1 条");
     expect(md).toContain("系统推断条目 1 条");
@@ -159,9 +159,9 @@ describe("stage-summary — 阶段级六段骨架（交付物装配口径）", (
   });
 
   it("六、上下游衔接给出产出、下游引用与上游依据", () => {
-    expect(md).toContain("本阶段产出：表1-1、表1-3、表2-2、表2-4、表2-5");
+    expect(md).toContain("本阶段产出：表1-1、表1-3、表2-2、表2-3、表2-4、表2-5");
     expect(md).toContain("阶段 3 · 能力匹配 会引用：表1-1");
-    expect(md).toContain("阶段 4 · 方案与实现 会引用：表1-1、表1-3、表2-2、表2-4、表2-5");
+    expect(md).toContain("阶段 4 · 方案与实现 会引用：表1-1、表1-3、表2-2、表2-3、表2-4、表2-5");
     expect(md).toContain("上游依据：M3、M4");
   });
 
@@ -199,7 +199,7 @@ describe("stage-summary — 信息版口径", () => {
 
   it("空阶段也能生成（不报错，缺口清单占位）", () => {
     const md = summaryFor({});
-    expect(md).toContain("信息完整度：0/5"); // 阶段 1 现为 6 张表
+    expect(md).toContain("信息完整度：0/6"); // 阶段 1 现为 6 张表
     expect(md).toContain("（本阶段尚无信息，见第五节待补清单）");
     expect(md).toContain("表1-1 场景概述：尚无数据");
     expect(md).not.toContain("表1-2"); // 表1-2 不属阶段 1

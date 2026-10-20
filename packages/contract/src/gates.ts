@@ -96,13 +96,21 @@ export const TABLE_GATES: Readonly<Record<string, readonly ScopedGate[]>> = {
     { kind: "named", columns: ["vendor"], text: "供应商须写可查的厂商名；禁「行业主流厂商/系统集成商/各厂商实施团队/第三方服务商」" },
     { kind: "has-number", columns: ["price_range"], text: "价格须给人民币金额量级（元/千元/万元/百万元）；纯比例或纯规格值不算" },
     { kind: "unique", columns: ["element_name"], text: "同一要素只登记一行" }
+  ],  "表2-3": [
+    { kind: "non-empty", columns: ["layer", "components", "interface"], text: "层级/组件/接口必填" },
+    { kind: "unique", columns: ["layer"], text: "一层一行，同一层不许拆成多行" },
+    { kind: "min-items", column: "components", min: 2, text: "每层至少 2 个具名组件（一个组件的层要并到相邻层）" },
+    { kind: "not-vague", columns: ["components"], text: "组件须具名（型号/产品线/系统名），不许「各类终端/各类网关/若干设备」" },
+    { kind: "not-vague", columns: ["interface"], text: "接口须给协议名/标准号 + 承载方式，不许「网络对接/接口互通/按需对接」" },
+    { kind: "named", columns: ["interface"], text: "接口须落到可查的协议或标准（ONVIF/RTSP/Modbus/HL7 等）" }
   ],
+
   "表2-4": [
     { kind: "non-empty", columns: ["interaction_type", "from_to", "method"], text: "类型/起终点/方式必填" },
     { kind: "cross-ref", column: "from_to", table: "表2-2", target: "element_name", text: "关系两端须点名要素或具名外部主体（监管平台/电网/运营商/上级平台放行），禁「各类/各系统」" },
     { kind: "named", columns: ["method"], text: "方式须落到协议名/标准号，或「私有协议（厂商：X）」" },
     { kind: "not-vague", columns: ["from_to"], text: "起终点须是具名主体，不许写「各类设备/各系统/若干」" },
-    { kind: "not-vague", columns: ["method"], text: "方式须写清协议 + 经哪一层/哪一网段 + 谁开放接口，不许「经院内网对接」这类无主体写法" }
+    { kind: "not-vague", columns: ["method"], text: "方式须写清协议 + 经由哪一网段 + 谁开放接口，不许「经院内网对接」这类无主体写法" }
   ],
   "表2-5": [
     { kind: "constraint-check", text: "每行须可执行（数值/等级/清单至少一样）+ 点明适用对象，且不是门槛复述" },

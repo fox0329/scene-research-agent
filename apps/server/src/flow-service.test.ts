@@ -140,8 +140,8 @@ describe("flow-service — 锁步与就绪", () => {
     const s2 = state(db, scenarioId, 2);
     expect(s2.ready).toBe(true);
     expect(s2.progress.rows).toBe(1);
-    /* 阶段 1 现为 5 张（表1-2、表2-7 已移走；表2-3 并入表2-4）；第 2 步不含表1-1 → 4 张 */
-    expect(s2.progress.expectedTables).toBe(4);
+    /* 阶段 1 现为 6 张（表1-2、表2-7 已移到阶段 3）；第 2 步不含表1-1 → 5 张 */
+    expect(s2.progress.expectedTables).toBe(5);
   });
 
   it("完成第 2 步推进 current_stage 到 1；完成第 7 步把场景标记为已完成", () => {

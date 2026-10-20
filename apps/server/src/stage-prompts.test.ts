@@ -232,7 +232,7 @@ describe("stage-prompts — 输出契约（补契约空壳）", () => {
 describe("stage-prompts — 流程步限定表集（v1.5）", () => {
   it("限定表集后：system 只渲染本步的表，契约 enum 也只含本步表号", () => {
     /* 第 2 步（认识场景）= 阶段 1 减去场景锚：客户现状（表1-2）已迁到阶段 3 */
-    const step2 = ["表1-3", "表2-2", "表2-4", "表2-5"];
+    const step2 = ["表1-3", "表2-2", "表2-3", "表2-4", "表2-5"];
     const p = buildStagePrompt(1, {}, scenario, { tables: step2 });
     // 不再出现场景锚（它属第 1 步，由起草 + 用户确认产生）
     expect(p.system).not.toContain("### 表1-1");
@@ -240,7 +240,6 @@ describe("stage-prompts — 流程步限定表集（v1.5）", () => {
     expect(p.system).toContain("### 表2-2");
     // 现状类表（表1-2）属阶段 3，本步一个都不许渲染
     expect(p.system).not.toContain("### 表1-2");
-    expect(p.system).not.toContain("### 表2-3");
     const c = p.outputContract as {
       properties: { rows: { items: { properties: { table_code: { enum: string[] } } } } };
     };
@@ -249,11 +248,11 @@ describe("stage-prompts — 流程步限定表集（v1.5）", () => {
 
   it("不传限定表集时保持原行为（阶段全部表）", () => {
     const p = buildStagePrompt(1, {}, scenario);
-    // 阶段 1 的表集：表1-1、表1-3、表2-2、表2-4、表2-5（表2-3 已并入表2-4；客户现状不在其中）
+    // 阶段 1 的表集：表1-1、表1-3、表2-2、表2-3、表2-4、表2-5（客户现状不在其中）
     expect(p.system).toContain("### 表1-1");
     expect(p.system).toContain("### 表1-3");
     expect(p.system).toContain("### 表2-2");
-    expect(p.system).toContain("### 表2-4");
+    expect(p.system).toContain("### 表2-3");
     expect(p.system).toContain("### 表2-4");
     expect(p.system).toContain("### 表2-5");
     // 客户现状（现在谁在做/用什么）移到阶段 3：阶段 1 明确不含这张
