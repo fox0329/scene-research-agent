@@ -144,7 +144,7 @@ describe("stage-prompts — 信息版口径（不给决策建议 + 每条信息�
     expect(market.system).toContain("不许整列留「未提供」");
     expect(market.system).toContain("行业通例（模型知识）");
     expect(market.system).toContain("毛利率");
-    expect(market.system).toContain("主导者");
+    expect(market.system).toContain("主要玩家");
     expect(market.system).toContain("时间窗口");
 
     // 别的阶段不该被塞进市场口径（能力匹配等阶段的事实仍以材料为准）

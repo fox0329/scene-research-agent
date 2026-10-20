@@ -28,26 +28,27 @@ describe("表定义注册表 — 完整性", () => {
     expect(registryIssues()).toEqual([]);
   });
 
-  it("共 31 张表，且表号唯一", () => {
+  it("共 28 张表，且表号唯一", () => {
     /* 35 → 34（删 表5-5，变更表 #105）→ 33（删 M6 内部费率，变更表 #106）
-     * → 31（删 表2-7 交付与运维现状、表3-6 替代方案并入表3-4，变更表 #226） */
-    expect(TABLES).toHaveLength(31);
-    expect(new Set(TABLES.map((t) => t.code)).size).toBe(31);
-    expect(Object.keys(TABLES_BY_CODE)).toHaveLength(31);
+     * → 31（删 表2-7、表3-6 并入表3-4，变更表 #226）→ 31（表2-3 恢复，变更表 #235）
+     * → 28（阶段 2 收成 5 张：删 表3-4/3-7/3-9，变更表 #237） */
+    expect(TABLES).toHaveLength(28);
+    expect(new Set(TABLES.map((t) => t.code)).size).toBe(28);
+    expect(Object.keys(TABLES_BY_CODE)).toHaveLength(28);
   });
 
-  it("级别分布：重要 18 / 支撑 11 / 过程 2", () => {
+  it("级别分布：重要 18 / 支撑 9 / 过程 1", () => {
     const count = (tier: string): number => TABLES.filter((t) => t.tier === tier).length;
     expect(count("重要")).toBe(18);
-    expect(count("支撑")).toBe(11);
-    expect(count("过程")).toBe(2);
+    expect(count("支撑")).toBe(9);
+    expect(count("过程")).toBe(1);
   });
 
-  it("阶段分布：0→6张、1→6张、2→8张、3→6张、4→3张、5→2张、6→0张", () => {
+  it("阶段分布：0→6张、1→6张、2→5张、3→6张、4→3张、5→2张、6→0张", () => {
     /* 表1-2 属"客户现状"，已从阶段 1 移到阶段 3（用户定调 2026-10-14）
      * 表2-7 交付与运维现状已删除（变更表 #226，用户定调「没价值的直接删」） */
     const dist = [0, 1, 2, 3, 4, 5, 6].map((s) => tablesOfStage(s as 0).length);
-    expect(dist).toEqual([6, 6, 8, 6, 3, 2, 0]);
+    expect(dist).toEqual([6, 6, 5, 6, 3, 2, 0]);
   });
 
   it("阶段定义的 tableCodes 与实际表一致（含交付物阶段无表）", () => {

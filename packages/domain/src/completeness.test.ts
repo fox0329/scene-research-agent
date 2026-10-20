@@ -170,20 +170,19 @@ describe("completeness — 单表规则", () => {
     expect(g).toBeUndefined();
   });
 
-  it("覆盖度：all-columns-non-empty（表3-4 竞品 A/B/C 均填）", () => {
+  it("覆盖度：min-rows（表3-1 环节 ≥5 个）", () => {
     const r = checkStageCompleteness({
       stage: 2,
       rowsByTable: {
-        "表3-4": [
-          row({ dimension: "生态", our: "有", competitor_a: "A", competitor_b: "B", competitor_c: "" }),
-        ],
+        "表3-1": [row({ link: "整机", gross_margin: "20%–30%（测算）", representative: "A、B" })],
+        "表3-8": [row({ rank: "1", gap: "OEE 靠人工抄表→实时可算", who_hurts: "设备工程师", pain_level: "高", current_alternative: "人工抄表", acceptance: "验收含 OEE 三率可复算" })],
       },
     });
-    const g = r.gaps.find((x) => x.kind === "覆盖度不足" && x.detail.includes("竞品 ≥3 家"));
-    expect(g?.detail).toContain("竞品 ≥3 家");
+    const g = r.gaps.find((x) => x.kind === "覆盖度不足" && x.detail.includes("≥5 个产业链环节"));
+    expect(g?.detail).toContain("≥5 个产业链环节");
     expect(g?.count).toBe(1);
-    // 同表另有一条 min-rows 规则（维度 ≥3），两条应分别报出
-    expect(r.gaps.some((x) => x.detail.includes("对照维度 ≥3 个"))).toBe(true);
+    // 同批另有一条 min-rows 规则（表3-8 缺口 ≥3 条），两条应分别报出
+    expect(r.gaps.some((x) => x.detail.includes("需求缺口 ≥3 条"))).toBe(true);
   });
 
   it("来源齐备：重要/支撑表逐行查 source", () => {
@@ -201,12 +200,12 @@ describe("completeness — 单表规则", () => {
     expect(r.gaps.some((g) => g.kind === "推断未标注" && g.tableCode === "M3")).toBe(true);
   });
 
-  it("过程表不强制来源（表3-9 缺 source 不报缺来源）", () => {
+  it("过程表不强制来源（表2-4 缺 source 不报缺来源）", () => {
     const r = checkStageCompleteness({
       stage: 1,
-      rowsByTable: { "表3-9": [{ trend: "设备侧 AI 化", impact: "边缘算力需求上升" }] },
+      rowsByTable: { "表2-4": [{ method: "OPC UA 采集", layers: "现场层" }] },
     });
-    expect(r.gaps.some((g) => g.kind === "缺来源" && g.tableCode === "表3-9")).toBe(false);
+    expect(r.gaps.some((g) => g.kind === "缺来源" && g.tableCode === "表2-4")).toBe(false);
     expect(r.gaps.some((g) => g.kind === "推断未标注" && g.tableCode === "表3-9")).toBe(false);
   });
 

@@ -150,7 +150,7 @@ describe("collectUpstreamData — 阶段 2/3 的结论进下游", () => {
       pain_level: "高",
       verification: "这段是右栏留痕，不该进提示词",
     });
-    putRow(db, scenarioId, 2, "表3-4", { dimension: "采集协议覆盖", competitor_a: "3 种", competitor_b: "5 种" });
+    putRow(db, scenarioId, 2, "表3-2", { form: "整线交付", key_points: "交付整线，不含运维", players: "海康、大华", position: "扩张", price_band: "80–150 万元/线（项目成交）", fit_for: "10 条以上产线" });
     putRow(db, scenarioId, 3, "表4-2", { link: "设备联网", can_touch: "可以碰", our_role: "替代" });
     return { db, scenarioId };
   }
@@ -163,11 +163,11 @@ describe("collectUpstreamData — 阶段 2/3 的结论进下游", () => {
     expect(String(data["表3-8"]![0]!["gap"])).toContain("接口封闭");
   });
 
-  it("阶段 3 能看到表3-4 的竞品对照（表4-5 的另一半）", () => {
+  it("阶段 3 能看到表3-2 的形态与玩家（表4-5 的对照对象池）", () => {
     const { db, scenarioId } = withRows();
     const sc = db.scenarioRepo.getById(scenarioId)!;
     const data = collectUpstreamData(db, sc, 3) as Record<string, Record<string, unknown>[]>;
-    expect(data["表3-4"]?.[0]?.["competitor_a"]).toBe("3 种");
+    expect(data["表3-2"]?.[0]?.["players"]).toBe("海康、大华");
   });
 
   it("右栏留痕（核实说明）不进上游，省上下文", () => {

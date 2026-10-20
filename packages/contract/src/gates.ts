@@ -117,59 +117,48 @@ export const TABLE_GATES: Readonly<Record<string, readonly ScopedGate[]>> = {
     { kind: "non-empty", columns: ["standard_no"], text: "适用标准号/规范名必填（国标号、行标号、客户制度名或图纸条款号）" }
   ],
 
-  "表3-1": [
-    { kind: "non-empty", columns: ["link", "gross_margin", "representative"], text: "环节/毛利/代表厂商必填" },
-    { kind: "has-number", columns: ["gross_margin"], text: "毛利须给百分数区间或单值，并标口径（年报/项目成交/集采后）" },
-    { kind: "unique", columns: ["link"], text: "一行一环节，同一环节不重复" },
-    { kind: "min-items", column: "representative", min: 2, text: "代表企业至少 2 家具名可查主体" }
-  ],
-  "表3-2": [
-    { kind: "non-empty", columns: ["form", "key_points", "leader"], text: "形态/要点/主导厂商必填" },
-    { kind: "unique", columns: ["form"], text: "同一形态只写一行；form 写形态名称，不写编号" },
-    { kind: "enum-of-column", column: "position", text: "地位取该列枚举（扩张/稳定/收缩）" },
-    { kind: "coverage", column: "position", values: ["扩张"], text: "必须指出正在扩张的形态；全行业无扩张时写一行明示" }
-  ],
-  "表3-3": [
-    { kind: "non-empty", columns: ["customer_type", "decision_maker", "user_role", "payer", "default_choice", "budget_item"], text: "客户类型/拍板/使用/付费/默认选择/预算科目必填" },
-    { kind: "has-number", columns: ["decision_cycle"], text: "决策周期须给月数区间（1–3／3–9 个月）" }
-  ],
-  "表3-4": [
-    { kind: "non-empty", columns: ["dimension", "competitor_a", "competitor_b", "competitor_c"], text: "维度与主要竞品必填" },
-    { kind: "unique", columns: ["dimension"], text: "同一维度只一行，且维度名须含口径（如「单病区价格量级」）" },
-    { kind: "not-vague", columns: ["competitor_a", "competitor_b", "competitor_c", "competitor_d"], text: "取值须是数字或具名事实，禁「较强/偏弱/较高/有限/为主/推进中」" }
-  ],
-  "表3-5": [
-    { kind: "non-empty", columns: ["link", "who_supplies", "concentration", "supply_risk"], text: "环节/供给方/集中度/断供风险必填" },
-    { kind: "named", columns: ["who_supplies"], text: "供给方须点名厂商/产品或「前三家：A/B/C（合计份额 X%）」，不许只写「多家」" },
-    { kind: "enum-of-column", column: "concentration", text: "集中度取该列枚举" },
-    { kind: "enum-of-column", column: "substitutability", text: "可替代性取该列枚举" },
-    { kind: "enum-of-column", column: "bargaining", text: "议价权取该列枚举" },
-    { kind: "has-number", columns: ["supply_risk"], text: "被卡点须给交期周数/份额%/家数/认证月数之一" }
-  ],
-  "表3-7": [
-    { kind: "non-empty", columns: ["pitfall", "consequence", "avoid_in_design"], text: "坑/后果/规避必填" },
-    { kind: "has-number", columns: ["consequence"], text: "后果须给钱/工期/安全量级（返工 3 人月、停机 2 天、返修率 5%）" },
-    { kind: "not-vague", columns: ["avoid_in_design"], text: "规避须落到设计措施 + 验收/合同落点，不许「注意风险/提前沟通」" }
-  ],
-  "表3-8": [
-    { kind: "non-empty", columns: ["gap", "who_hurts", "pain_level", "cross_validation"], text: "缺口/谁疼/痛级/多源验证必填" },
-    { kind: "unique", columns: ["rank"], text: "排序不许重复（1..n 连续）" },
-    { kind: "unique", columns: ["gap"], text: "同一缺口只登记一行（它是表4-3 的引用锚）" },
-    { kind: "enum-of-column", column: "pain_level", text: "痛级取该列枚举" },
-    { kind: "has-number", columns: ["gap"], text: "缺口须带现状值与差距量（0.38→0.28 kWh/m³）" }
-  ],
-  "表3-9": [
-    { kind: "non-empty", columns: ["trend", "driver", "impact", "window"], text: "趋势/驱动/影响/窗口必填" },
-    { kind: "named", columns: ["driver"], text: "驱动力须具名（文件号/标准号/补贴名/招标条款）" },
-    { kind: "min-items", column: "impact", min: 2, text: "影响须分别写对客户与对在位供应商" },
-    { kind: "has-number", columns: ["window"], text: "时间窗口须给年份或月数（2027 前、18 个月内），不接受「未来几年」" }
-  ],
-
   "表1-2": [
     { kind: "non-empty", columns: ["link", "owner_now", "current_tool", "current_flow", "pain"], text: "环节/现在谁在做/用什么/怎么做/痛点必填" },
     { kind: "unique", columns: ["link"], text: "同一业务环节只写一行" },
     { kind: "has-number", columns: ["current_flow"], text: "现状做法须给频次或单次耗时（每班 2 次、每次 30 分钟）" },
     { kind: "not-vague", columns: ["pain"], text: "痛点须写「哪一步、错/慢/漏多少」，不许「效率低/易出错」" }
+  ],
+  "表3-1": [
+    { kind: "non-empty", columns: ["link", "gross_margin", "representative"], text: "环节/毛利率/代表企业必填" },
+    { kind: "unique", columns: ["link"], text: "一行一环节，环节不许重复" },
+    { kind: "has-number", columns: ["gross_margin"], text: "毛利率须给数字（区间或单值），并带口径（年报/项目成交/经销/集采后/测算）" },
+    { kind: "named", columns: ["representative"], text: "代表企业须具名 ≥2 家，禁「等/…/多家」" },
+  ],
+  "表3-2": [
+    { kind: "non-empty", columns: ["form", "key_points", "players", "position", "price_band", "fit_for"], text: "形态/要点/主要玩家/地位/价格带/适用条件必填" },
+    { kind: "unique", columns: ["form"], text: "一种形态一行，形态名不许重复或写成编号" },
+    { kind: "enum-of-column", column: "position", text: "当前地位只取 扩张/稳定/收缩/未知" },
+    { kind: "min-items", column: "players", min: 2, text: "主要玩家至少 2 家具名（顿号分隔）" },
+    { kind: "not-vague", columns: ["players", "key_points"], text: "玩家须具名、要点须写清交付与边界，禁「多家厂商/各类方案」" },
+    { kind: "has-number", columns: ["fit_for"], text: "适用条件须含一个量化条件（产线数/预算/规模）" },
+  ],
+  "表3-3": [
+    { kind: "non-empty", columns: ["customer_type", "decision_maker", "budget", "default_choice", "procurement_method", "decision_cycle"], text: "客户类型/拍板/钱从哪出/默认选择/采购方式/决策周期必填" },
+    { kind: "unique", columns: ["customer_type"], text: "一类客户一行，类型不许重复" },
+    { kind: "enum-of-column", column: "procurement_method", text: "采购方式只取七值（公开招标/邀请招标/竞争性磋商/单一来源/框架协议/集采目录/直接采购/未知）" },
+    { kind: "named", columns: ["decision_maker"], text: "拍板须写岗位（总监/经理/总工/主任/厂长/部长/院长/采购），不写人名" },
+    { kind: "has-number", columns: ["decision_cycle"], text: "决策周期须给月数（如「3–9 个月」），禁「较长/半年左右」" },
+    { kind: "not-vague", columns: ["default_choice"], text: "默认选择须具名，或明确「自建/人工/不采购」" },
+  ],
+  "表3-5": [
+    { kind: "non-empty", columns: ["link", "who_supplies", "concentration", "substitutability", "bargaining", "supply_risk"], text: "上游环节/供给方/集中度/可替代性/议价权/被卡点必填" },
+    { kind: "enum-of-column", column: "concentration", text: "集中度只取枚举值" },
+    { kind: "enum-of-column", column: "substitutability", text: "可替代性只取枚举值" },
+    { kind: "enum-of-column", column: "bargaining", text: "议价权只取枚举值" },
+    { kind: "has-number", columns: ["supply_risk"], text: "被卡点须含量级（周/天/%/家/月）" },
+    { kind: "named", columns: ["who_supplies"], text: "供给方须具名，禁「多家/若干/供应商」" },
+  ],
+  "表3-8": [
+    { kind: "non-empty", columns: ["rank", "gap", "who_hurts", "pain_level", "current_alternative", "acceptance"], text: "六列必填（含验收条件）" },
+    { kind: "unique", columns: ["rank"], text: "排序 1..n 连续且唯一" },
+    { kind: "enum-of-column", column: "pain_level", text: "痛级只取 高/中/低" },
+    { kind: "not-vague", columns: ["gap", "who_hurts", "acceptance"], text: "缺口须含差距量、谁在痛须到岗位、验收条件须是客户语言，禁「效率低/客户/加强管理」" },
+    { kind: "has-number", columns: ["consequence"], text: "不解决的损失须带数字与单位（钱/工期/安全）" },
   ],
   "表4-1": [
     { kind: "non-empty", columns: ["ability", "maturity"], text: "能力与成熟度必填" },

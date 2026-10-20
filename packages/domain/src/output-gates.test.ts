@@ -13,7 +13,7 @@ import { evaluateGates, type GateRow } from "./output-gates.js";
 const tableCodes = TABLES.map((t) => t.code);
 
 describe("门限登记完整性（契约层）", () => {
-  it("31 张表每张都有门限，不许漏", () => {
+  it("28 张表每张都有门限，不许漏", () => {
     const missing = tableCodes.filter((code) => gatesOf(code).length === 0);
     expect(missing).toEqual([]);
   });
@@ -132,14 +132,18 @@ describe("evaluateGates — 真实缺陷能被点名", () => {
     expect(f.some((x) => x.gate.includes("关系两端"))).toBe(true);
   });
 
-  it("表3-7 规避措施写「注意风险」→ 点名；写进合同条款 → 达标", () => {
-    const bad = evaluateGates([row("表3-7", { pitfall: "老机协议不开放", consequence: "取不到数", avoid_in_design: "注意风险" })]);
+  it("表3-8 验收条件写「注意风险」→ 点名；写进合同条款 → 达标", () => {
+    const bad = evaluateGates([row("表3-8", { rank: "1", gap: "老机协议不开放", who_hurts: "设备工程师", pain_level: "高", current_alternative: "人工抄表", acceptance: "注意风险" })]);
     expect(bad.some((x) => x.detail.includes("空话"))).toBe(true);
     const ok = evaluateGates([
-      row("表3-7", {
-        pitfall: "老机协议不开放",
+      row("表3-8", {
+        rank: "1",
+        gap: "老机协议不开放，OEE 靠人工抄表",
+        who_hurts: "设备工程师",
+        pain_level: "高",
+        current_alternative: "人工抄表",
+        acceptance: "合同写明进场首周完成全厂点表核对并双方签字",
         consequence: "取不到数，返工 3 人月、延期 2 周",
-        avoid_in_design: "合同写明进场首周完成全厂点表核对并双方签字",
       }),
     ]);
     expect(ok).toEqual([]);

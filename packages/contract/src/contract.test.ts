@@ -96,10 +96,9 @@ describe("@scene/contract 表编号常量", () => {
     expect(STAGE2_TABLES).toHaveLength(8);
   });
 
-  it("STAGE3 10 张表", () => {
-    expect(STAGE3_TABLES).toHaveLength(10);
-    expect(STAGE3_TABLES[0]).toBe("表3-1");
-    expect(STAGE3_TABLES[9]).toBe("表3-10");
+  it("STAGE3 5 张表（2026-10-20 用户定调不超过 5 张）", () => {
+    expect(STAGE3_TABLES).toHaveLength(5);
+    expect(STAGE3_TABLES).toEqual(["表3-1", "表3-2", "表3-3", "表3-5", "表3-8"]);
   });
 
   it("STAGE4 6 张表", () => {

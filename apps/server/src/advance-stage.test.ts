@@ -408,22 +408,12 @@ function makeStage2DshOutput() {
         fields: {
           form: "一体化平台",
           key_points: "软硬一体、统一运维",
-          leader: "海康",
-          position: "主导",
-          our_entry: "从边缘分析切入",
+          players: "海康、大华",
+          position: "扩张",
+          price_band: "80–150 万元/线（项目成交）",
+          fit_for: "10 条以上产线",
         },
         source: "行业报告.pdf:9",
-      },
-      {
-        table_code: "表3-4",
-        fields: {
-          dimension: "算法准确率",
-          our: "95%",
-          competitor_a: "96%",
-          competitor_b: "93%",
-          competitor_c: "90%",
-        },
-        source: "测评报告.pdf:3",
       },
     ],
   };
@@ -856,11 +846,11 @@ describe("createAdvanceStageCommand", () => {
       }
     });
 
-    it("应将 3 条行写入 stageDataRepo", async () => {
+    it("应将 2 条行写入 stageDataRepo", async () => {
       const cmd = createAdvanceStageCommand(deps);
       await collectEvents(cmd.execute({ scenarioId: "sc-1", stage: 2 }));
 
-      expect(db.stageDataRepo.insert).toHaveBeenCalledTimes(3);
+      expect(db.stageDataRepo.insert).toHaveBeenCalledTimes(2);
     });
 
     /**

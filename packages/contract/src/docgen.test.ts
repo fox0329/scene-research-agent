@@ -92,7 +92,7 @@ describe("文档生成 — 内容完整性", () => {
   });
 
   it("列说明（note）被渲染出来", () => {
-    expect(body).toContain("只有模型知识就写「单一来源（模型知识）」");
+    expect(body).toContain("须与表3-3 的 budget 科目同词表");
     /* 表3-6 已并入表3-4（变更表 #226），改断言语义等价且仍存在的 note */
     expect(body).toContain("必须用客户语言");
   });

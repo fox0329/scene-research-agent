@@ -53,10 +53,10 @@ export const UPSTREAM_DEPS: Record<number, readonly UpstreamDep[]> = {
       why: "表4-3 的「缺口（来自表3-8）」必须逐条对应；没有它，覆盖性无法保证（审计 §3.1 点名的第一条断链）",
     },
     {
-      table: "表3-4",
-      columns: ["dimension", "competitor_a", "competitor_b", "competitor_c", "competitor_d"],
+      table: "表3-2",
+      columns: ["form", "players", "position", "price_band", "fit_for"],
       maxRows: 12,
-      why: "表4-5 要与对手逐维度对照；表3-4 明写「不写我方」，对照的另一半要靠表4-5 补上",
+      why: "表4-5 的对照对象取自表3-2 的 players；价格带决定我方报价定位",
     },
     {
       table: "表3-5",
@@ -86,16 +86,16 @@ export const UPSTREAM_DEPS: Record<number, readonly UpstreamDep[]> = {
       why: "匹配判定为「不能做」的缺口，方案里必须留边界声明，不能装作能解",
     },
     {
-      table: "表3-7",
-      columns: ["pitfall", "consequence", "avoid_in_design"],
+      table: "表3-8",
+      columns: ["gap", "acceptance"],
       maxRows: 10,
-      why: "「我们方案里怎么避」要落成方案约束与验收条款，否则这张表白填",
+      why: "验收条件要落成方案约束与合同条款，否则这张表白填",
     },
     {
-      table: "表3-9",
-      columns: ["trend", "driver", "impact", "window"],
+      table: "表3-8",
+      columns: ["gap", "acceptance"],
       maxRows: 8,
-      why: "时间窗口决定实施计划排期（表5-3 的「窗口」列）",
+      why: "「为什么现在能打」的具名窗口决定实施排期（表5-3 的「窗口」列）",
     },
   ],
   // 阶段 5（价值验证）：要证明收益，必须知道「解了哪个缺口」「方案由什么构成」
@@ -140,8 +140,8 @@ export const UPSTREAM_DEPS: Record<number, readonly UpstreamDep[]> = {
       why: "赢面结论要能复算（权重×评分），不能只给一句结论",
     },
     {
-      table: "表3-7",
-      columns: ["pitfall", "consequence", "avoid_in_design"],
+      table: "表3-8",
+      columns: ["gap", "acceptance"],
       maxRows: 10,
       why: "客户最认「同行踩过的坑我们怎么避」，交付物里必须出现",
     },

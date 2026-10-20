@@ -91,12 +91,13 @@ function makeInput(): DeliverableInput {
       }),
       // 对外材料必须排除的表
       row("表3-1", { link: "视频监控", gross_margin: "35%", representative: "海康/大华" }),
-      row("表3-4", {
-        dimension: "算法准确率",
-        our: "95%",
-        competitor_a: "海康",
-        competitor_b: "大华",
-        competitor_c: "",
+      row("表3-2", {
+        form: "整线交付",
+        key_points: "交付整线，不含运维",
+        players: "海康、大华",
+        position: "扩张",
+        price_band: "80–150 万元/线（项目成交）",
+        fit_for: "10 条以上产线",
       }),
       row("表5-1", {
         layer: "边缘层",
@@ -142,11 +143,14 @@ function makeConstructionInput(): DeliverableInput {
         pain_level: "高",
         current_alternative: "听音杆",
       }),
-      row("表3-9", {
-        trend: "供水管网智能化改造",
-        driver: "节水政策",
-        impact: "监管要求分区计量",
-        window: "2026-2027",
+      row("表3-8", {
+        rank: "1",
+        gap: "漏损定位靠人工排查",
+        who_hurts: "管网所",
+        pain_level: "高",
+        current_alternative: "听音杆",
+        acceptance: "验收含分区计量可复算",
+        consequence: "每月多耗 30 人天",
       }),
       row("表4-2", { link: "输配", can_touch: "可以碰", our_role: "辅助", role_reason: "已有边缘网关" }),
       row("表4-3", {
@@ -290,6 +294,7 @@ describe("exportDeliverables — 只渲染中栏（对外口径）", () => {
     expect(report).not.toContain("大华");
     expect(report).not.toContain("表3-1");
     expect(report).not.toContain("表3-4");
+    expect(report).not.toContain("大华");
     expect(report).not.toContain("利润池");
   });
 
