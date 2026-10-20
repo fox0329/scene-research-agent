@@ -109,3 +109,86 @@ describe("collectUpstreamData — 通用库默认引用、可逐个取消", () =
     expect(data["M1_产品型号"]?.map((r) => r["model"])).toContain("SEN-200");
   });
 });
+
+/**
+ * 阶段 2 之后的上游结论必须真的进下游（变更表 #225）
+ *
+ * 审计（docs/表格精简审计.md §3.1）发现原来只带 M 库表与阶段1，导致
+ * 表4-3 声称「覆盖表3-8 每条」却读不到表3-8。这些用例锁住接线。
+ */
+describe("collectUpstreamData — 阶段 2/3 的结论进下游", () => {
+  /** 造一条 stage_data 行（跳过 repo 类型约束，直接写库） */
+  function putRow(
+    db: ReturnType<typeof createDb>,
+    scenarioId: string,
+    stage: number,
+    tableCode: string,
+    row: Record<string, unknown>,
+  ) {
+    db.db
+      .prepare(
+        `INSERT INTO stage_data (id, scenario_id, stage, table_code, row, created_at, updated_at)
+         VALUES (?,?,?,?,?,?,?)`,
+      )
+      .run(
+        `${tableCode}-${Math.random().toString(36).slice(2)}`,
+        scenarioId,
+        stage,
+        tableCode,
+        JSON.stringify(row),
+        new Date().toISOString(),
+        new Date().toISOString(),
+      );
+  }
+
+  function withRows() {
+    const { db, scenarioId } = setup();
+    putRow(db, scenarioId, 2, "表3-8", {
+      rank: "1",
+      gap: "压铸机数据接口封闭，OEE 无法自动归集",
+      who_hurts: "设备部",
+      pain_level: "高",
+      verification: "这段是右栏留痕，不该进提示词",
+    });
+    putRow(db, scenarioId, 2, "表3-4", { dimension: "采集协议覆盖", competitor_a: "3 种", competitor_b: "5 种" });
+    putRow(db, scenarioId, 3, "表4-2", { link: "设备联网", can_touch: "可以碰", our_role: "替代" });
+    return { db, scenarioId };
+  }
+
+  it("阶段 3 能看到表3-8 的缺口（表4-3 的覆盖性靠它）", () => {
+    const { db, scenarioId } = withRows();
+    const sc = db.scenarioRepo.getById(scenarioId)!;
+    const data = collectUpstreamData(db, sc, 3) as Record<string, Record<string, unknown>[]>;
+    expect(data["表3-8"]?.length).toBe(1);
+    expect(String(data["表3-8"]![0]!["gap"])).toContain("接口封闭");
+  });
+
+  it("阶段 3 能看到表3-4 的竞品对照（表4-5 的另一半）", () => {
+    const { db, scenarioId } = withRows();
+    const sc = db.scenarioRepo.getById(scenarioId)!;
+    const data = collectUpstreamData(db, sc, 3) as Record<string, Record<string, unknown>[]>;
+    expect(data["表3-4"]?.[0]?.["competitor_a"]).toBe("3 种");
+  });
+
+  it("右栏留痕（核实说明）不进上游，省上下文", () => {
+    const { db, scenarioId } = withRows();
+    const sc = db.scenarioRepo.getById(scenarioId)!;
+    const data = collectUpstreamData(db, sc, 3) as Record<string, Record<string, unknown>[]>;
+    expect(data["表3-8"]![0]).not.toHaveProperty("verification");
+  });
+
+  it("阶段 4 能看到表4-2 的参与判定（方案边界靠它）", () => {
+    const { db, scenarioId } = withRows();
+    const sc = db.scenarioRepo.getById(scenarioId)!;
+    const data = collectUpstreamData(db, sc, 4) as Record<string, Record<string, unknown>[]>;
+    expect(data["表4-2"]?.[0]?.["our_role"]).toBe("替代");
+  });
+
+  it("阶段 2 不拿阶段 3 的表（单向）", () => {
+    const { db, scenarioId } = withRows();
+    const sc = db.scenarioRepo.getById(scenarioId)!;
+    const data = collectUpstreamData(db, sc, 2) as Record<string, unknown[]>;
+    expect(data["表4-2"]).toBeUndefined();
+    expect(data["表3-8"]).toBeUndefined();
+  });
+});

@@ -257,10 +257,18 @@ function renderUpstream(upstreamData: Record<string, unknown>): string {
     const rows = Array.isArray(rowsRaw) ? (rowsRaw as Record<string, unknown>[]) : [];
     if (rows.length === 0) continue;
     const t = TABLES.find((x) => x.code === code);
-    const raw =
-      t && middleColumns(t).length > 0
-        ? middleColumns(t).map((c) => c.key)
-        : Object.keys(rows[0] ?? {}).filter((k) => !["id", "scenario_id", "stage", "is_stale", "created_at", "updated_at"].includes(k));
+    /* 只渲染**这一批行实际带了的列**（变更表 #225）
+     *
+     * 上游依赖会按需投影（如只带表3-8 的排序/缺口/谁在痛/痛到什么程度）。
+     * 若仍按中栏全列出表头，被投影掉的列会变成一整排空列——既浪费 token，
+     * 又让模型以为"这些字段问过了但答不上来"。
+     */
+    const present = new Set<string>();
+    for (const r of rows.slice(0, 50)) for (const k of Object.keys(r)) present.add(k);
+    const middleKeys = t ? middleColumns(t).map((c) => c.key) : [];
+    const raw = middleKeys.filter((k) => present.has(k)).length
+      ? middleKeys.filter((k) => present.has(k))
+      : Object.keys(rows[0] ?? {}).filter((k) => !["id", "scenario_id", "stage", "is_stale", "created_at", "updated_at"].includes(k));
     // 资料来源（本场景 / 主库）置首列：合并后仍可区分，模型引用时能说清出处
     const hasScope = rows.some((r) => typeof r["data_scope"] === "string");
     const keys = hasScope ? ["data_scope", ...raw.filter((k) => k !== "data_scope")] : raw;

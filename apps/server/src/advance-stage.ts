@@ -35,6 +35,7 @@ import {
   stageDef,
   tableDef,
   tablesOfStage,
+  upstreamDepsOf,
   type InfoStageId,
 } from "@scene/contract";
 import {
@@ -1101,6 +1102,36 @@ export function collectUpstreamData(
       scenario.id,
       1 as StageId,
     );
+  }
+
+  /* 阶段 2 之后的上游结论（变更表 #225）
+   *
+   * 审计（docs/表格精简审计.md §3.1）发现这里原来只带 M1–M5 与阶段 1，
+   * 导致阶段2/3/4/5 共 21 张表写完下游一次都没读过——表4-3 声称覆盖表3-8
+   * 每条、表4-5 与表3-4 互指，全都因为没有数据连接而不成立。
+   *
+   * 按契约里的依赖声明取数，并且：
+   *   - 只取声明里点名的列（结论列，不要过程列）；
+   *   - 只取中栏列（右栏是溯源留痕，灌进提示词只烧 token）；
+   *   - 每表行数封顶，避免长表撑爆上下文。
+   */
+  for (const dep of upstreamDepsOf(stage)) {
+    const def = tableDef(dep.table as never);
+    if (!def) continue;
+    const rows = db.stageDataRepo.listByScenarioStage(scenario.id, def.stage);
+    const mine = rows.filter((r) => String(r.table_code) === dep.table);
+    if (mine.length === 0) continue;
+
+    const middle = new Set(middleColumns(def).map((c) => c.key));
+    const want = (dep.columns && dep.columns.length > 0 ? dep.columns : [...middle]).filter((k) =>
+      middle.has(k),
+    );
+    data[dep.table] = mine.slice(0, dep.maxRows).map((r) => {
+      const row = (r.row ?? {}) as Record<string, unknown>;
+      const picked: Record<string, unknown> = {};
+      for (const k of want) picked[k] = row[k] ?? "";
+      return picked;
+    });
   }
 
   return data;
