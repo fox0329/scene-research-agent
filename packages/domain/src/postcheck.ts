@@ -636,8 +636,10 @@ export function runDeterministicPostcheck(input: PostcheckInput): PostcheckFindi
           rowId: r.rowId,
           label: r.label,
           kind: "门槛不成立",
-          detail: `${gate.failures.join("；")}。按性质应归 ${gate.suggestTable ?? "其他表"}，不是门槛`,
-          severity: "存疑",
+          detail: `${gate.failures.join("；")}。按性质应归 ${gate.suggestTable ?? "其他表"}，不是门槛；本行须改写为真门槛或移出本表`,
+          /* 专家审阅 2026-10-20：门槛不成立只是「存疑」时既能留在库里、又能被下游引用，
+             等于没拦。升为硬伤：必须改或删，不许当门槛用。 */
+          severity: "硬伤",
         });
       }
     }

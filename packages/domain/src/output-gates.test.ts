@@ -85,16 +85,16 @@ describe("evaluateGates — 真实缺陷能被点名", () => {
 
   it("表4-1 同一能力在同一场景重复登记 → 点名", () => {
     const f = evaluateGates([
-      { ...row("表4-1", { ability: "多协议设备接入", maturity: "已量产", limitation: "5G 未量产" }, "a"), scenarioId: "s1" },
-      { ...row("表4-1", { ability: "多协议设备接入", maturity: "已量产", limitation: "—" }, "b"), scenarioId: "s1" },
+      { ...row("表4-1", { ability: "多协议设备接入", maturity: "已交付" }, "a"), scenarioId: "s1" },
+      { ...row("表4-1", { ability: "多协议设备接入", maturity: "已交付" }, "b"), scenarioId: "s1" },
     ]);
     expect(f.filter((x) => x.gate.includes("重复登记")).length).toBe(2);
   });
 
   it("不同场景复用同一能力不算重复（跨场景去重会误杀）", () => {
     const f = evaluateGates([
-      { ...row("表4-1", { ability: "多协议设备接入", maturity: "已量产", limitation: "5G 未量产" }, "a"), scenarioId: "s1" },
-      { ...row("表4-1", { ability: "多协议设备接入", maturity: "已量产", limitation: "5G 未量产" }, "b"), scenarioId: "s2" },
+      { ...row("表4-1", { ability: "多协议设备接入", maturity: "已交付" }, "a"), scenarioId: "s1" },
+      { ...row("表4-1", { ability: "多协议设备接入", maturity: "已交付" }, "b"), scenarioId: "s2" },
     ]);
     expect(f).toEqual([]);
   });
@@ -132,7 +132,7 @@ describe("evaluateGates — 真实缺陷能被点名", () => {
     const ok = evaluateGates([
       row("表3-7", {
         pitfall: "老机协议不开放",
-        consequence: "取不到数",
+        consequence: "取不到数，返工 3 人月、延期 2 周",
         avoid_in_design: "合同写明进场首周完成全厂点表核对并双方签字",
       }),
     ]);
@@ -141,12 +141,12 @@ describe("evaluateGates — 真实缺陷能被点名", () => {
 
   it("表6-1 预期写「显著提升」→ 点名；写「提升 15%」→ 达标", () => {
     expect(
-      evaluateGates([row("表6-1", { benefit: "OEE", metric: "OEE 提升", expected: "显著提升", how_to_measure: "按班次统计" })]).some(
+      evaluateGates([row("表6-1", { benefit: "OEE", metric: "OEE 提升", expected: "显著提升", how_to_measure: "按班次统计", user_feeling: "班组长：不用再手抄" })]).some(
         (x) => x.gate.includes("数值"),
       ),
     ).toBe(true);
     expect(
-      evaluateGates([row("表6-1", { benefit: "OEE", metric: "OEE 提升", expected: "提升 15 个百分点", how_to_measure: "按班次统计" })]),
+      evaluateGates([row("表6-1", { benefit: "OEE", metric: "OEE 提升", expected: "提升 15 个百分点", how_to_measure: "按班次统计", user_feeling: "班组长：不用再手抄" })]),
     ).toEqual([]);
   });
 
@@ -157,11 +157,13 @@ describe("evaluateGates — 真实缺陷能被点名", () => {
 
   it("表6-4 缺成功判据/验收口径 → 覆盖度点名", () => {
     const f = evaluateGates([
-      row("表6-4", { kind: "成功判据", content: "OEE 提升 ≥10 个百分点" }),
-      row("表6-4", { kind: "验收口径", content: "按连续 3 个月数据可用率 ≥99% 验收" }),
+      row("表6-4", { kind: "试点范围", content: "1 个车间、28 台设备、12 名用户" }),
+      row("表6-4", { kind: "试点时长", content: "连续 3 个月" }),
+      row("表6-4", { kind: "成功判据", content: "OEE 提升 ≥10 个百分点，按班次统计，生产经理签字" }),
+      row("表6-4", { kind: "验收口径", content: "按连续 3 个月数据可用率 ≥99% 验收，客户设备部签字" }),
     ]);
     expect(f).toEqual([]);
-    const f2 = evaluateGates([row("表6-4", { kind: "成功判据", content: "OEE 提升 ≥10 个百分点" })]);
+    const f2 = evaluateGates([row("表6-4", { kind: "试点范围", content: "1 个车间、28 台设备" })]);
     expect(f2.some((x) => x.gate.includes("成功判据"))).toBe(true);
   });
 });

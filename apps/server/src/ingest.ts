@@ -22,7 +22,7 @@ import type { ParseResult } from "@scene/infra";
 import { createSourceLookup, upsertSourcePages } from "@scene/infra";
 import type { DbInstance } from "@scene/infra";
 import { resolveProductForModel, upsertSpecParam } from "./library-service.js";
-import { normalizeModel } from "@scene/domain";
+import { evaluateGates, normalizeModel } from "@scene/domain";
 import type {
   QualityAssessment,
   CompletenessReport,
@@ -74,6 +74,11 @@ export interface IngestResult {
   mergedProducts: number;
   qualityAssessment: QualityAssessment;
   completenessReport: CompletenessReport;
+  /**
+   * M1–M5 / 可选材料 的输出门限体检结果。
+   * 这几张表走入库路径，阶段推进时才跑的门限管不到它们（专家审阅 2026-10-20 指出的通路缺口）。
+   */
+  gateFindings: { tableCode: string; label: string; gate: string; detail: string }[];
 }
 
 // ─── DSH 产出 JSON 结构 ────────────────────────────────────
@@ -221,10 +226,73 @@ async function executeIngest(
   const { inserted, tableCounts, mergedProducts } = writeRows(db, validRows, productLineId, fileName);
 
   // 6. 质量评估 + 完成度检查
+  const gateFindings = runIngestGates(db, productLineId);
   const qualityAssessment = buildQualityAssessment(db, productLineId);
   const completenessReport = buildCompletenessReport(db, productLineId);
 
-  return { rowsInserted: inserted, tableCounts, mergedProducts, qualityAssessment, completenessReport };
+  return {
+    rowsInserted: inserted,
+    tableCounts,
+    mergedProducts,
+    qualityAssessment,
+    completenessReport,
+    gateFindings,
+  };
+}
+
+/**
+ * 入库后跑 M1–M5 / 可选材料的输出门限。
+ *
+ * 为什么不复用 stage_data：产品侧数据在 product / spec_param 等表，不是场景表；
+ * 门限要的是「同一口径的行集合」，这里按表适配成 GateRow。
+ */
+function runIngestGates(
+  db: DbInstance,
+  productLineId: string,
+): { tableCode: string; label: string; gate: string; detail: string }[] {
+  /* 单测里的 DbInstance 是 mock（无原生连接），此时跳过体检而不是让入库失败 */
+  if (typeof db.db?.prepare !== "function") return [];
+  const rows: { id: string; tableCode: string; row: Record<string, unknown> }[] = [];
+  const q = <T>(sql: string): T[] => db.db.prepare(sql).all(productLineId) as T[];
+
+  for (const r of q<{ id: string; model: string; name: string; status: string }>(
+    "SELECT id, model, name, status FROM product WHERE product_line_id = ?",
+  )) {
+    rows.push({ id: r.id, tableCode: "M1", row: { model: r.model, name: r.name, status: r.status } });
+  }
+  for (const r of q<{ id: string; model: string; param_class: string; param_name: string; value: string }>(
+    `SELECT s.id, p.model, s.param_class, s.param_name, s.value
+       FROM spec_param s JOIN product p ON p.id = s.product_id WHERE p.product_line_id = ?`,
+  )) {
+    rows.push({ id: r.id, tableCode: "M2", row: { ...r, product_id: r.model } });
+  }
+  for (const r of q<{ id: string; domain: string; name: string; maturity: string; inapplicable_scene: string }>(
+    "SELECT id, domain, name, maturity, inapplicable_scene FROM capability WHERE product_line_id = ?",
+  )) {
+    rows.push({ id: r.id, tableCode: "M3", row: r });
+  }
+  for (const r of q<{ id: string; description: string; response: string }>(
+    "SELECT id, description, response FROM boundary WHERE product_line_id = ?",
+  )) {
+    rows.push({ id: r.id, tableCode: "M4", row: r });
+  }
+  for (const r of q<{ id: string; product_name: string; description: string }>(
+    "SELECT id, product_name, description FROM limitation WHERE product_line_id = ?",
+  )) {
+    rows.push({ id: r.id, tableCode: "M5", row: r });
+  }
+  for (const r of q<{ id: string; category: string }>(
+    "SELECT id, category FROM optional_material WHERE product_line_id = ?",
+  )) {
+    rows.push({ id: r.id, tableCode: "可选材料", row: r });
+  }
+
+  return evaluateGates(rows).map((f) => ({
+    tableCode: f.tableCode,
+    label: f.label,
+    gate: f.gate,
+    detail: f.detail,
+  }));
 }
 
 // ─── 子函数：组 user prompt ────────────────────────────────

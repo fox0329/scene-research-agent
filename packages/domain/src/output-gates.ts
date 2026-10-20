@@ -10,10 +10,12 @@
  */
 
 import {
+  ENUMS,
   middleColumns,
   tableDef,
   TABLE_GATES,
   type GateSpec,
+  type ScopedGate,
   type TableDef,
 } from "@scene/contract";
 import { judgeConstraint } from "./constraint-check.js";
@@ -56,7 +58,12 @@ const NUMBERISH = /\d+(?:\.\d+)?\s*(?:%|％|万元|万|元|亿元|年|个月|天
 /** 中文量级（「单台百万元级」「十万元级」——报量级本来就不必写阿拉伯数字） */
 const MAGNITUDE = /[十百千万亿]{1,3}\s*元\s*(?:级|左右|上下)?/;
 /** 空话：写了等于没写的处置建议 */
-const VAGUE_ADVICE = /^(注意风险|注意安全|加强管理|密切关注|做好沟通|及时跟进|视情况而定|酌情处理|尽量避免)[。；;，,]*$/;
+/**
+ * 空话词表（用户定调「没价值的内容删除」；专家审阅指出原词表只有 5 个整句、
+ * 对「稳定运行」「客户满意」「操作更便捷」全放行，等于没有）
+ */
+const VAGUE_ADVICE =
+  /注意风险|注意安全|加强管理|加强沟通|密切关注|做好沟通|做好联调|及时跟进|视情况而定|酌情|按需|原则上|尽快|稳定运行|运行稳定|客户满意|操作更便捷|体验更好|显著|大幅|明显提升|有效提升|有待提升|不够用|效率低|易出错|各系统|各类|多个|若干/;
 /** 中文数词（「四类停机」「三项验收」也算给了量化口径） */
 const CN_NUMERAL = /[一二三四五六七八九十百千万]{1,3}\s*(类|项|个|台|套|条|人|天|年|月|小时)/;
 /** 合计行：派生的汇总不是一行发现 */
@@ -68,6 +75,16 @@ const VENDOR_LIKE = /(公司|集团|股份|科技|机械|自动化|电气|电子
 
 function text(value: unknown): string {
   return String(value ?? "").trim();
+}
+
+/** 枚举列的实填值常带括注（「分散（多家可选，行业口径）」），比对时去掉括注与空白 */
+function enumBase(value: string): string {
+  return value.replace(/[（(][^）)]*[)）]/g, "").replace(/\s/g, "").trim();
+}
+
+function matchesEnum(value: string, values: readonly string[]): boolean {
+  const base = enumBase(value);
+  return values.some((v) => enumBase(v) === base || base.startsWith(enumBase(v)));
 }
 
 function isBlank(value: unknown): boolean {
@@ -87,10 +104,16 @@ function itemCount(value: unknown): number {
 function judgeRowGates(
   def: TableDef,
   row: Record<string, unknown>,
-  gates: readonly GateSpec[],
+  gates: readonly ScopedGate[],
 ): { kind: GateSpec["kind"]; gate: string; detail: string; severity: GateSeverity }[] {
   const out: { kind: GateSpec["kind"]; gate: string; detail: string; severity: GateSeverity }[] = [];
-  for (const g of gates) {
+  for (const raw of gates) {
+    const g = raw;
+    /* 作用域：一张表装两类行时（表5-1 架构行/接口行），门限只对相应那类生效 */
+    if (raw.when) {
+      const has = !isBlank(row[raw.when.column]);
+      if (has !== raw.when.present) continue;
+    }
     switch (g.kind) {
       case "non-empty": {
         const blanks = g.columns.filter((c) => isBlank(row[c]));
@@ -132,8 +155,22 @@ function judgeRowGates(
       }
       case "enum": {
         const t = text(row[g.column]);
-        if (t && !g.values.includes(t)) {
+        if (t && !matchesEnum(t, g.values)) {
           out.push({ kind: g.kind, gate: g.text, detail: `取值「${t}」不在允许范围（${g.values.join(" / ")}）`, severity: "硬伤" });
+        }
+        break;
+      }
+      case "enum-of-column": {
+        const col = def.columns.find((c) => c.key === g.column);
+        const values: readonly string[] = col?.enum ? (ENUMS[col.enum] ?? []) : [];
+        const t = text(row[g.column]);
+        if (values.length && t && !matchesEnum(t, values)) {
+          out.push({
+            kind: g.kind,
+            gate: g.text,
+            detail: `取值「${t}」不在该列枚举内（${values.join(" / ")}）`,
+            severity: "硬伤",
+          });
         }
         break;
       }
@@ -321,6 +358,9 @@ export function evaluateGates(rows: readonly GateRow[]): GateFinding[] {
         const targetRows = byTable.get(`${scenario}|${g.table}`) ?? [];
         if (!targetRows.length) continue; // 目标表还没数据时不判，避免级联报错
         const targets = targetRows.map((r) => canon(r.row[g.target])).filter(Boolean);
+        /* 外部主体不是「场景要素」，但关系必须能具名对端（监管平台、电网、运营商…） */
+        const EXTERNAL = /监管|环保|生态环境|电网|供电|运营商|云平台|上级|集团|第三方|客户/;
+        const failures: string[] = [];
         for (const r of tableRows) {
           const raw = text(r.row[g.column]);
           if (!raw) continue;
@@ -328,21 +368,45 @@ export function evaluateGates(rows: readonly GateRow[]): GateFinding[] {
           /* 引用常带前缀与括注（「表3-8 缺口：28 台压铸机联网取数（…）」），
              所以先剥前缀，再按**包含**比对，而不是要求一字不差 */
           const stripped = raw.replace(/^(表\s*\d+-\d+\s*(缺口|需求|依据)?\s*\d*\s*[:：]?\s*)/, "");
-          const parts = stripped.split(/[→↔\-–>]+/).map((x) => canon(x)).filter(Boolean);
-          const missing = (parts.length > 1 ? parts : [canon(stripped)]).filter(
-            (p) => !targets.some((t) => t.includes(p) || p.includes(t)),
-          );
-          if (missing.length === parts.length) {
+          /* 只按关系箭头拆两端：型号里的连字符（YS-EC3200）不能当分隔符 */
+          const parts = stripped.split(/[→↔]+/).map((x) => canon(x)).filter(Boolean);
+          /* 短标签（环节名、能力名）要求规范化后全等；长句才允许前缀/包含匹配。
+             专家审阅指出：「注塑」命中「注塑机联网」这类截断匹配会漏环节。 */
+          const strict = parts.every((p) => p.length <= 12);
+          const missing = (parts.length > 1 ? parts : [canon(stripped)]).filter((p) => {
+            if (EXTERNAL.test(p)) return false;
+            /* 短标签：全等，或整格文本包含目标（「CT15 边缘计算网关」含「CT15」算对上）；
+               反向（「注塑」对上「注塑机联网」）仍算截断，要拦 */
+            if (strict) return !targets.some((t) => t === p || p.includes(t));
+            return !targets.some((t) => t.includes(p) || p.includes(t));
+          });
+          if (missing.length > 0) {
+            failures.push(`${r.id}:${(missing[0] ?? "").slice(0, 20)}`);
             findings.push({
               tableCode,
               rowId: r.id,
               label: labelOf(r.row),
               kind: g.kind,
               gate: g.text,
-              detail: `「${raw.slice(0, 30)}」在 ${g.table} 里找不到对应项`,
+              detail: `「${raw.slice(0, 30)}」里有对端在 ${g.table} 找不到`,
               severity: "存疑",
             });
           }
+        }
+        /* 整表失配率超过 30%：不是个别行写错，而是引用体系失效（表4-3 的 36 行事故） */
+        const judged = tableRows.filter((r) => text(r.row[g.column]) !== "").length;
+        if (judged >= 5 && failures.length / judged > 0.3) {
+          const first = findings.find((f) => f.tableCode === tableCode && f.gate === g.text);
+          if (first) first.severity = "硬伤";
+          findings.push({
+            tableCode,
+            rowId: "",
+            label: "（整表）",
+            kind: g.kind,
+            gate: g.text,
+            detail: `${failures.length}/${judged} 行对端找不到（超过 30%），引用体系失效：源表与下游表的名称/编号必须重新对齐`,
+            severity: "硬伤",
+          });
         }
       }
     }
