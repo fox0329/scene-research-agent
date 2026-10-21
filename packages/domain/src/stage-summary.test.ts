@@ -222,7 +222,7 @@ describe("stage-summary — 确定性", () => {
       generatedAt: "2026-09-25",
     });
     expect(md).toContain("# 阶段 0 · 材料解析与入库 — 总结");
-    expect(md).toContain("本阶段产出：M1、M2、M3、M4、M5、可选材料");
+    expect(md).toContain("本阶段产出：M1、M2、M3、M4、M5、M6、可选材料");
     expect(md).toContain("**M1 产品清单**：1 行——IPC-3000·IPC");
   });
 });
@@ -334,7 +334,7 @@ describe("stage-summary — 要点视图（brief）", () => {
       "表4-3",
     ]);
     expect(brief.advice).toEqual([
-      "本步还没有可下结论的判据（缺表1-3 / 表4-3 / 表4-4 的有效数据）",
+      "本步还没有可下结论的判据：门槛、赢面与能力匹配表尚未产出，风险提醒随这些表出现",
     ]);
     // 来源与提醒互相独立：判不出结论也要列出本步用到的来源（无网址时给原文）
     for (const s of brief.sources) {
@@ -369,22 +369,6 @@ describe("stage-summary — 要点视图（brief）", () => {
     // 门槛超过 2 道时不再往下堆（否则其他三类提醒永远排不上）
     expect(brief.advice.filter((a) => a.includes("不建议贸然进入"))).toHaveLength(2);
     for (const a of brief.advice) expect(Array.from(a).length).toBeLessThanOrEqual(61);
-  });
-
-  it("C 级 / AI 推断行 ≥3 条时提醒进场前核实", () => {
-    const brief = briefOf(
-      1,
-      {
-        "表1-3": [
-          row({ barrier_name: "A", criteria: "x", evidence_level: "C" }),
-          row({ barrier_name: "B", criteria: "y", evidence_level: "C" }),
-          row({ barrier_name: "C", criteria: "z", source_type: "AI推断" }),
-        ],
-      },
-      2,
-      step2Tables,
-    );
-    expect(brief.advice).toContain("本步有 3 条结论属推断/C 级假设，进场前须核实");
   });
 
   it("本步一条网址都没有时，退回文件来源（文件名:页码）", () => {

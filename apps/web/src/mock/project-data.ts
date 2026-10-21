@@ -62,7 +62,7 @@ export const projects: Project[] = [
     stage: 2,
     productLine: "感知与控制产品线",
     conversations: [
-      { id: "p1c1", name: "补充 M4 边界声明" },
+      { id: "p1c1", name: "补充 M4 边界与限制" },
       { id: "p1c2", name: "阶段 2 质量关检查" },
       { id: "p1c3", name: "上传产品白皮书并解析" },
       { id: "p1c4", name: "阶段 1 门槛筛查" },
@@ -117,9 +117,9 @@ export const stage0Checks: Stage0Check[] = [
   { index: 1, item: "M1 产品清单已填写", rating: "pass", statusLabel: "3 型号",   risk: "—" },
   { index: 2, item: "M2 规格书已填写",   rating: "pass", statusLabel: "4 参数类", risk: "—" },
   { index: 3, item: "M3 能力清单已填写", rating: "pass", statusLabel: "18 项",    risk: "—" },
-  { index: 4, item: "M4 边界声明已填写", rating: "fail", statusLabel: "空白",     risk: "阶段 1 门槛判据缺失，阶段 4 边界只能推断" },
-  { index: 5, item: "M5 已知限制已填写", rating: "warn", statusLabel: "仅 2 条",  risk: "阶段 6 验收约束不完整" },
-  { index: 6, item: "M6 成本结构已填写", rating: "pass", statusLabel: "3 项",     risk: "—" },
+  { index: 4, item: "M4 边界与限制（不做）已填写", rating: "fail", statusLabel: "空白",     risk: "阶段 1 门槛判据缺失，阶段 4 边界只能推断" },
+  { index: 5, item: "M4 边界与限制（限制）已填写", rating: "warn", statusLabel: "仅 2 条",  risk: "阶段 6 验收约束不完整" },
+  { index: 6, item: "M6 硬件报价已填写", rating: "pass", statusLabel: "3 项",     risk: "—" },
   { index: 7, item: "来源抽查",           rating: "warn", statusLabel: "未抽查",   risk: "证据可信度未验证" },
   { index: 8, item: "质量六维已评估",     rating: "pass", statusLabel: "已评估",   risk: "—" },
 ];
@@ -301,7 +301,7 @@ export const decisionData: DecisionData = {
     { dir: "down", text: "下游：阶段 5 成本估算", sub: "设备单价依据" },
   ],
   risks: [
-    { kind: "inherit", title: "M4 边界声明为空",     detail: "影响：门槛筛查缺少判据，阶段 5 方案边界不清" },
+    { kind: "inherit", title: "M4 边界与限制为空",     detail: "影响：门槛筛查缺少判据，阶段 5 方案边界不清" },
     { kind: "gap",     title: "协议/接口缺 T1 来源", detail: "RS232/485、Modbus 协议权威性不足，建议补充官方文档" },
     { kind: "gap",     title: "等保二级标准号未填",   detail: "GB/T 22239-2019，需确认适用版本" },
     { kind: "ok",      title: "要素完整性",           detail: "12 项要素已覆盖硬件/软件/服务" },

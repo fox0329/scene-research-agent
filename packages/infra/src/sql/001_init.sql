@@ -105,6 +105,24 @@ CREATE TABLE IF NOT EXISTS limitation (
   updated_at        TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS price_quote (
+  id               TEXT PRIMARY KEY,
+  product_id       TEXT NOT NULL REFERENCES product(id),
+  model            TEXT NOT NULL,
+  config           TEXT NOT NULL,
+  unit_price       TEXT NOT NULL,
+  price_scope      TEXT NOT NULL CHECK (price_scope IN ('纯设备','含安装','含三年维保','年费')),
+  valid_until      TEXT,
+  source           TEXT NOT NULL,
+  source_type      TEXT CHECK (source_type IN ('AI提取','AI推断','用户确认','用户补充')),
+  source_authority TEXT CHECK (source_authority IN ('T1','T2','T3','T4')),
+  evidence_level   TEXT CHECK (evidence_level IN ('A','B','C','D')),
+  created_at       TEXT NOT NULL,
+  updated_at       TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_price_quote_product
+  ON price_quote (product_id, model);
+
 CREATE TABLE IF NOT EXISTS cost_rate (
   id               TEXT PRIMARY KEY,
   product_line_id  TEXT NOT NULL REFERENCES product_line(id),

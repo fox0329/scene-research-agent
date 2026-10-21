@@ -720,6 +720,60 @@ describe("右栏总结与完整度：只针对当前步骤（v2.9）", () => {
   });
 });
 
+describe("步骤联网调研（research）路由", () => {
+  let h: Harness;
+  beforeEach(() => {
+    h = makeHarness();
+  });
+
+  it("POST /steps/:step/research 返回 saved/queries（检索不可用时如实给 0 + errors）", async () => {
+    const { scenarioId } = seedScenario(h.db, "调研场景");
+    // 把引擎固定成「已关闭」：路由测试不许真的联网，也不许伪造结果
+    const cfgFile = join(mkdtempSync(join(tmpdir(), "scene-websearch-")), "web-search.local.json");
+    writeFileSync(cfgFile, JSON.stringify({ engine: "none" }));
+    const prevCfg = process.env.SCENE_WEB_SEARCH_FILE;
+    process.env.SCENE_WEB_SEARCH_FILE = cfgFile;
+    try {
+      const res = await h.app.inject({
+        method: "POST",
+        url: `/api/v1/projects/${scenarioId}/steps/2/research`,
+      });
+      expect(res.statusCode).toBe(200);
+      const body = res.json() as {
+        saved: number;
+        queries: number;
+        engine: string;
+        errors: string[];
+      };
+      expect(body.saved).toBe(0);
+      expect(body.queries).toBeGreaterThanOrEqual(4);
+      expect(body.engine).toBe("none");
+      expect(body.errors.length).toBeGreaterThan(0);
+      // 检索不可用也要有落点，右栏据此如实说明「为什么没有链接」
+      const rows = h.db.researchRepo.listByStep(scenarioId, 2);
+      expect(rows.some((r) => r.status === "检索失败")).toBe(true);
+    } finally {
+      if (prevCfg === undefined) delete process.env.SCENE_WEB_SEARCH_FILE;
+      else process.env.SCENE_WEB_SEARCH_FILE = prevCfg;
+    }
+  });
+
+  it("step 越界 400、项目不存在 404", async () => {
+    const { scenarioId } = seedScenario(h.db, "调研越界场景");
+    const bad = await h.app.inject({
+      method: "POST",
+      url: `/api/v1/projects/${scenarioId}/steps/9/research`,
+    });
+    expect(bad.statusCode).toBe(400);
+
+    const missing = await h.app.inject({
+      method: "POST",
+      url: "/api/v1/projects/不存在/steps/2/research",
+    });
+    expect(missing.statusCode).toBe(404);
+  });
+});
+
 describe("资料库路由", () => {
   let h: Harness;
   let plId: string;
@@ -1124,6 +1178,125 @@ describe("资料库路由", () => {
     const body = res.json();
     expect(body.quality).toBeDefined();
     expect(body.completeness).toBeDefined();
+  });
+
+  it("M6 硬件报价：写入 → 读取 → 改单价（含税/口径/来源）", async () => {
+    const p = seedProduct();
+    const created = await h.app.inject({
+      method: "POST",
+      url: "/api/v1/library/rows/M6",
+      payload: {
+        product_line_id: plId,
+        values: {
+          model: "X1",
+          config: "8G+128G",
+          unit_price: "12000–15000",
+          price_scope: "含安装",
+          valid_until: "2026-12-31",
+          source: "报价单.pdf:1",
+        },
+      },
+    });
+    expect(created.statusCode).toBe(200);
+    const quote = created.json();
+    expect(quote.product_id).toBe(p.id);
+    expect(quote.price_scope).toBe("含安装");
+
+    const list = await h.app.inject({
+      method: "GET",
+      url: `/api/v1/library/tables/M6?product_line_id=${plId}`,
+    });
+    expect(list.statusCode).toBe(200);
+    expect(list.json()).toHaveLength(1);
+    expect(list.json()[0].source).toBe("报价单.pdf:1");
+
+    const patched = await h.app.inject({
+      method: "PATCH",
+      url: `/api/v1/library/rows/M6/${quote.id}`,
+      payload: { cell: "unit_price", value: "11800" },
+    });
+    expect(patched.statusCode).toBe(200);
+    expect(patched.json().unit_price).toBe("11800");
+  });
+
+  it("M6 报价型号必须能在 M1 找到（凭空建型号 400）", async () => {
+    const res = await h.app.inject({
+      method: "POST",
+      url: "/api/v1/library/rows/M6",
+      payload: {
+        product_line_id: plId,
+        values: {
+          model: "NOT-EXIST",
+          config: "标准",
+          unit_price: "100",
+          price_scope: "纯设备",
+          source: "报价单.pdf:1",
+        },
+      },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toContain("M1");
+  });
+
+  it("M4 读取层合并 boundary + limitation，并标「类型」= 不做/限制", async () => {
+    h.db.boundaryRepo.insert({
+      product_line_id: plId,
+      description: "不做自建平台二次开发",
+      reason: "不做定制",
+      has_plan: "无",
+      response: "转生态伙伴",
+      owner: "售前",
+      source_type: "用户确认",
+      source: "边界.docx:2",
+      evidence_level: "A",
+    } as never);
+    h.db.limitationRepo.insert({
+      product_line_id: plId,
+      product_name: "X1",
+      description: "无 5G",
+      impact: "中",
+      fix_status: "无计划",
+      external_visible: "内部可提",
+      owner: "产品",
+      source_type: "用户确认",
+      source: "限制.docx:3",
+      evidence_level: "A",
+    } as never);
+
+    const res = await h.app.inject({
+      method: "GET",
+      url: `/api/v1/library/tables/M4?product_line_id=${plId}`,
+    });
+    expect(res.statusCode).toBe(200);
+    const rows = res.json() as Record<string, string>[];
+    expect(rows).toHaveLength(2);
+    expect(rows.map((r) => r.type).sort()).toEqual(["不做", "限制"]);
+    const no = rows.find((r) => r.type === "不做")!;
+    expect(no.target).toBe("公司/业务");
+    expect(no.response).toBe("转生态伙伴");
+    const limit = rows.find((r) => r.type === "限制")!;
+    expect(limit.target).toBe("X1");
+    expect(limit.impact).toBe("中");
+  });
+
+  it("M4 新增「限制」行落到 limitation 表，读取仍是合并行", async () => {
+    const res = await h.app.inject({
+      method: "POST",
+      url: "/api/v1/library/rows/M4",
+      payload: {
+        product_line_id: plId,
+        values: {
+          type: "限制",
+          target: "X1",
+          description: "无 5G",
+          impact: "中",
+          source: "限制.docx:3",
+        },
+      },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(h.db.limitationRepo.list({ where: "product_line_id = ?", params: [plId] })).toHaveLength(1);
+    expect(res.json().type).toBe("限制");
   });
 });
 

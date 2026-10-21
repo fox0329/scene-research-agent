@@ -82,9 +82,9 @@ describe("@scene/contract 通用枚举", () => {
 
 describe("@scene/contract 表编号常量", () => {
   it("STAGE0 12 张表", () => {
-    expect(STAGE0_TABLES).toHaveLength(11); // M6 内部费率已删（变更表 #106）
+    expect(STAGE0_TABLES).toHaveLength(12);
     expect(STAGE0_TABLES[0]).toBe("M1");
-    expect(STAGE0_TABLES[10]).toBe("O6");
+    expect(STAGE0_TABLES[11]).toBe("O6");
   });
 
   it("STAGE1 5 张表", () => {

@@ -23,6 +23,7 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { searchBing } from "./web-bing.js";
+import { searchBaidu } from "./web-baidu.js";
 import {
   fetchPage,
   searchWeb,
@@ -34,7 +35,7 @@ import {
 } from "./web-fetch-client.js";
 
 /** 引擎种类 */
-export type EngineKind = "deepseek-native" | "tavily" | "bing-html" | "none";
+export type EngineKind = "deepseek-native" | "tavily" | "baidu-html" | "bing-html" | "none";
 
 /** 引擎配置（落 `data/web-search.local.json`，不入版本控制） */
 export interface WebSearchConfig {
@@ -133,6 +134,13 @@ export function resolveEngine(
           detail: "配置指定 DeepSeek 官方检索，但当前供应商不是 api.deepseek.com 或缺少 Key",
         };
   }
+  if (cfg.engine === "baidu-html") {
+    return {
+      kind: "baidu-html",
+      canSearch: true,
+      detail: "已按配置使用百度网页搜索（免注册，非官方接口）",
+    };
+  }
   if (cfg.engine === "bing-html") {
     return {
       kind: "bing-html",
@@ -151,12 +159,14 @@ export function resolveEngine(
   if (cfg.tavilyKey) {
     return { kind: "tavily", canSearch: true, detail: "自动识别：当前供应商无检索接口，改用 Tavily" };
   }
-  // 免注册兜底：Bing 网页搜索（非官方接口，可能失效，故排在最后）
+  // 免注册兜底：百度网页搜索。
+  // 2026-10-21 实测：Bing 对多词中文 query 只按第一个词返回（全是噪声），
+  // 百度同一 query 能返回相关结果，所以国内网络默认走百度，Bing 只在显式配置时使用。
   return {
-    kind: "bing-html",
+    kind: "baidu-html",
     canSearch: true,
     detail:
-      "免注册模式：用 Bing 网页搜索（非官方接口，可能随改版失效）。" +
+      "免注册模式：用百度网页搜索（非官方接口，可能随改版失效）。" +
       "配上 Tavily 或官方 DeepSeek 会更稳。",
   };
 }
@@ -237,6 +247,13 @@ export async function searchByEngine(
   limit = 8,
 ): Promise<{ ok: boolean; hits: Array<SearchHit & { publishedAt?: string }>; error?: string }> {
   if (!engine.canSearch) return { ok: false, hits: [], error: engine.detail };
+  if (engine.kind === "baidu-html") {
+    if (counters.searches >= budget.maxSearches) {
+      return { ok: false, hits: [], error: `已达检索次数上限（${budget.maxSearches}）` };
+    }
+    counters.searches += 1;
+    return searchBaidu(query, budget, limit);
+  }
   if (engine.kind === "bing-html") {
     if (counters.searches >= budget.maxSearches) {
       return { ok: false, hits: [], error: `已达检索次数上限（${budget.maxSearches}）` };

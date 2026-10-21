@@ -8,8 +8,7 @@ import {
   SpecPanel,
   CapabilityPanel,
   BoundaryPanel,
-  LimitPanel,
-  RatePanel,
+  QuotePanel,
   OptionalPanel,
 } from "./MaterialPanels";
 
@@ -24,16 +23,15 @@ const tabs: TabDef[] = [
   { key: "m1",       label: "M1 产品清单" },
   { key: "m2",       label: "M2 规格书" },
   { key: "m3",       label: "M3 能力清单" },
-  { key: "m4",       label: "M4 边界声明" },
-  { key: "m5",       label: "M5 已知限制" },
-  { key: "m6",       label: "M6 内部费率" },
+  { key: "m4",       label: "M4 边界与限制" },
+  { key: "m6",       label: "M6 硬件报价" },
   { key: "optional", label: "O 可选材料" },
   { key: "reminder", label: "补充提醒" },
 ];
 
 /**
  * 产品资料库视图
- * - 联真模式（live）：RealLibraryView——产品线切换/六维质量/12 表编辑/上传入库 SSE 进度
+ * - 联真模式（live）：RealLibraryView——产品线切换/六维质量/5 张核心表 + 可选材料编辑/上传入库 SSE 进度
  * - 演示模式：mock 面板（E2E 依赖），页头徽标提示
  */
 interface LibraryViewProps {
@@ -72,10 +70,8 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
         return <CapabilityPanel />;
       case "m4":
         return <BoundaryPanel />;
-      case "m5":
-        return <LimitPanel />;
       case "m6":
-        return <RatePanel />;
+        return <QuotePanel />;
       case "optional":
         return <OptionalPanel />;
       case "reminder":

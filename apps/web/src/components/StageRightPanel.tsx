@@ -8,8 +8,9 @@
  *  ② **结论提醒**：领域层 `buildStageBrief` 由表内真实字段 + 固定规则推导，
  *     不调模型、不编造、判不出就只给一句兜底，不凑数
  *
- * 保留（用户明确要的）：重新生成、下载 / 查看全文入口——但**正文不再贴整篇
- * Markdown**，全文收进折叠区，右栏首屏只放上面两块。
+ * v2.11（用户定调 2026-10-21）：「阶段总结全文删除，不需要」——全文不再进右栏，
+ * 也不再提供下载入口；它仍由服务端为**交付物装配**生成（`collectStageSummaries`）。
+ * 右栏保留「重新生成」：刷新要点，同时刷新交付物用的全文。
  *
  * 同时删除（补充说明 Tab 的连带物，全仓已无消费者）：
  *  - 补充说明条目与核实编辑（`supplements` / `onSupplementChange`）
@@ -21,11 +22,9 @@
  */
 
 import React from "react";
-import { FoldSection } from "./FoldSection";
 import { splitBold } from "./md-inline";
 import { SceneTable } from "./SceneTable";
 import type { StageSnapshot } from "./stage-snapshot";
-import { plainText } from "./text-display";
 
 export interface StageRightPanelProps {
   snapshot: StageSnapshot | null;
@@ -175,10 +174,9 @@ export const StageRightPanel: React.FC<StageRightPanelProps> = ({ snapshot, live
     );
   }
 
-  const { brief, summary, summaryLoading, summaryDownloadUrl, onRefreshSummary } = snapshot;
+  const { brief, summaryLoading, onRefreshSummary } = snapshot;
   const sources = brief?.sources ?? [];
   const advice = brief?.advice ?? [];
-  const fullLength = summary === null ? 0 : plainText(summary).replace(/\s/gu, "").length;
 
   return (
     <div className="det-body">
@@ -194,11 +192,6 @@ export const StageRightPanel: React.FC<StageRightPanelProps> = ({ snapshot, live
             >
               {summaryLoading ? "生成中…" : "重新生成"}
             </button>
-            {summary !== null && summaryDownloadUrl !== null ? (
-              <a className="btn-mini summary-download" href={summaryDownloadUrl} download>
-                下载
-              </a>
-            ) : null}
           </div>
         </div>
 
@@ -221,7 +214,9 @@ export const StageRightPanel: React.FC<StageRightPanelProps> = ({ snapshot, live
             ))}
           </ul>
         ) : (
-          <p className="summary-empty">本步暂无可以打开的来源地址</p>
+          <p className="summary-empty">
+            本步还没有联网调研结果（可能检索不可用），来源见下表各行的「来源」列
+          </p>
         )}
 
         {/* ② 结论提醒：领域层确定性规则推导，判不出时只有一句兜底 */}
@@ -236,18 +231,6 @@ export const StageRightPanel: React.FC<StageRightPanelProps> = ({ snapshot, live
           </ul>
         )}
 
-        {/* 全文收进折叠区：正文不再贴整篇 Markdown，但入口与下载都保留 */}
-        {summary !== null ? (
-          <FoldSection
-            title="阶段总结全文"
-            summary={`约 ${fullLength} 字，点开查看完整总结`}
-            expandLabel="展开全文"
-            collapseLabel="收起全文"
-          >
-            {/* 右栏只有 240–480 宽：总结里的管道表也按条目排，不排表格（#149） */}
-            <div className="md-body">{renderMarkdown(summary, { tables: false })}</div>
-          </FoldSection>
-        ) : null}
       </section>
     </div>
   );

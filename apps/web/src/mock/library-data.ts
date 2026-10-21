@@ -21,32 +21,29 @@ export const qualityDimensions: QualityDimension[] = [
   { dimension: "可追溯",     rating: "pass", note: "87% 参数可定位到具体文件和页码" },
   { dimension: "可验证",     rating: "warn", note: "仅 23% 参数有实测数据，其余为宣称值" },
   { dimension: "有时效",     rating: "pass", note: "最新资料 2026-08，未超过 6 个月" },
-  { dimension: "含边界",     rating: "fail", note: "M4 边界声明完全空白" },
-  { dimension: "含反面",     rating: "warn", note: "M5 仅 2 条限制，建议补充" },
+  { dimension: "含边界",     rating: "fail", note: "M4 边界与限制里没有「不做」类记录" },
+  { dimension: "含反面",     rating: "warn", note: "M4 边界与限制里仅 2 条限制，建议补充" },
 ];
 
 export const reminders: ReminderItem[] = [
-  { table: "M4 边界声明", missing: "完全空白", impact: "门槛筛查缺判据，方案边界不清" },
-  { table: "M5 已知限制", missing: "仅 2 条",   impact: "验收约束不完整" },
-  { table: "M6 内部费率", missing: "商务类待确认", impact: "成本估算只能用行业均值" },
+  { table: "M4 边界与限制（不做）", missing: "完全空白", impact: "门槛筛查缺判据，方案边界不清" },
+  { table: "M4 边界与限制（限制）", missing: "仅 2 条",   impact: "验收约束不完整" },
+  { table: "M6 硬件报价", missing: "仅 3 个示例口径", impact: "成本测算缺真实报价锚点" },
 ];
 
-/* ── M1 产品清单 ── */
+/* ── M1 产品清单（四列：型号/名称/状态/来源） ── */
 export type ProductItem = {
   id: string;
   model: string;
   name: string;
   status: "在售" | "停售" | "在研";
-  launchDate: string;
-  positioning: string;
   source: "AI" | "用户" | "推断";
-  citation: string;
 }
 
 export const products: ProductItem[] = [
-  { id: "p1", model: "IPC-3000",  name: "智能会议终端", status: "在售", launchDate: "2025-06", positioning: "一体化会议室控制终端",  source: "AI",   citation: "白皮书 p12" },
-  { id: "p2", model: "SEN-200",   name: "环境感知传感器", status: "在售", launchDate: "2025-03", positioning: "温湿度+光照+人流一体", source: "AI",   citation: "可售清单 p3" },
-  { id: "p3", model: "SW-500",    name: "智慧空间平台",  status: "在研", launchDate: "2026-Q4", positioning: "云端空间管理与数据分析", source: "推断", citation: "宣讲材料 p8" },
+  { id: "p1", model: "IPC-3000",  name: "智能会议终端", status: "在售", source: "AI" },
+  { id: "p2", model: "SEN-200",   name: "环境感知传感器", status: "在售", source: "AI" },
+  { id: "p3", model: "SW-500",    name: "智慧空间平台",  status: "在研", source: "推断" },
 ];
 
 /* ── M2 规格书 ── */
@@ -67,48 +64,52 @@ export const specs: SpecItem[] = [
 
 /* ── M3 能力清单 ── */
 export type CapabilityItem = {
+  domain: string;
   name: string;
+  /** 依赖条件并入描述，不再单列（DB 列保留） */
   description: string;
   maturity: "已交付" | "组件具备" | "在研";
-  dependency: string;
+  inapplicable_scene: string;
   source: "AI" | "用户" | "推断";
 }
 
 export const capabilities: CapabilityItem[] = [
-  { name: "设备接入", description: "Modbus/MQTT/OPC UA 设备接入", maturity: "已交付",   dependency: "需网关硬件",  source: "用户" },
-  { name: "数据采集", description: "实时采集温湿度/光照/人流",     maturity: "已交付",   dependency: "SEN-200",      source: "AI" },
-  { name: "场景联动", description: "基于规则的设备联动控制",       maturity: "组件具备", dependency: "需配置引擎",    source: "AI" },
-  { name: "能耗分析", description: "会议室能耗统计与优化建议",     maturity: "在研",     dependency: "SW-500 平台",   source: "推断" },
+  { domain: "设备接入", name: "设备接入", description: "Modbus/MQTT/OPC UA 设备接入（依赖：网关硬件）", maturity: "已交付",   inapplicable_scene: "无网关的纯软件部署", source: "用户" },
+  { domain: "数据采集", name: "数据采集", description: "实时采集温湿度/光照/人流（依赖：SEN-200）", maturity: "已交付",   inapplicable_scene: "强电磁干扰且无屏蔽的现场", source: "AI" },
+  { domain: "场景联动", name: "场景联动", description: "基于规则的设备联动控制（依赖：配置引擎）",   maturity: "组件具备", inapplicable_scene: "需要跨品牌语义互操作的场景", source: "AI" },
+  { domain: "能耗分析", name: "能耗分析", description: "会议室能耗统计与优化建议（依赖：SW-500 平台）", maturity: "在研", inapplicable_scene: "未接入分项计量的老楼", source: "推断" },
 ];
 
-/* ── M5 已知限制 ── */
-export type LimitItem = {
-  product: string;
-  limit: string;
-  severity: "高" | "中" | "低";
-  fixStatus: string;
-  disclosure: "内部可提" | "不可提";
+/* ── M4 边界与限制（合并视图） ── */
+export type BoundaryItem = {
+  type: "不做" | "限制";
+  target: string;
+  description: string;
+  impact: "高" | "中" | "低" | "—";
+  response: string;
   source: "AI" | "用户" | "推断";
 }
 
-export const limits: LimitItem[] = [
-  { product: "IPC-3000", limit: "多设备并发轮询场景偶发丢包", severity: "中", fixStatus: "修复中", disclosure: "内部可提", source: "用户" },
-  { product: "SEN-200",  limit: "高湿环境（>85%RH）精度漂移", severity: "低", fixStatus: "硬件限制", disclosure: "不可提", source: "用户" },
+export const boundaryRows: BoundaryItem[] = [
+  { type: "不做", target: "公司/业务", description: "不承接客户自建平台的二次开发", impact: "—", response: "只做标准接口对接，个性化开发转生态伙伴", source: "用户" },
+  { type: "限制", target: "IPC-3000", description: "多设备并发轮询场景偶发丢包", impact: "中", response: "—", source: "用户" },
+  { type: "限制", target: "SEN-200",  description: "高湿环境（>85%RH）精度漂移", impact: "低", response: "—", source: "用户" },
 ];
 
-/* ── M6 内部费率 ── */
-export type RateItem = {
-  category: string;
-  item: string;
-  unitPrice: string;
-  refHours: string;
-  source: "AI" | "用户" | "推断" | "历史项目";
+/* ── M6 硬件报价（示例数据） ── */
+export type QuoteItem = {
+  model: string;
+  config: string;
+  unit_price: string;
+  price_scope: "纯设备" | "含安装" | "含三年维保" | "年费";
+  valid_until: string;
+  source: string;
 }
 
-export const rates: RateItem[] = [
-  { category: "实施", item: "安装部署",     unitPrice: "800 元/人天",  refHours: "0.5 人天/站",    source: "历史项目" },
-  { category: "实施", item: "现场调试",     unitPrice: "800 元/人天",  refHours: "0.5 人天/站",    source: "历史项目" },
-  { category: "商务", item: "售前方案设计", unitPrice: "1,200 元/人天", refHours: "0.2 人天/项目",  source: "推断" },
+export const quotes: QuoteItem[] = [
+  { model: "IPC-3000", config: "标准配置（8G+128G）", unit_price: "12000–15000", price_scope: "含安装",     valid_until: "2026-12-31", source: "示例数据" },
+  { model: "IPC-3000", config: "标准配置（8G+128G）", unit_price: "9800",        price_scope: "纯设备",     valid_until: "长期",       source: "示例数据" },
+  { model: "SEN-200",  config: "单只装",              unit_price: "680",         price_scope: "纯设备",     valid_until: "长期",       source: "示例数据" },
 ];
 
 /* ── O 可选材料：已交付案例 ── */

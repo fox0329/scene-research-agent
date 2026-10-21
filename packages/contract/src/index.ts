@@ -55,6 +55,9 @@ export type FixStatus = "已修复" | "修复中" | "无计划" | "硬件限制"
 /** 对外可见性 */
 export type Visibility = "可提" | "内部可提" | "不可提";
 
+/** 硬件报价口径（M6） */
+export type PriceScope = "纯设备" | "含安装" | "含三年维保" | "年费";
+
 /** 质量关结果 */
 export type GateResult = "通过" | "不通过" | "未检";
 
@@ -74,7 +77,7 @@ export interface TraceableFields {
 // ─── stage_data 表编号常量（00b 表号，v1.1 补齐阶段 3-8） ──
 
 /** 阶段 0 表号 */
-export const STAGE0_TABLES = ["M1", "M2", "M3", "M4", "M5", "O1", "O2", "O3", "O4", "O5", "O6"] as const;
+export const STAGE0_TABLES = ["M1", "M2", "M3", "M4", "M5", "M6", "O1", "O2", "O3", "O4", "O5", "O6"] as const;
 /** 阶段 1 表号 */
 export const STAGE1_TABLES = ["表1-1", "表1-2", "表1-3", "表1-4", "表1-5"] as const;
 /**
@@ -193,6 +196,27 @@ export interface Limitation extends TraceableFields {
   updated_at: string;
 }
 
+
+/** 硬件报价（M6，含溯源；一行一个报价口径） */
+export interface PriceQuote extends TraceableFields {
+  id: string;
+  /** M1 产品行 id（归属产品线与按库过滤都靠它） */
+  product_id: string;
+  /** 所属产品型号（冗余存一份，便于 UI/提示词直接读；必须与 M1 对得上） */
+  model: string;
+  /** 配置/构成 */
+  config: string;
+  /** 含税单价（元）；允许区间（12000–15000）或「面议」，所以按文本存 */
+  unit_price: string;
+  /** 价格口径：纯设备 / 含安装 / 含三年维保 / 年费 */
+  price_scope: PriceScope;
+  /** 报价有效期：日期或「长期」 */
+  valid_until?: string;
+  /** 来源必填，报价不许无出处 */
+  source: string;
+  created_at: string;
+  updated_at: string;
+}
 
 /** 可选材料（O1-O6，含溯源） */
 export interface OptionalMaterial extends TraceableFields {

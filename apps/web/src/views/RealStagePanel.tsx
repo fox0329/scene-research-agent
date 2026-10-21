@@ -213,7 +213,6 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
       summary,
       summaryLoading,
       brief,
-      summaryDownloadUrl: api.stageSummaryDownloadUrl(projectId, stage, stepId),
       onRefreshSummary: () => void loadSummary(true),
     };
   }, [data, summary, summaryLoading, brief, projectId, stage, stepId, loadSummary]);

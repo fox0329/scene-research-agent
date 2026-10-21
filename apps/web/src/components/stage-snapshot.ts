@@ -24,13 +24,9 @@ import type { ApiStageBrief } from "../api";
 export type StageBriefView = ApiStageBrief["brief"];
 
 export interface StageSnapshot {
-  /** 阶段总结全文（Markdown；null=尚未生成） */
-  summary: string | null;
   summaryLoading: boolean;
-  /** 本步要点：来源地址 + 结论提醒（null=还没取到） */
+  /** 本步要点：来源地址 + 结论提醒（null=还没取到）；右栏只显示这个，全文不再进界面 */
   brief: StageBriefView | null;
-  /** 全文下载地址（Markdown；null=不提供下载） */
-  summaryDownloadUrl: string | null;
-  /** 重新生成阶段总结（全文与要点一起刷新） */
+  /** 重新生成阶段总结（全文与要点一起刷新；全文只用于交付物装配） */
   onRefreshSummary: () => void;
 }

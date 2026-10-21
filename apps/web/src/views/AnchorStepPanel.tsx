@@ -172,7 +172,6 @@ export const AnchorStepPanel: React.FC<AnchorStepPanelProps> = ({
       summary,
       summaryLoading,
       brief,
-      summaryDownloadUrl: api.stageSummaryDownloadUrl(projectId, 1, 1),
       onRefreshSummary: () => void loadSummary(true),
     };
   }, [projectId, summary, summaryLoading, brief, loadSummary]);

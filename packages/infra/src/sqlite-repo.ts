@@ -18,6 +18,7 @@ import type {
   Capability,
   Boundary,
   Limitation,
+  PriceQuote,
   OptionalMaterial,
   Conversation,
   Message,
@@ -155,6 +156,36 @@ function runMigrations(db: Database.Database): void {
   /* 表1-3 删除「行业通行处置」列（变更表 #228，用户定调「这列删掉」）：
      列没了还留着 JSON 键，导出与自检都会读到幽灵字段，所以连数据一起清。 */
   db.exec("UPDATE stage_data SET row = json_remove(row, '$.industry_practice') WHERE table_code = '表1-3'");
+
+  /**
+   * 每一步的联网调研来源（调研先于分析）
+   *
+   * 用户质问「调研信息来源为什么一个链接都没有」——根因是分析来源只写「行业通例（模型知识）」，
+   * 产品从来没真正跑过一步联网调研。这张表让「每一步分析前先搜一次」有落点：
+   * 一行 = 某一步的一条检索结果（或一条检索失败记录）。
+   *
+   * 放在迁移里而不是 001_init.sql：这是**只加不删**的增量表，
+   * `CREATE TABLE IF NOT EXISTS` 对存量库与新库都幂等。`url_key` 用领域层
+   * `urlKey()` 归一化（去追踪参数），同一 URL 在同一场景同一步不重复占位。
+   */
+  db.exec(`CREATE TABLE IF NOT EXISTS research_source (
+  id               TEXT PRIMARY KEY,
+  scenario_id      TEXT NOT NULL,
+  step             INTEGER NOT NULL,
+  query            TEXT NOT NULL,
+  title            TEXT NOT NULL,
+  url              TEXT NOT NULL,
+  url_key          TEXT NOT NULL,
+  snippet          TEXT NOT NULL DEFAULT '',
+  engine           TEXT NOT NULL DEFAULT '',
+  fetched_at       TEXT NOT NULL,
+  status           TEXT NOT NULL DEFAULT '有效',
+  error            TEXT NOT NULL DEFAULT '',
+  UNIQUE(scenario_id, step, url_key)
+)`);
+  db.exec(
+    "CREATE INDEX IF NOT EXISTS idx_research_source_step ON research_source(scenario_id, step)",
+  );
 }
 
 /**
@@ -233,6 +264,97 @@ function createScenarioStepRepo(db: Database.Database): ScenarioStepRepo {
     db.prepare("DELETE FROM scenario_step WHERE scenario_id = ?").run(scenarioId).changes;
 
   return { completedSteps, complete, clearFrom, deleteByScenario };
+}
+
+// ─── 步骤联网调研来源仓库（调研先于分析） ──────────────────
+
+/** 一条步骤调研来源（一行 = 一条检索结果，或一条「检索失败」记录） */
+export interface ResearchSource {
+  /** `rs_<hash>`（由场景 + 步 + 归一化 URL 派生，同一条结果反复检索不换 id） */
+  id: string;
+  scenario_id: string;
+  /** 流程步号（1 起） */
+  step: number;
+  /** 产出这条结果的检索 query；检索失败时写明原因 */
+  query: string;
+  title: string;
+  url: string;
+  /** 领域层 `urlKey()` 归一化后的散列（去追踪参数） */
+  url_key: string;
+  snippet: string;
+  /** 引擎种类（deepseek-native / tavily / bing-html / none） */
+  engine: string;
+  fetched_at: string;
+  /** 有效 / 检索失败 */
+  status: string;
+  /** 失败原因（成功时为空串） */
+  error: string;
+}
+
+/**
+ * 步骤调研来源仓储
+ *
+ * `upsert` 按 `(scenario_id, step, url_key)` 幂等：同一步重跑调研只更新快照，
+ * 不累积重复链接。
+ */
+export interface ResearchRepo {
+  /** 按场景 + 步列出（最近抓取的在前，失败的记录排在有效记录之后） */
+  listByStep(scenarioId: string, step: number): ResearchSource[];
+  upsert(row: ResearchSource): ResearchSource;
+  /** 清空某步的调研来源（重跑前清旧结果），返回删除条数 */
+  clearStep(scenarioId: string, step: number): number;
+}
+
+function createResearchRepo(db: Database.Database): ResearchRepo {
+  const listByStep = (scenarioId: string, step: number): ResearchSource[] =>
+    db
+      .prepare(
+        `SELECT * FROM research_source
+         WHERE scenario_id = ? AND step = ?
+         ORDER BY CASE status WHEN '有效' THEN 0 ELSE 1 END, fetched_at DESC, id ASC`,
+      )
+      .all(scenarioId, step) as ResearchSource[];
+
+  const upsert = (row: ResearchSource): ResearchSource => {
+    db.prepare(
+      `INSERT INTO research_source
+         (id, scenario_id, step, query, title, url, url_key, snippet, engine, fetched_at, status, error)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(scenario_id, step, url_key) DO UPDATE SET
+         id = excluded.id,
+         query = excluded.query,
+         title = excluded.title,
+         url = excluded.url,
+         snippet = excluded.snippet,
+         engine = excluded.engine,
+         fetched_at = excluded.fetched_at,
+         status = excluded.status,
+         error = excluded.error`,
+    ).run(
+      row.id,
+      row.scenario_id,
+      row.step,
+      row.query,
+      row.title,
+      row.url,
+      row.url_key,
+      row.snippet,
+      row.engine,
+      row.fetched_at,
+      row.status,
+      row.error,
+    );
+    return db
+      .prepare("SELECT * FROM research_source WHERE scenario_id = ? AND step = ? AND url_key = ?")
+      .get(row.scenario_id, row.step, row.url_key) as ResearchSource;
+  };
+
+  const clearStep = (scenarioId: string, step: number): number =>
+    db
+      .prepare("DELETE FROM research_source WHERE scenario_id = ? AND step = ?")
+      .run(scenarioId, step).changes;
+
+  return { listByStep, upsert, clearStep };
 }
 
 // ─── 通用仓库工厂 ──────────────────────────────────────────
@@ -747,6 +869,8 @@ export interface DbInstance {
   capabilityRepo: Repo<Capability>;
   boundaryRepo: Repo<Boundary>;
   limitationRepo: Repo<Limitation>;
+  /** 硬件报价（M6）：一行一个报价口径 */
+  quoteRepo: Repo<PriceQuote>;
   optionalMaterialRepo: Repo<OptionalMaterial>;
   conversationRepo: Repo<Conversation>;
   messageRepo: MessageRepo;
@@ -758,6 +882,8 @@ export interface DbInstance {
   qualityGateRepo: QualityGateRepo;
   scenarioMaterialRepo: Repo<ScenarioMaterial>;
   scenarioLinkedLineRepo: Repo<ScenarioLinkedLine>;
+  /** 每一步的联网调研来源（调研先于分析） */
+  researchRepo: ResearchRepo;
 }
 
 /**
@@ -785,6 +911,7 @@ export function createDb(dbPath?: string): DbInstance {
     capabilityRepo: createRepo<Capability>(db, "capability"),
     boundaryRepo: createRepo<Boundary>(db, "boundary"),
     limitationRepo: createRepo<Limitation>(db, "limitation"),
+    quoteRepo: createRepo<PriceQuote>(db, "price_quote"),
     optionalMaterialRepo: createOptionalMaterialRepo(db),
     conversationRepo: createRepo<Conversation>(db, "conversation"),
     messageRepo: createMessageRepo(db),
@@ -796,6 +923,7 @@ export function createDb(dbPath?: string): DbInstance {
     qualityGateRepo: createQualityGateRepo(db),
     scenarioMaterialRepo: createRepo<ScenarioMaterial>(db, "scenario_material"),
     scenarioLinkedLineRepo: createRepo<ScenarioLinkedLine>(db, "scenario_linked_line"),
+    researchRepo: createResearchRepo(db),
   };
 }
 

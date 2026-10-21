@@ -184,6 +184,9 @@ function createMockDb(): DbInstance {
     qualityGateRepo: {} as DbInstance["qualityGateRepo"],
     scenarioLinkedLineRepo: { list: () => [], insert: vi.fn(), getById: vi.fn(), update: vi.fn(), deleteById: vi.fn() },
     scenarioMaterialRepo: createMockRepo(),
+    // ingest 流程不使用报价与步骤调研：占位即可
+    quoteRepo: {} as never,
+    researchRepo: {} as never,
   };
 }
 

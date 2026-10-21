@@ -430,10 +430,8 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
 
   const snapshot = useMemo<StageSnapshot>(
     () => ({
-      summary: deliveryNote(flow, mdPaths, docxPaths, pptPaths),
       summaryLoading: false,
       brief,
-      summaryDownloadUrl: null,
       onRefreshSummary: () => void loadReports(),
     }),
     [flow, mdPaths, docxPaths, pptPaths, brief, loadReports],

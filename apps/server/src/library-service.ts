@@ -78,6 +78,10 @@ export function dedupeLibrary(db: DbInstance, productLineId: string): DedupeRepo
         db.specParamRepo.update(sp.id, { product_id: keep.id } as never);
         report.specsMoved += 1;
       }
+      // M6 报价挂 product_id（外键）：同型号合并时把报价迁到保留行，别让去重撞外键
+      for (const q of db.quoteRepo.list({ where: "product_id = ?", params: [d.id] })) {
+        db.quoteRepo.update(q.id, { product_id: keep.id, model: keep.model } as never);
+      }
       db.productRepo.deleteById(d.id);
       report.productsRemoved += 1;
     }
@@ -141,9 +145,9 @@ export function resolveProductForModel(
   });
   const hit = matchExistingProduct(products, model);
   if (hit) {
-    // 已有行缺的字段用新材料补上（不覆盖用户确认过的内容）
+    // 已有行缺的字段用新材料补上（不覆盖用户确认过的内容）；M1 新口径只保留四列
     const patch: Record<string, string> = {};
-    for (const field of ["name", "launch_date", "position_desc", "former_name"] as const) {
+    for (const field of ["name"] as const) {
       if (!hit[field] && fields[field]) patch[field] = String(fields[field]);
     }
     if (Object.keys(patch).length) db.productRepo.update(hit.id, patch as never);
@@ -154,9 +158,9 @@ export function resolveProductForModel(
     model,
     name: String(fields["name"] ?? ""),
     status: (fields["status"] as Product["status"]) ?? "待确认",
-    launch_date: String(fields["launch_date"] ?? ""),
-    former_name: fields["former_name"] ? String(fields["former_name"]) : undefined,
-    position_desc: String(fields["position_desc"] ?? ""),
+    // DB 列保留不迁移；新口径不再从材料解析上市日期/定位/曾用名
+    launch_date: "",
+    position_desc: "",
     source_type: "AI提取",
     source,
     // 按材料类目判权威性（变更表 #210）：国标→T1、厂商官方→T2、媒体→T3、自媒体→T4

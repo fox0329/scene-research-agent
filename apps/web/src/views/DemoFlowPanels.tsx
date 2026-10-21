@@ -61,10 +61,8 @@ export const DemoFirstStep: React.FC<DemoFirstStepProps> = ({
 
   const snapshot = useMemo<StageSnapshot>(
     () => ({
-      summary: demoStageSummary(1, 1),
       summaryLoading: false,
       brief: demoStageBrief(1, 1),
-      summaryDownloadUrl: null,
       onRefreshSummary: () => undefined,
     }),
     [],

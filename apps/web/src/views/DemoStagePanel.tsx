@@ -119,7 +119,6 @@ export const DemoStagePanel: React.FC<DemoStagePanelProps> = ({
       summary,
       summaryLoading: false,
       brief,
-      summaryDownloadUrl: null,
       onRefreshSummary: () => undefined,
     }),
     [summary, brief],

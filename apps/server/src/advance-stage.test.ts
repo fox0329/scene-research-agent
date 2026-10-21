@@ -277,6 +277,10 @@ function createMockDb(opts: {
     qualityGateRepo: createMockQualityGateRepo(),
     scenarioLinkedLineRepo: { list: () => [], insert: vi.fn(), getById: vi.fn(), update: vi.fn(), deleteById: vi.fn() },
     scenarioMaterialRepo: createMockRepo(),
+    // 报价仓储需要真的能 list（collectUpstreamData 会读 M6 报价做成本锚点）；
+    // 调研仓储故意留空：advance-stage 对没有 researchRepo 的库跳过联网（单测不联网）
+    quoteRepo: createMockRepo() as never,
+    researchRepo: {} as never,
   };
 }
 

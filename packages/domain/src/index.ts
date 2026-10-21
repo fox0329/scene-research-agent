@@ -142,8 +142,6 @@ export type {
   SpecDedupePlan,
 } from "./library-dedupe.js";
 
-// 全局 — M6 内部费率标准骨架
-
 // ─── 对话即导入：消息内文件路径提取 ─────────────────────────
 
 export { extractImportablePaths, expandHomePath, IMPORTABLE_EXTS } from "./chat-import.js";

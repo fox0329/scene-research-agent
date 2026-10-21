@@ -13,9 +13,11 @@ import { pipeline } from "node:stream/promises";
 import { join } from "node:path";
 import { tmpdir, homedir } from "node:os";
 import type {
+  Boundary,
   Conversation,
   DshClient,
   FollowEvent,
+  Limitation,
   OptionalMaterial,
   Product,
   Scenario,
@@ -80,6 +82,7 @@ import {
   stageCompletenessOf,
   type StageSummaryOptions,
 } from "./stage-summary-service.js";
+import { runStepResearch } from "./step-research.js";
 import {
   draftAnchor,
   ensureAnchorRows,
@@ -167,7 +170,7 @@ const LIBRARY_TABLES: Record<
   M3: {
     repo: (db) => db.capabilityRepo as unknown as AnyRepo,
     require: ["name"],
-    defaults: { domain: "未分类", description: "", maturity: "在研", dependency: "" },
+    defaults: { domain: "未分类", description: "", maturity: "在研" },
   },
   M4: {
     repo: (db) => db.boundaryRepo as unknown as AnyRepo,
@@ -184,6 +187,14 @@ const LIBRARY_TABLES: Record<
       external_visible: "不可提",
       owner: "",
     },
+  },
+  M6: {
+    repo: (db) => db.quoteRepo as unknown as AnyRepo,
+    lineWhere: "product_id IN (SELECT id FROM product WHERE product_line_id = ?)",
+    viaProduct: true,
+    require: ["model", "config", "unit_price", "price_scope", "source"],
+    // 模型/配置/单价/口径/来源都是必填；有效期可空
+    defaults: { valid_until: "" },
   },
   O1: { repo: (db) => db.optionalMaterialRepo as unknown as AnyRepo, category: "O1认证" },
   O2: { repo: (db) => db.optionalMaterialRepo as unknown as AnyRepo, category: "O2案例" },
@@ -787,6 +798,24 @@ function registerProjectRoutes(app: FastifyInstance, deps: UiRoutesDeps) {
       return badRequest(reply, `步骤号非法：${step}（应为 1-${FLOW_LAST_STEP}）`);
     }
     return reopenFlowStep(db, scenario, n);
+  });
+
+  /**
+   * 手动补跑某一步的联网调研（调研先于分析）
+   *
+   * 分析开始时已自动跑过一次（fire-and-forget）；这个入口用于手动补跑与验证：
+   * 返回 `{ saved, queries, engine, errors }`。检索不可用时**不假装有结果**——
+   * `saved = 0`、`errors` 带原因，库里留一条「检索失败」记录供右栏说明。
+   */
+  app.post("/api/v1/projects/:id/steps/:step/research", async (request, reply) => {
+    const { id, step } = request.params as { id: string; step: string };
+    const scenario = db.scenarioRepo.getById(id);
+    if (!scenario) return notFound(reply, `场景 ${id} 不存在`);
+    const n = Number(step);
+    if (!Number.isInteger(n) || n < 1 || n > FLOW_LAST_STEP) {
+      return badRequest(reply, `步骤号非法：${step}（应为 1-${FLOW_LAST_STEP}）`);
+    }
+    return runStepResearch(db, scenario, n);
   });
 
   /** 起草场景锚（表1-1）：诉求 + 资料库 → 12 项内容；用户确认过的行不被覆盖 */
@@ -1394,6 +1423,169 @@ function registerConversationRoutes(
 
 // ─── 资料库路由 ────────────────────────────────────────────
 
+/**
+ * M4「边界与限制」的合并读取行
+ *
+ * 底层仍是 boundary + limitation 两张表（数据不动），只是资料库与提示词看到的是**一张表**：
+ * 「类型」区分 不做 / 限制，其余列取两张表的公共语义。没有对应值的格子给「—」，
+ * 不把两张表的异构字段硬塞成一列（如边界没有影响程度、限制没有客户要求时的做法）。
+ */
+type MergedBoundaryType = "不做" | "限制";
+
+interface MergedBoundaryRow {
+  id: string;
+  type: MergedBoundaryType;
+  target: string;
+  description: string;
+  impact: string;
+  response: string;
+  source: string;
+  source_type?: string;
+  source_authority?: string;
+  evidence_level?: string;
+}
+
+function boundaryToMerged(row: Boundary): MergedBoundaryRow {
+  return {
+    id: row.id,
+    type: "不做",
+    // 边界是公司/业务层面的承诺，不挂具体型号；对象栏仍要给一个可读主体
+    target: "公司/业务",
+    description: row.description,
+    impact: "—",
+    response: row.response,
+    source: row.source ?? "",
+    source_type: row.source_type,
+    source_authority: row.source_authority,
+    evidence_level: row.evidence_level,
+  };
+}
+
+function limitationToMerged(row: Limitation): MergedBoundaryRow {
+  return {
+    id: row.id,
+    type: "限制",
+    target: row.product_name,
+    description: row.description,
+    impact: row.impact,
+    response: "—",
+    source: row.source ?? "",
+    source_type: row.source_type,
+    source_authority: row.source_authority,
+    evidence_level: row.evidence_level,
+  };
+}
+
+/** 读合并后的 M4（底层按产品线过滤，两张表都取） */
+function mergedBoundaryRows(
+  db: DbInstance,
+  where?: string,
+  params?: unknown[],
+): MergedBoundaryRow[] {
+  const filter = where ? { where, params } : {};
+  const boundaries = db.boundaryRepo.list({ ...filter, orderBy: "created_at ASC" });
+  const limitations = db.limitationRepo.list({ ...filter, orderBy: "created_at ASC" });
+  return [
+    ...boundaries.map(boundaryToMerged),
+    ...limitations.map(limitationToMerged),
+  ];
+}
+
+function findMergedBoundarySource(
+  db: DbInstance,
+  rowId: string,
+): { type: MergedBoundaryType; row: Boundary | Limitation } | undefined {
+  const boundary = db.boundaryRepo.getById(rowId);
+  if (boundary) return { type: "不做", row: boundary };
+  const limitation = db.limitationRepo.getById(rowId);
+  if (limitation) return { type: "限制", row: limitation };
+  return undefined;
+}
+
+/** M4 合并行写入：只接受该类型真正有落点的字段，其余明确报错，不静默丢编辑 */
+function updateMergedBoundary(
+  db: DbInstance,
+  rowId: string,
+  cell: string,
+  value: unknown,
+): Boundary | Limitation | undefined {
+  const found = findMergedBoundarySource(db, rowId);
+  if (!found) return undefined;
+  if (found.type === "不做") {
+    const allowed = new Set([
+      "description",
+      "response",
+      "source",
+      "source_type",
+      "source_authority",
+      "evidence_level",
+    ]);
+    if (!allowed.has(cell)) {
+      throw new Error(`「不做」类型的记录没有「${cell}」字段；影响程度/对象只适用于限制类`);
+    }
+    return db.boundaryRepo.update(rowId, { [cell]: value } as never);
+  }
+  const mapped: Record<string, string> = {
+    target: "product_name",
+    description: "description",
+    impact: "impact",
+    source: "source",
+    source_type: "source_type",
+    source_authority: "source_authority",
+    evidence_level: "evidence_level",
+  };
+  const targetCell = mapped[cell];
+  if (!targetCell) {
+    throw new Error(`「限制」类型的记录没有「${cell}」字段；客户要求时怎么办只适用于不做类`);
+  }
+  return db.limitationRepo.update(rowId, { [targetCell]: value } as never);
+}
+
+/** 新增一条合并后的 M4：type=限制 落 limitation，其余落 boundary */
+function createMergedBoundary(
+  db: DbInstance,
+  productLineId: string,
+  values: Record<string, unknown>,
+): MergedBoundaryRow {
+  if (String(values["type"] ?? "") === "限制") {
+    return limitationToMerged(db.limitationRepo.insert({
+      product_line_id: productLineId,
+      product_name: String(values["target"] ?? values["product_name"] ?? ""),
+      description: String(values["description"] ?? ""),
+      impact: (values["impact"] as Limitation["impact"]) ?? "低",
+      fix_status: (values["fix_status"] as Limitation["fix_status"]) ?? "无计划",
+      external_visible:
+        (values["external_visible"] as Limitation["external_visible"]) ?? "不可提",
+      owner: String(values["owner"] ?? ""),
+      source_type: "用户补充",
+      source: String(values["source"] ?? ""),
+    } as never));
+  }
+  return boundaryToMerged(db.boundaryRepo.insert({
+    product_line_id: productLineId,
+    description: String(values["description"] ?? ""),
+    reason: String(values["reason"] ?? ""),
+    has_plan: (values["has_plan"] as Boundary["has_plan"]) ?? "未定",
+    response: String(values["response"] ?? ""),
+    owner: String(values["owner"] ?? ""),
+    source_type: "用户补充",
+    source: String(values["source"] ?? ""),
+  } as never));
+}
+
+/** M6 型号必须能落到本库的 M1 行上（报价不允许凭空挂型号） */
+function findProductOfLine(
+  db: DbInstance,
+  productLineId: string,
+  model: string,
+): Product | undefined {
+  const key = model.trim().toLowerCase();
+  if (!key) return undefined;
+  return db.productRepo
+    .list({ where: "product_line_id = ?", params: [productLineId] })
+    .find((p) => p.model.trim().toLowerCase() === key);
+}
+
 function registerLibraryRoutes(app: FastifyInstance, deps: UiRoutesDeps) {
   const { db } = deps;
 
@@ -1421,6 +1613,12 @@ function registerLibraryRoutes(app: FastifyInstance, deps: UiRoutesDeps) {
     const spec = LIBRARY_TABLES[code];
     if (!spec) return badRequest(reply, `表编号非法: ${code}`);
     const query = request.query as { product_line_id?: string };
+    if (code === "M4") {
+      const filter = query.product_line_id
+        ? lineFilter(spec, query.product_line_id)
+        : { where: undefined, params: undefined };
+      return mergedBoundaryRows(db, filter.where, filter.params);
+    }
     if (!query.product_line_id) {
       return spec.repo(db).list({ orderBy: "created_at ASC" });
     }
@@ -1470,6 +1668,8 @@ function registerLibraryRoutes(app: FastifyInstance, deps: UiRoutesDeps) {
     const removedIds = new Set<string>();
     /* 级联删掉的规格行：产品行被删了，规格行留着既没用又卡外键。如实报数，不静默。 */
     const cascadedSpecs: string[] = [];
+    /* M6 报价挂 product_id（外键），删 M1 时一并清掉；同样如实报数 */
+    const cascadedQuotes: string[] = [];
     const targetIds = new Set(targets.map((r) => r.id));
     for (const row of targets) {
       if (removedIds.has(row.id)) continue;
@@ -1484,6 +1684,12 @@ function registerLibraryRoutes(app: FastifyInstance, deps: UiRoutesDeps) {
         // 只有"本文件之外"的规格才算"连带"——本来就属于本文件的行，用户已经知道要删它们
         if (!targetIds.has(id)) cascadedSpecs.push(id);
       }
+      for (const id of res.cascadedQuotes) {
+        if (removedIds.has(id)) continue;
+        removedIds.add(id);
+        tables["M6"] = (tables["M6"] ?? 0) + 1;
+        if (!targetIds.has(id)) cascadedQuotes.push(id);
+      }
     }
     // 顺手标下游待重算（与单元格编辑/去重同一口径）：删了材料，已生成的分析就不再可信
     const staleMarked = markLineStale(db, lineId, [...new Set(targets.map((r) => r.code))]);
@@ -1492,6 +1698,7 @@ function registerLibraryRoutes(app: FastifyInstance, deps: UiRoutesDeps) {
       deleted: removedIds.size,
       tables,
       cascaded_specs: cascadedSpecs.length,
+      cascaded_quotes: cascadedQuotes.length,
       stale_marked_stages: staleMarked,
     };
   });
@@ -1503,6 +1710,41 @@ function registerLibraryRoutes(app: FastifyInstance, deps: UiRoutesDeps) {
     const body = (request.body ?? {}) as { cell?: unknown; value?: unknown };
     const cell = String(body.cell ?? "");
     if (!cell || body.value === undefined) return badRequest(reply, "需要 cell 与 value");
+
+    if (code === "M4") {
+      const found = findMergedBoundarySource(db, rowId);
+      if (!found) {
+        return notFound(reply, `M4 表行 ${rowId} 不存在`);
+      }
+      try {
+        const updated = updateMergedBoundary(db, rowId, cell, body.value);
+        markDependentStale(db, code, rowId);
+        if (!updated) return notFound(reply, `M4 表行 ${rowId} 不存在`);
+        return found.type === "不做"
+          ? boundaryToMerged(updated as Boundary)
+          : limitationToMerged(updated as Limitation);
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        return badRequest(reply, message.slice(0, 120));
+      }
+    }
+
+    if (code === "M6" && cell === "model") {
+      const lineId = resolveProductLineId(db, code, rowId);
+      const model = String(body.value ?? "").trim();
+      const product = lineId ? findProductOfLine(db, lineId, model) : undefined;
+      if (!lineId || !product) {
+        return badRequest(reply, `M6 型号「${model}」在 M1 产品清单里找不到，先补 M1 或改正型号`);
+      }
+      const updated = db.quoteRepo.update(rowId, {
+        model: product.model,
+        product_id: product.id,
+        source_type: "用户确认",
+      } as never);
+      if (!updated) return notFound(reply, `${code} 表行 ${rowId} 不存在`);
+      markDependentStale(db, code, rowId);
+      return updated;
+    }
 
     const repo = spec.repo(db);
     const row = repo.getById(rowId);
@@ -1540,6 +1782,33 @@ function registerLibraryRoutes(app: FastifyInstance, deps: UiRoutesDeps) {
     if (missing.length > 0) {
       return badRequest(reply, `${code} 表必填列缺内容：${missing.join("、")}`);
     }
+    if (code === "M4") {
+      if (!String(values["description"] ?? "").trim()) {
+        return badRequest(reply, "M4 表必填列缺内容：description");
+      }
+      return createMergedBoundary(db, productLineId, values);
+    }
+    if (code === "M6") {
+      const model = String(values["model"] ?? "").trim();
+      const product = findProductOfLine(db, productLineId, model);
+      if (!product) {
+        return badRequest(reply, `M6 型号「${model}」在 M1 产品清单里找不到，先补 M1 或改正型号`);
+      }
+      const scope = String(values["price_scope"] ?? "纯设备");
+      if (!["纯设备", "含安装", "含三年维保", "年费"].includes(scope)) {
+        return badRequest(reply, "price_scope 只能取：纯设备 / 含安装 / 含三年维保 / 年费");
+      }
+      return db.quoteRepo.insert({
+        product_id: product.id,
+        model: product.model,
+        config: String(values["config"] ?? ""),
+        unit_price: String(values["unit_price"] ?? ""),
+        price_scope: scope as never,
+        valid_until: String(values["valid_until"] ?? ""),
+        source: String(values["source"] ?? ""),
+        source_type: "用户补充",
+      } as never);
+    }
     const extra: Record<string, unknown> = spec.category
       ? { category: spec.category, payload: values }
       : {};
@@ -1560,7 +1829,11 @@ function registerLibraryRoutes(app: FastifyInstance, deps: UiRoutesDeps) {
     const res = deleteLibraryRow(db, code, rowId);
     if (!res.removed) return notFound(reply, `${code} 表行 ${rowId} 不存在`);
     markDependentStale(db, code, rowId);
-    return { deleted: true, cascaded_specs: res.cascadedSpecs.length };
+    return {
+      deleted: true,
+      cascaded_specs: res.cascadedSpecs.length,
+      cascaded_quotes: res.cascadedQuotes.length,
+    };
   });
 
   /**
@@ -1732,8 +2005,8 @@ function lineRowRefs(db: DbInstance, productLineId: string): LineRowRef[] {
  * `FOREIGN KEY constraint failed`（用户看到 500 与「删库里的资料失败」）。
  * 原实现在删之前拦了一道"规格来自别的文件就 409"，但**拦错了对象**：同一个文件带进来的
  * 规格行照样会让外键报错，所以那道闸门放行了、外键却炸了。
- * 全库外键逐条核过：资料表之间**只有这一条**（其余都指向 product_line / scenario），
- * 规则因此很简单——**删 M1 之前先删它的规格行**。
+ * 全库外键逐条核过：资料表里指向 product 的有 **spec_param 与 price_quote**（其余都指向
+ * product_line / scenario），规则因此很简单——**删 M1 之前先删它的规格行与报价行**。
  * 级联删掉的规格行在返回值里如实报数，不静默（它可能来自另一个文件，用户需要知道
  * "这个动作顺带动了什么"）。
  */
@@ -1741,8 +2014,19 @@ function deleteLibraryRow(
   db: DbInstance,
   code: string,
   rowId: string,
-): { removed: boolean; cascadedSpecs: string[] } {
+): { removed: boolean; cascadedSpecs: string[]; cascadedQuotes: string[] } {
   const cascadedSpecs: string[] = [];
+  const cascadedQuotes: string[] = [];
+  if (code === "M4") {
+    const found = findMergedBoundarySource(db, rowId);
+    if (!found) return { removed: false, cascadedSpecs, cascadedQuotes };
+    const removed =
+      found.type === "不做"
+        ? db.boundaryRepo.deleteById(rowId)
+        : db.limitationRepo.deleteById(rowId);
+    if (removed) deleteSourceIndex(db.db, rowId);
+    return { removed, cascadedSpecs, cascadedQuotes };
+  }
   if (code === "M1") {
     for (const spec of db.specParamRepo.list({ where: "product_id = ?", params: [rowId] })) {
       const specId = String((spec as unknown as Record<string, unknown>)["id"] ?? "");
@@ -1751,10 +2035,18 @@ function deleteLibraryRow(
         cascadedSpecs.push(specId);
       }
     }
+    // 报价挂 product_id（外键）：删产品前先清它的报价，否则 500
+    for (const quote of db.quoteRepo.list({ where: "product_id = ?", params: [rowId] })) {
+      const quoteId = String((quote as unknown as Record<string, unknown>)["id"] ?? "");
+      if (quoteId && db.quoteRepo.deleteById(quoteId)) {
+        deleteSourceIndex(db.db, quoteId);
+        cascadedQuotes.push(quoteId);
+      }
+    }
   }
   const removed = LIBRARY_TABLES[code]!.repo(db).deleteById(rowId);
   if (removed) deleteSourceIndex(db.db, rowId);
-  return { removed, cascadedSpecs };
+  return { removed, cascadedSpecs, cascadedQuotes };
 }
 
 /**
@@ -1762,11 +2054,15 @@ function deleteLibraryRow(
  *
  * 为什么不能只查 `product` / `optional_material`：那两个 `getById` 只对 M1 产品行与 O*
  * 可选材料行有效；M3–M5 的行 id 在那两张表里必然查不到 → 拿不到产品线 → 一个场景都标不上。
- * 实测（变更表 #101）：改 M6 一条费率，`stage_data.is_stale` 全 0，等于"改费率"这个动作
+ * 实测（变更表 #101）：改旧 M6 一条费率，`stage_data.is_stale` 全 0，等于"改费率"这个动作
  * 在系统里没有任何反馈。现在改成**先读这一行本身**：库表都带 `product_line_id`；
  * M2 规格书例外（`spec_param` 没有该列）→ 经 `product_id` 上溯到产品行再取产品线。
  */
 function resolveProductLineId(db: DbInstance, code: string, rowId: string): string | undefined {
+  if (code === "M4") {
+    const found = findMergedBoundarySource(db, rowId);
+    return found ? found.row.product_line_id : undefined;
+  }
   const spec = LIBRARY_TABLES[code];
   if (!spec) return undefined;
   const row = spec.repo(db).getById(rowId) as unknown as Record<string, unknown> | undefined;

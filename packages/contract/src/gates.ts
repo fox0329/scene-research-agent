@@ -122,6 +122,12 @@ export const TABLE_GATES: Readonly<Record<string, readonly ScopedGate[]>> = {
     { kind: "cross-ref", column: "product_name", table: "M1", target: "model", text: "限制须挂在具体型号上（不许写「我方产品」）" },
     { kind: "not-vague", columns: ["description"], text: "限制须是可复现缺陷（什么工况出现、影响什么），免责话术不算" }
   ],
+  M6: [
+    { kind: "non-empty", columns: ["model", "config", "unit_price", "price_scope", "source"], text: "型号/配置/含税单价/价格口径/来源五项必填" },
+    { kind: "cross-ref", column: "model", table: "M1", target: "model", text: "报价型号必须能在 M1 产品清单里找到" },
+    { kind: "enum-of-column", column: "price_scope", text: "价格口径只能取 纯设备/含安装/含三年维保/年费" },
+    { kind: "not-vague", columns: ["unit_price"], text: "单价须给含税金额、区间或「面议」，不许写「优惠」「按项目」" }
+  ],
   可选材料: [
     { kind: "enum-of-column", column: "category", text: "材料类别取该列枚举" },
     { kind: "non-empty", columns: ["cert_no", "valid_until", "issuer"], text: "认证类材料须给证书号、有效期与发证机构（无证书号视为未取得）", when: { column: "category", equals: "O1认证" } },

@@ -130,3 +130,4 @@ export * from "./web-store.js";
 export * from "./web-fetch-client.js";
 export * from "./web-engine.js";
 export * from "./web-bing.js";
+export * from "./web-baidu.js";

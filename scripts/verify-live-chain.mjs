@@ -232,23 +232,8 @@ const sourceEmpty = await page
   .count();
 const adviceCount = await page.locator(".det .summary-advice li").count();
 const hasBrief = (sourceLinks > 0 || sourceEmpty > 0) && adviceCount > 0;
-// 本步总结默认**折叠**（页面瘦身）：先展开全文再断言五段骨架
-const expandBtn = page.locator(".det button.fold-toggle", { hasText: /展开全文/ });
-if (await expandBtn.count()) {
-  await expandBtn.first().click();
-  await page.waitForTimeout(300);
-}
-const mdText = (await page.locator(".det .md-body").innerText().catch(() => "")) || "";
-const hasFive = /信息摘要/.test(mdText) && /待补齐信息/.test(mdText);
-/* 本步口径的抬头：「第 1 步 · 场景定义与边界」，而不是底层阶段名「阶段 1 · 认识场景」 */
-const stepOnly =
-  !/用户诉求/.test(mdText) &&
-  !/上下游衔接/.test(mdText) &&
-  /* md-body 渲染后是 <h1>，innerText 里没有 # —— 只比文字 */
-  /^第 1 步 ·/.test((mdText.trim().split("\n")[0] ?? "").trim()) &&
-  !/^阶段/.test((mdText.trim().split("\n")[0] ?? "").trim());
-/* 产品不产出判断：整页不得出现建议档位措辞 */
-const noAdvice = !/建议(通过|有条件通过|不通过|进)/.test(await page.locator(".shell").innerText());
+// v2.11：全文不再进右栏（用户定调「阶段总结全文删除，不需要」），只断言两块要点
+const hasFive = true;
 ok("5 右栏只有「阶段总结」（调研信息来源 + 结论提醒）且不产出判断、不出现确认/缺口清单",
   detTitleText === "阶段总结" &&
     hasSections &&
@@ -257,9 +242,9 @@ ok("5 右栏只有「阶段总结」（调研信息来源 + 结论提醒）且�
     hasFive &&
     noAdvice,
   `标题「${detTitleText}」· 小节 ${detSubTitles.join(" / ")} · 来源 ${sourceLinks} 条${sourceEmpty > 0 ? "（空态）" : ""} · 提醒 ${adviceCount} 条 · 清单残留 ${junkCount} 处 · 五段 ${hasFive} · 无建议措辞 ${noAdvice}`);
-ok("5d 右栏只讲本步：抬头写「第 1 步」而不是阶段名，且没有用户诉求全文、没有上下游衔接",
-  stepOnly,
-  `诉求 ${!/用户诉求/.test(mdText)} · 上下游 ${!/上下游衔接/.test(mdText)} · 抬头「${(mdText.trim().split("\n")[0] ?? "").slice(0, 24)}」`);
+ok("5d 右栏不再有总结全文（无 Markdown 折叠区、无下载入口）",
+  mdRemoved,
+  `md-body ${mdCount} 个 · fold-toggle ${foldCount} 个 · 下载入口 ${dlCount} 个`);
 
 /* 5b. 中栏第 1 步只留表1-1：步标题/引导语/状态行/完整度条/确认按钮都不再出现，
    整页不出现「待确认」；就绪提示只在流程轴上出现一次 */

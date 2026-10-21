@@ -103,22 +103,10 @@ test("右栏只有「阶段总结」：调研信息来源 + 结论提醒，不�
   await expect(det).not.toContainText("待确认");
   await expect(det).not.toContainText("缺口");
 
-  // 全文默认折叠；点「展开全文」才渲染 Markdown
+  // v2.11：全文（Markdown）整块删除，右栏不再有折叠区、不再提供下载
   await expect(det.locator(".md-body")).toHaveCount(0);
-  // 按钮文案随状态变（展开全文⇄收起全文），所以按类名定位而不是按文案
-  const foldToggle = det.locator(".fold-toggle");
-  await expect(foldToggle).toContainText("展开全文");
-  await expect(foldToggle).toHaveAttribute("aria-expanded", "false");
-  await expect(det.locator(".fold-summary")).toContainText("点开查看完整总结");
-  await foldToggle.click();
-  await expect(foldToggle).toHaveAttribute("aria-expanded", "true");
-  const md = det.locator(".md-body");
-  await expect(md).toBeVisible();
-  await expect(md).toContainText("信息摘要");
-  await expect(md).toContainText("待补齐信息");
-  // 只讲本步：不带用户诉求全文、不带上下游衔接（用户定调"不要整理整个过程"）
-  await expect(md).not.toContainText("用户诉求");
-  await expect(md).not.toContainText("上下游衔接");
+  await expect(det.locator(".fold-toggle")).toHaveCount(0);
+  await expect(det.locator(".summary-download")).toHaveCount(0);
 });
 
 test("右栏不再有补充说明条目与表格：只剩来源链接与结论提醒（v2.10）", async ({ page }) => {

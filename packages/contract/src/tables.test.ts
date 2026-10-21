@@ -29,26 +29,28 @@ describe("表定义注册表 — 完整性", () => {
     expect(registryIssues()).toEqual([]);
   });
 
-  it("共 25 张表，且表号唯一", () => {
-    /* 35 → 34（删 表5-5）→ 33（删 M6）→ 28（阶段 2 收成 5 张）
-     * → 27（阶段 3 精简）→ 25（删除价值验证阶段：表6-1/表6-4，变更表 #243） */
-    expect(TABLES).toHaveLength(25);
-    expect(new Set(TABLES.map((t) => t.code)).size).toBe(25);
-    expect(Object.keys(TABLES_BY_CODE)).toHaveLength(25);
+  it("共 26 张表，且表号唯一", () => {
+    /* 35 → 34（删 表5-5）→ 33（删 M6 内部费率）→ 28（阶段 2 收成 5 张）
+     * → 27（阶段 3 精简）→ 25（删除价值验证阶段：表6-1/表6-4，变更表 #243）
+     * → 26（v2.11 新增 M6 硬件报价） */
+    expect(TABLES).toHaveLength(26);
+    expect(new Set(TABLES.map((t) => t.code)).size).toBe(26);
+    expect(Object.keys(TABLES_BY_CODE)).toHaveLength(26);
   });
 
-  it("级别分布：重要 15 / 支撑 9 / 过程 1", () => {
+  it("级别分布：重要 15 / 支撑 10 / 过程 1", () => {
     const count = (tier: string): number => TABLES.filter((t) => t.tier === tier).length;
     expect(count("重要")).toBe(15);
-    expect(count("支撑")).toBe(9);
+    expect(count("支撑")).toBe(10);
     expect(count("过程")).toBe(1);
   });
 
-  it("阶段分布：0→6张、1→6张、2→5张、3→5张、4→3张、5→0张", () => {
+  it("阶段分布：0→7张、1→6张、2→5张、3→5张、4→3张、5→0张", () => {
     /* 表1-2 属"客户现状"，已从阶段 1 移到阶段 3（用户定调 2026-10-14）
-     * 表2-7 交付与运维现状已删除（变更表 #226，用户定调「没价值的直接删」） */
+     * 表2-7 交付与运维现状已删除（变更表 #226，用户定调「没价值的直接删」）
+     * 阶段 0 新增 M6 硬件报价（v2.11） */
     const dist = [0, 1, 2, 3, 4, 5].map((s) => tablesOfStage(s as 0).length);
-    expect(dist).toEqual([6, 6, 5, 5, 3, 0]);
+    expect(dist).toEqual([7, 6, 5, 5, 3, 0]);
   });
 
   it("阶段定义的 tableCodes 与实际表一致（含交付物阶段无表）", () => {
@@ -357,6 +359,53 @@ describe("dependsOnTables — 本步内的真实依赖（按表并发的调度�
         ).toBe(t.stage);
       }
     }
+  });
+});
+
+describe("v2.11 资料库精简口径", () => {
+  it("M1 只保留 model/name/status/source 四个业务列", () => {
+    expect(
+      tableDef("M1")!.columns
+        .map((c) => c.key)
+        .filter((k) => !k.startsWith("verification")),
+    ).toEqual(["model", "name", "status", "source"]);
+  });
+
+  it("M3 去掉 dependency（依赖并入 description），保留 6 个业务列", () => {
+    const keys = tableDef("M3")!.columns
+      .map((c) => c.key)
+      .filter((k) => !k.startsWith("verification"));
+    expect(keys).toEqual([
+      "domain",
+      "name",
+      "maturity",
+      "description",
+      "inapplicable_scene",
+      "source",
+    ]);
+    expect(keys).not.toContain("dependency");
+  });
+
+  it("M6 硬件报价：阶段 0 / 支撑 / 一个报价口径 / 被阶段 2、3 消费", () => {
+    const def = tableDef("M6")!;
+    expect(def.stage).toBe(0);
+    expect(def.tier).toBe("支撑");
+    expect(def.rowUnit).toBe("一个报价口径");
+    expect(
+      def.columns.map((c) => c.key).filter((k) => !k.startsWith("verification")),
+    ).toEqual([
+      "model",
+      "config",
+      "unit_price",
+      "price_scope",
+      "valid_until",
+      "source",
+    ]);
+    expect(def.columns.find((c) => c.key === "model")?.refTable).toBe("M1");
+    expect(def.columns.find((c) => c.key === "price_scope")?.enum).toBe("price_scope");
+    expect(def.columns.find((c) => c.key === "source")?.required).toBe(true);
+    expect(def.completeness?.join(" ")).toContain("M1");
+    expect(def.consumedBy).toEqual([2, 3]);
   });
 });
 

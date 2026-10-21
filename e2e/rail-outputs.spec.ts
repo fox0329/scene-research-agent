@@ -238,25 +238,11 @@ test("交付物这一步：两份交付物与动作都在流程轴第二行（�
   // e2e 不真跑（慢，且依赖模型与本机技能），只拦掉 POST 断言**请求发对了**：URL、method、body。
   // （进度走另一条 SSE：`…/export-pptx/events?run=`，拦不到也不影响导出结果。）
 
-  // 装配原料清单按 G-R9 归右栏「阶段总结」（v2.10：右栏已无 Tab 条，只有这个标题；
-  // 交付物步的正文全在折叠区里，先展开再断言）
+  // v2.11：右栏只剩「阶段总结」的调研信息来源 + 结论提醒；全文（含装配原料统计）已从界面删除
   await expect(page.locator(".det .summary-head h4")).toHaveText("阶段总结");
-  // 展开全文：统计、缺口与导出事实都在正文里
-  await page.locator(".det .fold-toggle").click();
-  const detBody = page.locator(".det-body");
-  await expect(detBody).toContainText("装配原料");
-  await expect(detBody).toContainText("没有产出的步骤会在交付物里标「无信息」");
-  await expect(detBody).toContainText(/已产出：\d+\/\d+ 步 · \d+\/\d+ 张表 · \d+ 行/);
-  // 删掉的三块（变更表 #149）：两份交付物名+说明（流程轴 chip 的 label/title 已说）、
-  // 生成前提（引用的"场景锚以用户确认过的版本为准"随确认动作一起失效，留着误导）、
-  // 导出文件名规则长句与末尾口号（都是噪声）
-  await expect(detBody).not.toContainText("两份交付物");
-  await expect(detBody).not.toContainText("生成前提");
-  await expect(detBody).not.toContainText("场景锚");
-  await expect(detBody).not.toContainText("文件名");
-  await expect(detBody).not.toContainText("判断由使用者自己做");
-  await expect(detBody).toContainText("还没有导出过文件");
-  // 右栏一律条目形式，不排表格（用户定调：右栏宽度有限，表格根本看不清内容）
+  await expect(page.locator(".det .summary-sub").first()).toBeVisible();
+  await expect(page.locator(".det .md-body")).toHaveCount(0);
+  await expect(page.locator(".det .fold-toggle")).toHaveCount(0);
   await expect(page.locator(".det").locator("table")).toHaveCount(0);
 
   // 变更表 #135：中栏可编辑并保存——改的是**当前这一份**（建设工作方案）→ 中栏与磁盘都变

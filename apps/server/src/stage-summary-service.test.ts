@@ -189,6 +189,67 @@ describe("stage-summary-service — 右栏要点（brief）", () => {
     ]);
     expect(r.brief.sources).toEqual([]);
   });
+
+  it("本步有联网调研结果时前置在来源最前，并与行内 URL 去重", () => {
+    const { db, scenarioId } = seed();
+    // 行内来源：表1-3 引用了其中一条链接（同 URL 不能出现两次）
+    db.stageDataRepo.insert({
+      scenario_id: scenarioId,
+      stage: 1,
+      table_code: "表1-3",
+      row: {
+        barrier_type: "行业准入",
+        barrier_name: "等保三级",
+        criteria: "GB/T 22239",
+        cert_gap: "等保三级认证",
+        source: "https://example.com/standard",
+      },
+      is_stale: false,
+      source: "https://example.com/standard",
+    });
+    const researchRow = (
+      n: number,
+      over: Partial<Parameters<DbInstance["researchRepo"]["upsert"]>[0]> = {},
+    ): Parameters<DbInstance["researchRepo"]["upsert"]>[0] => ({
+      id: `rs_test_${n}`,
+      scenario_id: scenarioId,
+      step: 2,
+      query: "智慧水务 进入门槛",
+      title: `调研标题${n}`,
+      url: `https://example.com/research-${n}`,
+      url_key: `key${n}`,
+      snippet: "",
+      engine: "bing-html",
+      fetched_at: "2026-10-21T00:00:00.000Z",
+      status: "有效",
+      error: "",
+      ...over,
+    });
+    // 长标题按 24 字截断
+    const longTitle = "城镇供水行业标准与智慧水务建设规范（2025 年版）";
+    const expectLabel = Array.from(longTitle).slice(0, 24).join("");
+    db.researchRepo.upsert(researchRow(1, { title: longTitle }));
+    // 与行内来源同 URL：合并后只留调研这一条
+    db.researchRepo.upsert(
+      researchRow(2, { title: "等保三级认证要求", url: "https://example.com/standard", url_key: "k-std" }),
+    );
+    // 检索失败记录不是来源，不能进右栏链接列表
+    db.researchRepo.upsert(
+      researchRow(3, { title: "检索失败", url: "", url_key: "", status: "检索失败", error: "网络被拦" }),
+    );
+
+    const sc = db.scenarioRepo.getById(scenarioId)!;
+    const r = getStageBrief(db, sc, 1, 2);
+
+    expect(r.brief.sources[0]).toEqual({
+      label: expectLabel,
+      url: "https://example.com/research-1",
+    });
+    expect(r.brief.sources.map((s) => s.url)).toEqual([
+      "https://example.com/research-1",
+      "https://example.com/standard",
+    ]);
+  });
 });
 
 describe("stage-summary-service — 路由", () => {

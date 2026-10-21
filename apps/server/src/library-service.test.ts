@@ -38,6 +38,15 @@ describe("资料库去重：同型号产品行合并 + 同产品重复规格删�
     const keep = product(lineId, "CT15", "在售", "2026-09-23T14:42");
     const dupe = product(lineId, "CT15", "待确认", "2026-09-24T00:44");
     db.productRepo.update(dupe.id, { former_name: "老款 CT15" } as never);
+    db.quoteRepo.insert({
+      product_id: dupe.id,
+      model: "CT15",
+      config: "标准配置",
+      unit_price: "9800",
+      price_scope: "纯设备",
+      source: "报价单.pdf:1",
+      source_type: "用户确认",
+    } as never);
     db.specParamRepo.insert({
       product_id: dupe.id,
       param_class: "操作系统",
@@ -70,6 +79,10 @@ describe("资料库去重：同型号产品行合并 + 同产品重复规格删�
     const specs = db.specParamRepo.list({ where: "product_id = ?", params: [keep.id] });
     expect(specs).toHaveLength(2); // OS版本重复 1 条被删；功耗那条保留
     expect(report.specsRemoved).toBe(1);
+    // M6 报价随同型号合并迁到保留行，不撞 product 外键
+    const quotes = db.quoteRepo.list({ where: "product_id = ?", params: [keep.id] });
+    expect(quotes).toHaveLength(1);
+    expect(quotes[0]!.model).toBe("CT15");
 
     // 幂等：再跑一次什么都不动
     const again = dedupeLibrary(db, lineId);
@@ -119,15 +132,23 @@ describe("资料库去重：同型号产品行合并 + 同产品重复规格删�
 });
 
 describe("ingest 写入前匹配：从源头不再造重复产品行（根因修复）", () => {
-  it("材料里的型号已存在 → 并入该行，不新建；缺的字段补上", () => {
+  it("材料里的型号已存在 → 并入该行，不新建；新口径不再写曾用名", () => {
     const { db, lineId } = setup();
     db0 = db;
     const existing = product(lineId, "CT15", "在售", "2026-09-23T14:42");
-    const res = resolveProductForModel(db, lineId, { model: "ct15", former_name: "老款" }, "ingest-x.pptx:9");
+    const res = resolveProductForModel(
+      db,
+      lineId,
+      { model: "ct15", name: "边缘控制器", former_name: "老款" },
+      "ingest-x.pptx:9",
+    );
     expect(res.created).toBe(false);
     expect(res.productId).toBe(existing.id);
     expect(db.productRepo.list({ where: "product_line_id = ?", params: [lineId] })).toHaveLength(1);
-    expect(db.productRepo.getById(existing.id)!.former_name).toBe("老款");
+    // 已有 name 不覆盖（用户确认过的内容优先）
+    expect(db.productRepo.getById(existing.id)!.name).toBe("CT15 产品");
+    // v2.11：曾用名不再从材料解析入库，DB 列保留但不写
+    expect(db.productRepo.getById(existing.id)!.former_name).toBeNull();
   });
 
   it("型号写法有空格差异也能匹配（不新建重复行）", () => {

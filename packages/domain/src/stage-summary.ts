@@ -358,44 +358,44 @@ function cannotDoAdvice(row: InfoRow): string | null {
   return `「${gap}」做不了${action === "" ? "" : `，${action}`}——建议分包或放弃这一段`;
 }
 
-/** 规则 4：C 级假设 / AI 推断的行 ≥3 条 → 进场前须核实 */
-function assumptionAdvice(entries: readonly RowEntry[]): string | null {
-  let n = 0;
-  for (const e of entries) {
-    if (cellTextOf(e.row["evidence_level"]) === "C" || cellTextOf(e.row["source_type"]) === "AI推断") {
-      n += 1;
-    }
-  }
-  return n >= 3 ? `本步有 ${n} 条结论属推断/C 级假设，进场前须核实` : null;
-}
-
 /** 截断时优先断在句读上（"…环保产…"这种半截词用户读不下去） */
 function clipAdvice(text: string): string {
   if (text.length <= BRIEF_ADVICE_MAX) return text;
-  const head = text.replace(/…$/u, "").slice(0, BRIEF_ADVICE_MAX);
-  const cut = Math.max(head.lastIndexOf("——"), head.lastIndexOf("；"), head.lastIndexOf("，"), head.lastIndexOf("、"));
+  const clean = text.replace(/…$/u, "");
+  // 结论在「——」之后：截断只能发生在依据部分，绝不能把「不建议…」截掉
+  const mark = clean.lastIndexOf("——");
+  if (mark > 0) {
+    const tail = clean.slice(mark);
+    const room = BRIEF_ADVICE_MAX - Array.from(tail).length - 1;
+    if (room > 8) {
+      const head = Array.from(clean.slice(0, mark)).slice(0, room).join("");
+      return `${head.replace(/[，、；：\s]+$/u, "")}…${tail}`;
+    }
+    return tail.replace(/^——/u, "");
+  }
+  const head = Array.from(clean).slice(0, BRIEF_ADVICE_MAX).join("");
+  const cut = Math.max(head.lastIndexOf("；"), head.lastIndexOf("，"), head.lastIndexOf("、"));
   return cut > 12 ? `${head.slice(0, cut)}…` : `${head}…`;
 }
 
 /** 一条都判不出时的兜底（不凑数） */
-const BRIEF_FALLBACK = "本步还没有可下结论的判据（缺表1-3 / 表4-3 / 表4-4 的有效数据）";
+const BRIEF_FALLBACK = "本步还没有可下结论的判据：门槛、赢面与能力匹配表尚未产出，风险提醒随这些表出现";
 
 /**
  * 右栏要点视图（确定性推导，不需要 LLM）
  *
  * 只读 `rowsByTable`（本步表集已由调用方按 `tableCodes` 限定）：
  *  - **来源**：行内出现的 http(s) 地址，去重、最多 20 条，标签取行的主标识
- *  - **提醒**：表1-3 认证差距 / 表4-4 胜负为弱 / 表4-3 不能做 / C 级与推断行统计；
+ *  - **提醒**：表1-3 认证差距 / 表4-4 胜负为弱 / 表4-3 不能做；
  *    去重、每条 ≤60 字、最多 4 条；一条都判不出时只给一句兜底
  *
  * 不改 `buildStageSummary` 的任何输出——交付物装配仍走那一份六段骨架。
  */
 export function buildStageBrief(input: StageSummaryInput): StageBrief {
   const tables = tablesFor(input);
-  const entries = allEntries(input, tables);
 
   const candidates: string[] = [];
-  // 门槛最多留 2 条：一个场景常有好几道认证门槛，全列会把其他三类提醒挤掉
+  // 门槛最多留 2 条：一个场景常有好几道认证门槛，全列会把其他两类提醒挤掉
   const barriers = new Set<string>();
   for (const row of input.rowsByTable["表1-3"] ?? []) {
     const a = certAdvice(row);
@@ -413,9 +413,6 @@ export function buildStageBrief(input: StageSummaryInput): StageBrief {
     const a = cannotDoAdvice(row);
     if (a) candidates.push(a);
   }
-  const inferred = assumptionAdvice(entries);
-  if (inferred) candidates.push(inferred);
-
   const advice: string[] = [];
   const seenAdvice = new Set<string>();
   for (const raw of candidates) {

@@ -15,7 +15,7 @@ import { TABLES_BY_CODE } from "@scene/contract";
 
 /**
  * 联真资料库视图（M5-T5.4）
- * - 产品线切换 / 质量总评（六维+完成度，领域层计算）/ M1-M6 / O 可选材料 / 补充提醒
+ * - 产品线切换 / 质量总评（六维+完成度，领域层计算）/ M1、M2、M3、M4（边界+限制）、M6、O 可选材料 / 补充提醒
  * - 单元格编辑 → PATCH library rows（source_type 置"用户确认"，F3 失效由服务端内联处理）
  * - 上传材料 → multipart ingest + SSE 进度流（解析→落库→done 行数）
  * - §4.3 三态：加载 / 空态（无产品线、无行）/ 降级（错误+重试）
@@ -33,15 +33,32 @@ const TRACE_SET = new Set<string>(TRACE_KEYS);
 
 /** 每表收进右栏「补充信息」的次要列（主表不再占列；数据与契约不动） */
 const DETAIL_ONLY_KEYS: Record<string, string[]> = {
-  M1: ["former_name"],
+  // v2.11：M1 只保留 型号/名称/状态/来源；DB 列不删，只是不再进表格
+  M1: ["former_name", "launch_date", "position_desc"],
+  // M3 依赖条件已并入 description，不再单列
+  M3: ["dependency"],
 };
+
+/**
+ * 固定列集与顺序（M4/M6）
+ *
+ * M4 是 boundary + limitation 的合并视图，必须固定六列，不能按行数据"见什么列显什么"；
+ * M6 同理。M1/M3 的已删列由 DETAIL_ONLY_KEYS 收进右栏，不再渲染。
+ */
+const FIXED_COLUMNS: Record<string, string[]> = {
+  M4: ["type", "target", "description", "impact", "response", "source"],
+  M6: ["model", "config", "unit_price", "price_scope", "valid_until", "source"],
+};
+
+/** 这两张表的「来源」按新口径要显示在主表（其余表仍收右栏） */
+const SHOW_SOURCE_CODES = new Set(["M4", "M6"]);
 
 const M_TABS: { code: string; label: string }[] = [
   { code: "M1", label: "M1 产品清单" },
   { code: "M2", label: "M2 规格书" },
   { code: "M3", label: "M3 能力清单" },
-  { code: "M4", label: "M4 边界声明" },
-  { code: "M5", label: "M5 已知限制" },
+  { code: "M4", label: "M4 边界与限制" },
+  { code: "M6", label: "M6 硬件报价" },
 ];
 
 const O_CODES = ["O1", "O2", "O3", "O4", "O5", "O6"];
@@ -89,12 +106,12 @@ const FIELD_LABELS: Record<string, Record<string, string>> = {
     inapplicable_scene: "不适用场景",
   },
   M4: {
-    description: "不做的事",
-    reason: "原因",
-    has_plan: "有无计划",
+    type: "类型",
+    target: "对象（产品/能力）",
+    description: "说明",
+    impact: "影响程度",
     response: "客户要求时怎么办",
-    owner: "负责人",
-    plan_date: "计划日期",
+    source: "来源",
   },
   M5: {
     product_name: "产品名称",
@@ -105,13 +122,12 @@ const FIELD_LABELS: Record<string, Record<string, string>> = {
     owner: "负责人",
   },
   M6: {
-    category: "类别",
-    item: "项目",
-    rate: "单价",
-    unit: "单位",
-    standard_hours: "标准工时",
-    data_source: "数据来源",
-    note: "说明",
+    model: "所属产品",
+    config: "配置/构成",
+    unit_price: "含税单价（元）",
+    price_scope: "价格口径",
+    valid_until: "报价有效期",
+    source: "来源",
   },
   O1: { cert_name: "认证名称", cert_body: "认证机构", cert_date: "认证日期", scope: "认证范围" },
   O2: { project_name: "项目名称", client: "客户", year: "年份", scale: "规模", summary: "摘要" },
@@ -217,7 +233,7 @@ const TablePanel: React.FC<TablePanelProps> = ({
    *
    * 规则：**整列一个值都没有、且不是必填列** → 默认不显示；「显示空列」可一键展开。
    * 为什么加"不是必填列"这个条件：必填列空着是"还没填"，藏起来等于把待办藏了；
-   * 选填列整列全空纯粹是占位噪声（如 M6 骨架的 note、M1 全表的发布日期）。
+   * 选填列整列全空纯粹是占位噪声（如 M1 全表的发布日期、M3 的旧依赖列）。
    * 判定来源是契约注册表（tables.ts）的 required 标记，不是这里拍的。
    */
   const requiredKeys = useMemo(() => {
@@ -232,15 +248,20 @@ const TablePanel: React.FC<TablePanelProps> = ({
   /** 整列全空、且不是必填列的选填列（默认收起；判定不碰状态） */
   const hiddenEmptyKeys = useMemo(() => {
     const detailOnly = new Set(DETAIL_ONLY_KEYS[code] ?? []);
+    const fixed = new Set(FIXED_COLUMNS[code] ?? []);
     const keys = new Set<string>();
     for (const r of rows) {
       for (const k of Object.keys(r)) {
-        if (k === "__id" || TRACE_SET.has(k) || detailOnly.has(k)) continue;
+        if (k === "__id" || (TRACE_SET.has(k) && !SHOW_SOURCE_CODES.has(code)) || detailOnly.has(k)) continue;
         keys.add(k);
       }
     }
+    // 固定列集不参与"整列空就收起"：M4/M6 的列由表定义定死
     return [...keys].filter(
-      (k) => !requiredKeys.has(k) && rows.every((r) => cellText(r[k]).trim() === ""),
+      (k) =>
+        !fixed.has(k) &&
+        !requiredKeys.has(k) &&
+        rows.every((r) => cellText(r[k]).trim() === ""),
     );
   }, [rows, code, requiredKeys]);
 
@@ -249,16 +270,19 @@ const TablePanel: React.FC<TablePanelProps> = ({
     const seen = new Set<string>();
     for (const r of rows) {
       for (const k of Object.keys(r)) {
-        if (k === "__id" || TRACE_SET.has(k) || detailOnly.has(k)) continue;
+        if (k === "__id" || (TRACE_SET.has(k) && !SHOW_SOURCE_CODES.has(code)) || detailOnly.has(k)) continue;
         seen.add(k);
       }
     }
-    const cols: ColumnDef<Record<string, unknown>>[] = [...seen]
-      .filter((k) => showEmptyCols || !hiddenEmptyKeys.includes(k))
+    const fixed = FIXED_COLUMNS[code];
+    const ordered = fixed ? fixed.filter((k) => seen.has(k)) : [...seen];
+    const cols: ColumnDef<Record<string, unknown>>[] = ordered
+      .filter((k) => fixed || showEmptyCols || !hiddenEmptyKeys.includes(k))
       .map((key) => ({
         key,
         label: fieldLabel(code, key),
-        editable: true,
+        // 类型是记录归属（不做/限制），由底层表决定，不允许在格子里改
+        editable: key !== "type",
       }));
     // 溯源不占列：点行即报右栏，来源类型/权威性/证据等级/来源标注在右栏可看可改
     // （用户定调 2026-10-04：主表要简；「中栏说结果，来源归右栏」同一条口径）
@@ -283,6 +307,16 @@ const TablePanel: React.FC<TablePanelProps> = ({
     async (rowIndex: number, key: string, value: string) => {
       const row = rows[rowIndex];
       if (!row) return;
+      if (code === "M4") {
+        const kind = String(row.type ?? "");
+        const inapplicable =
+          (kind === "不做" && (key === "target" || key === "impact")) ||
+          (kind === "限制" && key === "response");
+        if (key === "type" || inapplicable) {
+          showToast("该字段不适用于这类记录（底层「不做」与「限制」字段不同）");
+          return;
+        }
+      }
       const rowId = String(row.__id);
       try {
         if (optional) {
@@ -322,7 +356,11 @@ const TablePanel: React.FC<TablePanelProps> = ({
       title: optional ? "新增行字段（选填字段组，整体存入 payload）" : "新增行字段",
       message: optional
         ? 'JSON 格式，例：{"cert_name":"CE","scope":"欧盟"}'
-        : 'JSON 格式，例：{"name":"型号A"}',
+        : code === "M4"
+          ? 'JSON 格式，例：{"type":"限制","target":"CT21B","description":"无 5G","impact":"中","source":"报价单.pdf:1"}'
+          : code === "M6"
+            ? 'JSON 格式，例：{"model":"CT21B","config":"8G+128G","unit_price":"12000–15000","price_scope":"含安装","valid_until":"2026-12-31","source":"报价单.pdf:1"}'
+            : 'JSON 格式，例：{"name":"型号A"}',
       multiline: true,
       okText: "新增",
     });
@@ -501,7 +539,7 @@ const LEGACY_TEMP_NAME_RE = /^ingest-\d+-\d+\.[A-Za-z0-9]+$/;
  * 清一份材料。这里按来源文件聚合（服务端算，口径与 ingest 的 `文件名:页码` 同源），
  * 一次把一份材料在整个库里落的所有行删掉。
  *
- * 刻意**不用表格**：主表（M1-M5/O）的列语义是逐格编辑，而这里是"一条文件一行"的清单，
+ * 刻意**不用表格**：主表（M1–M4 + M6/O）的列语义是逐格编辑，而这里是"一条文件一行"的清单，
  * 用条目更像列表也更省横向空间（同 #149「右栏不用表格」的口径）。
  */
 /** 上传状态区（进度 / 跳过清单）的容器 id：头部固定高，状态不能待在头部（变更表 #157） */
@@ -682,7 +720,7 @@ const QualityRealPanel: React.FC<{ summary: ApiQualitySummary }> = ({ summary })
 
 /* ═══ 视图主体 ═══ */
 
-type TabKey = "quality" | "materials" | "M1" | "M2" | "M3" | "M4" | "M5" | "O" | "reminder";
+type TabKey = "quality" | "materials" | "M1" | "M2" | "M3" | "M4" | "M6" | "O" | "reminder";
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: "quality", label: "质量总评" },

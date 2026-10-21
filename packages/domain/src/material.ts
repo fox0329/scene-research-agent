@@ -274,7 +274,7 @@ const DIMENSIONS: DimensionDef[] = [
     name: "含边界",
     evaluate: (_products, _specParams, boundaries) => {
       if (boundaries.length === 0) {
-        return { status: "fail", description: "M4 边界声明为空，缺少'不做什么'信息" };
+        return { status: "fail", description: "M4 边界与限制里没有「不做」类记录，缺少边界信息" };
       }
       const withDesc = boundaries.filter((b) => !!b.description).length;
       if (withDesc === boundaries.length) {
@@ -290,7 +290,7 @@ const DIMENSIONS: DimensionDef[] = [
     name: "含反面",
     evaluate: (_products, _specParams, _boundaries, limitations) => {
       if (limitations.length === 0) {
-        return { status: "fail", description: "M5 已知限制为空，缺少反面信息" };
+        return { status: "fail", description: "M4 边界与限制里没有「限制」类记录，缺少反面信息" };
       }
       const withDesc = limitations.filter((l) => !!l.description).length;
       if (withDesc === limitations.length) {
@@ -315,7 +315,7 @@ const DIMENSIONS: DimensionDef[] = [
  * @param products - 产品型号列表（M1）
  * @param specParams - 规格参数列表（M2）
  * @param boundaries - 边界声明列表（M4）
- * @param limitations - 已知限制列表（M5）
+ * @param limitations - 已知限制列表（M4 合并读取，底层仍为 M5）
  * @returns 六维评估结果
  */
 export function assessQuality(
@@ -353,10 +353,10 @@ interface CheckableRecord {
 }
 
 /**
- * 从 M1-M5 记录里挑出可抽查的（有出处、有可代表内容的）
+ * 从 M1–M4 + M6 记录里挑出可抽查的（有出处、有可代表内容的）
  *
  * 顺序即抽查优先级：**先抽 M1/M3**（产品与能力是后续所有结论的地基），
- * 再抽 M2/M4/M5。同一出处只抽一次——同页抽两条等于只抽了一条。
+ * 再抽 M2/M4/M5/M6。同一出处只抽一次——同页抽两条等于只抽了一条。
  */
 function collectCheckable(
   products: Product[],
@@ -387,7 +387,7 @@ function collectCheckable(
     push(b.source, `M4 ${(b.description ?? "").slice(0, 20)}`, b.description);
   }
   for (const l of limitations) {
-    push(l.source, `M5 ${(l.description ?? "").slice(0, 20)}`, l.description);
+    push(l.source, `M4限制 ${(l.description ?? "").slice(0, 20)}`, l.description);
   }
 
   // 同一出处只留第一条（同页抽两条没有信息增益）
@@ -412,7 +412,7 @@ function collectCheckable(
  * 领域层不碰数据库：检索能力由 `lookup` 注入（见 `SourceLookup`）。
  *
  * @param lookup - 材料库反查端口
- * @param records - M1-M5 记录
+ * @param records - M1–M4 + M6 记录
  * @param minCount - 至少要抽查多少条（默认 G-R3 的 3 条）
  */
 export function spotCheckSources(
@@ -481,14 +481,14 @@ export function spotCheckSources(
 /**
  * 完成度检查（00b §2.4，7 项，不阻断）
  *
- * 检查 M1-M5 必填表是否有数据 + 来源抽查 + 质量六维评估。
+ * 检查 M1–M4 + M6 必填表是否有数据 + 来源抽查 + 质量六维评估。
  * 不做通过/退回判定，仅记录当前状态和缺失风险。
  *
  * @param products - 产品型号列表（M1）
  * @param specParams - 规格参数列表（M2）
  * @param capabilities - 能力清单列表（M3）
  * @param boundaries - 边界声明列表（M4）
- * @param limitations - 已知限制列表（M5）
+ * @param limitations - 已知限制列表（M4 合并读取，底层仍为 M5）
  * @returns 完成度报告（8 项检查 + 缺失提醒列表）
  */
 /**
@@ -598,18 +598,18 @@ export function checkCompleteness(
       risk: "阶段三匹配矩阵缺少行",
     },
     {
-      name: "M4 边界声明已填写",
+      name: "M4 边界与限制（不做）已填写",
       hasData: boundaries.length > 0,
       count: boundaries.length,
       unit: "条",
-      risk: "阶段〇门槛扫描缺少判据，阶段四边界声明只能靠推断",
+      risk: "阶段一门槛扫描缺少判据，阶段四边界声明只能靠推断",
     },
     {
-      name: "M5 已知限制已填写",
+      name: "M4 边界与限制（限制）已填写",
       hasData: limitations.length > 0,
       count: limitations.length,
       unit: "条",
-      risk: "阶段五验收约束不完整",
+      risk: "阶段四实施风险与验收约束不完整",
     },
   ];
 
@@ -669,7 +669,7 @@ export function checkCompleteness(
   }
   if (!hasAssessment) {
     reminders.push({
-      table: "M1-M5",
+      table: "M1–M4 + M6",
       missing: "质量六维未评估",
       impact: "材料质量未评估",
       suggestion: "补充材料或在对应表格手动编辑后重新评估",

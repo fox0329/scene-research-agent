@@ -23,9 +23,9 @@
 | source_authority | TEXT 枚举 | `T1 / T2 / T3 / T4`，可空（用户补充默认 A 级证据对应可不填） |
 | evidence_level | TEXT 枚举 | `A / B / C / D`，可空；D 级不得入库 |
 
-## 二、数据表（15 张）
+## 二、数据表（16 张）
 
-### 第一层 · 产品资料库（全局，8 表）
+### 第一层 · 产品资料库（全局，9 表）
 
 **product_line**：`id, name(唯一), created_at, updated_at`
 
@@ -39,8 +39,10 @@
 
 **limitation**（M5）：`id, product_line_id, product_name, description, impact(高/中/低), fix_status(已修复/修复中/无计划/硬件限制), external_visible(可提/内部可提/不可提), owner, + 通用列`
 
-> 说明：`cost_rate`（M6 内部费率）表已随 M6 删除（变更表 #106），物理表保留但不再有代码读写。
-> **标准骨架**：新建产品线（含场景专属资料库）即播种 14 行标准费率（9 项实施工序 + 商务 5 项），`rate`/`standard_hours` 为 0、`data_source` 标「待确认」——契约 completeness 已规定「『待确认』行不得用于报价」，骨架不会被当成真实单价消费。用户只填数字，不用自己建表。
+**price_quote**（M6 硬件报价，含溯源）：`id, product_id→product, model, config, unit_price(含税，区间或「面议」), price_scope(纯设备/含安装/含三年维保/年费), valid_until?(日期或「长期」), source(必填), + 通用列`　索引：`(product_id, model)`
+
+> 说明：`cost_rate`（旧 M6 内部费率）已下线，物理表保留但不再有代码读写；M6 现为**硬件报价**，使用新表 `price_quote`（v2.11）。
+> **报价口径**：一行一个报价口径；`model` 必须能命中 M1，`source` 必填；报价只作为成本测算与赢面判断的锚点，不允许模型自编价格。
 
 **optional_material**（O1-O6）：`id, product_line_id, category(O1认证/O2案例/O3价格/O4SDK/O5路线图/O6生态), payload(JSON 按类异构), + 通用列`　索引：`(product_line_id, category)`
 
@@ -68,7 +70,7 @@
 | GET | `/library/product-lines` | 产品线列表（含表计数） |
 | POST | `/library/product-lines` | 建产品线 |
 | POST | `/library/ingest` | 上传材料（multipart，单文件上限见 §四「上传上限」）→ **流式落盘**后解析入表（变更表 #156：不再整份读进内存）；返回 ingest_job_id，进度走 SSE `/library/ingest/{id}/events`。超限回中文 413（`{ statusCode: 413, code: "FILE_TOO_LARGE", message }`），任何失败路径都不留临时文件 |
-| GET | `/library/tables/{code}` | 读表（M1-M5/O*，code 如 `M1`、`O2`）；支持 `?product_line_id=` |
+| GET | `/library/tables/{code}` | 读表（M1–M4 + M6 / O*，code 如 `M1`、`M6`、`O2`）；支持 `?product_line_id=` |
 | PATCH | `/library/rows/{code}/{rowId}` | 单元格编辑（body: `{ cell, value }`）；source_type 自动转 `用户确认`；**服务端内联触发失效计算**（markStale 依赖反查，技术方案 F3），无需单独调用 |
 | POST | `/library/rows/{code}` / DELETE `/{rowId}` | 增行 / 删行（标 `用户补充`；删行同时清 `source_fts` 索引）。**入口校验**：M1 必填 `model`、M2 必填 `product_id/param_name/value`、M3 `name`、M4/M5 `description`，缺了返回 400 并指明缺哪列；其余 NOT NULL 列按表给缺省值（M1 `status=待确认`、M2 `measured=未提及`、M3 `maturity=在研`、M4 `has_plan=未定`）。M2 无 `product_line_id` 列，按 `product_id` 归属 |
 | GET | `/library/materials?product_line_id=` | **本库导入过的资料文件**（变更表 #156）：按行来源（G-R0 `文件名:页码` 取**最后一个** `:` 前的文件名）聚合为 `{ file, rows, tables, deletable }[]`，行数降序、同数按文件名升序；空库 `[]`；无来源标注的行归「（无来源标注）」且 `deletable: false`（保证清单行数之和 = 本库总行数） |

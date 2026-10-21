@@ -16,6 +16,7 @@ import type {
   Capability,
   Boundary,
   Limitation,
+  PriceQuote,
   OptionalMaterial,
 } from "@scene/contract";
 import type { ParseResult } from "@scene/infra";
@@ -68,14 +69,14 @@ export interface IngestOpts {
 /** ingest 返回结果 */
 export interface IngestResult {
   rowsInserted: number;
-  /** 每张表插入行数（M1-M5 / O1-O6），入库反馈用 */
+  /** 每张表插入行数（M1–M6 / O1–O6），入库反馈用 */
   tableCounts: Record<string, number>;
   /** 并入已有型号的 M1 行数（没新建产品行——旧实现每批材料都会造重复行） */
   mergedProducts: number;
   qualityAssessment: QualityAssessment;
   completenessReport: CompletenessReport;
   /**
-   * M1–M5 / 可选材料 的输出门限体检结果。
+   * M1–M6 / 可选材料 的输出门限体检结果。
    * 这几张表走入库路径，阶段推进时才跑的门限管不到它们（专家审阅 2026-10-20 指出的通路缺口）。
    */
   gateFindings: { tableCode: string; label: string; gate: string; detail: string }[];
@@ -85,7 +86,7 @@ export interface IngestResult {
 
 /** DSH 返回的单条归类记录 */
 interface ClassifiedRow {
-  /** 目标表编号：M1-M5 / O1-O6 */
+  /** 目标表编号：M1-M6 / O1-O6 */
   table_code: string;
   /** 该行字段值 */
   fields: Record<string, unknown>;
@@ -111,7 +112,7 @@ const OUTPUT_CONTRACT: Record<string, unknown> = {
         properties: {
           table_code: {
             type: "string",
-            enum: ["M1", "M2", "M3", "M4", "M5", "O1", "O2", "O3", "O4", "O5", "O6"],
+            enum: ["M1", "M2", "M3", "M4", "M5", "M6", "O1", "O2", "O3", "O4", "O5", "O6"],
             description: "目标表编号",
           },
           fields: {
@@ -134,8 +135,8 @@ const OUTPUT_CONTRACT: Record<string, unknown> = {
 const SYSTEM_PROMPT = `你是产品资料解析专家。你的任务是将输入的产品文档内容按表格分类归入以下 12 张表：
 
 ## M1 产品型号
-字段：model(型号), name(产品名称), status(在售/停售/在研/规划/待确认), launch_date(发布日期), former_name(曾用名), position_desc(定位描述)
-必填：model, name, status, launch_date, position_desc
+字段：model(型号), name(产品名称), status(在售/停售/在研/规划/待确认)
+必填：model, name, status
 
 ## M2 规格参数
 字段：param_class(参数类别), param_name(参数名称), value(参数值), measured(实测/宣称/未提及)
@@ -143,8 +144,8 @@ const SYSTEM_PROMPT = `你是产品资料解析专家。你的任务是将输入
 注意：每条 spec_param 需关联到 M1 中的某个产品，用 fields.product_model 指定关联的 model 字段值
 
 ## M3 能力清单
-字段：domain(领域), name(能力名称), description(描述), maturity(已交付/组件具备/在研/规划), dependency(依赖项), inapplicable_scene(不适用场景)
-必填：domain, name, description, maturity, dependency
+字段：domain(领域), name(能力名称), description(描述，依赖条件也写在这里), maturity(已交付/组件具备/在研/规划), inapplicable_scene(不适用场景)
+必填：domain, name, description, maturity
 
 ## M4 边界声明（不做什么）
 字段：description(不做的事), reason(原因), has_plan(有/无/未定), response(客户要求时怎么办), owner(负责人)
@@ -153,6 +154,11 @@ const SYSTEM_PROMPT = `你是产品资料解析专家。你的任务是将输入
 ## M5 已知限制
 字段：product_name(产品名称), description(限制描述), impact(高/中/低), fix_status(已修复/修复中/无计划/硬件限制), external_visible(可提/内部可提/不可提), owner(负责人)
 必填：product_name, description, impact, fix_status, external_visible, owner
+
+## M6 硬件报价
+字段：model(所属产品型号，必须能在 M1 找到), config(配置/构成), unit_price(含税单价，元，可写区间如 12000–15000 或「面议」), price_scope(纯设备/含安装/含三年维保/年费), valid_until(报价有效期，日期或「长期」)
+必填：model, config, unit_price, price_scope, source
+注意：一行只写一个报价口径；没有报价单/销售确认/历史项目出处就不要写，禁止编价格。
 
 ## O1-O6 可选材料（fields 的键名必须逐字用下面这些，否则入不了表）
 - O1认证：model(型号), cert_type(证书类型), cert_no(证书号), valid_until(有效期至), issuer(发证机构), covered_models(覆盖型号)
@@ -242,7 +248,7 @@ async function executeIngest(
 }
 
 /**
- * 入库后跑 M1–M5 / 可选材料的输出门限。
+ * 入库后跑 M1–M6 / 可选材料的输出门限。
  *
  * 为什么不复用 stage_data：产品侧数据在 product / spec_param 等表，不是场景表；
  * 门限要的是「同一口径的行集合」，这里按表适配成 GateRow。
@@ -281,6 +287,19 @@ function runIngestGates(
     "SELECT id, product_name, description FROM limitation WHERE product_line_id = ?",
   )) {
     rows.push({ id: r.id, tableCode: "M5", row: r });
+  }
+  for (const r of q<{
+    id: string;
+    model: string;
+    config: string;
+    unit_price: string;
+    price_scope: string;
+    source: string;
+  }>(
+    `SELECT q.id, q.model, q.config, q.unit_price, q.price_scope, q.source
+       FROM price_quote q JOIN product p ON p.id = q.product_id WHERE p.product_line_id = ?`,
+  )) {
+    rows.push({ id: r.id, tableCode: "M6", row: r });
   }
   for (const r of q<{ id: string; category: string; payload: string }>(
     "SELECT id, category, payload FROM optional_material WHERE product_line_id = ?",
@@ -339,7 +358,7 @@ function buildUserPrompt(fileName: string, parseResult: ParseResult): string {
   }
 
   parts.push("");
-  parts.push("请将上述内容按 M1-M5、O1-O6 表格分类，输出 JSON。每条记录的 source 字段必须包含「文件名:页码」。");
+  parts.push("请将上述内容按 M1-M6、O1-O6 表格分类，输出 JSON。每条记录的 source 字段必须包含「文件名:页码」；M6 报价没有出处就不要输出。");
 
   return parts.join("\n");
 }
@@ -431,7 +450,7 @@ function isDshOutput(val: unknown): val is DshOutput {
 /** 校验规则：table_code 和 source 必须合法，缺则丢弃 */
 function validateRows(output: DshOutput, fileName: string): ClassifiedRow[] {
   const validTables = new Set([
-    "M1", "M2", "M3", "M4", "M5",
+    "M1", "M2", "M3", "M4", "M5", "M6",
     "O1", "O2", "O3", "O4", "O5", "O6",
   ]);
   const valid: ClassifiedRow[] = [];
@@ -528,6 +547,11 @@ function writeRows(
         if (ok) count("M5");
         break;
       }
+      case "M6": {
+        const ok = insertPriceQuote(db, row, productLineId, modelToProductId, fileName);
+        if (ok) count("M6");
+        break;
+      }
       default: {
         // O1-O6
         if (row.table_code.startsWith("O")) {
@@ -613,7 +637,8 @@ function insertCapability(
       name: String(f["name"] ?? ""),
       description: String(f["description"] ?? ""),
       maturity: (f["maturity"] as Capability["maturity"]) ?? "规划",
-      dependency: String(f["dependency"] ?? ""),
+      // DB 列保留（不迁移）；依赖条件按新口径并入 description，不再单独读 dependency
+      dependency: "",
       inapplicable_scene: f["inapplicable_scene"]
         ? String(f["inapplicable_scene"])
         : undefined,
@@ -683,6 +708,49 @@ function insertLimitation(
   }
 }
 
+
+function insertPriceQuote(
+  db: DbInstance,
+  row: ClassifiedRow,
+  productLineId: string,
+  modelToProductId: Map<string, string>,
+  fileName: string,
+): boolean {
+  const f = row.fields;
+  const model = String(f["model"] ?? "").trim();
+  const key = normalizeModel(model);
+  let productId = modelToProductId.get(model) ?? modelToProductId.get(key);
+  if (!productId) {
+    const hit = db.productRepo
+      .list({ where: "product_line_id = ?", params: [productLineId] })
+      .find((p) => normalizeModel(p.model) === key);
+    productId = hit?.id;
+  }
+  if (!productId) return false;
+  const scopes: PriceQuote["price_scope"][] = ["纯设备", "含安装", "含三年维保", "年费"];
+  const config = String(f["config"] ?? "").trim();
+  const unitPrice = String(f["unit_price"] ?? "").trim();
+  const scope = String(f["price_scope"] ?? "") as PriceQuote["price_scope"];
+  // 契约必填：配置/含税单价/价格口径缺一项就不入库，避免留下无法用于成本测算的空报价
+  if (!config || !unitPrice || !scopes.includes(scope)) return false;
+  try {
+    db.quoteRepo.insert({
+      product_id: productId,
+      model,
+      config,
+      unit_price: unitPrice,
+      price_scope: scope,
+      valid_until: f["valid_until"] ? String(f["valid_until"]) : undefined,
+      source: row.source,
+      source_type: "AI提取",
+      source_authority: authorityOf(row.source, fileName),
+      evidence_level: "B",
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 function insertOptionalMaterial(
   db: DbInstance,

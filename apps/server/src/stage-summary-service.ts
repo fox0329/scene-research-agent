@@ -26,6 +26,7 @@ import {
   checkStageCompleteness,
   type InfoRow,
   type StageBrief,
+  type StageBriefSource,
   type StageCompleteness,
 } from "@scene/domain";
 import { readAnchorRows, readBrief } from "./scenario-anchor.js";
@@ -155,6 +156,60 @@ export function generateStageSummary(
   return { markdown, completeness, stage: id, scope: step === undefined ? "stage" : "step" };
 }
 
+/** 右栏来源列表上限（与领域层 buildStageBrief 同一口径：右栏窄，超过用户也读不完） */
+const BRIEF_SOURCES_MAX = 20;
+/** 调研来源标签截断长度（与行内来源一致，~24 字） */
+const RESEARCH_LABEL_MAX = 24;
+
+/** 调研标题截成可读标签；标题为空时退回 URL，链接仍然可点开 */
+function researchLabel(title: string, url: string): string {
+  const text = String(title ?? "").trim() || url;
+  return Array.from(text).slice(0, RESEARCH_LABEL_MAX).join("");
+}
+
+/**
+ * 把本步联网调研来源**前置合并**进右栏来源
+ *
+ * 调研先于分析：本步真跑过检索时，这些链接是第一手来源，排在行内来源之前；
+ * 按 URL 去重（行内表也引用了同一链接时只留一条），总数仍 ≤20。
+ *
+ * 只收 `status === '有效'` 的记录——「检索失败」记录是给右栏说明「为什么没有链接」
+ * 用的，不是来源，不能混进可点开的列表。
+ */
+function mergeResearchSources(
+  db: DbInstance,
+  scenarioId: string,
+  step: number | undefined,
+  sources: readonly StageBriefSource[],
+): StageBriefSource[] {
+  if (step === undefined || typeof db.researchRepo?.listByStep !== "function") return [...sources];
+  let rows: Array<{ status: string; url: string; title: string }> = [];
+  try {
+    rows = db.researchRepo.listByStep(scenarioId, step);
+  } catch {
+    // 调研表不存在（极老库）等异常不能拖垮右栏
+    return [...sources];
+  }
+
+  const out: StageBriefSource[] = [];
+  const seen = new Set<string>();
+  for (const row of rows) {
+    const url = String(row.url ?? "").trim();
+    if (row.status !== "有效" || url === "" || seen.has(url)) continue;
+    seen.add(url);
+    out.push({ label: researchLabel(row.title, url), url });
+    if (out.length >= BRIEF_SOURCES_MAX) return out;
+  }
+  for (const source of sources) {
+    const key = source.url !== "" ? source.url : `file:${source.file ?? source.label}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(source);
+    if (out.length >= BRIEF_SOURCES_MAX) break;
+  }
+  return out;
+}
+
 /**
  * 右栏要点视图（来源地址 + 结论提醒）
  *
@@ -180,7 +235,12 @@ export function getStageBrief(
     ...(step === undefined ? {} : { step }),
     scope: step === undefined ? "stage" : "step",
   });
-  return { brief, completeness, stage: id, scope: step === undefined ? "stage" : "step" };
+  // 调研来源排最前（先调研、后分析；行内来源是分析结论自带的引用）
+  const merged: StageBrief = {
+    ...brief,
+    sources: mergeResearchSources(db, scenario.id, step, brief.sources),
+  };
+  return { brief: merged, completeness, stage: id, scope: step === undefined ? "stage" : "step" };
 }
 
 /** 读已落库的总结；没有则即时生成（保证右栏永远有内容） */

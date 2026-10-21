@@ -30,6 +30,8 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { extractFirstJson, extractRowsBestEffort, repairTruncatedJson } from "./json-extract.js";
 import { join } from "node:path";
 import {
+  flowStepOfTable,
+  flowStepsOfStage,
   isModelStage,
   middleColumns,
   stageDef,
@@ -56,6 +58,7 @@ import { runScenarioClarify, clarifyAbortEvent } from "./scenario-clarify.js";
 import { generateStageSummary } from "./stage-summary-service.js";
 import { makeSourceLookup, runPostcheck } from "./postcheck-pass.js";
 import { readAnchorRows, writeAnchorRows } from "./scenario-anchor.js";
+import { runStepResearch } from "./step-research.js";
 
 // ─── 依赖注入接口 ──────────────────────────────────────────
 
@@ -232,6 +235,21 @@ function postcheckHeartbeatMs(): number {
 function labelOf(code: string): string {
   const t = tableDef(code);
   return t ? `${code} ${t.name}` : code;
+}
+
+/**
+ * 本次分析属于哪个流程步（调研结果按步落库，右栏按步读）
+ *
+ * 优先按表反查：一次分析只跑一步的表集，表号到步的映射是确定的；
+ * 调用方没传表集时（整阶段重算）退回该阶段的第一步。
+ */
+function researchStepOf(stage: InfoStageId, tables?: readonly string[]): number | undefined {
+  for (const code of tables ?? []) {
+    const step = flowStepOfTable(code);
+    if (step) return step.id;
+  }
+  const steps = flowStepsOfStage(stage);
+  return steps.length > 0 ? steps[0]!.id : undefined;
 }
 
 /** 单张表的生成结果 */
@@ -530,6 +548,30 @@ async function* executeAdvanceStage(
   if (clarify.needClarification) {
     yield emit(clarifyAbortEvent(clarify.questions.length, stage));
     return;
+  }
+
+  // 调研先行（2026-10-21）：本步分析**开始**时先发起一次真实联网调研。
+  //
+  // 用户质问「调研信息来源为什么一个链接都没有」——根因不是展示层，而是分析来源
+  // 一直只写「行业通例（模型知识）」，产品从来没真正联网查过。这一步补的正是
+  // "先查、再分析"的第一环：链接落 research_source，右栏「调研信息来源」直接列出。
+  //
+  // fire-and-forget：调研与模型分析**并行**推进，检索慢/失败绝不能拖住分析；
+  // 没有 `researchRepo` 的库（测试替身/极老版本）跳过：没有落点就不做无谓的联网。
+  const researchStep = researchStepOf(effectiveStage, opts.tables);
+  if (researchStep !== undefined && typeof db.researchRepo?.upsert === "function") {
+    void runStepResearch(db, scenario, researchStep)
+      .then((r) => {
+        const tail = r.errors.length > 0 ? `，errors=${r.errors.join("；")}` : "";
+        console.info(
+          `[step-research] 场景 ${scenario.id} 第 ${researchStep} 步：saved=${r.saved}，queries=${r.queries}，engine=${r.engine}${tail}`,
+        );
+      })
+      .catch((err: unknown) => {
+        console.warn(
+          `[step-research] 第 ${researchStep} 步调研失败：${err instanceof Error ? err.message : String(err)}`,
+        );
+      });
   }
 
   // 2. 取上游数据（按阶段依赖）
@@ -1068,13 +1110,16 @@ export function collectUpstreamData(
   const specByLines = `product_id IN (SELECT id FROM product WHERE product_line_id IN ${inLines})`;
 
   /**
-   * 公司材料（M1–M5 + 可选材料）**只从阶段 3（能力匹配）起注入**
+   * 公司材料（M1–M4 + M6）**只从阶段 3（能力匹配）起注入**
    *
    * 用户定调（2026-10-02）：场景定义 / 认识场景 / 商业梳理这三步是**从不同角度理解场景本身**，
    * 不需要公司产品能力；到能力匹配才把公司能力放进去评估。原先每个阶段都注入 M1–M5，
    * 模型是"看着我们自己的产品在写场景"，于是自然写出「我方切入点」「我方优势」「我方角色」——
    * 表里的公司侧列（表1-2 可参与程度、表3-2 我方切入点…）就是这么长出来的。
    * 现在阶段 0–2 只给场景侧上下文（场景锚 + 前几步的场景产出），公司材料在阶段 3 才进场。
+   *
+   * 资料库口径（v2.11）：M4 在读取层合并「边界 + 限制」（底层仍是 boundary/limitation 两张表），
+   * M6 硬件报价随公司材料一起进场，供成本测算与赢面判断；M5 不再作为独立上下文块。
    */
   if (stage >= 3) {
     const products = db.productRepo.list({
@@ -1082,23 +1127,85 @@ export function collectUpstreamData(
       params: lineIds,
     }) as Product[];
 
-    data["M1_产品型号"] = dedupeBy(annotate(ownFirst(products)), "model");
+    // M1 只给四列（型号/名称/状态/来源）；DB 里的上市日期、定位、曾用名不再进提示词
+    data["M1_产品型号"] = dedupeBy(annotate(ownFirst(products)), "model").map((p) => ({
+      model: p.model,
+      name: p.name,
+      status: p.status,
+      source: p.source,
+      data_scope: p.data_scope,
+    }));
     data["M2_规格参数"] = annotate(db.specParamRepo.list({
       where: specByLines,
       params: lineIds,
-    }) as SpecParam[]);
+    }) as SpecParam[]).map((p) => ({
+      product_model: products.find((x) => x.id === p.product_id)?.model ?? "",
+      param_class: p.param_class,
+      param_name: p.param_name,
+      value: p.value,
+      measured: p.measured,
+      data_scope: p.data_scope,
+    }));
+    // M3 依赖条件已并入 description，不再单独给 dependency
     data["M3_能力清单"] = annotate(db.capabilityRepo.list({
       where: `product_line_id IN ${inLines}`,
       params: lineIds,
-    }) as Capability[]);
-    data["M4_边界声明"] = annotate(db.boundaryRepo.list({
+    }) as Capability[]).map((c) => ({
+      domain: c.domain,
+      name: c.name,
+      maturity: c.maturity,
+      description: c.description,
+      inapplicable_scene: c.inapplicable_scene,
+      source: c.source,
+      data_scope: c.data_scope,
+    }));
+
+    // M4 = 边界（不做）+ 已知限制，读取层合并；底层两张表保留、数据不迁移
+    const boundaries = annotate(db.boundaryRepo.list({
       where: `product_line_id IN ${inLines}`,
       params: lineIds,
     }) as Boundary[]);
-    data["M5_已知限制"] = annotate(db.limitationRepo.list({
+    const limitations = annotate(db.limitationRepo.list({
       where: `product_line_id IN ${inLines}`,
       params: lineIds,
     }) as Limitation[]);
+    data["M4_边界与限制"] = [
+      ...boundaries.map((b) => ({
+        类型: "不做",
+        对象: "公司/业务",
+        说明: b.description,
+        影响程度: "—",
+        客户要求时怎么办: b.response,
+        来源: b.source,
+        data_scope: b.data_scope,
+      })),
+      ...limitations.map((l) => ({
+        类型: "限制",
+        对象: l.product_name,
+        说明: l.description,
+        影响程度: l.impact,
+        客户要求时怎么办: "—",
+        来源: l.source,
+        data_scope: l.data_scope,
+      })),
+    ];
+
+    // M6 硬件报价：报价只作为成本测算与赢面判断的锚点，模型不得自编价格
+    const quoteRows = db.quoteRepo.list({
+      where: `product_id IN (SELECT id FROM product WHERE product_line_id IN ${inLines})`,
+      params: lineIds,
+    });
+    const lineOfProduct = new Map(products.map((p) => [p.id, p.product_line_id]));
+    data["M6_硬件报价"] = quoteRows.map((q) => ({
+      model: q.model,
+      config: q.config,
+      unit_price: q.unit_price,
+      price_scope: q.price_scope,
+      valid_until: q.valid_until ?? "",
+      source: q.source,
+      data_scope: scopeOf(lineOfProduct.get(q.product_id) ?? ""),
+    }));
+
     data["O_可选材料"] = annotate(db.optionalMaterialRepo.list({
       where: `product_line_id IN ${inLines}`,
       params: lineIds,
@@ -1115,7 +1222,7 @@ export function collectUpstreamData(
 
   /* 竞品情报（2026-10-20）：材料库里以「竞品情报」开头的材料，作为阶段 3 起的对手出处
    *
-   * 为什么单独一块：模型的上下文只带 M1–M5 与上游表，不带材料原文；对手要具名就必须
+   * 为什么单独一块：模型的上下文只带 M1–M4 + M6 与上游表，不带材料原文；对手要具名就必须
    * 有可回查的出处（用户定调「没调研到写未知可以」）。约定：调研报告命名 **竞品情报-**，
    * 按页注入，引用写 `文件名:页码`。
    */

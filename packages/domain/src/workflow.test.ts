@@ -198,16 +198,20 @@ describe("getAffectedStages", () => {
     expect(getAffectedStages("M1")).toEqual([3, 4]);
   });
 
-  it("M5 已知限制 → 阶段 4（实施风险；验收约束随价值验证阶段删除）", () => {
+  it("M4 边界与限制 → 阶段 1、3、4（合并读取后下游更完整）", () => {
+    expect(getAffectedStages("M4")).toEqual([1, 3, 4]);
+  });
+
+  it("M5 已知限制 → 阶段 4（底层表保留，M4 合并读取）", () => {
     expect(getAffectedStages("M5")).toEqual([4]);
+  });
+
+  it("M6 硬件报价 → 阶段 2、3（成本带与赢面判断）", () => {
+    expect(getAffectedStages("M6")).toEqual([2, 3]);
   });
 
   it("表3-6 替代方案 → 阶段 4", () => {
     expect(getAffectedStages("表3-6")).toEqual([4]);
-  });
-
-  it("M6 内部费率已整张删除 → 反查空数组（不再假报阶段 4）", () => {
-    expect(getAffectedStages("M6")).toEqual([]);
   });
 
   it("未知表名 → 空数组", () => {

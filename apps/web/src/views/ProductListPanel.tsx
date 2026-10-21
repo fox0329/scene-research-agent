@@ -20,7 +20,7 @@ function SourceTag({ source }: { source: ProductItem["source"] }) {
   return <span className={`stag ${cls}`}>{source}</span>;
 }
 
-/* ── M1 产品清单列定义 ── */
+/* ── M1 产品清单列定义（v2.11 只保留 型号/名称/状态/来源） ── */
 const productColumns: ColumnDef<ProductItem>[] = [
   { key: "model",      label: "型号",     editable: true },
   { key: "name",       label: "产品名",   editable: true },
@@ -29,19 +29,16 @@ const productColumns: ColumnDef<ProductItem>[] = [
     label: "状态",
     render: (value) => <StatusBadge status={value as ProductItem["status"]} />,
   },
-  { key: "launchDate", label: "上市时间", editable: true },
-  { key: "positioning", label: "一句话定位", editable: true },
   {
     key: "source",
     label: "来源",
     render: (value) => <SourceTag source={value as ProductItem["source"]} />,
   },
-  { key: "citation",   label: "出处" },
 ];
 
 /**
  * M1 产品清单面板
- * - 可编辑表格：型号/产品名/状态/上市时间/一句话定位/来源标记/出处
+ * - 可编辑表格：型号/产品名/状态/来源标记
  * - 状态列用 Badge（在售=绿、停售=灰、在研=蓝）
  * - 来源标记用颜色标签（AI=蓝、用户=绿、推断=黄）
  * - 添加产品按钮
@@ -63,10 +60,7 @@ export const ProductListPanel: React.FC = () => {
       model: "",
       name: "",
       status: "在研",
-      launchDate: "",
-      positioning: "",
       source: "AI",
-      citation: "",
     };
     setData((prev) => [...prev, newItem]);
   };

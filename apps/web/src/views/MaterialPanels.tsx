@@ -1,6 +1,17 @@
 import React from "react";
 import { SceneTable, type ColumnDef } from "../components/SceneTable";
-import { specs, capabilities, limits, rates, cases, type SpecItem, type CapabilityItem, type LimitItem, type RateItem, type CaseItem } from "../mock/library-data";
+import {
+  specs,
+  capabilities,
+  boundaryRows,
+  quotes,
+  cases,
+  type SpecItem,
+  type CapabilityItem,
+  type BoundaryItem,
+  type QuoteItem,
+  type CaseItem,
+} from "../mock/library-data";
 
 /* ── M2 规格书 ── */
 const specColumns: ColumnDef<SpecItem>[] = [
@@ -39,8 +50,13 @@ export const SpecPanel: React.FC = () => (
 
 /* ── M3 能力清单 ── */
 const capColumns: ColumnDef<CapabilityItem>[] = [
+  { key: "domain",      label: "领域",       editable: true },
   { key: "name",        label: "能力项",     editable: true },
-  { key: "description", label: "一句话描述", editable: true },
+  {
+    key: "description",
+    label: "一句话描述（含依赖条件）",
+    editable: true,
+  },
   {
     key: "maturity",
     label: "成熟度",
@@ -50,7 +66,7 @@ const capColumns: ColumnDef<CapabilityItem>[] = [
       return <span className={`badge ${cls}`}>{m}</span>;
     },
   },
-  { key: "dependency", label: "依赖条件", editable: true },
+  { key: "inapplicable_scene", label: "不适用场景", editable: true },
   {
     key: "source",
     label: "来源",
@@ -67,7 +83,7 @@ export const CapabilityPanel: React.FC = () => (
     <div className="pnl-h">
       <div>
         <h2>M3 能力清单</h2>
-        <p>产品线能做什么、做到什么程度</p>
+        <p>产品线能做什么、做到什么程度；依赖条件写进描述</p>
       </div>
       <span className="badge primary">18 项 · 已交付 9</span>
     </div>
@@ -77,113 +93,75 @@ export const CapabilityPanel: React.FC = () => (
   </div>
 );
 
-/* ── M4 边界声明（空态） ── */
-export const BoundaryPanel: React.FC = () => (
-  <div className="pnl">
-    <div className="pnl-h">
-      <div>
-        <h2>M4 能力边界声明</h2>
-        <p>说清楚不做什么，避免承诺超出能力</p>
-      </div>
-      <button className="btn">添加边界</button>
-    </div>
-    <div className="pnl-b">
-      <div className="empty-state">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          <circle cx="12" cy="12" r="10" />
-          <line x1="12" y1="8" x2="12" y2="12" />
-          <line x1="12" y1="16" x2="12.01" y2="16" />
-        </svg>
-        <div className="empty-state-title">边界声明为空</div>
-        <div className="empty-state-desc">
-          材料中未找到"不做什么"的声明，可由 AI 基于材料推断（标注"待确认"）
-        </div>
-        <button className="btn primary">AI 推断边界</button>
-      </div>
-    </div>
-  </div>
-);
-
-/* ── M5 已知限制 ── */
-const limitColumns: ColumnDef<LimitItem>[] = [
-  { key: "product",    label: "产品/能力", editable: true },
-  { key: "limit",      label: "已知限制",  editable: true },
+/* ── M4 边界与限制（合并展示：类型 = 不做 / 限制） ── */
+const boundaryColumns: ColumnDef<BoundaryItem>[] = [
   {
-    key: "severity",
+    key: "type",
+    label: "类型",
+    render: (value) => {
+      const t = value as BoundaryItem["type"];
+      return <span className={`badge ${t === "不做" ? "warning" : "primary"}`}>{t}</span>;
+    },
+  },
+  { key: "target",      label: "对象（产品/能力）", editable: true },
+  { key: "description", label: "说明",             editable: true },
+  {
+    key: "impact",
     label: "影响程度",
     render: (value) => {
-      const s = value as LimitItem["severity"];
+      const s = value as BoundaryItem["impact"];
+      if (s === "—") return "—";
       const cls = s === "高" ? "error" : s === "中" ? "warning" : "success";
       return <span className={`badge ${cls}`}>{s}</span>;
     },
   },
-  { key: "fixStatus",  label: "修复状态",  editable: true },
-  {
-    key: "disclosure",
-    label: "对外可否提及",
-    render: (value) => {
-      const d = value as LimitItem["disclosure"];
-      return (
-        <span className={`badge ${d === "内部可提" ? "primary" : "error"}`}>
-          {d}
-        </span>
-      );
-    },
-  },
-  {
-    key: "source",
-    label: "来源",
-    render: (value) => {
-      const s = value as LimitItem["source"];
-      const cls = s === "AI" ? "ai" : s === "用户" ? "user" : "infer";
-      return <span className={`stag ${cls}`}>{s}</span>;
-    },
-  },
+  { key: "response", label: "客户要求时怎么办", editable: true },
+  { key: "source",   label: "来源" },
 ];
 
-export const LimitPanel: React.FC = () => (
+export const BoundaryPanel: React.FC = () => (
   <div className="pnl">
     <div className="pnl-h">
       <div>
-        <h2>M5 已知限制清单</h2>
-        <p>列出已知缺陷，避免验收时踩坑</p>
+        <h2>M4 边界与限制</h2>
+        <p>一张表看清「不做」与「已知限制」；底层仍按两张表存，读取时合并</p>
       </div>
-      <span className="badge primary">{limits.length} 条</span>
+      <span className="badge primary">{boundaryRows.length} 条</span>
     </div>
     <div className="pnl-b flush">
-      <SceneTable columns={limitColumns} data={limits} />
+      <SceneTable columns={boundaryColumns} data={boundaryRows} />
     </div>
   </div>
 );
 
-/* ── M6 内部费率 ── */
-const rateColumns: ColumnDef<RateItem>[] = [
-  { key: "category",  label: "类别" },
-  { key: "item",      label: "项目",     editable: true },
-  { key: "unitPrice", label: "单价",     editable: true },
-  { key: "refHours",  label: "标准工时参考", editable: true },
+/* ── M6 硬件报价（示例数据） ── */
+const quoteColumns: ColumnDef<QuoteItem>[] = [
+  { key: "model",       label: "所属产品",   editable: true },
+  { key: "config",      label: "配置/构成",  editable: true },
+  { key: "unit_price",  label: "含税单价（元）", editable: true },
   {
-    key: "source",
-    label: "数据来源",
-    render: (value) => {
-      const s = value as string;
-      const cls = s === "历史项目" ? "user" : "infer";
-      return <span className={`stag ${cls}`}>{s}</span>;
-    },
+    key: "price_scope",
+    label: "价格口径",
+    render: (value) => <span className="badge primary">{String(value)}</span>,
   },
+  { key: "valid_until", label: "报价有效期", editable: true },
+  { key: "source",      label: "来源" },
 ];
 
-export const RatePanel: React.FC = () => (
+export const QuotePanel: React.FC = () => (
   <div className="pnl">
     <div className="pnl-h">
       <div>
-        <h2>M6 内部费率基准</h2>
-        <p>公司侧投入单价，场景成本在阶段 5 算</p>
+        <h2>M6 硬件报价</h2>
+        <p>一行一个报价口径；报价用于成本测算与赢面判断，不许自己编价格</p>
       </div>
-      <span className="badge primary">{rates.length} 项</span>
+      <div style={{ display: "flex", gap: "var(--s2)", alignItems: "center" }}>
+        <span className="badge warning">示例数据</span>
+        <span className="badge primary">{quotes.length} 个口径</span>
+      </div>
     </div>
     <div className="pnl-b flush">
-      <SceneTable columns={rateColumns} data={rates} />
+      <SceneTable columns={quoteColumns} data={quotes} />
     </div>
   </div>
 );
