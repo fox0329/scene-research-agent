@@ -131,6 +131,7 @@ export const ProjectList: React.FC<ProjectListProps> = ({
               <button
                 type="button"
                 className={`proj-hd${isActive ? " active" : ""}`}
+                title={project.name}
                 aria-expanded={isExpanded}
                 onClick={() => handleProjectClick(project)}
               >

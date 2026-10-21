@@ -260,7 +260,7 @@ body {
   cursor: pointer;
   border-bottom: 2px solid transparent;
   white-space: nowrap;
-  transition: all var(--d) var(--e);
+  transition: color var(--d) var(--e), background-color var(--d) var(--e), border-color var(--d) var(--e), opacity var(--d) var(--e);
   font-family: inherit;
 }
 
@@ -361,6 +361,8 @@ table {
   width: 100%;
   border-collapse: collapse;
   font-size: var(--txs);
+  /* 数字等宽：价格、数量、日期在多行/多列间对齐，扫读不跳动 */
+  font-variant-numeric: tabular-nums;
 }
 
 /* 测量阶段：整表单行自然宽渲染（量完即切像素列宽，绘制前完成无闪烁） */
@@ -592,7 +594,7 @@ td.ed {
   color: var(--ct);
   cursor: pointer;
   font-family: inherit;
-  transition: all var(--d) var(--e);
+  transition: color var(--d) var(--e), background-color var(--d) var(--e), border-color var(--d) var(--e), opacity var(--d) var(--e);
   /* 用户定调 2026-10-09：按钮文案一律不折行——放不下就让整组按钮换行（.pnl-actions 允许 wrap），
      不要把同一个按钮里的字挤成两行；进行中的标签已收短成「导出中 / 撰写中 / 分析中」，
      详细进度与耗时进 title（悬停可见），信息不丢、宽度不变 */
@@ -628,7 +630,7 @@ td.ed {
   font-family: inherit;
   font-size: var(--txs);
   color: var(--ct2);
-  transition: all var(--d) var(--e);
+  transition: color var(--d) var(--e), background-color var(--d) var(--e), border-color var(--d) var(--e), opacity var(--d) var(--e);
 }
 
 .nav-item:hover {
@@ -838,7 +840,7 @@ td.ed {
   cursor: pointer;
   border-radius: var(--r4);
   opacity: 0;
-  transition: all var(--d) var(--e);
+  transition: color var(--d) var(--e), background-color var(--d) var(--e), border-color var(--d) var(--e), opacity var(--d) var(--e);
 }
 
 .proj-hd-wrap:hover .more-btn,
@@ -1619,7 +1621,7 @@ td.ed {
   border: 1px solid var(--cb);
   border-radius: var(--r4);
   cursor: pointer;
-  transition: all var(--d) var(--e);
+  transition: color var(--d) var(--e), background-color var(--d) var(--e), border-color var(--d) var(--e), opacity var(--d) var(--e);
 }
 
 .model-pick-tag:hover {
@@ -1837,7 +1839,8 @@ td.ed {
 .det-sec-sub { font-size: var(--txs); color: var(--ct3); font-weight: normal; }
 
 .btn-mini {
-  padding: 0 var(--s2); font-size: var(--txs); color: var(--ct2);
+  display: inline-flex; align-items: center; justify-content: center;
+  min-height: 24px; padding: var(--s05) var(--s2); font-size: var(--txs); color: var(--ct2);
   background: transparent; border: 1px solid var(--cb); border-radius: var(--r4); cursor: pointer;
 }
 .btn-mini:hover:not(:disabled) { color: var(--cp); border-color: var(--cp); }
@@ -2192,7 +2195,8 @@ td.ed {
 .flow-node {
   display: inline-flex;
   align-items: center;
-  padding: var(--s05) var(--s15);
+  min-height: 24px;
+  padding: var(--s1) var(--s15);
   font-family: inherit;
   font-size: var(--txs);
   font-weight: var(--fm2);
@@ -2565,4 +2569,11 @@ td.ed {
 .summary-source-file {
   color: var(--ct2);
   word-break: break-all;
+}
+
+
+/* 选中文本：用品牌浅色，不用系统默认蓝——与主色体系一致 */
+::selection {
+  background: var(--cp-s);
+  color: var(--ct);
 }
