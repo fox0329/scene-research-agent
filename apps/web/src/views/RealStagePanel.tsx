@@ -206,6 +206,15 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
     [projectId, rows, onChanged, showToast],
   );
 
+  /* 补跑本步调研：历史步骤（调研功能上线前生成的）没有来源，点一次补出来 */
+  const handleResearch = useCallback(async () => {
+    if (stepId === undefined) return { saved: 0 };
+    const result = await api.runStepResearch(projectId, stepId);
+    await loadSummary(true);
+    reload();
+    return { saved: result.saved };
+  }, [projectId, stepId, loadSummary, reload]);
+
   /* 右栏数据面：阶段总结（全文 + 要点） */
   const snapshot = useMemo<StageSnapshot | null>(() => {
     if (!data) return null;
@@ -214,8 +223,9 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
       summaryLoading,
       brief,
       onRefreshSummary: () => void loadSummary(true),
+      onResearch: handleResearch,
     };
-  }, [data, summary, summaryLoading, brief, projectId, stage, stepId, loadSummary]);
+  }, [data, summary, summaryLoading, brief, handleResearch]);
 
   useEffect(() => {
     onStageSnapshot?.(snapshot);

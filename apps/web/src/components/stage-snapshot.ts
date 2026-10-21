@@ -29,4 +29,11 @@ export interface StageSnapshot {
   brief: StageBriefView | null;
   /** 重新生成阶段总结（全文与要点一起刷新；全文只用于交付物装配） */
   onRefreshSummary: () => void;
+  /**
+   * 补跑本步联网调研（历史步骤没跑过调研时用）
+   *
+   * 为什么放在快照里：右栏是独立组件，它要知道"能不能补、补完怎么刷新"；
+   * 具体请求由面板实现，右栏只负责触发与显示状态。
+   */
+  onResearch?: () => Promise<{ saved: number }>;
 }

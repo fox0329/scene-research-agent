@@ -21,7 +21,7 @@
  * `renderMarkdown` 仍是中栏报告正文的渲染器（`DeliveryPanel` 复用），本文件保留。
  */
 
-import React from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { splitBold } from "./md-inline";
 import { SceneTable } from "./SceneTable";
 import type { StageSnapshot } from "./stage-snapshot";
@@ -161,6 +161,40 @@ export function renderMarkdown(
 }
 
 export const StageRightPanel: React.FC<StageRightPanelProps> = ({ snapshot, live }) => {
+  /**
+   * 本步没有来源时自动补查一次（每挂载一次只自动跑一次，失败/空结果不再自动重试）
+   *
+   * 为什么自动：调研是 2026-10-21 才前置到分析里的，之前生成的步骤（如「理解商业」）
+   * 库里一条 research_source 都没有，用户看到右栏空白会以为功能没做。
+   * 为什么只一次：检索有成本、免注册通道会反爬，反复自动跑只会更糟；重试交给按钮。
+   */
+  const [researching, setResearching] = useState(false);
+  const [researchNote, setResearchNote] = useState<string | null>(null);
+  const autoRan = useRef(false);
+  const onResearch = snapshot?.onResearch;
+  const sourceCount = snapshot?.brief?.sources?.length ?? 0;
+  const summaryLoading = snapshot?.summaryLoading ?? false;
+
+  useEffect(() => {
+    if (!onResearch || autoRan.current) return;
+    if (summaryLoading) return;
+    if (!snapshot?.brief) return;
+    if (sourceCount > 0) return;
+    autoRan.current = true;
+    setResearching(true);
+    setResearchNote(null);
+    onResearch()
+      .then((r) =>
+        setResearchNote(
+          r.saved > 0
+            ? `已补查本步调研，取得 ${r.saved} 条来源`
+            : "已补查，但没有取得可用来源（检索不可用或结果无关）",
+        ),
+      )
+      .catch(() => setResearchNote("补查失败，可点「补跑本步调研」重试"))
+      .finally(() => setResearching(false));
+  }, [onResearch, summaryLoading, snapshot?.brief, sourceCount]);
+
   // 首帧（快照还没冒泡上来）不渲染占位块：闪一下的指引没有价值，联真态给一句极短状态即可
   if (!snapshot) {
     return (
@@ -174,9 +208,25 @@ export const StageRightPanel: React.FC<StageRightPanelProps> = ({ snapshot, live
     );
   }
 
-  const { brief, summaryLoading, onRefreshSummary } = snapshot;
+  const { brief, onRefreshSummary } = snapshot;
   const sources = brief?.sources ?? [];
   const advice = brief?.advice ?? [];
+
+  const handleResearch = () => {
+    if (!onResearch || researching) return;
+    setResearching(true);
+    setResearchNote(null);
+    onResearch()
+      .then((r) =>
+        setResearchNote(
+          r.saved > 0
+            ? `已补查本步调研，取得 ${r.saved} 条来源`
+            : "已补查，但没有取得可用来源（检索不可用或结果无关）",
+        ),
+      )
+      .catch(() => setResearchNote("补查失败，可重试"))
+      .finally(() => setResearching(false));
+  };
 
   return (
     <div className="det-body">
@@ -213,11 +263,27 @@ export const StageRightPanel: React.FC<StageRightPanelProps> = ({ snapshot, live
               </li>
             ))}
           </ul>
-        ) : (
-          <p className="summary-empty">
-            本步没有取得可打开的来源（联网调研未完成或无可信结果），相关结论按「未知」处理
+        ) : researching ? (
+          <p className="summary-empty" role="status">
+            正在补查本步联网调研（检索 + 验真，最多 60 秒）…
           </p>
+        ) : (
+          <div className="summary-empty">
+            <p>
+              本步没有取得可打开的来源（这一步在调研功能上线前生成，或检索不可用），相关结论按「未知」处理。
+            </p>
+            {onResearch ? (
+              <button type="button" className="btn-mini" onClick={handleResearch}>
+                补跑本步调研
+              </button>
+            ) : null}
+          </div>
         )}
+        {researchNote ? (
+          <p className="brief-hint" role="status">
+            {researchNote}
+          </p>
+        ) : null}
 
         {/* ② 结论提醒：领域层确定性规则推导，判不出时只有一句兜底 */}
         <h5 className="summary-sub">结论提醒</h5>

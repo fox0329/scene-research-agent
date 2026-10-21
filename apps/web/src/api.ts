@@ -717,6 +717,17 @@ export const api = {
       `/projects/${encodeURIComponent(id)}/stages/${stage}/summary?${q.toString()}`,
     );
   },
+  /**
+   * 补跑本步联网调研（右栏「没有来源」时的显式动作）
+   *
+   * 历史步骤是在调研功能上线前生成的，库里没有 research_source；点一次就补，
+   * 返回 saved/queries/engine，右栏随后重取 brief 即可看到链接。
+   */
+  runStepResearch: (id: string, step: number) =>
+    req<{ saved: number; queries: number; skipped: number; engine: string }>(
+      `/projects/${encodeURIComponent(id)}/steps/${step}/research`,
+      { method: "POST", body: {} },
+    ),
   /** 阶段总结 Markdown 下载地址（直接给 <a download> 用；传 step 则只导出本步） */
   stageSummaryDownloadUrl: (id: string, stage: number, step?: number) =>
     `${BASE}/projects/${encodeURIComponent(id)}/stages/${stage}/summary?format=md${step ? `&step=${step}` : ""}`,
