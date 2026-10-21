@@ -710,14 +710,38 @@ async function* executeAdvanceStage(
     } else {
       const reason =
         outcome.kind === "timeout"
-          ? `调研超过 ${Math.round(RESEARCH_TIMEOUT_MS / 1000)} 秒未完成，按「调研未完成」处理`
+          ? `调研超过 ${Math.round(RESEARCH_TIMEOUT_MS / 1000)} 秒未完成`
           : `联网调研失败（${outcome.message}）`;
-      researchRows = [];
-      researchContext = { lines: [], strict: true, note: reason };
+      /**
+       * 超时/失败不等于"一条都没有"：检索可能已经落了一部分（只是抓正文还没跑完）。
+       * 这里回读本步已存的来源，有多少用多少；真的一条都没有才注入严格块。
+       * 实测第 3 步超时 60 秒后仍存了 52 条来源，旧实现却整步写成「未知」，白费一次调研。
+       */
+      let partial: ResearchSource[] = [];
+      try {
+        partial = db.researchRepo
+          .listByStep(scenario.id, researchStep)
+          .filter((r) => r.status === "有效");
+      } catch {
+        partial = [];
+      }
+      researchRows = partial;
+      const lines = researchBriefLines(partial);
+      researchContext = {
+        lines,
+        strict: lines.length === 0,
+        note:
+          lines.length === 0
+            ? `${reason}；未取得任何来源`
+            : `${reason}；仅使用已取得的 ${lines.length} 条来源（未跑完的抓取不阻塞分析）`,
+      };
       yield emit({
         type: "progress",
         stage,
-        message: `${reason}；本步「来源」列只能写「未知」，分析继续（不阻断）`,
+        message:
+          lines.length === 0
+            ? `${reason}；未取得任何来源，本步「来源」列只能写「未知」，分析继续（不阻断）`
+            : `${reason}，但已取得 ${lines.length} 条来源，先用这些继续分析（不阻断）`,
       });
     }
   }

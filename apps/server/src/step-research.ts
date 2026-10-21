@@ -688,9 +688,11 @@ export async function runStepResearch(
     let verified = 0;
 
     const ranked = [...candidates].sort((a, b) => preRank(a.url) - preRank(b.url));
-    for (const cand of ranked) {
-      if (fetched >= MAX_FETCH_PAGES) break;
-      if (verified >= TARGET_VERIFIED) break;
+    /* 并发抓取：串行 12 页 × 8 秒最坏 96 秒，实测会把 60 秒预算拖爆（第 3 步就超时，
+       整步被迫写成「未知」）。四路并发后典型 20 秒内完成，且仍受总预算约束。 */
+    const FETCH_CONCURRENCY = 4;
+    for (let i = 0; i < ranked.length; i += FETCH_CONCURRENCY) {
+      if (fetched >= MAX_FETCH_PAGES || verified >= TARGET_VERIFIED) break;
       const remaining = RESEARCH_BUDGET_MS - (Date.now() - startedAt);
       if (remaining <= 0) {
         errors.push(
@@ -698,38 +700,44 @@ export async function runStepResearch(
         );
         break;
       }
-      fetched++;
-      const page = await fetchWithDeadline(fetch, cand.url, Math.min(FETCH_TIMEOUT_MS, remaining));
-      if (!page.ok || String(page.markdown ?? "").trim() === "") {
-        dead.set(cand.key, String(page.error ?? "正文为空，未能验真"));
-        continue;
-      }
-      try {
-        const stored = saveWebCapture(db.db, {
-          url: cand.url,
-          finalUrl: String(page.finalUrl ?? cand.url),
-          title: String(page.title ?? "") || cand.title,
-          markdown: String(page.markdown ?? ""),
-          ...(page.publishedAt ? { publishedAt: String(page.publishedAt) } : {}),
-          ...(page.publisher ? { publisher: String(page.publisher) } : {}),
-          httpStatus: Number(page.httpStatus ?? 200),
-          contentType: String(page.contentType ?? ""),
-          ...(page.etag ? { etag: String(page.etag) } : {}),
-          ...(page.lastModified ? { lastModified: String(page.lastModified) } : {}),
-          query: cand.query,
-        });
-        const meta = readCaptureMeta(db, stored.id);
-        captures.set(cand.key, {
-          authority: meta?.authority ?? stored.authority,
-          publisher: meta?.publisher ?? "",
-          domain: meta?.domain ?? "",
-          publishedAt: meta?.publishedAt ?? "",
-          finalUrl: String(page.finalUrl ?? cand.url),
-        });
-        verified++;
-      } catch (err: unknown) {
-        dead.set(cand.key, `正文入库失败：${errorText(err)}`);
-      }
+      const chunk = ranked.slice(i, i + FETCH_CONCURRENCY).slice(0, MAX_FETCH_PAGES - fetched);
+      fetched += chunk.length;
+      await Promise.all(
+        chunk.map(async (cand) => {
+          if (verified >= TARGET_VERIFIED) return;
+          const page = await fetchWithDeadline(fetch, cand.url, Math.min(FETCH_TIMEOUT_MS, remaining));
+          if (!page.ok || String(page.markdown ?? "").trim() === "") {
+            dead.set(cand.key, String(page.error ?? "正文为空，未能验真"));
+            return;
+          }
+          try {
+            const stored = saveWebCapture(db.db, {
+              url: cand.url,
+              finalUrl: String(page.finalUrl ?? cand.url),
+              title: String(page.title ?? "") || cand.title,
+              markdown: String(page.markdown ?? ""),
+              ...(page.publishedAt ? { publishedAt: String(page.publishedAt) } : {}),
+              ...(page.publisher ? { publisher: String(page.publisher) } : {}),
+              httpStatus: Number(page.httpStatus ?? 200),
+              contentType: String(page.contentType ?? ""),
+              ...(page.etag ? { etag: String(page.etag) } : {}),
+              ...(page.lastModified ? { lastModified: String(page.lastModified) } : {}),
+              query: cand.query,
+            });
+            const meta = readCaptureMeta(db, stored.id);
+            captures.set(cand.key, {
+              authority: meta?.authority ?? stored.authority,
+              publisher: meta?.publisher ?? "",
+              domain: meta?.domain ?? "",
+              publishedAt: meta?.publishedAt ?? "",
+              finalUrl: String(page.finalUrl ?? cand.url),
+            });
+            verified++;
+          } catch (err: unknown) {
+            dead.set(cand.key, `正文入库失败：${errorText(err)}`);
+          }
+        }),
+      );
     }
 
     // 全部命中落 research_source：抓成功的带权威/发布方/日期（verified=1），其余只留命中
