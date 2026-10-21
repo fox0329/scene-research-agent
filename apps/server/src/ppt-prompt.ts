@@ -19,6 +19,7 @@
  */
 
 import {
+  PPT_MODEL_CAUTIONS,
   PPT_DEFAULT_ICON,
   PPT_ICONS,
   PPT_LIMITS,
@@ -103,6 +104,9 @@ export const PPT_PAGE_RULES: readonly string[] = [
   "- 每条短句都说人话、能独立看懂，一条一件事；不要空话套话，不要「赋能、闭环、抓手」这类壳子词。",
   "",
   ...PPT_TEMPLATE_RULES,
+  "",
+  "## 注意事项（这些是实跑踩过的坑，写之前先看一眼）",
+  ...PPT_MODEL_CAUTIONS.map((note, i) => `- ${i + 1}. ${note}`),
   "",
   ...PPT_LAYOUT_FIELD_RULES,
   "",

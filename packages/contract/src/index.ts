@@ -532,6 +532,7 @@ export * from "./flow.js";
 
 // ─── PPT 演示大纲（变更表 #141：导出PPT文档） ────────────────
 export * from "./ppt.js";
+export * from "./ppt-standard.js";
 export * from "./ingest.js";
 export * from "./upstream.js";
 export * from "./gates.js";
