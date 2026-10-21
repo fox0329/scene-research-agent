@@ -30,6 +30,7 @@ import type {
   StageData,
   QualityGate,
   StageId,
+  LibraryVerification,
 } from "@scene/contract";
 
 // ─── 通用类型 ──────────────────────────────────────────────
@@ -424,6 +425,33 @@ function runMigrations(db: Database.Database): {
   addResearchCol("authority", "authority TEXT NOT NULL DEFAULT ''");
   addResearchCol("verified", "verified INTEGER NOT NULL DEFAULT 0");
   addResearchCol("stale", "stale INTEGER NOT NULL DEFAULT 0");
+
+  /**
+   * 联网核验记录（用户定调 2026-10-21「导入的资料可以通过检索的方式核实或提高等级」）
+   *
+   * 一行 = 某张表某一行资料的一次核验结论。与资料行**分表存放**：
+   * 核验结论（未核实/有冲突）不许覆盖原始证据，只有 T1/T2 独立来源命中才会
+   * 把资料行的 `evidence_level` 升为 A。
+   *
+   * `UNIQUE(table_code, row_id)` 让"重核"是覆盖而不是堆记录（upsert）；
+   * `checked_at` 兼作 7 天时效判断依据。放在迁移里而不是 001_init.sql：
+   * 增量表，`CREATE TABLE IF NOT EXISTS` 对存量库与新库都幂等。
+   */
+  db.exec(`CREATE TABLE IF NOT EXISTS library_verification (
+  id           TEXT PRIMARY KEY,
+  table_code   TEXT NOT NULL,
+  row_id       TEXT NOT NULL,
+  status       TEXT NOT NULL CHECK (status IN ('已核实','未核实','有冲突')),
+  authority    TEXT NOT NULL DEFAULT '',
+  sources_json TEXT NOT NULL DEFAULT '[]',
+  key_text     TEXT NOT NULL DEFAULT '',
+  note         TEXT NOT NULL DEFAULT '',
+  checked_at   TEXT NOT NULL,
+  UNIQUE (table_code, row_id)
+)`);
+  db.exec(
+    "CREATE INDEX IF NOT EXISTS idx_library_verification_status ON library_verification(status, checked_at)",
+  );
 
   /**
    * 价格去重（用户定调 2026-10-21「一个价格事实只能有一个家」）
@@ -1137,6 +1165,75 @@ function createOptionalMaterialRepo(db: Database.Database): Repo<OptionalMateria
   };
 }
 
+// ─── 联网核验记录仓库 ──────────────────────────────────────
+
+/** upsert 输入：id 由仓库生成（已有同键行时保留原 id） */
+export type CreateVerificationInput = Omit<LibraryVerification, "id">;
+
+/**
+ * 核验记录仓库
+ *
+ * 与通用 `Repo` 的区别：主键口径是 `(table_code, row_id)` 而不是 `id`——
+ * 同一行重核只更新一条记录（upsert），不堆历史，避免"7 天时效"判断被旧记录干扰。
+ */
+export interface VerificationRepo {
+  listAll(): LibraryVerification[];
+  getByRow(tableCode: string, rowId: string): LibraryVerification | undefined;
+  upsert(row: CreateVerificationInput): LibraryVerification;
+  deleteByRow(tableCode: string, rowId: string): boolean;
+}
+
+function createVerificationRepo(db: Database.Database): VerificationRepo {
+  const getByRow = (tableCode: string, rowId: string): LibraryVerification | undefined =>
+    db
+      .prepare(
+        `SELECT id, table_code, row_id, status, authority, sources_json, key_text, note, checked_at
+         FROM library_verification WHERE table_code = ? AND row_id = ?`,
+      )
+      .get(tableCode, rowId) as LibraryVerification | undefined;
+
+  return {
+    listAll: () =>
+      db
+        .prepare(
+          `SELECT id, table_code, row_id, status, authority, sources_json, key_text, note, checked_at
+           FROM library_verification ORDER BY checked_at DESC`,
+        )
+        .all() as LibraryVerification[],
+    getByRow,
+    upsert: (row) => {
+      db.prepare(
+        `INSERT INTO library_verification
+           (id, table_code, row_id, status, authority, sources_json, key_text, note, checked_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(table_code, row_id) DO UPDATE SET
+           status = excluded.status,
+           authority = excluded.authority,
+           sources_json = excluded.sources_json,
+           key_text = excluded.key_text,
+           note = excluded.note,
+           checked_at = excluded.checked_at`,
+      ).run(
+        `lv_${randomUUID()}`,
+        row.table_code,
+        row.row_id,
+        row.status,
+        row.authority,
+        row.sources_json,
+        row.key_text,
+        row.note,
+        row.checked_at,
+      );
+      // 回读：同键已有行时 id 保留旧值，不能把生成的 id 直接返回
+      return getByRow(row.table_code, row.row_id)!;
+    },
+    deleteByRow: (tableCode, rowId) =>
+      db
+        .prepare("DELETE FROM library_verification WHERE table_code = ? AND row_id = ?")
+        .run(tableCode, rowId).changes > 0,
+  };
+}
+
 // ─── createDb ──────────────────────────────────────────────
 
 export interface DbInstance {
@@ -1162,6 +1259,8 @@ export interface DbInstance {
   scenarioLinkedLineRepo: Repo<ScenarioLinkedLine>;
   /** 每一步的联网调研来源（调研先于分析） */
   researchRepo: ResearchRepo;
+  /** 资料行联网核验记录（M1/M3/M6/O1） */
+  verificationRepo: VerificationRepo;
   /**
    * 最近一次打开库时 O3→M6 价格迁移的结果
    *
@@ -1209,6 +1308,7 @@ export function createDb(dbPath?: string): DbInstance {
     scenarioMaterialRepo: createRepo<ScenarioMaterial>(db, "scenario_material"),
     scenarioLinkedLineRepo: createRepo<ScenarioLinkedLine>(db, "scenario_linked_line"),
     researchRepo: createResearchRepo(db),
+    verificationRepo: createVerificationRepo(db),
     ...(migration.o3PriceMigration
       ? { o3PriceMigration: migration.o3PriceMigration }
       : {}),

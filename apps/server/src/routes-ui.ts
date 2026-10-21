@@ -53,6 +53,11 @@ import {
 import { dedupeLibrary } from "./library-service.js";
 import { auditLibrary } from "./library-audit.js";
 import {
+  mergeDuplicateCapabilities,
+  previewDuplicateCapabilities,
+} from "./library-maintenance.js";
+import { listVerifications, verifyLibrary, type LibraryVerifyDeps } from "./library-verify.js";
+import {
   parseDocument,
   registrySummary,
   loadRegistry,
@@ -134,6 +139,13 @@ export interface UiRoutesDeps {
    * 并显示"分析中"，跑完自动出结果（故障清单 #47）。
    */
   isStageRunning?: (scenarioId: string, stage: number) => boolean;
+  /**
+   * 联网核验的可注入依赖（测试用）
+   *
+   * 生产不传：默认走 `web-engine`（DeepSeek 官方 / Tavily / 免注册通道）。
+   * 测试注入假检索与假页面，避免把单测变成真联网。
+   */
+  verifyDeps?: LibraryVerifyDeps;
 }
 
 /** 通用行（HTTP 层做动态列编辑时使用，字段按表 schema 异构） */
@@ -1771,6 +1783,89 @@ function registerLibraryRoutes(app: FastifyInstance, deps: UiRoutesDeps) {
       return notFound(reply, `产品线 ${productLineId} 不存在`);
     }
     return auditLibrary(db, productLineId ? { productLineId, apply: true } : { apply: true });
+  });
+
+  /**
+   * 能力重复合并（用户定调 2026-10-21「重复的信息可以合并」）
+   *
+   * GET = 只读预览：列出同 `产品线 + 领域 + 能力名` 的组，**不删行**；
+   * POST = 执行合并：每组保留描述最长的一行（等长取创建更早者），删除其余行。
+   * 判定在 `library-maintenance.ts`（纯函数可单测），这里只做参数校验与下游待重算标记。
+   */
+  app.get("/api/v1/library/dedupe", async (request, reply) => {
+    const raw = (request.query as { product_line_id?: unknown } | undefined)?.product_line_id;
+    if (raw !== undefined && typeof raw !== "string") {
+      return badRequest(reply, "product_line_id 必须是单个字符串");
+    }
+    const productLineId = raw?.trim() ?? "";
+    if (productLineId && !db.productLineRepo.getById(productLineId)) {
+      return notFound(reply, `产品线 ${productLineId} 不存在`);
+    }
+    return previewDuplicateCapabilities(db, productLineId || undefined);
+  });
+
+  app.post("/api/v1/library/dedupe", async (request, reply) => {
+    const body = (request.body ?? {}) as { product_line_id?: unknown };
+    if (body.product_line_id !== undefined && typeof body.product_line_id !== "string") {
+      return badRequest(reply, "product_line_id 必须是字符串");
+    }
+    const productLineId =
+      typeof body.product_line_id === "string" ? body.product_line_id.trim() : "";
+    if (productLineId && !db.productLineRepo.getById(productLineId)) {
+      return notFound(reply, `产品线 ${productLineId} 不存在`);
+    }
+    const report = mergeDuplicateCapabilities(db, productLineId || undefined);
+    // 归一键的前缀是产品线 id：受影响库逐个标 M3 下游待重算
+    const lineIds = [
+      ...new Set(report.merged.map((group) => group.key.split("|")[0] ?? "").filter(Boolean)),
+    ];
+    const stages = new Set<StageId>();
+    for (const lineId of lineIds) {
+      for (const stage of markLineStale(db, lineId, ["M3"])) stages.add(stage);
+    }
+    return { merged: report.merged, stale_marked_stages: [...stages].sort((a, b) => a - b) };
+  });
+
+  /**
+   * 联网核验并提级（用户定调 2026-10-21「导入的资料可以通过检索核实或提高等级」）
+   *
+   * POST = 同步核验一批（≤20 行，只核未核验或超 7 天的行）：T1/T2 独立来源命中 →
+   * 证据级升 A；T3/T4 或检索失败 → 只记"未核实"，不降级；单价矛盾 → "有冲突"。
+   * GET = 只读统计与明细（按 已核实 / 有冲突 / 未核实 分组）。
+   */
+  app.post("/api/v1/library/verify", async (request, reply) => {
+    const body = (request.body ?? {}) as { product_line_id?: unknown; limit?: unknown };
+    if (body.product_line_id !== undefined && typeof body.product_line_id !== "string") {
+      return badRequest(reply, "product_line_id 必须是字符串");
+    }
+    const productLineId =
+      typeof body.product_line_id === "string" ? body.product_line_id.trim() : "";
+    if (productLineId && !db.productLineRepo.getById(productLineId)) {
+      return notFound(reply, `产品线 ${productLineId} 不存在`);
+    }
+    let limit: number | undefined;
+    if (body.limit !== undefined) {
+      const n = Number(body.limit);
+      if (!Number.isInteger(n) || n < 1) return badRequest(reply, "limit 必须是正整数");
+      limit = Math.min(n, 20);
+    }
+    return verifyLibrary(
+      db,
+      { ...(productLineId ? { productLineId } : {}), ...(limit ? { limit } : {}) },
+      deps.verifyDeps ?? {},
+    );
+  });
+
+  app.get("/api/v1/library/verification", async (request, reply) => {
+    const raw = (request.query as { product_line_id?: unknown } | undefined)?.product_line_id;
+    if (raw !== undefined && typeof raw !== "string") {
+      return badRequest(reply, "product_line_id 必须是单个字符串");
+    }
+    const productLineId = raw?.trim() ?? "";
+    if (productLineId && !db.productLineRepo.getById(productLineId)) {
+      return notFound(reply, `产品线 ${productLineId} 不存在`);
+    }
+    return listVerifications(db, productLineId || undefined);
   });
 
   app.patch("/api/v1/library/rows/:code/:rowId", async (request, reply) => {

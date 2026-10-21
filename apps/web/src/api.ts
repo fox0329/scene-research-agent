@@ -325,6 +325,70 @@ export interface ApiMaterialDeleteResult {
   stale_marked_stages: number[];
 }
 
+/** 能力重复合并的一组（同产品线 + 领域 + 能力名） */
+export interface ApiCapabilityMergeGroup {
+  key: string;
+  keptId: string;
+  removedIds: string[];
+  keptDescription: string;
+  removedDescriptions: string[];
+}
+
+/** 能力重复合并报告（GET 只读预览 / POST 执行后同一结构） */
+export interface ApiLibraryDedupeReport {
+  merged: ApiCapabilityMergeGroup[];
+  /** 被标为待重算的阶段号（仅 POST 有；有场景引用该库时才非空） */
+  stale_marked_stages?: number[];
+}
+
+/** 一条核验来源 */
+export interface ApiVerificationSource {
+  title: string;
+  url: string;
+  publisher: string;
+  published_at: string;
+}
+
+/** 核验状态三态 */
+export type ApiVerificationStatus = "已核实" | "未核实" | "有冲突";
+
+/** 一条核验明细 */
+export interface ApiLibraryVerifyDetail {
+  table: string;
+  row_id: string;
+  summary: string;
+  status: ApiVerificationStatus;
+  authority: string;
+  sources: ApiVerificationSource[];
+  key_text: string;
+  note: string;
+  checked_at: string;
+  upgraded: boolean;
+}
+
+/** POST /library/verify 的统计与明细 */
+export interface ApiLibraryVerifyReport {
+  checked: number;
+  verified: number;
+  conflict: number;
+  unverified: number;
+  upgraded: number;
+  /** 本批之后仍需核验的行数（前端据此分批调用） */
+  remaining: number;
+  details: ApiLibraryVerifyDetail[];
+  errors: string[];
+}
+
+/** GET /library/verification 的统计与分组 */
+export interface ApiLibraryVerificationSummary {
+  generated_at: string;
+  total: number;
+  by_status: Record<ApiVerificationStatus, number>;
+  upgraded: number;
+  details: ApiLibraryVerifyDetail[];
+  groups: Record<ApiVerificationStatus, ApiLibraryVerifyDetail[]>;
+}
+
 /** 存量资料体检：不可定位来源的行（只报告，不删除） */
 export interface ApiAuditUnlocatableRow {
   table: string;
@@ -813,6 +877,35 @@ export const api = {
       method: "POST",
       body: productLineId ? { product_line_id: productLineId } : {},
     }),
+  /** 能力重复合并：GET 只读预览（列出将合并的组，不改数据） */
+  libraryDedupePreview: (productLineId?: string) =>
+    req<ApiLibraryDedupeReport>(
+      `/library/dedupe${
+        productLineId ? `?product_line_id=${encodeURIComponent(productLineId)}` : ""
+      }`,
+    ),
+  /** 能力重复合并：POST 执行（保留描述最长的一行，删除其余行；幂等） */
+  libraryDedupe: (productLineId?: string) =>
+    req<ApiLibraryDedupeReport>("/library/dedupe", {
+      method: "POST",
+      body: productLineId ? { product_line_id: productLineId } : {},
+    }),
+  /** 联网核验并提级：同步核验一批（≤20 行），T1/T2 命中才把证据级升 A */
+  libraryVerify: (params: { productLineId?: string; limit?: number } = {}) =>
+    req<ApiLibraryVerifyReport>("/library/verify", {
+      method: "POST",
+      body: {
+        ...(params.productLineId ? { product_line_id: params.productLineId } : {}),
+        ...(params.limit ? { limit: params.limit } : {}),
+      },
+    }),
+  /** 已核验统计与明细（按 已核实 / 有冲突 / 未核实 分组；只读） */
+  libraryVerification: (productLineId?: string) =>
+    req<ApiLibraryVerificationSummary>(
+      `/library/verification${
+        productLineId ? `?product_line_id=${encodeURIComponent(productLineId)}` : ""
+      }`,
+    ),
   /** 按文件删除本库所有来自该文件的行（文件名全等匹配） */
   deleteLibraryMaterial: (productLineId: string, file: string) =>
     req<ApiMaterialDeleteResult>(
