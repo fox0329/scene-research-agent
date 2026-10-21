@@ -1,4 +1,11 @@
-## 场景通桌面版（免签名安装包）
+## 场景通桌面版 0.7.0（免签名安装包）
+
+### 本版新增
+
+- **数据备份/恢复**：启动与迁移前自动快照（保留 3 份），设置页可立即备份、恢复某份备份（重启生效）
+- **诊断信息导出**：设置页一键导出（版本、数据规模、备份实况、最近日志，不含 Key 与正文）
+- **首次使用提示**：未配置模型时工作台顶部直接引导去设置
+- **E2E 全绿**：45 条关键回归（六步推进、上传、交付物导出、设置）
 
 ### 下载哪个
 
@@ -31,6 +38,17 @@
 - macOS：`brew install python3`
 - Windows：到 <https://www.python.org/downloads/> 安装，并勾选 “Add python.exe to PATH”
 
+### 校验下载文件
+
+每个 Release 附 `SHA256SUMS.txt`。下载后可核对：
+
+```bash
+# macOS
+shasum -a 256 SceneMaster-*.dmg
+# Windows PowerShell
+Get-FileHash .\SceneMaster-*.exe -Algorithm SHA256
+```
+
 ### 升级前请备份
 
 你的全部数据（场景、材料库、交付物）都在应用数据目录里，覆盖安装不会动它：
@@ -38,7 +56,7 @@
 - macOS：`~/Library/Application Support/@scene/desktop/data/`
 - Windows：`%APPDATA%\@scene\desktop\data\`
 
-升级前建议把整个 `data` 目录拷贝一份留底。
+升级前建议把整个 `data` 目录拷贝一份留底；应用也会在启动/迁移前自动备份到 `data/backups/`（保留 3 份），设置页可一键备份与恢复。
 
 ---
 

@@ -495,6 +495,27 @@ export interface ApiModelsFetch {
   error?: string;
 }
 
+/** 一份数据库备份（size=字节，created_at=文件时间 ISO） */
+export interface ApiDataBackup {
+  name: string;
+  size: number;
+  created_at: string;
+}
+
+/** 备份列表（最新在前；服务端最多 10 份，设置页只展示最近 3 份） */
+export interface ApiDataBackups {
+  /** 备份目录；内存库为空串 */
+  dir: string;
+  backups: ApiDataBackup[];
+}
+
+/** 准备恢复的结果：重启应用后才真正替换数据库 */
+export interface ApiRestoreResult {
+  pending: true;
+  restartRequired: true;
+  name: string;
+}
+
 /** SSE follow 事件（与 contract FollowEvent 对齐） */
 export interface FollowEvent {
   type: string;
@@ -953,6 +974,17 @@ export const api = {
 
   /** 系统状态（DB 健康 + 模型配置概览） */
   systemStatus: () => req<ApiSystemStatus>("/system/status"),
+  /** 诊断信息下载地址：直接给 <a href> / window.open 用（服务端以附件返回） */
+  diagnosticsUrl: () => `${BASE}/diagnostics`,
+
+  /* ── 数据备份（发布前 P0：启动自动备份 + 重启后恢复） ── */
+  /** 最近备份（最新在前，最多 10 份；只读） */
+  dataBackups: () => req<ApiDataBackups>("/data/backups"),
+  /** 立即备份（SQLite 在线备份 VACUUM INTO，保留最新 3 份） */
+  createDataBackup: () => req<ApiDataBackup>("/data/backups", { method: "POST" }),
+  /** 准备恢复：只落 restore-on-boot.db，重启后生效 */
+  restoreDataBackup: (name: string) =>
+    req<ApiRestoreResult>("/data/restore", { method: "POST", body: { name } }),
   /** 供应商登记表（脱敏） */
   providers: () => req<ApiProvidersState>("/system/providers"),
   /** 新增/更新供应商（api_key 省略 = 保留原密钥） */

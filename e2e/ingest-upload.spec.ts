@@ -83,13 +83,22 @@ test.describe("上传入库（联真）", () => {
   });
 
   test("资料库上传文件：file 在前的浏览器字段顺序也能入库（product_line_id 回归）", async ({ page }) => {
+    test.setTimeout(90_000); // 解析 + 入库 + 汇总，联真链路可能 >20s
     await page.getByRole("button", { name: "产品资料库" }).click();
     /* setInputFiles 直接注入隐藏 input，浏览器原生 change 事件（React onChange 生效） */
     await page.locator('.pga input[type=file][accept]').setInputFiles(PDF_FIXTURE);
-    /* 进度条走到【完成】汇总；关键是不再出现「缺少 product_line_id」 */
+    /*
+     * 进度条走到「1 个文件」的入库结果汇总。关键回归只有一条：
+     * **不能再出现「缺少 product_line_id」**（file 部件在前的浏览器 FormData 曾触发 400）。
+     *
+     * 结果前缀不写死【完成】：这份最小 PDF 只验证字段顺序与链路打通，正文里没有可归入
+     * 资料库表格的结构化记录，服务端如实回【注意】「1 个文件未产出可校验记录」——两种
+     * 前缀都算入库链路成功，真正判失败的是【错误】与缺字段 400。
+     */
     const banner = page.locator(".stale-banner");
-    await expect(banner).toContainText(/【完成】1 个文件/, { timeout: 60_000 });
+    await expect(banner).toContainText(/【(?:完成|注意)】\s*1\s*个文件/, { timeout: 75_000 });
     await expect(banner).not.toContainText("缺少 product_line_id");
+    await expect(banner).not.toContainText("【错误】");
   });
 
   test("表格列降维 + 分割线 + 拖拽调宽 + 右栏行详情（变更表 #19）", async ({ page, playwright }) => {
@@ -115,9 +124,13 @@ test.describe("上传入库（联真）", () => {
     await req.dispose();
 
     await page.getByRole("button", { name: "产品资料库" }).click();
-    await page.locator(".stab", { hasText: "M1" }).click();
-    /* 降维：6 列，溯源/来源四列/曾用名都不占列——溯源全量改到右栏行详情（变更表 #98） */
-    await expect(page.locator("table th")).toHaveCount(6);
+    /* Tab 标签是业务名「产品清单」，不再显示内部表号 M1 */
+    await page.locator(".stab", { hasText: "产品清单" }).click();
+    /*
+     * 降维口径（v2.11）：M1 中栏只留 型号/产品名称/状态 + 操作，共 4 列；
+     * 溯源四列、曾用名/发布日期/定位描述都不占列——全量改到右栏行详情（变更表 #98）。
+     */
+    await expect(page.locator("table th")).toHaveCount(4);
     const ths = await page.locator("table th").allTextContents();
     expect(ths).not.toContain("溯源");
     expect(ths).not.toContain("来源标注");
@@ -294,10 +307,10 @@ test("流程逐页推进（联真）：完成本步走的是 /flow 接口，完�
   await expect(rail.locator(".flow-node--done")).toHaveCount(1);
   await expect(rail.locator(".flow-node--done")).toContainText("场景定义");
 
-  // 第 2 步「认识场景」：只显示本步表集（表名在流程轴第二行），左栏场景列表同步显示第 2/7 步
+  // 第 2 步「认识场景」：只显示本步表集（表名在流程轴第二行），左栏场景列表同步显示第 2/6 步
   await expect(rail.locator(".flow-node--current")).toContainText("认识场景");
   await expect(page.locator(".flow-outputs").first()).toBeVisible({ timeout: 20_000 });
-  await expect(page.locator(".proj-hd.active .proj-step")).toContainText("第 2/7 步", {
+  await expect(page.locator(".proj-hd.active .proj-step")).toContainText("第 2/6 步", {
     timeout: 20_000,
   });
   // 项目确实落库了：flow 接口与 UI 一致

@@ -57,6 +57,7 @@ import {
   previewDuplicateCapabilities,
 } from "./library-maintenance.js";
 import { listVerifications, verifyLibrary, type LibraryVerifyDeps } from "./library-verify.js";
+import { buildDiagnosticsText } from "./diagnostics.js";
 import {
   parseDocument,
   registrySummary,
@@ -69,6 +70,11 @@ import {
   deleteSourceIndex,
   createSourceLookup,
   sourcePassages,
+  BackupError,
+  createOnlineBackup,
+  listBackups,
+  prepareRestore,
+  BACKUP_LIST_LIMIT,
 } from "@scene/infra";
 import type { ProviderModelEntry } from "@scene/infra";
 import type { SseHub } from "./sse-hub.js";
@@ -327,6 +333,7 @@ export function registerUiRoutes(app: FastifyInstance, deps: UiRoutesDeps): void
   registerConversationRoutes(app, deps, converseCmd);
   registerLibraryRoutes(app, deps);
   registerSystemRoutes(app, deps);
+  registerDataRoutes(app, deps);
 
   // ── 上传入库（multipart → 临时文件 → ingest 命令 → SSE 进度） ──
   app.post("/api/v1/library/ingest", async (request, reply) => {
@@ -2324,6 +2331,73 @@ function markLineStale(db: DbInstance, productLineId: string, codes: string[]): 
   return stages;
 }
 
+// ─── 数据备份 / 恢复（发布前 P0 数据安全闭环） ───────────────
+
+/** 备份目录：内存库返回 null（接口按空目录处理） */
+function backupDirOfDb(db: DbInstance): string | null {
+  return db.dbBackup.dir;
+}
+
+/** BackupError → HTTP：非法名 400、不存在 404、读写失败 500 */
+function backupError(reply: import("fastify").FastifyReply, err: unknown) {
+  if (err instanceof BackupError) {
+    const code = err.kind === "not_found" ? 404 : err.kind === "invalid" ? 400 : 500;
+    return reply.code(code).send({ error: err.message });
+  }
+  return reply.code(500).send({ error: err instanceof Error ? err.message : String(err) });
+}
+
+function registerDataRoutes(app: FastifyInstance, deps: UiRoutesDeps) {
+  const { db } = deps;
+
+  /**
+   * 只读列出备份（最新在前，最多 10 份；UI 只展示最近 3 份）
+   *
+   * 内存库不备份，返回空目录 + 空列表，不报错——设置页仍能正常打开。
+   */
+  app.get("/api/v1/data/backups", async () => {
+    const dir = backupDirOfDb(db);
+    if (!dir) return { dir: "", backups: [] };
+    try {
+      return { dir, backups: listBackups(dir, BACKUP_LIST_LIMIT) };
+    } catch (err: unknown) {
+      // 目录不可读时不让设置页整块失败：返回空列表 + 目录，详细原因走服务端日志
+      app.log.warn(`列备份失败：${err instanceof Error ? err.message : String(err)}`);
+      return { dir, backups: [] };
+    }
+  });
+
+  /** 立即备份：SQLite 在线备份（VACUUM INTO），完成后自动裁剪到 3 份 */
+  app.post("/api/v1/data/backups", async (_request, reply) => {
+    const dir = backupDirOfDb(db);
+    if (!dir) return badRequest(reply, "当前数据库没有备份目录（内存库或已关闭备份）");
+    try {
+      return createOnlineBackup(db.db, dir);
+    } catch (err: unknown) {
+      return backupError(reply, err);
+    }
+  });
+
+  /**
+   * 准备恢复：只落 `restore-on-boot.db`，**不替换运行中的库**；
+   * 下一次启动由 createDb 执行替换（先自动备份为 pre-restore-*）。
+   */
+  app.post("/api/v1/data/restore", async (request, reply) => {
+    const dir = backupDirOfDb(db);
+    if (!dir) return badRequest(reply, "当前数据库没有备份目录（内存库或已关闭备份）");
+    const body = (request.body ?? {}) as { name?: unknown };
+    const name = body.name;
+    if (typeof name !== "string" || !name.trim()) {
+      return badRequest(reply, "需要备份文件名（name）");
+    }
+    try {
+      return prepareRestore(db.dbPath, name, { backupDir: dir });
+    } catch (err: unknown) {
+      return backupError(reply, err);
+    }
+  });
+}
+
 // ─── 系统路由 ──────────────────────────────────────────────
 
 function registerSystemRoutes(app: FastifyInstance, deps: UiRoutesDeps) {
@@ -2343,6 +2417,24 @@ function registerSystemRoutes(app: FastifyInstance, deps: UiRoutesDeps) {
       provider_count: s.providers.length,
       default_model: s.default_model,
     };
+  });
+
+  /**
+   * 诊断信息下载（发布前 P1）：版本 + 数据规模 + 备份实况 + 最近日志，不含 Key/材料正文。
+   *
+   * 为什么用附件下载而不是页面展示：用户报障时直接把文件发过来，不用复制粘贴。
+   */
+  app.get("/api/v1/diagnostics", async (_request, reply) => {
+    const text = buildDiagnosticsText({
+      db,
+      providers: registrySummary(),
+      version: process.env["APP_VERSION"] ?? "dev",
+    });
+    const stamp = new Date().toISOString().replace(/[:.]/gu, "-");
+    return reply
+      .header("content-type", "text/plain; charset=utf-8")
+      .header("content-disposition", `attachment; filename="scene-diagnostics-${stamp}.txt"`)
+      .send(text);
   });
 
   // ─── 供应商登记表（变更表 #16：应用自持模型配置，密钥只进不出） ───

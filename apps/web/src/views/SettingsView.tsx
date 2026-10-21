@@ -3,10 +3,12 @@ import { useToast } from "../components/Toast";
 import {
   api,
   type ApiConnectionCheck,
+  type ApiDataBackup,
   type ApiProviderPublic,
   type ApiProvidersState,
 } from "../api";
 import { useAsync } from "../hooks/useAsync";
+import { formatBackupSize, formatBackupTime } from "./backup-format";
 
 /* ── 视图入口 ── */
 
@@ -17,6 +19,22 @@ interface SettingsViewProps {
 
 export const SettingsView: React.FC<SettingsViewProps> = ({ live }) =>
   live ? <SettingsViewLive /> : <SettingsViewMock />;
+
+/**
+ * 桌面壳桥（preload 暴露）：只有桌面端才有 `relaunchApp`
+ *
+ * 浏览器版没有这个对象，恢复后只能提示用户手动重启服务；不引入任何新依赖。
+ */
+interface SceneDesktopBridge {
+  relaunchApp?: () => Promise<unknown>;
+  openDataDir?: () => Promise<unknown>;
+  appInfo?: () => Promise<{ version?: string }>;
+}
+
+function desktopBridge(): SceneDesktopBridge | null {
+  const w = window as unknown as { sceneDesktop?: SceneDesktopBridge };
+  return w.sceneDesktop ?? null;
+}
 
 /* ══════════════ 联真模式：模型配置（供应商/链接/Key/模型 + 测试连接） ══════════════ */
 
@@ -44,6 +62,10 @@ const SettingsViewLive: React.FC = () => {
   const { showToast } = useToast();
   const state = useAsync<ApiProvidersState>(() => api.providers(), []);
   const status = useAsync(() => api.systemStatus(), []);
+  /** 最近备份（服务端最多 10 份，设置页只展示最近 3 份） */
+  const backups = useAsync(() => api.dataBackups(), []);
+  /** 桌面壳版本（浏览器版没有桥，显示“浏览器版”） */
+  const appInfo = useAsync<{ version?: string }>(() => desktopBridge()?.appInfo?.() ?? Promise.resolve({}), []);
 
   const [creating, setCreating] = useState(false);
   /** 编辑中的供应商名（null=新建） */
@@ -56,10 +78,16 @@ const SettingsViewLive: React.FC = () => {
   /** 一键发现：进行中标记与拉到的候选模型 ID 列表（null=未拉取） */
   const [discovering, setDiscovering] = useState(false);
   const [discovered, setDiscovered] = useState<string[] | null>(null);
+  /** 备份操作进行中：`create` 或待恢复的备份文件名 */
+  const [backupBusy, setBackupBusy] = useState<string | null>(null);
 
   const providers = useMemo(() => state.data?.providers ?? [], [state.data]);
   const defaultModel = state.data?.default_model ?? null;
   const defaultProvider = providers.find((p) => p.name === defaultModel?.provider) ?? null;
+  const recentBackups = useMemo(
+    () => (backups.data?.backups ?? []).slice(0, 3),
+    [backups.data],
+  );
 
   const openCreate = () => {
     setCreating(true);
@@ -221,6 +249,51 @@ const SettingsViewLive: React.FC = () => {
       void status.reload();
     } catch (err: unknown) {
       showToast(`设置失败：${err instanceof Error ? err.message : String(err)}`);
+    }
+  };
+
+  /** 立即备份（SQLite 在线备份）：成功后刷新列表并提示文件名 */
+  const handleCreateBackup = async () => {
+    setBackupBusy("create");
+    try {
+      const created = await api.createDataBackup();
+      showToast(`已创建备份：${created.name}`);
+      backups.reload();
+    } catch (err: unknown) {
+      showToast(`备份失败：${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setBackupBusy(null);
+    }
+  };
+
+  /**
+   * 恢复此备份：服务端只落 restore-on-boot.db，**重启后才生效**。
+   * 桌面端（preload 暴露 relaunchApp）直接重启；浏览器版只能提示手动重启。
+   */
+  const handleRestore = async (backup: ApiDataBackup) => {
+    const ok = window.confirm(
+      `用「${backup.name}」恢复数据？\n\n` +
+        "将先自动备份当前数据库，重启应用后生效；恢复过程中不会替换正在使用的库。",
+    );
+    if (!ok) return;
+    setBackupBusy(backup.name);
+    try {
+      await api.restoreDataBackup(backup.name);
+      const bridge = desktopBridge();
+      if (bridge?.relaunchApp) {
+        showToast("已准备恢复，重启应用后生效");
+        try {
+          await bridge.relaunchApp();
+        } catch {
+          showToast("已准备恢复，请手动重启应用后生效");
+        }
+      } else {
+        showToast("已准备恢复，重启应用后生效（请手动重启应用）");
+      }
+    } catch (err: unknown) {
+      showToast(`恢复失败：${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setBackupBusy(null);
     }
   };
 
@@ -539,6 +612,112 @@ const SettingsViewLive: React.FC = () => {
                 </div>
               </div>
             )}
+          </div>
+        </section>
+
+        {/* 面板 3：数据备份（发布前 P0）——启动自动备份 + 手动备份 + 重启后恢复 */}
+        <section className="pnl">
+          <div className="pnl-h">
+            <div>
+              <h2>数据备份</h2>
+              <p>每次启动自动备份，保留最新 3 份；恢复需重启应用后生效</p>
+            </div>
+            <button
+              className="btn"
+              type="button"
+              disabled={backupBusy !== null || backups.status === "loading"}
+              onClick={() => void handleCreateBackup()}
+            >
+              {backupBusy === "create" ? "备份中…" : "立即备份"}
+            </button>
+          </div>
+          <div className="pnl-b">
+            <div className="settings-kv-grid">
+              <span className="kv-k">备份目录</span>
+              <span className="kv-v kv-mono" style={{ wordBreak: "break-all" }}>
+                {backups.data?.dir || "内存数据库（无备份目录）"}
+              </span>
+            </div>
+
+            {backups.status === "loading" && (
+              <div className="loading-strip" role="status" aria-label="加载中" />
+            )}
+            {backups.status === "error" && (
+              <div className="empty-state">
+                <div className="empty-state-title">备份列表加载失败</div>
+                <div className="empty-state-desc">{backups.error}</div>
+                <button className="btn" type="button" onClick={backups.reload}>
+                  重试
+                </button>
+              </div>
+            )}
+            {backups.status === "ok" && recentBackups.length === 0 && (
+              <div className="empty-state">
+                <div className="empty-state-title">还没有备份</div>
+                <div className="empty-state-desc">
+                  点「立即备份」生成一份；应用每次启动前也会自动备份一次
+                </div>
+              </div>
+            )}
+
+            {recentBackups.length > 0 && (
+              <div className="provider-list">
+                {recentBackups.map((b) => (
+                  <div className="provider-item" key={b.name}>
+                    <div className="provider-item-head">
+                      <span className="provider-item-name kv-mono">{b.name}</span>
+                      <span className="badge">{formatBackupSize(b.size)}</span>
+                      <span className="provider-item-meta">{formatBackupTime(b.created_at)}</span>
+                    </div>
+                    <div className="provider-item-actions">
+                      <button
+                        className="btn btn-sm"
+                        type="button"
+                        disabled={backupBusy !== null}
+                        onClick={() => void handleRestore(b)}
+                      >
+                        {backupBusy === b.name ? "准备中…" : "恢复此备份"}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            {backups.status === "ok" &&
+              (backups.data?.backups.length ?? 0) > recentBackups.length && (
+                <span className="provider-item-meta">
+                  仅显示最近 {recentBackups.length} 份；更多备份可在备份目录中查看
+                </span>
+              )}
+          </div>
+        </section>
+
+        {/* 面板 4：诊断与支持（发布前 P1）——报障时导出，不含 Key 与正文 */}
+        <section className="pnl">
+          <div className="pnl-h">
+            <div>
+              <h2>诊断与支持</h2>
+              <p>导出后可直接发给支持人员；只含版本、数据规模、备份实况与最近日志，不含模型 Key 与正文</p>
+            </div>
+          </div>
+          <div className="pnl-b">
+            <div className="settings-actions">
+              <a className="btn" href={api.diagnosticsUrl()} download>
+                导出诊断信息
+              </a>
+              {desktopBridge()?.openDataDir ? (
+                <button
+                  className="btn"
+                  type="button"
+                  onClick={() => void desktopBridge()?.openDataDir?.()}
+                >
+                  打开数据目录
+                </button>
+              ) : null}
+              <span className="provider-item-meta">
+                版本 {appInfo.data?.version ?? "浏览器版"}（升级前建议先备份）
+              </span>
+            </div>
           </div>
         </section>
       </div>

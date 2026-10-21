@@ -604,7 +604,7 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
       <div className="pnl-b">
         {!live ? (
           <p className="brief-hint">
-            演示模式：两份交付物（解决方案 / 建设工作方案）都要点「生成报告」由模型撰写，
+            演示模式：交付物（《场景》解决方案）要点「生成报告」由模型撰写，
             联真模式下这里显示生成的正文。
           </p>
         ) : loading && reports === null ? (
@@ -632,7 +632,7 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
               <div className="empty-state">
                 <div className="empty-state-title">「{label}」还没有生成</div>
                 <div className="empty-state-desc">
-                  点上方「生成报告」，模型会读完全部表格后一次写出两份交付物的归纳正文；
+                  点上方「生成报告」，模型会读完全部表格后一次写出《场景》解决方案的归纳正文；
                   生成前不预填内容，避免把提纲当成稿子。
                 </div>
               </div>

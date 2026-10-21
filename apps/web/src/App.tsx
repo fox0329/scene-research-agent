@@ -179,6 +179,28 @@ const AppShell: React.FC = () => {
   }, []);
 
   /**
+   * 首次使用引导：没有可用模型时提示去设置（发布前 P1）。
+   *
+   * 为什么不在分析失败里提示：用户会先看到一堆「未知」才发现没配 Key；
+   * 这里在进入工作台时就把话说在前面。切回项目页会重新检查（设置页配完即消失）。
+   */
+  const [modelReady, setModelReady] = useState<boolean | null>(null);
+  useEffect(() => {
+    let alive = true;
+    void api
+      .systemStatus()
+      .then((s) => {
+        if (alive) setModelReady(s.model_configured);
+      })
+      .catch(() => {
+        if (alive) setModelReady(null);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [view]);
+
+  /**
    * 传给孩子视图的回调必须**身份稳定**（变更表 #181）
    *
    * 原来这两处是内联箭头（`() => void refreshProjects()…` / `() => void handleNewProject()`），
@@ -330,6 +352,14 @@ const AppShell: React.FC = () => {
 
       {/* 中栏：内容区 + 常驻输入栏 */}
       <main className="main">
+        {live && view === "project" && modelReady === false ? (
+          <div className="bnr warning" role="status">
+            <span>还没有配置模型：分析与联网调研都跑不了。先去设置里填端点与 Key。</span>
+            <button className="btn sm" type="button" onClick={() => handleViewChange("settings")}>
+              去设置
+            </button>
+          </div>
+        ) : null}
         {view === "project" && activeProject && (
           <ProjectView
             key={activeProject.id}

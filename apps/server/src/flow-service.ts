@@ -115,8 +115,8 @@ export function getFlowState(db: DbInstance, scenario: Scenario): FlowStatus {
         readiness[step.id] = readinessOf(
           ok,
           ok
-            ? "两份交付物都已生成；确认无误就点「完成交付物」收尾"
-            : `还差 ${REPORT_KINDS.length - done.length} 份交付物没生成，先在上方点「生成报告」`,
+            ? "交付物已生成；确认无误就点「完成交付物」收尾"
+            : "还差 1 份交付物没生成，先在上方点「生成报告」",
         );
         break;
       }

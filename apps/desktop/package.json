@@ -1,7 +1,26 @@
 {
   "name": "@scene/desktop",
-  "version": "0.6.14",
+  "version": "0.7.0",
   "private": true,
   "description": "场景通 桌面版（Electron 壳 + 内嵌本地服务端）",
-  "main": "dist/main.cjs"
+  "main": "dist/main.cjs",
+  "scripts": {
+    "build:shell": "node scripts/build.mjs",
+    "prepare:runtime": "node scripts/prepare-server.mjs",
+    "start": "node scripts/build.mjs && electron .",
+    "pack:mac": "node scripts/prepare-server.mjs && node scripts/build.mjs && electron-builder --mac",
+    "pack:win": "node scripts/prepare-server.mjs --arch=x64 && node scripts/build.mjs && electron-builder --win --x64",
+    "pack:dir": "node scripts/build.mjs && electron-builder --dir",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "smoke": "node scripts/smoke.mjs",
+    "smoke:packaged": "node scripts/smoke-packaged.mjs",
+    "pack:mac:arm64": "node scripts/prepare-server.mjs --arch=arm64 && node scripts/build.mjs && electron-builder --mac --arm64",
+    "pack:mac:x64": "node scripts/prepare-server.mjs --arch=x64 && node scripts/build.mjs && electron-builder --mac --x64",
+    "pack:win:x64": "node scripts/prepare-server.mjs --arch=x64 && node scripts/build.mjs && electron-builder --win --x64"
+  },
+  "devDependencies": {
+    "electron": "^36.9.5",
+    "electron-builder": "^26.15.3",
+    "esbuild": "^0.24.2"
+  }
 }

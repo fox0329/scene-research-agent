@@ -1,7 +1,58 @@
 {
-  "name": "@scene/desktop",
-  "version": "0.6.14",
+  "name": "scene-master",
+  "version": "0.7.0",
   "private": true,
-  "description": "场景通 桌面版（Electron 壳 + 内嵌本地服务端）",
-  "main": "dist/main.cjs"
+  "description": "场景通 — 场景落地分析智能体",
+  "packageManager": "pnpm@9.15.4",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "@types/node": "^22.10.0",
+    "@vitest/coverage-v8": "2.1.9",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  },
+  "scripts": {
+    "dsh:start": "bash scripts/start.sh",
+    "dsh:stop": "bash scripts/stop.sh",
+    "dsh:status": "curl -s -o /dev/null -w 'HTTP %{http_code}\\n' --max-time 3 http://127.0.0.1:46171/ || echo '未运行'",
+    "dsh:logs": "tail -f .dsh/dsh-web.log",
+    "typecheck": "pnpm run typecheck:packages && node scripts/copy-infra-sql.mjs && tsc -b apps/server apps/web",
+    "build": "pnpm -r --if-present run build",
+    "lint": "echo 'lint placeholder — TODO: 集成 eslint'",
+    "clean:stray": "find packages apps -path '*/src/*' -name '*.js' -not -path '*/node_modules/*' -delete",
+    "pretest": "pnpm run clean:stray",
+    "test": "vitest run",
+    "start": "node scripts/copy-infra-sql.mjs && APP_HOST=127.0.0.1 node apps/server/dist/index.js",
+    "verify:m0": "bash scripts/verify-m0.sh",
+    "verify:m1": "bash scripts/verify-m1.sh",
+    "verify:m2": "bash scripts/verify-m2.sh",
+    "verify:m3": "bash scripts/verify-m3.sh",
+    "verify:m4": "bash scripts/verify-m4.sh",
+    "release": "bash scripts/build-release.sh",
+    "test:e2e": "pnpm --filter @scene/web exec vite build && playwright test",
+    "verify:m5": "bash scripts/verify-m5.sh",
+    "gen:docs": "pnpm --filter @scene/contract build && node scripts/gen-table-docs.mjs",
+    "check:docs": "pnpm --filter @scene/contract build && node scripts/gen-table-docs.mjs --check",
+    "typecheck:packages": "tsc --noEmit -p tsconfig.json",
+    "migrate:info-model": "node scripts/copy-infra-sql.mjs && node scripts/migrate-info-model.mjs",
+    "clean": "rm -rf packages/*/dist apps/*/dist *.tsbuildinfo packages/*/*.tsbuildinfo apps/*/*.tsbuildinfo && pnpm run clean:stray",
+    "verify:m6": "bash scripts/verify-m5.sh",
+    "desktop:runtime": "node apps/desktop/scripts/prepare-server.mjs",
+    "desktop:dev": "pnpm --filter @scene/desktop run start",
+    "desktop:pack:mac": "pnpm --filter @scene/desktop run pack:mac",
+    "desktop:pack:win": "pnpm --filter @scene/desktop run pack:win",
+    "release:mac": "pnpm run build && pnpm --filter @scene/desktop run pack:mac:arm64",
+    "release:win": "pnpm run build && pnpm --filter @scene/desktop run pack:win:x64",
+    "release:check": "npx vitest run && npx playwright test"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "better-sqlite3",
+      "electron",
+      "esbuild"
+    ]
+  }
 }

@@ -167,6 +167,8 @@ function createMockRepo<T extends MockBaseRow>(): Repo<T> {
 function createMockDb(): DbInstance {
   return {
     db: {} as never,
+    dbPath: ":memory:",
+    dbBackup: { dir: null, warnings: [] },
     productLineRepo: createMockRepo(),
     productRepo: createMockRepo<Product>(),
     specParamRepo: createMockRepo<SpecParam>(),

@@ -11,7 +11,7 @@ SMOKE_PORT="${SMOKE_PORT:-46179}"
 SMOKE_DB="$(mktemp -d)/smoke.db"
 
 echo "── 1/4 全量构建（tsc -b ×4 + vite build）──────────────"
-pnpm -r --if-present run build
+npx pnpm@9.15.4 -r --if-present run build
 
 echo "── 2/4 以构建产物启动冒烟检查 ─────────────────────────"
 cleanup() {

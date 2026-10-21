@@ -8,6 +8,7 @@
 export { createDb, sourcePassages, sourceSearch } from "./sqlite-repo.js";
 export type {
   DbInstance,
+  CreateDbOptions,
   Repo,
   ListFilters,
   SourcePassage,
@@ -26,6 +27,35 @@ export type {
   VerificationRepo,
   CreateVerificationInput,
 } from "./sqlite-repo.js";
+
+/** 数据备份 / 待恢复（发布前 P0：启动备份、在线备份、重启后恢复） */
+export {
+  BACKUP_DIR_NAME,
+  BACKUP_KEEP,
+  BACKUP_LIST_LIMIT,
+  PENDING_RESTORE_NAME,
+  STARTUP_BACKUP_PREFIX,
+  PRE_RESTORE_PREFIX,
+  BackupError,
+  backupDirOf,
+  backupStamp,
+  validateBackupName,
+  resolveBackupFile,
+  listBackups,
+  pruneBackups,
+  createStartupBackup,
+  createOnlineBackup,
+  prepareRestore,
+  applyPendingRestore,
+} from "./db-backup.js";
+export type {
+  BackupInfo,
+  BackupOutcome,
+  BackupOptions,
+  RestorePreparation,
+  RestoreApplyResult,
+  DbBackupStatus,
+} from "./db-backup.js";
 
 export { parseDocument } from "./doc-parser.js";
 export type { ParseResult, ParsedTable } from "./doc-parser.js";

@@ -140,6 +140,12 @@ jobs:
           done
           ls -l out
 
+      - name: 生成校验和（免签名分发的最低验证手段）
+        run: |
+          cd out
+          sha256sum * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
       - name: 挂到 Release（逐文件重试，抵御瞬时失败）
         env:
           GH_TOKEN: ${{ github.token }}

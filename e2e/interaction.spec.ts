@@ -28,7 +28,7 @@ test("栏头统一 48px 且底边线水平对齐（右栏页头已删，变更�
   const bottoms = boxes.map((b) => Math.round(b.y + b.height));
   expect(Math.max(...bottoms) - Math.min(...bottoms)).toBeLessThanOrEqual(1);
 
-  // 变更表 #149：右栏「第 n/7 步 · 步骤名」整块删除（与流程轴节点、中栏表头重复）
+  // 变更表 #149：右栏「第 n/6 步 · 步骤名」整块删除（与流程轴节点、中栏表头重复）
   // ——右栏不再有 48px 页头，直接从「阶段总结」标题开始（v2.10 也没有 Tab 条了）
   await expect(page.locator(".det .det-h")).toHaveCount(0);
   await expect(page.locator(".det .summary-head h4")).toHaveText("阶段总结");
@@ -91,7 +91,8 @@ test("右栏只有「阶段总结」：调研信息来源 + 结论提醒，不�
   const subTitles = (await det.locator(".summary-sub").allInnerTexts()).map((t) => t.trim());
   expect(subTitles).toEqual(["调研信息来源", "结论提醒"]);
   const sources = det.locator(".summary-sources li a");
-  const emptySources = det.locator(".summary-empty", { hasText: "本步暂无可以打开的来源地址" });
+  /* v2.10 文案：没有可打开的来源时给一句明确说明，不再是「本步暂无可以打开的来源地址」 */
+  const emptySources = det.locator(".summary-empty", { hasText: /本步没有取得可打开的来源/ });
   expect((await sources.count()) > 0 || (await emptySources.count()) > 0).toBe(true);
   // 结论提醒是纯文字列表（不再有可编辑条目）
   await expect(det.locator(".summary-advice li").first()).not.toBeEmpty();
@@ -123,7 +124,7 @@ test("右栏不再有补充说明条目与表格：只剩来源链接与结论�
 
   // ③ 有来源时是能新窗口打开的 http(s) 链接；没有来源时给空态文案，二者都接受
   const links = det.locator(".summary-sources li a");
-  const empty = det.locator(".summary-empty", { hasText: "本步暂无可以打开的来源地址" });
+  const empty = det.locator(".summary-empty", { hasText: /本步没有取得可打开的来源/ });
   if ((await links.count()) > 0) {
     await expect(links.first()).toHaveAttribute("href", /^https?:\/\//);
     await expect(links.first()).toHaveAttribute("target", "_blank");
@@ -280,36 +281,37 @@ test("表1-1 只有「项 / 内容」两列：无状态列、无 ✓、无待确
   await expect(anchor.locator(".owner-tag")).toHaveCount(1);
 });
 
-test("流程轴：7 个节点、当前步高亮、未解锁不可点（v1.5 取代阶段 Tab）", async ({ page }) => {
+test("流程轴：6 个节点、当前步高亮、未解锁不可点（v1.5 取代阶段 Tab）", async ({ page }) => {
   const rail = page.locator(".flow-rail");
   await expect(rail).toBeVisible();
   const nodes = rail.getByRole("tab");
-  await expect(nodes).toHaveCount(7);
+  /* 2026-10-20 删除「价值验证」阶段：流程从 7 步收成 6 步（契约 FLOW_STEPS） */
+  await expect(nodes).toHaveCount(6);
 
   // 当前步唯一且高亮；初始 0 步完成 → 第 1 步是当前步，其余锁着
   await expect(rail.locator(".flow-node--current")).toHaveCount(1);
   await expect(rail.locator(".flow-node--current")).toHaveAttribute("aria-selected", "true");
   await expect(rail.locator(".flow-node--current")).toContainText("场景定义");
   await expect(rail.locator(".flow-node--done")).toHaveCount(0);
-  await expect(rail.locator(".flow-node--locked")).toHaveCount(6);
+  await expect(rail.locator(".flow-node--locked")).toHaveCount(5);
   await expect(nodes.nth(1)).toBeDisabled();
   await expect(nodes.nth(1)).toHaveAttribute("aria-label", /认识场景/);
 
-  // 进度卡只一行：7 个节点 + 行末「下一步」，没有第二行提示、没有「解锁全部步骤」
+  // 第一行：6 个节点 + 行末「下一步」，没有额外提示行、没有「解锁全部步骤」
   await expect(rail.locator(".flow-hint")).toHaveCount(0);
   await expect(rail.getByRole("button", { name: /解锁/ })).toHaveCount(0);
   await expect(rail.locator(".flow-node-no")).toHaveCount(0); // 序号已去掉
   await expect(rail.locator(".flow-node-dot")).toHaveCount(0); // 圆点也不要
-  // 保留关键词（用户定调）：7 个节点各显示简化标题，完整标题在 aria-label / title 里
-  await expect(rail.locator(".flow-node-tt")).toHaveCount(7);
+  // 保留关键词（用户定调）：6 个节点各显示简化标题，完整标题在 aria-label / title 里
+  await expect(rail.locator(".flow-node-tt")).toHaveCount(6);
   const keywords = await rail.locator(".flow-node-tt").allTextContents();
+  /* 6 步：价值验证阶段已删除（2026-10-20），交付物是最后一步 */
   expect(keywords).toEqual([
     "场景定义",
     "认识场景",
     "理解商业",
     "能力匹配",
     "方案实现",
-    "价值验证",
     "交付物",
   ]);
   await expect(nodes.nth(3)).toHaveAttribute("title", /第 4 步 · 能力匹配/);
@@ -344,7 +346,7 @@ test("流程推进：完成本步 → 当前步前移；已完成步可回看重
   await expect(rail.locator(".flow-node--done")).toHaveCount(1);
   await expect(rail.locator(".flow-node--done")).toContainText("场景定义");
   await expect(rail.locator(".flow-node--current")).toContainText("认识场景");
-  await expect(rail.locator(".flow-node--locked")).toHaveCount(5);
+  await expect(rail.locator(".flow-node--locked")).toHaveCount(4);
   // 第 2 步「认识场景」：中栏只有本步表集（表名在流程轴第二行，步标题/完整度都在别处）
   await expect(page.locator(".flow-outputs").first()).toBeVisible();
   await expect(page.locator(".ws .completeness-bar")).toHaveCount(0);
@@ -414,7 +416,7 @@ test("锁步推进：没有「解锁全部步骤」，未解锁节点点不动",
   await draftDefinition(page);
   await rail.getByRole("button", { name: "下一步" }).click();
   await expect(rail.locator(".flow-node--current")).toContainText("认识场景");
-  await expect(rail.locator(".flow-node--locked")).toHaveCount(5); // 第 3-7 步
+  await expect(rail.locator(".flow-node--locked")).toHaveCount(4); // 第 3-6 步
   await expect(rail.getByRole("button", { name: /解锁/ })).toHaveCount(0);
 
   // 回看第 1 步：点阶段名称即可来回，轴上不留导航按钮；不出现完整度条（完整度只在流程轴/中栏说一次）
@@ -423,7 +425,7 @@ test("锁步推进：没有「解锁全部步骤」，未解锁节点点不动",
   await expect(page.locator(".ws .completeness-bar")).toHaveCount(0);
   await expect(rail.getByRole("button", { name: /回到/ })).toHaveCount(0);
 
-  // 点回当前步的阶段名称后，第 7 步交付物仍锁着（锁步推进）
+  // 点回当前步的阶段名称后，最后一步交付物仍锁着（锁步推进）
   await rail.getByRole("tab", { name: /^第 2 步 · 认识场景（/ }).click();
   await expect(rail.getByRole("tab", { name: /交付物/ })).toBeDisabled();
 });
@@ -732,6 +734,13 @@ test("分析步中栏：只有表格，表名挂在流程轴第二行；不出�
 test("表格列宽自动适配：生成即是最紧凑布局，未手动拖就不留存", async ({ page }) => {
   await draftDefinition(page);
   await gotoStep2(page);
+  /*
+   * 换到第 3 步「理解商业」再验「换表后仍是适配结果」：
+   * 第 2 步只有表1-3 有演示数据，第二张表（表2-2）是空表 → 中栏渲染「本表暂无数据」而不是表格，
+   * 旧断言会在换表后读不到 table（产品行为正确，是断言选错了表）。
+   */
+  await page.locator(".flow-rail").getByRole("button", { name: "下一步" }).click();
+  await expect(page.locator(".flow-rail .flow-node--current")).toContainText("理解商业");
 
   const read = () =>
     page.evaluate(() => {
@@ -757,7 +766,14 @@ test("表格列宽自动适配：生成即是最紧凑布局，未手动拖就�
   // 换到另一张表再看一眼（表名在流程轴第二行）：换表后仍是适配结果
   const otherChip = page.locator(".flow-outputs").first().locator(".chip").nth(1);
   await otherChip.click();
-  await page.waitForTimeout(300);
+  /*
+   * 换表是本地状态切换，旧表不会先消失——只等 `.ws table` 会**立刻**命中旧表，
+   * 固定 300ms 更是赌运气（实测读到的是上一张表，列宽断言因此拿错基线）。
+   * 等表头标题变成目标表名，再读这一张表的列宽。
+   */
+  await expect(page.locator(".ws .schema-table-title")).toContainText("方案形态与主要玩家", {
+    timeout: 10_000,
+  });
 
   const fitted = (await read())!;
   expect(fitted.widths.length).toBeGreaterThan(1);

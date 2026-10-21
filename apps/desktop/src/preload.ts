@@ -16,4 +16,5 @@ contextBridge.exposeInMainWorld("sceneDesktop", {
   openDataDir: () => ipcRenderer.invoke("open-data-dir"),
   openExportDir: () => ipcRenderer.invoke("open-export-dir"),
   appInfo: () => ipcRenderer.invoke("app-info"),
+  relaunchApp: () => ipcRenderer.invoke("relaunch-app"),
 });
