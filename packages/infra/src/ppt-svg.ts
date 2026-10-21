@@ -208,11 +208,10 @@ function centerInBody(h: number): number {
 const GRID = { w: 550, h: 216, xs: [PAD, PAD + 570], ys: [170, 400], headH: 34 } as const;
 
 /** 双栏对比：左右各 550×450，栏头 52 */
-const COLS = { w: 550, h: 450, xs: [PAD, PAD + 570], y: 170, headH: 52, iconSize: 26 } as const;
+const COLS = { w: 550, h: 450, minH: 300, xs: [PAD, PAD + 570], y: 170, headH: 52, iconSize: 26 } as const;
 
 /** 流程阶段：等分横排 + 右向箭头（竖直居中：y=260） */
-const STAGE = { h: 270, gap: 28, iconSize: 26 } as const;
-const STAGE_Y = centerInBody(STAGE.h);
+const STAGE = { h: 270, minH: 220, gap: 28, iconSize: 26, rail: 3, arrow: 9 } as const;
 
 /** 分层架构：横条 72 高，自上而下堆叠（层数少时整组居中） */
 const LAYER = { x: PAD, w: CONTENT_W, h: 72, gap: 20, iconSize: 26 } as const;
@@ -266,14 +265,14 @@ export const PPT_GRID = {
   bodyBottom: BODY.bottom,
   /** 网格要点：块 550×216，落位 x=80/650、y=170/400 */
   block: { w: GRID.w, h: GRID.h, xs: GRID.xs, ys: GRID.ys },
-  /** 双栏对比：栏 550×450，落位 x=80/650 */
-  col: { w: COLS.w, h: COLS.h, xs: COLS.xs },
+  /** 双栏对比：栏宽 550、落位 x=80/650；高按内容定（300–450，两栏等高、竖直居中） */
+  col: { w: COLS.w, h: COLS.h, minH: COLS.minH, y: COLS.y, xs: COLS.xs },
   /** 分层架构 / 要点清单 / 表格行：整幅内容宽 */
   layer: { x: LAYER.x, w: LAYER.w },
   list: { x: PAD, w: CONTENT_W },
   /** 卡片 / 阶段：等分件（h 与间距固定） */
   card: { h: CARD.h, gap: CARD.gap },
-  stage: { h: STAGE.h, gap: STAGE.gap },
+  stage: { h: STAGE.h, minH: STAGE.minH, gap: STAGE.gap },
 } as const;
 
 // ─── 字内强调（变更表 #144） ───────────────────────────────
@@ -584,26 +583,41 @@ interface BlockOpts {
   anchor?: "middle" | "end";
 }
 
-/** 多行文本块（带 `<g id>`，导出的动画会按 id 分组） */
-function textBlock(o: BlockOpts): string {
-  const lines = o.lines
-    .map((line, i) =>
-      textEl({
-        x: o.x,
-        y: o.y + i * o.lineHeight,
-        size: o.size,
-        fill: o.fill,
-        text: line,
-        ...(o.weight ? { weight: true } : {}),
-        ...(o.anchor ? { anchor: o.anchor } : {}),
-      }),
-    )
-    .join("");
-  if (lines === "") return "";
-  return `<g id="${escXml(o.id)}">${lines}</g>`;
+/**
+ * 多行**段落块**：一个 `<text>` 里用 `dy` 串多行
+ *
+ * 为什么不是一个 `<text>` 一行：ppt-master 的转换器是「一个 `<text>` → 一个文本框」，
+ * 一行一个 `<text>` 的话，用户在 PowerPoint 里看到的是一堆互不相干的小文本框，挪位置要一个个点。
+ * 合成一个 `<text>`（多段落）后，转换器会输出**一个可编辑文本框**，改行距/挪整块都是一次操作。
+ * 结构要求（转换器 `_classify_paragraph_block`）：所有行都是 `<tspan>`、首行带 x 且 dy=0、
+ * 后续行带 x 且 dy>0、行内不嵌定位 tspan——不满足会被拆回一行一框。
+ */
+function paragraphsEl(o: BlockOpts & { runs?: readonly (readonly Run[])[] }): string {
+  const lines =
+    o.runs ?? o.lines.map((line) => [{ text: line, size: o.size, fill: o.fill, weight: o.weight === true }] as const);
+  const weight = o.weight ? ' font-weight="bold"' : "";
+  const anchor = o.anchor ? ` text-anchor="${o.anchor}"` : "";
+  const head = `<text x="${o.x}" y="${o.y}" font-family="${FONT_ATTR}" font-size="${o.size}" fill="${o.fill}"${weight}${anchor}>`;
+  const parts: string[] = [];
+  let first = true;
+  for (const runs of lines) {
+    const content = runsContent({ ...o, runs, weight: o.weight });
+    if (content === "") continue;
+    parts.push(
+      first ? `<tspan x="${o.x}" dy="0">${content}</tspan>` : `<tspan x="${o.x}" dy="${o.lineHeight}">${content}</tspan>`,
+    );
+    first = false;
+  }
+  if (parts.length === 0) return "";
+  return `${head}${parts.join("")}</text>`;
 }
 
-/** 圆角矩形 */
+/** 多行文本块（带 `<g id>`，导出的动画会按 id 分组） */
+function textBlock(o: BlockOpts): string {
+  const body = paragraphsEl(o);
+  return body === "" ? "" : `<g id="${escXml(o.id)}">${body}</g>`;
+}
+
 function rect(o: {
   x: number;
   y: number;
@@ -748,35 +762,31 @@ function contentLines(
     .map((p, i) => {
       const dots = p.lines.map((_, j) => rowDot(o.x - ROW_DOT.gap, p.y + j * o.rowH)).join("");
       const state = { prefix: false, number: false };
-      const texts = p.lines
-        .map((text, j) =>
-          richTextEl({
-            x: o.x,
-            y: p.y + j * o.rowH,
-            size: o.size,
-            fill: o.fill,
-            runs: lineRuns(text, { size: o.size, fill: o.fill, emph: p.emph, state }),
-          }),
-        )
-        .join("");
+      // 一条内容（含换行后的续行）= 一个 `<text>` → PPTX 里是一个可编辑文本框；
+      // 不同条目仍是不同文本框（各自可单独挪），同一句的换行不再拆成一堆小框
+      const text =
+        p.lines.length === 0
+          ? ""
+          : paragraphsEl({
+              id: `${prefix}-${i + 1}-text`,
+              x: o.x,
+              y: p.y,
+              size: o.size,
+              fill: o.fill,
+              lines: p.lines,
+              lineHeight: o.rowH,
+              runs: p.lines.map((line) => lineRuns(line, { size: o.size, fill: o.fill, emph: p.emph, state })),
+            });
       return [
         `<g id="${escXml(`${prefix}-${i + 1}`)}">`,
         dots,
-        `<g id="${escXml(`${prefix}-${i + 1}-text`)}">${texts}</g>`,
+        text === "" ? "" : `<g id="${escXml(`${prefix}-${i + 1}-text`)}">${text}</g>`,
         `</g>`,
       ].join("");
     })
     .join("");
 }
 
-// ─── 统一骨架（变更表 #253：按模版重排） ────────────────────
-
-/**
- * 小节标签：标题上方一行 13px 灰蓝小字
- *
- * 模版里没有胶囊标签；这里保留一行小字承担"读者知道自己在第几段"的作用，
- * 但不占标题位置、不用色块——13px 属元信息（`minMetaFontSize`），不当内容字号判。
- */
 function kickerEl(text: string, icon: string): string {
   if (text === "") return "";
   return [
@@ -990,20 +1000,47 @@ function renderGrid(page: PptPage): string {
   return cards + `<g id="grid-rules">${rules}</g>`;
 }
 
-/** 一栏（双栏对比的左右栏，左 #0D47A1 / 右 #1565C0 栏头 + 26×26 白图标） */
-function columnEl(col: PptColumn, i: number, x: number): string {
-  const y = COLS.y;
+/** 一栏里一行的视觉行数（换行后），用来算这一栏要多高 */
+function columnVisualLines(col: PptColumn, maxW: number): number {
+  return col.lines
+    .slice(0, PPT_LIMITS.columns.maxLines)
+    .reduce((n, line) => n + wrapText(line, PPT_MIN_FONT, maxW, 2).length, 0);
+}
+
+/**
+ * 一栏（双栏对比；左栏主色、右栏强调色）
+ *
+ * 实跑反馈：4 行内容撑一张 550×450 的大卡，卡里空、页面上更空。改成**按内容定高**
+ * （`columnHeight` 夹在 300–450），行距在卡内均分（32–46px）、行间加一条细分隔线——
+ * 内容少时卡片跟着缩、页面上下留白对称，而不是一张空卡占满半页。
+ */
+function columnEl(col: PptColumn, i: number, x: number, y: number, h: number): string {
   const w = COLS.w;
-  const h = COLS.h;
   const fill = i === 0 ? PPT_COLORS.primary : PPT_COLORS.primaryAlt;
   const textX = x + 58;
+  const maxW = w - 58 - 18;
+  const contentTop = col.note === "" ? 84 : 104;
+  const visual = Math.max(1, columnVisualLines(col, maxW - ROW_DOT.gap));
+  const rowH = Math.max(32, Math.min(46, Math.floor((h - contentTop - 14) / visual)));
   const placed = placeLines(col.lines, {
-    top: col.note === "" ? y + 84 : y + 104,
-    bottom: y + h - 16,
-    rowH: 32,
+    top: y + contentTop,
+    bottom: y + h - 18,
+    rowH,
     size: PPT_MIN_FONT,
-    maxW: w - 58 - 18,
+    maxW,
   });
+  const rules = placed
+    .slice(0, -1)
+    .map((p) =>
+      line({
+        x1: textX - 20,
+        y1: p.y + p.lines.length * rowH - rowH / 2 + 2,
+        x2: x + w - 18,
+        y2: p.y + p.lines.length * rowH - rowH / 2 + 2,
+        stroke: PPT_COLORS.divider,
+      }),
+    )
+    .join("");
   return [
     `<g id="col-${i + 1}">`,
     rect({ x, y, w, h, fill: PPT_COLORS.subtle, stroke: PPT_COLORS.border, strokeWidth: 1.5, rx: 10 }),
@@ -1025,43 +1062,62 @@ function columnEl(col: PptColumn, i: number, x: number): string {
       y: y + 76,
       size: PPT_MIN_FONT,
       fill: PPT_COLORS.muted,
-      text: wrapText(col.note, PPT_MIN_FONT, w - 58 - 18, 1)[0]!,
+      text: wrapText(col.note, PPT_MIN_FONT, maxW, 1)[0]!,
     }),
-    contentLines(`col-${i + 1}-line`, placed, { x: textX, size: PPT_MIN_FONT, fill: PPT_COLORS.text, rowH: 32 }),
+    contentLines(`col-${i + 1}-line`, placed, { x: textX, size: PPT_MIN_FONT, fill: PPT_COLORS.text, rowH }),
+    `<g id="col-${i + 1}-rules">${rules}</g>`,
     `</g>`,
   ].join("");
 }
 
-/** 双栏对比：两栏并排 + 栏间 #D6E7F8 细分隔线 */
+/** 两栏共用的卡高：按内容多的那一栏定，夹在 300–450 之间 */
+function columnHeight(page: PptPage): number {
+  const maxW = COLS.w - 58 - 18 - ROW_DOT.gap;
+  const rows = page.columns.slice(0, PPT_LIMITS.columns.max).map((c) => columnVisualLines(c, maxW));
+  const top = page.columns.some((c) => c.note !== "") ? 104 : 84;
+  const needed = top + Math.max(1, ...rows) * 34 + 32;
+  return Math.min(COLS.h, Math.max(COLS.minH, needed));
+}
+
+/** 双栏对比：两栏并排，整体竖直居中 */
 function renderColumns(page: PptPage): string {
+  const h = columnHeight(page);
+  const y = centerInBody(h);
   const cols = page.columns
     .slice(0, PPT_LIMITS.columns.count)
-    .map((col, i) => columnEl(col, i, COLS.xs[i]!))
+    .map((col, i) => columnEl(col, i, COLS.xs[i]!, y, h))
     .join("");
   const rule = line({
     x1: RULE.xMid,
-    y1: COLS.y + 4,
+    y1: y + 4,
     x2: RULE.xMid,
-    y2: COLS.y + COLS.h - 4,
+    y2: y + h - 4,
     stroke: PPT_COLORS.divider,
   });
   return cols + `<g id="col-rules">${rule}</g>`;
 }
 
-/** 一个阶段（顶部图标 + 序号圆点 + 阶段名 + 说明，右侧接箭头） */
-function stageEl(stage: PptStage, i: number, n: number, x: number, w: number): string {
-  // #145：整排竖直居中（3–5 个阶段都不许缩在内容区上半页）
-  const y = STAGE_Y;
-  const h = STAGE.h;
+/** 一个阶段（顶部图标 + 序号圆点 + 阶段名 + 说明） */
+function stageEl(stage: PptStage, i: number, n: number, x: number, w: number, y: number, h: number): string {
   const cx = x + w / 2;
   const maxW = w - 32;
   const heads = wrapText(stage.head, 18, maxW, 2);
   const notes = wrapText(stage.note, PPT_MIN_FONT, maxW, 2);
   const noteY = y + 124 + (heads.length - 1) * 24 + 30;
+  const dotY = y + 70;
   return [
     `<g id="stage-${i + 1}">`,
     rect({ x, y, w, h, fill: PPT_COLORS.lightBlue, rx: 10 }),
-    i < n - 1 ? arrow({ x: x + w, y: y + h / 2 - 16, w: STAGE.gap - 6, h: 32, fill: PPT_COLORS.accent }) : "",
+    // 箭头缩到 9×9、贴着轨道画（原先 22×32 的大三角把间隙整个吃掉）
+    i < n - 1
+      ? arrow({
+          x: x + w + (STAGE.gap - STAGE.arrow) / 2,
+          y: dotY - STAGE.arrow / 2,
+          w: STAGE.arrow,
+          h: STAGE.arrow,
+          fill: PPT_COLORS.primaryAlt,
+        })
+      : "",
     iconGroup(
       `stage-${i + 1}-icon`,
       iconUse({
@@ -1072,10 +1128,10 @@ function stageEl(stage: PptStage, i: number, n: number, x: number, w: number): s
         fill: PPT_COLORS.primary,
       }),
     ),
-    circle({ cx, cy: y + 70, r: 20, fill: PPT_COLORS.primary }),
+    circle({ cx, cy: dotY, r: 20, fill: PPT_COLORS.primary }),
     textEl({
       x: cx,
-      y: y + 70 + 18 * 0.35,
+      y: dotY + 18 * 0.35,
       size: 18,
       fill: PPT_COLORS.onPrimary,
       text: String(i + 1),
@@ -1107,14 +1163,40 @@ function stageEl(stage: PptStage, i: number, n: number, x: number, w: number): s
   ].join("");
 }
 
-/** 流程阶段：3–5 个等分横排（浅蓝卡 + 图标 + 主色序号圆点 + 箭头） */
+/**
+ * 流程阶段：3–5 个等分横排
+ *
+ * 实跑反馈：原来只有卡片之间的大三角、没有连线，箭头比卡片还抢眼。现在补一条 **3px 横轨**
+ * （画在卡片下面，只在间隙里露出来）把阶段串起来，三角缩到 9×9 落在轨上；
+ * 卡高按内容算（220–270），不再用固定 270 撑出一块空白。
+ */
 function renderStages(page: PptPage): string {
   const stages = page.stages.slice(0, PPT_LIMITS.stages.max);
   const n = stages.length;
   if (n === 0) return "";
   const gap = STAGE.gap;
   const w = Math.floor((CONTENT_W - gap * (n - 1)) / n);
-  return stages.map((stage, i) => stageEl(stage, i, n, PAD + i * (w + gap), w)).join("");
+  const maxW = w - 32;
+  const needed = Math.max(
+    ...stages.map((st) => {
+      const heads = wrapText(st.head, 18, maxW, 2).length;
+      const notes = wrapText(st.note, PPT_MIN_FONT, maxW, 2).length;
+      return 124 + heads * 24 + 30 + notes * 22 + 16;
+    }),
+  );
+  const h = Math.min(STAGE.h, Math.max(STAGE.minH, needed));
+  const y = centerInBody(h);
+  const railY = y + 70;
+  const rail = line({
+    x1: PAD,
+    y1: railY,
+    x2: RIGHT,
+    y2: railY,
+    stroke: PPT_COLORS.divider,
+    width: STAGE.rail,
+  });
+  const cards = stages.map((stage, i) => stageEl(stage, i, n, PAD + i * (w + gap), w, y, h)).join("");
+  return `<g id="stage-rail">${rail}</g>` + cards;
 }
 
 /** 一层（左侧强调竖条 + 26×26 图标 + 层名 + 组件胶囊标签） */

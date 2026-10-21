@@ -227,7 +227,8 @@ function walkSvg(svg: string, visit: (token: SvgToken, path: readonly string[]) 
 
 /** 取一个标签属性（缺属性给空串） */
 function attrOf(attrs: string, name: string): string {
-  return new RegExp(`${name}="([^"]*)"`).exec(attrs)?.[1] ?? "";
+  // 属性名前必须有边界：否则取 "y" 会命中 `dy="0"`、取 "x" 会命中 `dx="6"`（段落块的陷阱）
+  return new RegExp(`(?:^|\\s)${name}="([^"]*)"`).exec(attrs)?.[1] ?? "";
 }
 
 /** 取一个数值属性（缺 / 非法给 NaN，由调用方判） */
@@ -270,33 +271,83 @@ function piecesOf(inner: string, baseSize: number): Piece[] {
  * 一个 `<text>` = 一个矩形（同一行的多个 `<tspan>` 强调段合并计宽，**不互相判压字**）；
  * 垂直范围按段里最大的字号算（20/22px 的强调段比正文高），宽度按各段自己的字号累加。
  */
+/** 段落块里的一行（多行 `<text>` 的每个 dy 行各算一行） */
+interface TextLine {
+  x: number;
+  y: number;
+  pieces: Piece[];
+}
+
+/**
+ * 把一个 `<text>` 拆成若干**行**
+ *
+ * 渲染层把同一段落的多行写成单个 `<text>` + 多条 `<tspan dy>`（转 PPTX 时是一个可编辑
+ * 文本框），所以判据这里必须按 dy 还原成多行——否则整块只算一条，密度、压字、越界全失真。
+ * 非定位 `<tspan>`（行内强调段）留在它所在的行里。
+ */
+function textLines(attrs: string, inner: string, baseSize: number): TextLine[] {
+  const baseX = Number(attrOf(attrs, "x"));
+  const baseY = Number(attrOf(attrs, "y"));
+  const lines: TextLine[] = [];
+  let cur: TextLine = { x: baseX, y: baseY, pieces: [] };
+  let lastY = baseY;
+  let hasPos = false;
+  let last = 0;
+  TSPAN_RE.lastIndex = 0;
+  for (let m = TSPAN_RE.exec(inner); m !== null; m = TSPAN_RE.exec(inner)) {
+    if (m.index > last) pushPiece(cur.pieces, inner.slice(last, m.index), baseSize);
+    last = m.index + m[0].length;
+    const tAttrs = m[1]!;
+    const dy = Number(attrOf(tAttrs, "dy"));
+    const tX = Number(attrOf(tAttrs, "x"));
+    const tY = Number(attrOf(tAttrs, "y"));
+    const positional = attrOf(tAttrs, "dy") !== "" || attrOf(tAttrs, "x") !== "" || attrOf(tAttrs, "y") !== "";
+    const size = Number(attrOf(tAttrs, "font-size"));
+    const size1 = Number.isFinite(size) && size > 0 ? size : baseSize;
+    if (positional) {
+      if (hasPos || cur.pieces.length > 0) lines.push(cur);
+      const nextY = attrOf(tAttrs, "y") !== "" ? tY : lastY + (Number.isFinite(dy) ? dy : 0);
+      cur = {
+        x: attrOf(tAttrs, "x") !== "" ? tX : baseX,
+        y: nextY,
+        pieces: [],
+      };
+      lastY = nextY;
+      hasPos = true;
+    }
+    pushPiece(cur.pieces, m[2]!, size1);
+  }
+  if (last < inner.length) pushPiece(cur.pieces, inner.slice(last), baseSize);
+  if (cur.pieces.length > 0) lines.push(cur);
+  return lines;
+}
+
 export function svgTextRects(svg: string): PptTextRect[] {
   const out: PptTextRect[] = [];
   walkSvg(svg, (t, path) => {
     if (t.kind !== "text") return;
     const baseSize = Number(attrOf(t.attrs, "font-size"));
     const size0 = Number.isFinite(baseSize) && baseSize > 0 ? baseSize : 0;
-    const pieces = piecesOf(t.inner, size0);
-    if (pieces.length === 0) return;
-    const x = Number(attrOf(t.attrs, "x"));
-    const y = Number(attrOf(t.attrs, "y"));
     const anchor = attrOf(t.attrs, "text-anchor") || "start";
-    const size = Math.max(...pieces.map((p) => p.size));
-    const w = pieces.reduce((a, p) => a + estimateTextWidth(p.text, p.size), 0);
-    const left = anchor === "end" ? x - w : anchor === "middle" ? x - w / 2 : x;
-    out.push({
-      text: pieces.map((p) => p.text).join(""),
-      x,
-      y,
-      size,
-      left,
-      right: left + w,
-      // 显式基线：上界按 0.86em 估（CJK 近满框），下界按 0.22em 估
-      top: y - size * 0.86,
-      bottom: y + size * 0.22,
-      group: path[path.length - 1] ?? "",
-      path,
-    });
+    for (const line of textLines(t.attrs, t.inner, size0)) {
+      if (line.pieces.length === 0) continue;
+      const size = Math.max(...line.pieces.map((p) => p.size));
+      const w = line.pieces.reduce((a, p) => a + estimateTextWidth(p.text, p.size), 0);
+      const left = anchor === "end" ? line.x - w : anchor === "middle" ? line.x - w / 2 : line.x;
+      out.push({
+        text: line.pieces.map((p) => p.text).join(""),
+        x: line.x,
+        y: line.y,
+        size,
+        left,
+        right: left + w,
+        // 显式基线：上界按 0.86em 估（CJK 近满框），下界按 0.22em 估
+        top: line.y - size * 0.86,
+        bottom: line.y + size * 0.22,
+        group: path[path.length - 1] ?? "",
+        path,
+      });
+    }
   });
   return out;
 }
@@ -394,7 +445,8 @@ export function countSvgColors(svg: string): number {
  * 15px 的小注与页脚不算（它们每页都有，量它们没有区分度）。
  */
 export function countSvgEmphasis(svg: string): number {
-  const inline = (svg.match(/<tspan\b/g) ?? []).length;
+  // 结构行（带 dy/x 的 tspan）是段落块的行，不是字内强调——只数不带 dy/x 的
+  const inline = (svg.match(/<tspan\b(?![^>]*(?:\bdy=|\bx=))[^>]*>/g) ?? []).length;
   let bold = 0;
   TEXT_RE.lastIndex = 0;
   for (let m = TEXT_RE.exec(svg); m !== null; m = TEXT_RE.exec(svg)) {
@@ -566,8 +618,24 @@ function gridIssues(svg: string, page: number): PptQualityIssue[] {
       h: PPT_GRID.block.h,
     });
   }
+  // 双栏：#253 起卡高按内容定（300–450），两栏等高、竖直居中；宽与 x 仍按网格
+  const colHeights: number[] = [];
   for (let i = 1; i <= PPT_LIMITS.columns.count; i += 1) {
-    check(`col-${i}`, { xs: PPT_GRID.col.xs, w: PPT_GRID.col.w, h: PPT_GRID.col.h });
+    const r = firstRect(`col-${i}`);
+    if (r === undefined) continue;
+    const w = r.right - r.left;
+    const h = r.bottom - r.top;
+    if (!near(w, PPT_GRID.col.w)) flag(`col-${i}`, "宽", w, PPT_GRID.col.w);
+    if (!PPT_GRID.col.xs.some((v) => near(r.left, v))) flag(`col-${i}`, "x", r.left, PPT_GRID.col.xs[0]!);
+    if (h < PPT_GRID.col.minH - tol || h > PPT_GRID.col.h + tol) {
+      flag(`col-${i}`, "高", h, PPT_GRID.col.h);
+    }
+    const wantY = PPT_GRID.col.y + (PPT_GRID.col.h - h) / 2;
+    if (!near(r.top, wantY)) flag(`col-${i}`, "y", r.top, wantY);
+    colHeights.push(h);
+  }
+  if (colHeights.length > 1 && Math.abs(colHeights[0]! - colHeights[1]!) > tol) {
+    flag("col-2", "高（与 col-1 不一致）", colHeights[1]!, colHeights[0]!);
   }
   for (let i = 1; i <= PPT_LIMITS.layers.max; i += 1) {
     check(`layer-${i}`, { xs: [PPT_GRID.layer.x], w: PPT_GRID.layer.w });
@@ -581,7 +649,7 @@ function gridIssues(svg: string, page: number): PptQualityIssue[] {
   check("table", { xs: [PPT_GRID.list.x], w: PPT_GRID.list.w });
 
   /** 等分件（卡片 / 阶段）：同页等宽 + 等距 + 起点在内容区左缘 */
-  const equalRun = (prefix: string, count: number, gap: number, h: number): void => {
+  const equalRun = (prefix: string, count: number, gap: number, h: number, minH = h): void => {
     const items: PptShapeBox[] = [];
     for (let i = 1; i <= count; i += 1) {
       const r = firstRect(`${prefix}-${i}`);
@@ -593,7 +661,8 @@ function gridIssues(svg: string, page: number): PptQualityIssue[] {
     items.forEach((r, i) => {
       const w = r.right - r.left;
       if (!near(w, w0)) flag(`${prefix}-${i + 1}`, "宽", w, w0);
-      if (!near(r.bottom - r.top, h)) flag(`${prefix}-${i + 1}`, "高", r.bottom - r.top, h);
+      const boxH = r.bottom - r.top;
+      if (boxH < minH - tol || boxH > h + tol) flag(`${prefix}-${i + 1}`, "高", boxH, h);
       const prev = items[i - 1];
       if (prev !== undefined && !near(r.left - prev.left, w0 + gap)) {
         flag(`${prefix}-${i + 1}`, "间距", r.left - prev.left, w0 + gap);
@@ -601,7 +670,7 @@ function gridIssues(svg: string, page: number): PptQualityIssue[] {
     });
   };
   equalRun("card", PPT_LIMITS.cards.max, PPT_GRID.card.gap, PPT_GRID.card.h);
-  equalRun("stage", PPT_LIMITS.stages.max, PPT_GRID.stage.gap, PPT_GRID.stage.h);
+  equalRun("stage", PPT_LIMITS.stages.max, PPT_GRID.stage.gap, PPT_GRID.stage.h, PPT_GRID.stage.minH);
   return out;
 }
 

@@ -867,12 +867,13 @@ describe("renderPptPage — 字内强调（#144：重点要突出）", () => {
     const plain = /<g id="item-1-main-1-text">([\s\S]*?)<\/g>/.exec(
       renderPptPage(page({ layout: "要点清单", bullets: ["全区纳管出报表"] }), ctx),
     )![1]!;
-    expect(plain).not.toContain("<tspan");
+    // 段落块的结构行 tspan（只有 dy/x）是正常的；这里不许出现**带样式**的字内强调 tspan
+    expect(plain).not.toMatch(/<tspan[^>]*font-size=/);
 
     const long = /<g id="item-1-main-1-text">([\s\S]*?)<\/g>/.exec(
       renderPptPage(page({ layout: "要点清单", bullets: ["这是一句超过八个字的前缀：后面的说明"] }), ctx),
     )![1]!;
-    expect(long).not.toContain("<tspan");
+    expect(long).not.toMatch(/<tspan[^>]*font-size=/);
   });
 
   it("标题下不再有橙色短横（#145 用户要求去掉），标题直接接副题", () => {
