@@ -317,21 +317,22 @@ describe("renderPptPage — 统一骨架与令牌", () => {
     for (const [i, p] of deck.pages.entries()) {
       const svg = renderPptPage(p, { index: i, total: 7, scenarioName: SCENARIO });
       expect(svg, p.layout).toContain(PPT_COLORS.primary);
-      expect(svg, p.layout).toContain(PPT_COLORS.accent);
-      expect(svg, p.layout).toContain(PPT_COLORS.lightBlue);
+      expect(svg, p.layout).toContain(PPT_COLORS.text);
       expect(svg, p.layout).toContain('fill="#FFFFFF"');
       expect(svg, p.layout).not.toContain("#F5F8FC"); // 旧的浅蓝页底已退场
     }
   });
 
-  it("每页都有小节标签胶囊、大标题、副题、结论带、页码与页脚", () => {
+  it("每页都有小节标签、大标题、副题、一句话总结、页码与页脚", () => {
     for (const [i, p] of deck.pages.entries()) {
       const svg = renderPptPage(p, { index: i, total: 7, scenarioName: SCENARIO });
       expect(svg, p.layout).toContain('<g id="kicker">');
       expect(svg, p.layout).toContain('<g id="hd">');
       expect(svg, p.layout).toContain('<g id="subtitle">');
-      expect(svg, p.layout).toContain('<g id="highlight">');
-      expect(svg, p.layout).toContain(`第 ${i + 1} 页 / 共 7 页`);
+      expect(svg, p.layout).toContain('<g id="summary">');
+      expect(svg, p.layout).toContain(
+        `${String(i + 1).padStart(2, "0")} / ${String(deck.pages.length).padStart(2, "0")}`,
+      );
       expect(svg, p.layout).toContain(`场景通 · ${SCENARIO}`);
       expect(svg, p.layout).toContain(escXml(p.kicker));
       expect(svg, p.layout).toContain(escXml(p.highlight));
@@ -386,7 +387,7 @@ describe("renderPptPage — 质量门禁（密度 / 出界 / 压字 / 信息量�
     }
   });
 
-  it("每页文字条数 ≥12（信息量够）", () => {
+  it("每页文字条数 ≥16（信息量够）", () => {
     for (const [i, svg] of svgs.entries()) {
       const texts = countSvgTexts(svg);
       expect(texts, `第 ${i + 1} 页只有 ${texts} 条文字`).toBeGreaterThanOrEqual(
@@ -395,24 +396,27 @@ describe("renderPptPage — 质量门禁（密度 / 出界 / 压字 / 信息量�
     }
   });
 
-  it("7 页全过门禁：0 越界、0 压字、kicker 与 highlight 都在", () => {
-    expect(checkPptDeck(svgs)).toEqual([]);
+  it("7 页正文全过门禁：0 越界、0 压字、kicker 与 summary 都在", () => {
+    expect(checkPptDeck(svgs, { requireCover: false })).toEqual([]);
   });
 
   it("#145 版面判据全过：字号 / 安全边 / 网格 / 留白 / 行首标点 / 孤字行", () => {
     const codes = ["字号过小", "超出安全边", "未对齐网格", "留白不均", "行首标点", "孤字行"];
     for (const [i, svg] of svgs.entries()) {
-      const found = checkPptDeck([svg])
+      const found = checkPptDeck([svg], { requireCover: false })
         .filter((x) => codes.includes(x.code))
         .map((x) => `${x.code}：${x.detail}`);
       expect(found, `第 ${i + 1} 页（${deck.pages[i]!.layout}）${found.join("｜")}`).toEqual([]);
     }
   });
 
-  it("内容文字一律 ≥16px，只有页脚与页码按 15px 的元信息下限", () => {
+  it("内容文字一律 ≥15px，只有页脚与页码按 14px 的元信息下限", () => {
     for (const [i, svg] of svgs.entries()) {
       for (const r of svgTextRects(svg)) {
-        const meta = r.path.includes("footer") || r.path.includes("page-no");
+        const meta =
+          r.path.includes("footer") ||
+          r.path.includes("page-no") ||
+          r.path.includes("kicker");
         const min = meta ? PPT_QUALITY.minMetaFontSize : PPT_MIN_FONT;
         expect(r.size, `第 ${i + 1} 页「${r.text}」只有 ${r.size}px`).toBeGreaterThanOrEqual(min);
       }
@@ -508,7 +512,7 @@ describe("renderPptPage — 要点清单加密", () => {
     const shapes = countSvgShapes(svg);
     expect(shapes, `只有 ${shapes} 个形状`).toBeGreaterThanOrEqual(22);
     expect(countSvgTexts(svg)).toBeGreaterThanOrEqual(PPT_LIMITS.minSentencesPerPage);
-    expect(checkPptDeck([svg])).toEqual([]);
+    expect(checkPptDeck([svg], { requireCover: false })).toEqual([]);
   });
 
   it("每条三件：44×44 序号底衬 + 20px 主句 + 16px 次要说明", () => {
@@ -695,7 +699,7 @@ describe("renderPptPage — 图标（#144：用足 ppt-master 的图标库）", 
   });
   const svgs = deck.pages.map((p, i) => renderPptPage(p, ctx(i)));
 
-  it("每页图标 ≥4，且每个名字都在 PPT_ICONS 白名单里（渲染产物里没有清单外的名字）", () => {
+  it("每页图标 ≥3，且每个名字都在 PPT_ICONS 白名单里（渲染产物里没有清单外的名字）", () => {
     for (const [i, svg] of svgs.entries()) {
       const names = [...svg.matchAll(new RegExp(`data-icon="${PPT_ICON_LIB}/([^"]+)"`, "g"))].map((m) => m[1]!);
       expect(countSvgIcons(svg), `第 ${i + 1} 页只有 ${names.length} 个图标`).toBeGreaterThanOrEqual(
@@ -727,12 +731,12 @@ describe("renderPptPage — 图标（#144：用足 ppt-master 的图标库）", 
     expect(svg).not.toContain("whiteboard");
   });
 
-  it("位置与尺寸：小节标签 22×22、块头 28×28（#E3F2FD 卡头横条上）、卡片 28、表头每列 14、结论带固定 bulb", () => {
+  it("位置与尺寸：页图标 16×16、块头 28×28、卡片 28、表头每列 14", () => {
     const grid = svgs[0]!;
     expect(grid).toContain('id="kicker-icon"');
-    expect(grid).toContain('x="92" y="40" width="22" height="22"');
+    expect(grid).toContain('width="16" height="16"');
     for (let i = 1; i <= 4; i += 1) expect(grid).toContain(`id="block-${i}-icon"`);
-    expect(grid).toContain('width="28" height="28" fill="#0D47A1"');
+    expect(grid).toContain(`width="28" height="28" fill="${PPT_COLORS.primary}"`);
     expect(svgs[1]).toContain('id="col-1-icon"');
     expect(svgs[2]).toContain('id="stage-1-icon"');
     expect(svgs[3]).toContain('id="layer-1-icon"');
@@ -740,9 +744,10 @@ describe("renderPptPage — 图标（#144：用足 ppt-master 的图标库）", 
     for (let i = 1; i <= 5; i += 1) expect(svgs[5]).toContain(`id="th-${i}-icon"`);
     expect(svgs[5]).toContain('width="14" height="14"');
     expect(svgs[6]).toContain('id="item-1-icon"');
+    // 模版没有底部图标；渲染层也不再挂 bulb（变更表 #253）
     for (const [i, svg] of svgs.entries()) {
-      expect(svg, `第 ${i + 1} 页结论带要挂 bulb`).toContain(`data-icon="${PPT_ICON_LIB}/bulb"`);
-      expect(svg).toContain('id="highlight-icon"');
+      expect(svg, `第 ${i + 1} 页不该再有结论带图标`).not.toContain('id="highlight-icon"');
+      expect(svg, `第 ${i + 1} 页要有页图标`).toContain('id="kicker-icon"');
     }
   });
 });
@@ -760,12 +765,13 @@ describe("renderPptPage — 颜色层次（#144：色阶 + 语义色）", () => 
     }
   });
 
-  it("页顶不再有通栏主色带（#145 用户要求去掉），只剩右上角的页码胶囊", () => {
+  it("页顶没有通栏主色带、右上角没有页码胶囊（模版是页脚 NN / MM）", () => {
     const svg = svgs[0]!;
     expect(svg).not.toContain("pptTopBand");
     expect(svg).not.toContain("<linearGradient");
     expect(svg).not.toContain('width="1280" height="8"');
-    expect(svg).toContain(`height="24" rx="12" fill="${PPT_COLORS.lightBlue}"`);
+    expect(svg).toContain('<g id="page-no">');
+    expect(svg).toContain("01 / 07");
   });
 
   it("页码在 <g id=\"page-no\"> 里（元信息文字，15px 走字号例外）", () => {
@@ -809,11 +815,11 @@ describe("renderPptPage — 颜色层次（#144：色阶 + 语义色）", () => 
     expect(svgs[1]).toContain('id="col-rules"');
   });
 
-  it("结论带：#E3F2FD 底 + 左侧 6px 橙条 + bulb 图标 + 19px 粗深蓝字", () => {
+  it("底部一句话总结：模版式的深灰一行（不做蓝底、不加橙条与图标）", () => {
     const svg = svgs[0]!;
-    expect(svg).toContain(`<g id="highlight">`);
-    expect(svg).toContain('width="6" height="30" rx="3" fill="#FF9800"');
-    expect(svg).toContain('font-size="19" fill="#0D47A1" font-weight="bold"');
+    expect(svg).toContain('<g id="summary">');
+    expect(svg).toContain(`font-size="${PPT_MIN_FONT}" fill="${PPT_COLORS.text}"`);
+    expect(svg).not.toContain('<g id="highlight">');
   });
 });
 
@@ -851,9 +857,9 @@ describe("renderPptPage — 字内强调（#144：重点要突出）", () => {
 
   it("数字强调：22px 粗橙 tspan，同一行只强调第一处（避免花）", () => {
     const svg = renderPptPage(page({ layout: "要点清单", bullets: ["对账周期从 2 天压到 4 小时"] }), ctx);
-    const orange = [...svg.matchAll(/<tspan font-size="22" fill="#FF9800" font-weight="bold">([^<]*)<\/tspan>/g)].map(
-      (m) => m[1]!,
-    );
+    const orange = [
+      ...svg.matchAll(new RegExp(`<tspan font-size="22" fill="${PPT_COLORS.orange}" font-weight="bold">([^<]*)</tspan>`, "g")),
+    ].map((m) => m[1]!);
     expect(orange).toEqual(["2 天"]);
   });
 

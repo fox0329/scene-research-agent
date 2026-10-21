@@ -103,6 +103,11 @@ export interface PptOutlineParse {
  */
 export function pptPageSentences(page: PptPage): number {
   switch (page.layout) {
+    case "封面":
+      return (
+        page.blocks.reduce((n, b) => n + (b.head === "" ? 0 : 1) + (b.note === "" ? 0 : 1) + b.lines.length, 0) +
+        page.stages.reduce((n, s) => n + (s.head === "" ? 0 : 1) + (s.note === "" ? 0 : 1), 0)
+      );
     case "网格要点":
       return page.blocks.reduce(
         (n, b) => n + (b.head === "" ? 0 : 1) + (b.note === "" ? 0 : 1) + b.lines.length,
@@ -480,6 +485,15 @@ function settle(args: SettleArgs): PptPage | null {
     layout = PPT_DEFAULT_LAYOUT;
   };
 
+  if (layout === "封面") {
+    // 封面就是模版 s1 的版式：四张能力卡 + 三步落地链，缺一就降级成网格要点（内容不丢）
+    if (blocks.length < PPT_LIMITS.blocks.count || stages.length < 3) {
+      degrade(
+        `封面缺能力卡或三步链（要 ${PPT_LIMITS.blocks.count} 张卡 + 3 步）`,
+        flatten({ blocks, columns: [], stages, layers: [], cards: [] }),
+      );
+    }
+  }
   if (layout === "网格要点" && blocks.length < PPT_LIMITS.blocks.min) {
     degrade(`网格要点不足 ${PPT_LIMITS.blocks.min} 块`, flatten({ blocks, columns: [], stages: [], layers: [], cards: [] }));
   }
@@ -531,9 +545,9 @@ function settle(args: SettleArgs): PptPage | null {
     icon,
     title,
     subtitle,
-    blocks: layout === "网格要点" ? blocks : [],
+    blocks: layout === "网格要点" || layout === "封面" ? blocks : [],
     columns: layout === "双栏对比" ? columns : [],
-    stages: layout === "流程阶段" ? stages : [],
+    stages: layout === "流程阶段" || layout === "封面" ? stages : [],
     layers: layout === "分层架构" ? layers : [],
     cards: layout === "数据卡片" ? cards : [],
     table: layout === "表格" ? table : null,
@@ -743,6 +757,9 @@ export const PPT_OUTLINE_ISSUE_CODES = [
   "图标不合规",
   "图标重复",
   "版式与字段不成套",
+  "缺封面",
+  "版式单一",
+  "版式重复",
 ] as const;
 
 export type PptOutlineQualityCode = (typeof PPT_OUTLINE_ISSUE_CODES)[number];
@@ -761,6 +778,8 @@ export interface PptOutlineQualityIssue extends PptIssue {
  */
 export function pptLayoutSentenceMax(layout: PptLayout): number {
   switch (layout) {
+    case "封面":
+      return PPT_LIMITS.blocks.count * 4 + 3 * 2;
     case "网格要点":
       return PPT_LIMITS.blocks.count * (2 + PPT_LIMITS.blocks.maxLines);
     case "双栏对比":
@@ -1029,6 +1048,12 @@ function hasJudgment(title: string): boolean {
 function layoutFieldDefect(page: PptPage): string | null {
   const l = PPT_LIMITS;
   switch (page.layout) {
+    case "封面": {
+      // 封面就是模版 s1：四张能力卡 + 三步落地链，内容齐才成版
+      if (page.blocks.length < l.blocks.count) return `声明了「封面」却只有 ${page.blocks.length} 张能力卡（要 ${l.blocks.count} 张）`;
+      if (page.stages.length < l.stages.min) return `声明了「封面」却只有 ${page.stages.length} 步落地链（要 ${l.stages.min} 步）`;
+      return null;
+    }
     case "网格要点":
       return page.blocks.length >= l.blocks.min ? null : `声明了「网格要点」却只有 ${page.blocks.length} 块（要 ${l.blocks.min}–${l.blocks.count} 块）`;
     case "双栏对比":
@@ -1343,6 +1368,50 @@ function narrativeIssues(pages: readonly PptPage[]): PptOutlineQualityIssue[] {
  * 输出按 `问题码 + 页码 + detail` 去重（变更表 #146 补充）：同一页同一个词命中两次会产出两条
  * 一字不差的问题，喂给下一轮提示词会让模型以为有两处。
  */
+/**
+ * 模版基线判据（变更表 #253）
+ *
+ * 用户给了模版并定调「以模版为基准」：模版第一页是**写满内容的封面**（标题 + 四张能力卡 +
+ * 三步落地链 + 一句话总结），六页用了五种不同结构、没有连续同构页。这三条就是它的结构特征，
+ * 判据在这里，提示词在 `apps/server/src/ppt-prompt.ts`（同源）。
+ */
+function templateIssues(pages: readonly PptPage[]): PptOutlineQualityIssue[] {
+  const out: PptOutlineQualityIssue[] = [];
+  // 只对成稿规模的整份（≥ minPages）判结构：少于 7 页本身已经被页数下限点名，
+  // 再叠一条「缺封面 / 版式单一」只是同一件事说三遍。
+  if (pages.length < PPT_LIMITS.minPages) return out;
+  const first = pages[0];
+  if (first === undefined || first.layout !== PPT_OUTLINE_QUALITY.coverLayout) {
+    out.push({
+      code: "缺封面",
+      page: 1,
+      detail: `第一页是「${first?.layout ?? "空"}」，模版基线要求第一页是「${PPT_OUTLINE_QUALITY.coverLayout}」：标题 + 四张能力卡 + 三步落地链 + 一句话总结`,
+    });
+  }
+  const layouts = pages.map((p) => p.layout);
+  const variety = new Set(layouts).size;
+  if (variety < PPT_OUTLINE_QUALITY.minLayoutVariety) {
+    out.push({
+      code: "版式单一",
+      page: 1,
+      detail: `整份只用了 ${variety} 种结构（${[...new Set(layouts)].join("、")}），模版 6 页用了 5 种——至少要用 ${PPT_OUTLINE_QUALITY.minLayoutVariety} 种`,
+    });
+  }
+  let run = 1;
+  for (let i = 1; i < layouts.length; i += 1) {
+    run = layouts[i] === layouts[i - 1] ? run + 1 : 1;
+    if (run > PPT_OUTLINE_QUALITY.maxLayoutRun) {
+      out.push({
+        code: "版式重复",
+        page: i + 1,
+        detail: `「${layouts[i]}」连续排了 ${run} 页（模版最多连续 ${PPT_OUTLINE_QUALITY.maxLayoutRun} 页），换一种结构讲`,
+      });
+      break;
+    }
+  }
+  return out;
+}
+
 export function checkPptOutlineQuality(
   outline: PptOutline,
   markdown: string,
@@ -1365,6 +1434,7 @@ export function checkPptOutlineQuality(
     out.push(...selfContainedIssues(page, i));
     out.push(...shapeIssues(page, i));
   }
+  out.push(...templateIssues(outline.pages));
   out.push(...duplicateIssues(outline.pages));
   out.push(...narrativeIssues(outline.pages));
   const seen = new Set<string>();

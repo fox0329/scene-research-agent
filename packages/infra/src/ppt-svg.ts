@@ -42,6 +42,7 @@ import {
   PPT_ICON_LIB,
   PPT_LIMITS,
   PPT_MIN_FONT,
+  PPT_TEMPLATE,
   normalizePptIcon,
   type PptBlock,
   type PptCard,
@@ -75,36 +76,36 @@ const FONT_ATTR = "Arial, &quot;Microsoft YaHei&quot;, sans-serif";
  * （对标用户参考稿的用量：`#E3F2FD` > `#0D47A1` > `#1565C0` > `#90CAF9` > `#FF9800` > `#FFFFFF` > `#4CAF50`）。
  */
 export const PPT_COLORS = {
-  /** 主色深蓝（大标题、块头、表头、卡片数值、层头） */
-  primary: "#0D47A1",
-  /** 次级深蓝（右栏头、标签文字、页码、层头备选） */
-  primaryAlt: "#1565C0",
-  /** 三档蓝（色阶中层，卡头 / 强调竖条轮换用） */
-  blue700: "#1976D2",
-  /** 四档蓝（色阶浅层，强调竖条轮换用） */
-  blue400: "#42A5F5",
-  /** 浅蓝点缀（行前小方块、箭头、阶段卡底） */
-  accent: "#90CAF9",
-  /** 极浅蓝（胶囊、卡头横条、结论带、组件标签、序号底衬） */
-  lightBlue: "#E3F2FD",
-  /** 细分隔线（列间 / 行间留白） */
-  divider: "#D6E7F8",
-  /** 条纹底（块卡、层带、卡片、清单条的填充层次） */
-  subtle: "#F7FAFE",
-  /** 正文深灰蓝（内容行） */
-  text: "#37474F",
-  /** 正文灰蓝（副题、小注、卡片说明） */
-  muted: "#5A7395",
-  /** 问题橙（问题·风险·代价 / 数字强调 / 标题短横） */
-  orange: "#FF9800",
-  /** 价值绿（价值·收益·达标） */
-  green: "#4CAF50",
-  /** 页面底色（用户明确要求纯白） */
+  /** 主色深蓝（模版 24pt 标题 / 块头 / 卡片数值） */
+  primary: PPT_TEMPLATE.colors.primary,
+  /** 强调蓝（模版副题、英文小标、右栏头） */
+  primaryAlt: PPT_TEMPLATE.colors.accent,
+  /** 次强调蓝（模版 s2 副题） */
+  blue700: PPT_TEMPLATE.colors.accentAlt,
+  /** 浅蓝点缀（行前小方块、箭头、序号） */
+  blue400: "#6E8FD6",
+  /** 极浅文字（模版序号 01/02 的灰蓝） */
+  accent: PPT_TEMPLATE.colors.faint,
+  /** 浅底（模版浅蓝底块 / 卡头 / 结论行底衬） */
+  lightBlue: PPT_TEMPLATE.colors.light,
+  /** 细分隔线 */
+  divider: PPT_TEMPLATE.colors.border,
+  /** 条纹底（块卡 / 层带 / 卡片 / 清单条的填充层次） */
+  subtle: "#F7F9FD",
+  /** 正文（模版内容行 %404040） */
+  text: PPT_TEMPLATE.colors.text,
+  /** 次要文字（模版小注 / 页脚） */
+  muted: PPT_TEMPLATE.colors.muted,
+  /** 问题橙（问题·风险·代价；模版没有橙，用低饱和暖色做语义区分） */
+  orange: "#D9822B",
+  /** 价值绿（模版 22943A） */
+  green: PPT_TEMPLATE.colors.green,
+  /** 页面底色（纯白） */
   bg: "#FFFFFF",
-  /** 卡片白（表格偶数行仍用白底） */
+  /** 卡片白 */
   card: "#FFFFFF",
-  /** 卡片 / 块描边（极浅蓝） */
-  border: "#E3F2FD",
+  /** 描边 */
+  border: PPT_TEMPLATE.colors.border,
   /** 主色上的字 */
   onPrimary: "#FFFFFF",
 } as const;
@@ -152,29 +153,30 @@ const RIGHT = PAD + CONTENT_W;
 
 /** 页眉：小节标签胶囊（含 22×22 图标）/ 大标题 / 副题 */
 const HEAD = {
-  kickerY: 36,
-  kickerH: 30,
-  kickerIcon: 22,
-  kickerIconX: 92,
-  kickerTextX: 122,
-  /** 小节标签字（内容类，≥ PPT_MIN_FONT） */
-  kickerSize: PPT_MIN_FONT,
+  /** 小节标签：模版没有胶囊，只有一行 13px 的灰蓝小字（在标题上方，标这一页属于哪一段） */
+  kickerY: 30,
+  kickerSize: PPT_TEMPLATE.font.microPx,
   titleX: PAD,
-  // 口径是 88；36px 中文的字面上缘≈基线−31，压在胶囊底（66）上，故下移到 98（留 1px）
-  titleY: 98,
-  titleSize: 36,
-  titleMaxW: 900,
-  subtitleX: PAD,
-  subtitleY: 132,
-  subtitleSize: 18,
+  /** 标题基线：模版 24pt 标题距顶 0.36in（≈35px），基线约 72 */
+  titleY: 72,
+  titleSize: PPT_TEMPLATE.font.titlePx,
+  titleMaxW: 1180,
+  /** 副题基线：模版 16.5pt 强调句在标题下一行 */
+  subtitleY: 108,
+  subtitleSize: PPT_TEMPLATE.font.subtitlePx,
 } as const;
 
-/** 右上页码胶囊（#E3F2FD 底；页码属元信息，允许比内容低一档） */
-const PAGE_NO = { h: 24, rx: 12, padX: 12, size: PPT_LIMITS.minMetaFontSize, y: 42 } as const;
+/** 页脚（模版样式：左产品线、右「NN / MM」，10.5pt 灰色） */
+const FOOT = {
+  x: PAD,
+  y: 700,
+  size: PPT_TEMPLATE.font.microPx,
+  pageFormat: PPT_TEMPLATE.footer.pageFormat,
+} as const;
 
 /** 技术/能力标签（贴右、与副题同一行；标签是内容类文字，≥ PPT_MIN_FONT） */
 const CHIP = {
-  y: 113,
+  y: 92,
   h: 26,
   rx: 13,
   size: PPT_MIN_FONT,
@@ -186,30 +188,13 @@ const CHIP = {
   minGap: 24,
 } as const;
 
-/** 底部结论带：极浅蓝底 + 6px 橙条 + `bulb` 图标 + 19px 粗深蓝字 */
-const BAND = {
+/** 底部一句话总结：模版 s1/s3 那种深灰一行（不做蓝底、不做橙条、不加图标） */
+const SUMMARY = {
   x: PAD,
-  y: 634,
-  w: CONTENT_W,
-  h: 50,
-  rx: 10,
-  barX: PAD + 10,
-  barY: 644,
-  barW: 6,
-  barH: 30,
-  iconSize: 22,
-  iconX: PAD + 24,
-  iconY: 648,
-  textX: PAD + 56,
-  textY: 666,
-  textSize: 19,
+  y: 654,
+  size: PPT_MIN_FONT,
+  maxW: CONTENT_W,
 } as const;
-
-/** 每页结论带左侧固定挂 `bulb`（一页一定至少有一个"结论"图标） */
-const BAND_ICON = "bulb";
-
-/** 左下页脚（元信息，允许比内容低一档） */
-const FOOT = { x: PAD, y: 700, size: PPT_LIMITS.minMetaFontSize } as const;
 
 /** 内容区（各布局都排在这条带里） */
 const BODY = { top: 170, bottom: 620, h: 450 } as const;
@@ -784,44 +769,41 @@ function contentLines(
     .join("");
 }
 
-// ─── 统一骨架 ──────────────────────────────────────────────
+// ─── 统一骨架（变更表 #253：按模版重排） ────────────────────
 
-/** 小节标签：左上浅蓝胶囊（左侧 22×22 图标 + 16px 粗字，宽度按字数算） */
+/**
+ * 小节标签：标题上方一行 13px 灰蓝小字
+ *
+ * 模版里没有胶囊标签；这里保留一行小字承担"读者知道自己在第几段"的作用，
+ * 但不占标题位置、不用色块——13px 属元信息（`minMetaFontSize`），不当内容字号判。
+ */
 function kickerEl(text: string, icon: string): string {
-  const w = HEAD.kickerTextX - PAD + estimateTextWidth(text, HEAD.kickerSize) + 14;
+  if (text === "") return "";
   return [
     `<g id="kicker">`,
-    rect({
-      x: PAD,
-      y: HEAD.kickerY,
-      w,
-      h: HEAD.kickerH,
-      fill: PPT_COLORS.lightBlue,
-      rx: HEAD.kickerH / 2,
-    }),
-    iconGroup(
-      "kicker-icon",
-      iconUse({
-        icon,
-        x: HEAD.kickerIconX,
-        y: HEAD.kickerY + (HEAD.kickerH - HEAD.kickerIcon) / 2,
-        size: HEAD.kickerIcon,
-        fill: PPT_COLORS.primary,
-      }),
-    ),
-    textEl({
-      x: HEAD.kickerTextX,
-      y: HEAD.kickerY + HEAD.kickerH / 2 + HEAD.kickerSize * 0.35,
-      size: HEAD.kickerSize,
+    `<g id="kicker-icon">`,
+    iconUse({
+      icon,
+      x: HEAD.titleX,
+      y: HEAD.kickerY - 13,
+      size: 16,
       fill: PPT_COLORS.primaryAlt,
-      text,
-      weight: true,
+    }),
+    `</g>`,
+    textBlock({
+      id: "kicker-text",
+      x: HEAD.titleX + 22,
+      y: HEAD.kickerY,
+      size: HEAD.kickerSize,
+      fill: PPT_COLORS.muted,
+      lines: wrapText(text, HEAD.kickerSize, HEAD.titleMaxW, 1),
+      lineHeight: HEAD.kickerSize + 4,
     }),
     `</g>`,
   ].join("");
 }
 
-/** 技术/能力标签（贴右、与副题同一行）；返回标签与副题可用宽 */
+/** 技术/能力标签（贴右、与副题同一行；模版做法是浅底小胶囊） */
 function chipsEl(chips: readonly string[]): { svg: string; subtitleMaxW: number } {
   const list = chips.slice(0, PPT_LIMITS.chips.max);
   const widths = list.map((c) => estimateTextWidth(c, CHIP.size) + CHIP.padX * 2);
@@ -842,8 +824,9 @@ function chipsEl(chips: readonly string[]): { svg: string; subtitleMaxW: number 
         x: x + CHIP.padX,
         y: CHIP.y + CHIP.h / 2 + CHIP.size * 0.35,
         size: CHIP.size,
-        fill: PPT_COLORS.primaryAlt,
+        fill: PPT_COLORS.primary,
         text: list[i]!,
+        weight: true,
       }),
       `</g>`,
     );
@@ -852,17 +835,9 @@ function chipsEl(chips: readonly string[]): { svg: string; subtitleMaxW: number 
   return { svg: parts.join(""), subtitleMaxW: CONTENT_W - total - CHIP.minGap };
 }
 
-/**
- * 页眉：36px 大标题 + 右上页码胶囊
- *
- * #145 去掉了标题下的 80×6 橙短横（用户定调「每页标题下面的短橙色横线可以去掉」）——
- * 标题与副题之间不再有视觉锚点，靠字号与颜色分层。
- * 页码单独成组（`<g id="page-no">`）：它是元信息文字（15px），质量门禁按组判「字号过小」的例外。
- */
-function titleEl(page: PptPage, index: number, total: number): string {
+/** 页眉：32px 大标题（模版 24pt、深蓝、左上顶格；页码移到页脚右侧） */
+function titleEl(page: PptPage): string {
   const title = wrapText(page.title, HEAD.titleSize, HEAD.titleMaxW, 1)[0]!;
-  const pageText = `第 ${index + 1} 页 / 共 ${total} 页`;
-  const noW = estimateTextWidth(pageText, PAGE_NO.size) + PAGE_NO.padX * 2;
   return [
     `<g id="hd">`,
     textEl({
@@ -873,74 +848,63 @@ function titleEl(page: PptPage, index: number, total: number): string {
       text: title,
       weight: true,
     }),
-    `<g id="page-no">`,
-    rect({
-      x: RIGHT - noW,
-      y: PAGE_NO.y,
-      w: noW,
-      h: PAGE_NO.h,
-      fill: PPT_COLORS.lightBlue,
-      rx: PAGE_NO.rx,
-    }),
-    textEl({
-      x: RIGHT - PAGE_NO.padX,
-      y: PAGE_NO.y + PAGE_NO.h / 2 + PAGE_NO.size * 0.35,
-      size: PAGE_NO.size,
-      fill: PPT_COLORS.primaryAlt,
-      text: pageText,
-      anchor: "end",
-    }),
-    `</g>`,
     `</g>`,
   ].join("");
 }
 
-/** 副题（标题下一行） */
+/** 副题（标题下一行；模版风格：22px 加粗强调蓝） */
 function subtitleEl(text: string, maxW: number): string {
+  if (text === "") return "";
   return textBlock({
     id: "subtitle",
     x: HEAD.titleX,
     y: HEAD.subtitleY,
     size: HEAD.subtitleSize,
-    fill: PPT_COLORS.muted,
+    fill: PPT_COLORS.primaryAlt,
     lines: wrapText(text, HEAD.subtitleSize, maxW, 1),
     lineHeight: HEAD.subtitleSize + 6,
+    weight: true,
   });
 }
 
-/** 底部结论带：极浅蓝底 + 左侧 6px 橙条 + `bulb` 图标 + 深蓝粗字（每页都有） */
-function highlightEl(text: string): string {
+/** 底部一句话总结（模版 s1/s3 的深灰一行；不做蓝底、不加图标） */
+function summaryEl(text: string): string {
+  if (text === "") return "";
+  return textBlock({
+    id: "summary",
+    x: SUMMARY.x,
+    y: SUMMARY.y,
+    size: SUMMARY.size,
+    fill: PPT_COLORS.text,
+    lines: wrapText(text, SUMMARY.size, SUMMARY.maxW, 1),
+    lineHeight: SUMMARY.size + 4,
+  });
+}
+
+/** 页脚：左「场景通 · <场景名>」、右「NN / MM」（模版样式，10.5pt 灰色） */
+function footerEl(scenarioName: string, index: number, total: number): string {
+  const pageText = `${String(index + 1).padStart(2, "0")} / ${String(total).padStart(2, "0")}`;
   return [
-    `<g id="highlight">`,
-    rect({ x: BAND.x, y: BAND.y, w: BAND.w, h: BAND.h, fill: PPT_COLORS.lightBlue, rx: BAND.rx }),
-    rect({ x: BAND.barX, y: BAND.barY, w: BAND.barW, h: BAND.barH, fill: PPT_COLORS.orange, rx: 3 }),
-    iconGroup(
-      "highlight-icon",
-      iconUse({ icon: BAND_ICON, x: BAND.iconX, y: BAND.iconY, size: BAND.iconSize, fill: PPT_COLORS.primary }),
-    ),
+    textBlock({
+      id: "footer",
+      x: FOOT.x,
+      y: FOOT.y,
+      size: FOOT.size,
+      fill: PPT_COLORS.muted,
+      lines: wrapText(`场景通 · ${scenarioName}`, FOOT.size, CONTENT_W - 200, 1),
+      lineHeight: FOOT.size + 2,
+    }),
+    `<g id="page-no">`,
     textEl({
-      x: BAND.textX,
-      y: BAND.textY,
-      size: BAND.textSize,
-      fill: PPT_COLORS.primary,
-      text: wrapText(text, BAND.textSize, RIGHT - BAND.textX - 24, 1)[0]!,
-      weight: true,
+      x: RIGHT,
+      y: FOOT.y,
+      size: FOOT.size,
+      fill: PPT_COLORS.muted,
+      text: pageText,
+      anchor: "end",
     }),
     `</g>`,
   ].join("");
-}
-
-/** 左下页脚「场景通 · <场景名>」 */
-function footerEl(scenarioName: string): string {
-  return textBlock({
-    id: "footer",
-    x: FOOT.x,
-    y: FOOT.y,
-    size: FOOT.size,
-    fill: PPT_COLORS.accent,
-    lines: wrapText(`场景通 · ${scenarioName}`, FOOT.size, CONTENT_W, 1),
-    lineHeight: FOOT.size + 2,
-  });
 }
 
 // ─── 七种布局 ──────────────────────────────────────────────
@@ -1226,6 +1190,16 @@ function cardEl(card: PptCard, i: number, x: number, w: number): string {
     `<g id="card-${i + 1}">`,
     rect({ x, y, w, h, fill: PPT_COLORS.subtle, stroke: PPT_COLORS.border, strokeWidth: 1.5, rx: 10 }),
     rect({ x, y, w, h: 5, fill: PPT_BAR_COLORS[i % PPT_BAR_COLORS.length]!, rx: 2 }),
+    // 卡片序号（模版矩阵页的 01–04 编号做法）：给卡片一个顺序，也补一格信息
+    textEl({
+      x: x + w - 20,
+      y: y + 34,
+      size: PPT_MIN_FONT,
+      fill: PPT_COLORS.accent,
+      text: String(i + 1).padStart(2, "0"),
+      anchor: "end",
+      weight: true,
+    }),
     iconGroup(
       `card-${i + 1}-icon`,
       iconUse({
@@ -1545,7 +1519,152 @@ function renderChecklist(page: PptPage): string {
 }
 
 /** 布局 → 渲染函数（七种布局各一个） */
+// ─── 封面（变更表 #253：照模版 s1 的版式） ──────────────────
+
+/** 封面的四张能力卡：2×2，每张 576×148（模版每张 5.96×1.56in） */
+const COVER_CARD = { w: 546, h: 148, xs: [PAD, PAD + 574], ys: [150, 314], icon: 40 } as const;
+/** 封面三步落地链：3 个 380×64 的块 */
+const COVER_CHAIN = { y: 486, h: 64, gap: 24 } as const;
+/** 封面落地版本标签行 */
+const COVER_CHIPS = { y: 570, h: 28, gap: 10, padX: 12, size: PPT_MIN_FONT } as const;
+
+/** 封面一张能力卡：图标 + 能力名（20px 粗）+ 一行小标（13px 强调蓝）+ 两行说明（14px） */
+function coverCard(block: PptBlock, i: number): string {
+  const x = COVER_CARD.xs[i % 2]!;
+  const y = COVER_CARD.ys[Math.floor(i / 2)]!;
+  const textX = x + 64;
+  const maxW = COVER_CARD.w - 64 - 20;
+  return [
+    `<g id="cover-card-${i + 1}">`,
+    rect({
+      x,
+      y,
+      w: COVER_CARD.w,
+      h: COVER_CARD.h,
+      fill: PPT_COLORS.subtle,
+      stroke: PPT_COLORS.border,
+      strokeWidth: 1.5,
+      rx: 10,
+    }),
+    iconGroup(
+      `cover-card-${i + 1}-icon`,
+      iconUse({
+        icon: block.icon,
+        x: x + 16,
+        y: y + 18,
+        size: COVER_CARD.icon,
+        fill: PPT_COLORS.primary,
+      }),
+    ),
+    textEl({ x: textX, y: y + 40, size: 20, fill: PPT_COLORS.primary, text: block.head, weight: true }),
+    textEl({
+      x: textX,
+      y: y + 64,
+      size: PPT_MIN_FONT,
+      fill: PPT_COLORS.primaryAlt,
+      text: wrapText(block.note, PPT_MIN_FONT, maxW, 1)[0]!,
+      weight: true,
+    }),
+    ...block.lines.slice(0, 2).map((line, j) =>
+      textEl({
+        x: textX,
+        y: y + 94 + j * 24,
+        size: PPT_MIN_FONT,
+        fill: PPT_COLORS.text,
+        text: wrapText(line, PPT_MIN_FONT, maxW, 1)[0]!,
+      }),
+    ),
+    `</g>`,
+  ].join("");
+}
+
+/** 封面落地的三步链：序号圆点 + 阶段名 + 一句说明（模版 s1 的三段式） */
+function coverChain(stages: readonly PptStage[]): string {
+  const n = stages.length;
+  if (n === 0) return "";
+  const w = Math.floor((CONTENT_W - COVER_CHAIN.gap * (n - 1)) / n);
+  return stages
+    .slice(0, 4)
+    .map((stage, i) => {
+      const x = PAD + i * (w + COVER_CHAIN.gap);
+      return [
+        `<g id="cover-step-${i + 1}">`,
+        rect({ x, y: COVER_CHAIN.y, w, h: COVER_CHAIN.h, fill: PPT_COLORS.lightBlue, rx: 32 }),
+        circle({ cx: x + 32, cy: COVER_CHAIN.y + COVER_CHAIN.h / 2, r: 14, fill: PPT_COLORS.primary }),
+        textEl({
+          x: x + 32,
+          y: COVER_CHAIN.y + COVER_CHAIN.h / 2 + 6,
+          size: PPT_MIN_FONT,
+          fill: PPT_COLORS.onPrimary,
+          text: String(i + 1),
+          anchor: "middle",
+          weight: true,
+        }),
+        textEl({
+          x: x + 58,
+          y: COVER_CHAIN.y + 26,
+          size: PPT_MIN_FONT,
+          fill: PPT_COLORS.primary,
+          text: wrapText(stage.head, PPT_MIN_FONT, w - 74, 1)[0]!,
+          weight: true,
+        }),
+        textEl({
+          x: x + 58,
+          y: COVER_CHAIN.y + 48,
+          size: PPT_MIN_FONT,
+          fill: PPT_COLORS.muted,
+          text: wrapText(stage.note, PPT_MIN_FONT, w - 74, 1)[0]!,
+        }),
+        `</g>`,
+      ].join("");
+    })
+    .join("");
+}
+
+/** 封面落地版本标签（模版 s1 的「已落地发行版：S9 · 路鸿 · 电鸿…」）：左标签 + 一排浅底胶囊 */
+function coverChips(chips: readonly string[]): string {
+  if (chips.length === 0) return "";
+  const label = "已落地版本：";
+  let x = PAD + estimateTextWidth(label, PPT_MIN_FONT);
+  const parts = [
+    `<g id="cover-chips">`,
+    textEl({ x: PAD, y: COVER_CHIPS.y + 19, size: PPT_MIN_FONT, fill: PPT_COLORS.muted, text: label }),
+  ];
+  for (const [i, chip] of chips.slice(0, PPT_LIMITS.chips.max).entries()) {
+    const w = estimateTextWidth(chip, COVER_CHIPS.size) + COVER_CHIPS.padX * 2;
+    if (x + w > RIGHT) break;
+    parts.push(
+      rect({ x, y: COVER_CHIPS.y, w, h: COVER_CHIPS.h, fill: PPT_COLORS.primary, rx: 4 }),
+      textEl({ x: x + COVER_CHIPS.padX, y: COVER_CHIPS.y + 19, size: COVER_CHIPS.size, fill: PPT_COLORS.onPrimary, text: chip }),
+    );
+    x += w + COVER_CHIPS.gap;
+    if (i === chips.length - 1) break;
+  }
+  parts.push(`</g>`);
+  return parts.join("");
+}
+
+/**
+ * 封面（模版 s1 的版式）
+ *
+ * 标题同一套页眉（24pt），下面的四张能力卡对应 `blocks`（恰好 4 块：四个核心能力），
+ * 三步落地链对应 `stages`（3 个），`chips` 是已在同类场景落地的版本/客户，
+ * `highlight` 是整份方案的一句话概括（模版 s1 底部那句）。**封面也要写满**——
+ * 不是一张只有标题的扉页，这是模版与"空封面"的区别。
+ */
+function renderCover(page: PptPage): string {
+  const blocks = blocksOf(page).slice(0, PPT_LIMITS.blocks.count);
+  return [
+    `<g id="cover-cards">`,
+    blocks.map((b, i) => coverCard(b, i)).join(""),
+    `</g>`,
+    `<g id="cover-chain">${coverChain(page.stages)}</g>`,
+    coverChips(page.chips),
+  ].join("");
+}
+
 export const PPT_LAYOUT_RENDERERS: Record<PptLayout, (page: PptPage) => string> = {
+  封面: renderCover,
   网格要点: renderGrid,
   双栏对比: renderColumns,
   流程阶段: renderStages,
@@ -1569,17 +1688,16 @@ export function renderPptPage(page: PptPage, ctx: PptRenderContext): string {
   const chips = chipsEl(page.chips ?? []);
   const subtitle = page.subtitle ?? page.takeaway ?? "";
   const highlight = page.highlight ?? subtitle ?? page.title;
-  const icon = page.icon ?? PPT_DEFAULT_ICON;
   return [
     `<svg xmlns="http://www.w3.org/2000/svg" version="1.1" width="${PPT_CANVAS.width}" height="${PPT_CANVAS.height}" viewBox="0 0 ${PPT_CANVAS.width} ${PPT_CANVAS.height}">`,
     rect({ x: 0, y: 0, w: PPT_CANVAS.width, h: PPT_CANVAS.height, fill: PPT_COLORS.bg, rx: 0 }),
-    kickerEl(page.kicker ?? "", icon),
-    titleEl(page, ctx.index, ctx.total),
+    kickerEl(page.kicker ?? "", page.icon ?? PPT_DEFAULT_ICON),
+    titleEl(page),
     subtitleEl(subtitle, chips.subtitleMaxW),
     chips.svg,
     `<g id="body">${render(page)}</g>`,
-    highlightEl(highlight),
-    footerEl(ctx.scenarioName),
+    summaryEl(highlight),
+    footerEl(ctx.scenarioName, ctx.index, ctx.total),
     `</svg>`,
   ].join("");
 }

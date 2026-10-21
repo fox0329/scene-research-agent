@@ -186,7 +186,7 @@ describe("parsePptOutline — 页数 clamp", () => {
     const r = parsePptOutline(deck(3));
     expect(r.error).toBeUndefined();
     expect(r.pages).toBe(3);
-    expect(r.notes.join("｜")).toContain("少于 5 页下限");
+    expect(r.notes.join("｜")).toContain("少于 7 页下限");
   });
 });
 
@@ -907,6 +907,93 @@ function codesOf(issues: readonly PptOutlineQualityIssue[], code: PptOutlineQual
   return issues.filter((i) => i.code === code).map((i) => i.page);
 }
 
+/** 封面页（模版 s1：四张能力卡 + 三步链），判据合格 */
+function coverPage(over: Partial<PptPage> = {}): PptPage {
+  return {
+    ...okPage(0),
+    layout: "封面",
+    title: "一套平台管住全厂的设备与能耗",
+    blocks: [0, 1, 2, 3].map((k) => ({
+      head: G_HEADS[k]!,
+      note: `${G_NOTE_A[k]!}${G_NOTE_B[k]!}`,
+      icon: BLOCK_ICONS[k]!,
+      lines: [
+        `${G_LINE_A[k]!}${G_LINE_B[k]!}`,
+        `${G_LINE_A[(k + 3) % G_LINE_A.length]!}${G_LINE_B[(k + 2) % G_LINE_B.length]!}`,
+      ],
+    })),
+    stages: [0, 1, 2].map((k) => ({
+      head: G_HEADS[k]!,
+      note: `${G_NOTE_A[k]!}，先跑通`,
+      icon: ["route", "sitemap", "circle-check"][k]!,
+    })),
+    chips: ["试点厂", "泵站"],
+    ...over,
+  };
+}
+
+/** 一份 7 页成稿：封面 + 六页网格要点（用于测结构判据） */
+function coverDeck(over: Partial<PptPage> = {}): PptOutline {
+  const pages = [coverPage(over), ...Array.from({ length: 6 }, (_, i) => okPage(i + 1))];
+  return { pages };
+}
+
+describe("checkPptOutlineQuality — 模版基线（变更表 #253）", () => {
+  it("第一页不是封面 → 记「缺封面」，并点名模版版式", () => {
+    const issues = checkPptOutlineQuality(okDeck(7), MD);
+    const miss = issues.filter((i) => i.code === "缺封面");
+    expect(miss).toHaveLength(1);
+    expect(miss[0]!.page).toBe(1);
+    expect(miss[0]!.detail).toContain("四张能力卡");
+  });
+
+  it("封面内容不齐（只有两张卡）→ 解析时降级，再判「缺封面」", () => {
+    const deck = coverDeck({ blocks: okPage(1).blocks.slice(0, 2) });
+    const parsed = parsePptOutline(JSON.stringify(deck));
+    expect(parsed.outline!.pages[0]!.layout).not.toBe("封面");
+    expect(checkPptOutlineQuality(parsed.outline!, MD).map((i) => i.code)).toContain("缺封面");
+  });
+
+  it("整份只用一种结构 → 记「版式单一」；换够 4 种就不报", () => {
+    expect(checkPptOutlineQuality(coverDeck(), MD).map((i) => i.code)).toContain("版式单一");
+    const varied = coverDeck();
+    varied.pages[1] = { ...okPage(1), layout: "网格要点" };
+    varied.pages[2] = {
+      ...okPage(2),
+      layout: "双栏对比",
+      blocks: [],
+      columns: [
+        { head: "今天的做法", note: "纸质表单", icon: "file-text", lines: ["纸质表格一天一交", "数据事后补录", "口径各写各的", "对账翻单据"] },
+        { head: "建成后的做法", note: "扫码即录", icon: "list-check", lines: ["扫码当场提交", "数据实时入库", "口径系统统一", "对账一键出数"] },
+      ],
+    };
+    varied.pages[3] = {
+      ...okPage(3),
+      layout: "流程阶段",
+      blocks: [],
+      stages: [0, 1, 2].map((k) => ({ head: G_HEADS[k]!, note: `${G_NOTE_A[k]!}，一阶段一件事`, icon: ["route", "sitemap", "circle-check"][k]! })),
+    };
+    varied.pages[4] = {
+      ...okPage(4),
+      layout: "分层架构",
+      blocks: [],
+      layers: [0, 1, 2].map((k) => ({ head: G_HEADS[k]!, icon: ["hierarchy", "server", "network"][k]!, items: ["巡检看板", "设备纳管", "扫码终端"] })),
+    };
+    const codes = checkPptOutlineQuality(varied, MD).map((i) => i.code);
+    expect(codes).not.toContain("版式单一");
+  });
+
+  it("同一结构连续 3 页 → 记「版式重复」，点名第三页", () => {
+    const deck = coverDeck();
+    deck.pages[1] = { ...okPage(1), layout: "网格要点" };
+    deck.pages[2] = { ...okPage(2), layout: "网格要点" };
+    deck.pages[3] = { ...okPage(3), layout: "网格要点" };
+    const dup = checkPptOutlineQuality(deck, MD).filter((i) => i.code === "版式重复");
+    expect(dup).toHaveLength(1);
+    expect(dup[0]!.page).toBe(4);
+  });
+});
+
 describe("checkPptOutlineQuality — 合格基线与版式容量", () => {
   it("六页合规大纲 → 0 问题（判据不能误杀合格稿）", () => {
     expect(checkPptOutlineQuality(okDeck(), MD)).toEqual([]);
@@ -920,11 +1007,11 @@ describe("checkPptOutlineQuality — 合格基线与版式容量", () => {
     }
   });
 
-  it("版式结构上限：网格 24 / 双栏 14 / 阶段 10 / 分层 20 / 卡片 8 / 表格 35 / 清单 6", () => {
-    expect(pptLayoutSentenceMax("网格要点")).toBe(24);
+  it("版式结构上限：网格 28 / 双栏 14 / 阶段 10 / 分层 35 / 卡片 8 / 表格 35 / 清单 6", () => {
+    expect(pptLayoutSentenceMax("网格要点")).toBe(28);
     expect(pptLayoutSentenceMax("双栏对比")).toBe(14);
     expect(pptLayoutSentenceMax("流程阶段")).toBe(10);
-    expect(pptLayoutSentenceMax("分层架构")).toBe(20);
+    expect(pptLayoutSentenceMax("分层架构")).toBe(35);
     expect(pptLayoutSentenceMax("数据卡片")).toBe(8);
     expect(pptLayoutSentenceMax("表格")).toBe(35);
     expect(pptLayoutSentenceMax("要点清单")).toBe(6);

@@ -45,7 +45,7 @@ export const PPT_MIN_QUALITY = {
    * （`checkPptOutlineQuality` 的问题码 `图标重复`）——图标名在大纲里就定了，渲染层只是照抄，
    * 不在两边重复判。
    */
-  minIconsPerPage: 4,
+  minIconsPerPage: 3,
   /** 每页不同颜色数下限（色阶 + 语义色，一层白不算"有层次"） */
   minColorsPerPage: 6,
   /** 每页强调处数下限（字内强调段 + 粗体重点字） */
@@ -72,13 +72,15 @@ export const PPT_QUALITY = {
   /** 压字阈值：两个文字矩形在两个方向上的重叠都超过这个像素数才算相交 */
   overlapTolerance: 4,
   /** 算"重点粗体字"的最小字号（16px 的正文与 15px 小注 / 页脚不算） */
-  emphasisMinSize: 16,
+  emphasisMinSize: 15,
 } as const;
 
 export type PptQualityCode =
   | "页面太空"
   | "缺小节标签"
-  | "缺结论带"
+  | "缺一句话总结"
+  | "缺页码"
+  | "缺封面"
   | "文本越界"
   | "文本相交"
   | "信息量不足"
@@ -104,7 +106,9 @@ export const PPT_CONTENT_ISSUES: readonly PptQualityCode[] = ["信息量不足",
 export const PPT_RENDER_ISSUES: readonly PptQualityCode[] = [
   "页面太空",
   "缺小节标签",
-  "缺结论带",
+  "缺一句话总结",
+  "缺页码",
+  "缺封面",
   "文本越界",
   "文本相交",
   "颜色层次不足",
@@ -453,7 +457,11 @@ function overlap(a: PptTextRect, b: PptTextRect): { x: number; y: number } {
 
 /** 元信息文字（页脚、页码）：字号允许低一档，其余文字一律 ≥ 内容下限 */
 function isMetaText(rect: PptTextRect): boolean {
-  return rect.path.includes("footer") || rect.path.includes("page-no");
+  return (
+    rect.path.includes("footer") ||
+    rect.path.includes("page-no") ||
+    rect.path.includes("kicker")
+  );
 }
 
 /** 内容区里的元素（安全边与留白判据只看内容区，骨架贴边是版式本身的选择） */
@@ -646,8 +654,11 @@ function checkPage(svg: string, page: number): PptQualityIssue[] {
   if (!hasGroup(svg, "kicker") || !groupHasText(svg, "kicker")) {
     issues.push({ page, code: "缺小节标签", detail: "没有左上角的小节标签胶囊（kicker）" });
   }
-  if (!hasGroup(svg, "highlight") || !groupHasText(svg, "highlight")) {
-    issues.push({ page, code: "缺结论带", detail: "没有底部结论带（highlight）" });
+  if (!hasGroup(svg, "summary") || !groupHasText(svg, "summary")) {
+    issues.push({ page, code: "缺一句话总结", detail: "没有底部一句话总结（summary）" });
+  }
+  if (!hasGroup(svg, "page-no") || !groupHasText(svg, "page-no")) {
+    issues.push({ page, code: "缺页码", detail: "页脚右侧没有「NN / MM」页码（模版基线）" });
   }
 
   const icons = countSvgIcons(svg);
@@ -741,8 +752,22 @@ function checkPage(svg: string, page: number): PptQualityIssue[] {
  *          网格对齐、留白、行首标点、孤字行**全部合格**。按 `isPptContentIssue` 分成
  *          "该重试"与"该修渲染层"两类（导出链路据此决定下一步）。
  */
-export function checkPptDeck(svgs: readonly string[]): PptQualityIssue[] {
-  return svgs.flatMap((svg, i) => checkPage(svg, i + 1));
+export function checkPptDeck(
+  svgs: readonly string[],
+  opts: { requireCover?: boolean } = {},
+): PptQualityIssue[] {
+  const issues = svgs.flatMap((svg, i) => checkPage(svg, i + 1));
+  // 模版基线（变更表 #253）：第一页必须是封面，且封面要有四张能力卡（不是空扉页）
+  // 单页测试传 `requireCover: false`（测的是页面判据，不是整份结构）
+  const cover = svgs[0];
+  if (opts.requireCover !== false && (cover === undefined || !hasGroup(cover, "cover-cards"))) {
+    issues.push({
+      page: 1,
+      code: "缺封面",
+      detail: "第一页不是封面（模版基线：标题 + 四张能力卡 + 三步落地链 + 一句话总结）",
+    });
+  }
+  return issues;
 }
 
 /** 语义色令牌（导出脚本 / 验收脚本想按名字取色时用，避免各写一份十六进制） */

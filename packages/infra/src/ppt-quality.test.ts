@@ -48,19 +48,20 @@ function pageSvg(content: string, opts: { kicker?: boolean; highlight?: boolean 
   const kicker =
     opts.kicker === false
       ? ""
-      : `<g id="kicker">${rect(80, 36, 120, 30, "#E3F2FD")}${text(96, 56, 16, "项目硬规则")}</g>`;
-  const band =
+      : `<g id="kicker">${text(80, 40, 14, "项目硬规则")}</g>`;
+  const summary =
     opts.highlight === false
       ? ""
-      : `<g id="highlight">${rect(80, 634, 1120, 50, "#E3F2FD")}${text(110, 666, 19, "结论带要有话说")}</g>`;
+      : `<g id="summary">${text(80, 668, 15, "总结要有一句话")}</g>`;
   return [
     `<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720">`,
     rect(0, 0, 1280, 720),
     kicker,
-    `<g id="hd">${text(80, 88, 34, "一页标题")}<g id="page-no">${text(1200, 56, 15, "第 1 页 / 共 7 页", "end")}</g></g>`,
+    `<g id="hd">${text(80, 72, 32, "一页标题")}</g>`,
     `<g id="body">${content}</g>`,
-    band,
-    `<g id="footer">${text(80, 700, 15, "场景通 · 智慧会议室")}</g>`,
+    summary,
+    `<g id="footer">${text(80, 700, 14, "场景通 · 智慧会议室")}</g>`,
+    `<g id="page-no">${text(1200, 700, 14, "01 / 07", "end")}</g>`,
     `</svg>`,
   ].join("");
 }
@@ -92,16 +93,52 @@ function realPage(): PptPage {
   };
 }
 
+/** 封面页（模版 s1 的版式：四张能力卡 + 三步链 + chips + 总结） */
+function coverPage(): PptPage {
+  return {
+    layout: "封面",
+    kicker: "总体方案",
+    icon: "target",
+    title: "一个平台管住全厂的设备与能耗",
+    subtitle: "旁路取数、统一模型、按工艺段算账",
+    blocks: [
+      { head: "旁路采集不动机组", icon: "plug", note: "不改原 PLC 程序与安全回路", lines: ["从既有通信口取数", "新增点位只做接线与组态"] },
+      { head: "统一设备模型", icon: "database", note: "一处建档，全局共用", lines: ["设备、测点、口径一次定清", "报表与看板同源出数"] },
+      { head: "按工艺段算能耗", icon: "gauge", note: "吨水电耗可复算", lines: ["分项计量到工艺段", "与电费单逐月对账"] },
+      { head: "异常进工单", icon: "alert-triangle", note: "告警到人、处置留痕", lines: ["越限告警经 Webhook 派单", "处置过程可回查"] },
+    ],
+    columns: [],
+    stages: [
+      { head: "试点一座厂", icon: "building-community", note: "先跑通采集与出表" },
+      { head: "复制到其余厂站", icon: "sitemap", note: "按区域分批上线" },
+      { head: "验收与移交", icon: "circle-check", note: "按口径逐项验收" },
+    ],
+    layers: [],
+    cards: [],
+    table: null,
+    chips: ["试点厂", "泵站", "集团平台"],
+    highlight: "先让设备看得见，再让账算得清",
+  };
+}
+
+/** 单页渲染（真渲染器） */
+function realPageSvg(page: PptPage = realPage()): string {
+  return renderPptDeck({ pages: [page] }, { scenarioName: "智慧会议室" })[0]!.svg;
+}
+
 describe("checkPptDeck — 真渲染的页过闸", () => {
-  it("一份 3 页渲染结果 0 问题", () => {
-    const svgs = renderPptDeck({ pages: [realPage(), realPage(), realPage()] }, { scenarioName: "智慧会议室" }).map(
+  it("封面 + 两页正文：0 问题", () => {
+    const svgs = renderPptDeck({ pages: [coverPage(), realPage(), realPage()] }, { scenarioName: "智慧会议室" }).map(
       (p) => p.svg,
     );
     expect(checkPptDeck(svgs)).toEqual([]);
   });
 
-  it("空数组 → 没有问题", () => {
-    expect(checkPptDeck([])).toEqual([]);
+  it("第一页不是封面 → 记「缺封面」；空数组只记这一条", () => {
+    expect(checkPptDeck([realPageSvg()])).toContainEqual(
+      expect.objectContaining({ page: 1, code: "缺封面" }),
+    );
+    expect(checkPptDeck([])).toEqual([expect.objectContaining({ code: "缺封面" })]);
   });
 });
 
@@ -121,7 +158,7 @@ describe("checkPptDeck — 兜底要点清单也不许是白页（#142 收尾）
       ]),
     );
     expect(countSvgShapes(svg)).toBeGreaterThanOrEqual(PPT_QUALITY.minShapes);
-    expect(checkPptDeck([svg])).toEqual([]);
+    expect(checkPptDeck([svg], { requireCover: false })).toEqual([]);
   });
 
   it("真跑那种只剩 2 条的空页 → 门禁仍然抓得住（#144 后由「信息量不足」兜住）", () => {
@@ -129,7 +166,7 @@ describe("checkPptDeck — 兜底要点清单也不许是白页（#142 收尾）
     // 但文字条数仍然只有 10 条（< 12）——空页照样被判出来，判据换成更准的「信息量不足」。
     const svg = render(list(["协议未收录的私有协议需另行适配", "老设备不支持远程升级"]));
     expect(countSvgTexts(svg)).toBeLessThan(PPT_LIMITS.minSentencesPerPage);
-    expect(checkPptDeck([svg]).map((i) => i.code)).toContain("信息量不足");
+    expect(checkPptDeck([svg], { requireCover: false }).map((i) => i.code)).toContain("信息量不足");
   });
 });
 
@@ -173,13 +210,13 @@ describe("checkPptDeck — 图标（#144：每页 ≥4）", () => {
   it("正例：图标 ≥4 的页不报「图标不足」", () => {
     const svg = fullPageSvg();
     expect(countSvgIcons(svg)).toBeGreaterThanOrEqual(PPT_QUALITY.minIconsPerPage);
-    expect(checkPptDeck([svg]).map((i) => i.code)).not.toContain("图标不足");
+    expect(checkPptDeck([svg], { requireCover: false }).map((i) => i.code)).not.toContain("图标不足");
   });
 
   it("反例：一个图标都没有 → 记「图标不足」", () => {
     const svg = fullPageSvg().replace(/<use data-icon="[^"]*"[^>]*\/>/g, "");
     expect(countSvgIcons(svg)).toBe(0);
-    const issues = checkPptDeck([svg]).filter((i) => i.code === "图标不足");
+    const issues = checkPptDeck([svg], { requireCover: false }).filter((i) => i.code === "图标不足");
     expect(issues).toHaveLength(1);
     expect(issues[0]!.detail).toContain(String(PPT_QUALITY.minIconsPerPage));
   });
@@ -208,7 +245,7 @@ describe("checkPptDeck — 图标（#144：每页 ≥4）", () => {
 describe("checkPptDeck — 页面太空", () => {
   it("形状数少于下限 → 记「页面太空」", () => {
     const svg = pageSvg(text(100, 200, 20, "只有一句话"));
-    const issues = checkPptDeck([svg]);
+    const issues = checkPptDeck([svg], { requireCover: false });
     expect(issues.some((i) => i.code === "页面太空")).toBe(true);
     expect(countSvgShapes(svg)).toBeLessThan(PPT_QUALITY.minShapes);
   });
@@ -217,7 +254,7 @@ describe("checkPptDeck — 页面太空", () => {
     const stuff = Array.from({ length: 22 }, (_, i) => rect(80 + i, 200, 10, 10, "#90CAF9")).join("");
     const svg = pageSvg(stuff);
     expect(countSvgShapes(svg)).toBeGreaterThanOrEqual(PPT_QUALITY.minShapes);
-    expect(checkPptDeck([svg]).some((i) => i.code === "页面太空")).toBe(false);
+    expect(checkPptDeck([svg], { requireCover: false }).some((i) => i.code === "页面太空")).toBe(false);
   });
 });
 
@@ -225,14 +262,14 @@ describe("checkPptDeck — 颜色层次（#144：每页 ≥6）", () => {
   it("正例：色阶 + 语义色的页不报「颜色层次不足」", () => {
     const svg = fullPageSvg();
     expect(countSvgColors(svg)).toBeGreaterThanOrEqual(PPT_QUALITY.minColorsPerPage);
-    expect(checkPptDeck([svg]).map((i) => i.code)).not.toContain("颜色层次不足");
+    expect(checkPptDeck([svg], { requireCover: false }).map((i) => i.code)).not.toContain("颜色层次不足");
   });
 
   it("反例：整页只有一种底色与一种文字色 → 记「颜色层次不足」", () => {
     const stuff = Array.from({ length: 24 }, (_, i) => rect(80 + i, 200, 10, 10)).join("");
     const svg = monoSvg(stuff);
     expect(countSvgColors(svg)).toBeLessThan(PPT_QUALITY.minColorsPerPage);
-    const issues = checkPptDeck([svg]).filter((i) => i.code === "颜色层次不足");
+    const issues = checkPptDeck([svg], { requireCover: false }).filter((i) => i.code === "颜色层次不足");
     expect(issues).toHaveLength(1);
     expect(issues[0]!.detail).toContain(String(PPT_QUALITY.minColorsPerPage));
   });
@@ -242,20 +279,20 @@ describe("checkPptDeck — 强调（#144：每页 ≥3 处）", () => {
   it("正例：粗体重点字与字内强调段都算", () => {
     const svg = fullPageSvg();
     expect(countSvgEmphasis(svg)).toBeGreaterThanOrEqual(PPT_QUALITY.minEmphasisPerPage);
-    expect(checkPptDeck([svg]).map((i) => i.code)).not.toContain("重点不突出");
+    expect(checkPptDeck([svg], { requireCover: false }).map((i) => i.code)).not.toContain("重点不突出");
   });
 
   it("反例：整页没有粗体也没有 tspan → 记「重点不突出」", () => {
     const plain = Array.from({ length: 12 }, (_, i) => text(100, 200 + i * 30, 16, `第${i}条内容`)).join("");
     const svg = fullPageSvg(plain, { bold: false });
     expect(countSvgEmphasis(svg)).toBe(0);
-    const issues = checkPptDeck([svg]).filter((i) => i.code === "重点不突出");
+    const issues = checkPptDeck([svg], { requireCover: false }).filter((i) => i.code === "重点不突出");
     expect(issues).toHaveLength(1);
     expect(issues[0]!.detail).toContain(String(PPT_QUALITY.minEmphasisPerPage));
   });
 
-  it("tspan 只算字内强调，15px 的小注粗体不算（没有区分度）", () => {
-    const small = `<text x="100" y="200" font-family="${FONT}" font-size="15" fill="#5A7395" font-weight="bold">小注</text>`;
+  it("tspan 只算字内强调，14px 的小注粗体不算（没有区分度）", () => {
+    const small = `<text x="100" y="200" font-family="${FONT}" font-size="14" fill="#5A7395" font-weight="bold">小注</text>`;
     expect(countSvgEmphasis(`<svg>${small}</svg>`)).toBe(0);
     const big = `<text x="100" y="200" font-family="${FONT}" font-size="20" fill="#37474F" font-weight="bold">块头</text>`;
     expect(countSvgEmphasis(`<svg>${big}</svg>`)).toBe(1);
@@ -263,25 +300,25 @@ describe("checkPptDeck — 强调（#144：每页 ≥3 处）", () => {
 });
 
 describe("checkPptDeck — 骨架（小节标签 / 结论带）", () => {
-  it("缺 kicker → 记「缺小节标签」；缺 highlight → 记「缺结论带」", () => {
+  it("缺 kicker → 记「缺小节标签」；缺 summary → 记「缺一句话总结」", () => {
     const stuff = Array.from({ length: 20 }, (_, i) => rect(80 + i, 200, 10, 10)).join("");
     const codes = checkPptDeck([pageSvg(stuff, { kicker: false, highlight: false })]).map((i) => i.code);
     expect(codes).toContain("缺小节标签");
-    expect(codes).toContain("缺结论带");
+    expect(codes).toContain("缺一句话总结");
   });
 
   it("有组但没有文字也算缺（胶囊里必须有字）", () => {
     const svg = pageSvg(
       Array.from({ length: 20 }, (_, i) => rect(80 + i, 200, 10, 10)).join(""),
     ).replace(/<text [^>]*>项目硬规则<\/text>/, "");
-    expect(checkPptDeck([svg]).map((i) => i.code)).toContain("缺小节标签");
+    expect(checkPptDeck([svg], { requireCover: false }).map((i) => i.code)).toContain("缺小节标签");
   });
 });
 
 describe("checkPptDeck — 文本越界（8px 安全边）", () => {
   it("贴到画布边缘的文字被记「文本越界」", () => {
     const svg = pageSvg(text(1276, 400, 20, "顶到右边了"));
-    const issues = checkPptDeck([svg]).filter((i) => i.code === "文本越界");
+    const issues = checkPptDeck([svg], { requireCover: false }).filter((i) => i.code === "文本越界");
     expect(issues).toHaveLength(1);
     expect(issues[0]!.detail).toContain("顶到右边了");
   });
@@ -297,7 +334,7 @@ describe("checkPptDeck — 文本越界（8px 安全边）", () => {
 describe("checkPptDeck — 文本压字（4px 阈值）", () => {
   it("两块文字几乎重合 → 记「文本相交」", () => {
     const svg = pageSvg(text(100, 200, 20, "第一块文字") + text(105, 205, 20, "第二块文字"));
-    const issues = checkPptDeck([svg]).filter((i) => i.code === "文本相交");
+    const issues = checkPptDeck([svg], { requireCover: false }).filter((i) => i.code === "文本相交");
     expect(issues).toHaveLength(1);
     expect(issues[0]!.detail).toContain("第一块文字");
   });
@@ -314,7 +351,7 @@ describe("checkPptDeck — 文本压字（4px 阈值）", () => {
 describe("checkPptDeck — 信息量（最少 12 条文字）", () => {
   it("文字太少 → 记「信息量不足」，条数上限与契约同源", () => {
     const svg = pageSvg(text(100, 200, 20, "只有一条"));
-    const issues = checkPptDeck([svg]).filter((i) => i.code === "信息量不足");
+    const issues = checkPptDeck([svg], { requireCover: false }).filter((i) => i.code === "信息量不足");
     expect(issues).toHaveLength(1);
     expect(issues[0]!.detail).toContain(String(PPT_LIMITS.minSentencesPerPage));
     expect(countSvgTexts(svg)).toBeLessThan(PPT_LIMITS.minSentencesPerPage);
@@ -326,7 +363,7 @@ describe("checkPptDeck — 信息量（最少 12 条文字）", () => {
   });
 
   it("多页问题按页号归位（第 2 页的问题不记到第 1 页）", () => {
-    const issues = checkPptDeck([fullPageSvg(), pageSvg(text(100, 200, 20, "少"))]);
+    const issues = checkPptDeck([fullPageSvg(), pageSvg(text(100, 200, 20, "少"))], { requireCover: false });
     expect(issues.every((i) => i.page === 2)).toBe(true);
     expect(issues.length).toBeGreaterThan(0);
   });
@@ -357,10 +394,10 @@ describe("svgTextRects — tspan 感知（#144）", () => {
 });
 
 describe("checkPptDeck — 最低要求（变更表 #145：PPT_MIN_QUALITY 是用户定调的下限）", () => {
-  it("门禁阈值与最低要求同源（内容 16 / 元信息 15 / 安全边 40 / 网格 2 / 留白 120 / 孤字 3）", () => {
+  it("门禁阈值与最低要求同源（内容 15 / 元信息 14 / 安全边 40 / 网格 2 / 留白 120 / 孤字 3）", () => {
     expect(PPT_QUALITY.minFontSize).toBe(PPT_MIN_FONT);
-    expect(PPT_MIN_FONT).toBe(16);
-    expect(PPT_QUALITY.minMetaFontSize).toBe(15);
+    expect(PPT_MIN_FONT).toBe(15);
+    expect(PPT_QUALITY.minMetaFontSize).toBe(14);
     expect(PPT_QUALITY.minContentMargin).toBe(40);
     expect(PPT_QUALITY.gridTolerance).toBe(2);
     expect(PPT_QUALITY.maxBottomGap).toBe(120);
@@ -378,46 +415,46 @@ describe("checkPptDeck — 最低要求（变更表 #145：PPT_MIN_QUALITY 是�
   });
 });
 
-describe("checkPptDeck — 字号过小（#145：内容 ≥16、页脚页码 ≥15）", () => {
-  it("正例：16px 正文 + 15px 页脚页码不报", () => {
+describe("checkPptDeck — 字号过小（#253：内容 ≥15、页脚页码 ≥14）", () => {
+  it("正例：15px 正文 + 14px 页脚页码不报", () => {
     const svg = pageSvg(text(100, 300, PPT_MIN_FONT, "十六号正文"));
-    expect(checkPptDeck([svg]).some((i) => i.code === "字号过小")).toBe(false);
+    expect(checkPptDeck([svg], { requireCover: false }).some((i) => i.code === "字号过小")).toBe(false);
   });
 
-  it("反例：15px 的正文被记「字号过小」并点名文字", () => {
-    const svg = pageSvg(text(100, 300, 15, "十五号正文"));
-    const issues = checkPptDeck([svg]).filter((i) => i.code === "字号过小");
+  it("反例：14px 的正文被记「字号过小」并点名文字", () => {
+    const svg = pageSvg(text(100, 300, 14, "十四号正文"));
+    const issues = checkPptDeck([svg], { requireCover: false }).filter((i) => i.code === "字号过小");
     expect(issues).toHaveLength(1);
-    expect(issues[0]!.detail).toContain("十五号正文");
+    expect(issues[0]!.detail).toContain("十四号正文");
     expect(issues[0]!.detail).toContain(String(PPT_MIN_FONT));
   });
 
-  it("反例：页脚 14px（低于元信息下限 15）也记；13px 的页码同理", () => {
-    const svg = pageSvg(text(100, 300, 16, "正文")).replace(
+  it("反例：页脚 13px（低于元信息下限 14）也记", () => {
+    const svg = pageSvg(text(100, 300, 15, "正文")).replace(
       /<g id="footer">.*?<\/g>/,
-      `<g id="footer">${text(80, 700, 14, "场景通")}</g>`,
+      `<g id="footer">${text(80, 700, 13, "场景通")}</g>`,
     );
-    const issues = checkPptDeck([svg]).filter((i) => i.code === "字号过小");
+    const issues = checkPptDeck([svg], { requireCover: false }).filter((i) => i.code === "字号过小");
     expect(issues).toHaveLength(1);
     expect(issues[0]!.detail).toContain("页脚/页码");
   });
 
-  it("15px 的页码在 <g id=\"page-no\"> 里是元信息，不算过小（内容 15px 才算）", () => {
-    const svg = pageSvg(text(100, 300, 16, "正文"));
+  it("14px 的页码在 <g id=\"page-no\"> 里是元信息，不算过小", () => {
+    const svg = pageSvg(text(100, 300, 15, "正文"));
     expect(svg).toContain(`<g id="page-no">`);
-    expect(checkPptDeck([svg]).some((i) => i.code === "字号过小")).toBe(false);
+    expect(checkPptDeck([svg], { requireCover: false }).some((i) => i.code === "字号过小")).toBe(false);
   });
 });
 
 describe("checkPptDeck — 超出安全边（#145：内容元素距边 ≥40）", () => {
   it("正例：内容区里的元素留够 40px 不报", () => {
     const svg = pageSvg(rect(80, 170, 1120, 450, "#E3F2FD"));
-    expect(checkPptDeck([svg]).some((i) => i.code === "超出安全边")).toBe(false);
+    expect(checkPptDeck([svg], { requireCover: false }).some((i) => i.code === "超出安全边")).toBe(false);
   });
 
   it("反例：内容元素贴到画布边（不足 40px）→ 记「超出安全边」", () => {
     const svg = pageSvg(rect(20, 170, 400, 200, "#E3F2FD"));
-    const issues = checkPptDeck([svg]).filter((i) => i.code === "超出安全边");
+    const issues = checkPptDeck([svg], { requireCover: false }).filter((i) => i.code === "超出安全边");
     expect(issues).toHaveLength(1);
     expect(issues[0]!.detail).toContain(String(PPT_QUALITY.minContentMargin));
   });
@@ -461,12 +498,12 @@ describe("checkPptDeck — 未对齐网格（#145：同层级元素落版式网�
 describe("checkPptDeck — 留白不均（#145：内容区底部空白 ≤120px）", () => {
   it("正例：内容铺到内容区底部不报", () => {
     const svg = pageSvg(rect(80, 170, 1120, 450, "#E3F2FD"));
-    expect(checkPptDeck([svg]).some((i) => i.code === "留白不均")).toBe(false);
+    expect(checkPptDeck([svg], { requireCover: false }).some((i) => i.code === "留白不均")).toBe(false);
   });
 
   it("反例：内容挤在上半页（底部空 300px）→ 记「留白不均」", () => {
     const svg = pageSvg(rect(80, 170, 1120, 150, "#E3F2FD"));
-    const issues = checkPptDeck([svg]).filter((i) => i.code === "留白不均");
+    const issues = checkPptDeck([svg], { requireCover: false }).filter((i) => i.code === "留白不均");
     expect(issues).toHaveLength(1);
     expect(issues[0]!.detail).toContain(String(PPT_QUALITY.maxBottomGap));
   });
@@ -489,7 +526,7 @@ describe("checkPptDeck — 行首标点（#145：中文行首禁则）", () => {
     const svg = pageSvg(text(100, 300, 16, "，一天一交") + text(100, 340, 16, "。补录口径对不上") + text(100, 380, 16, "）都要留痕"));
     const lines = findLeadingPunctLines(svg);
     expect(lines).toHaveLength(3);
-    expect(checkPptDeck([svg]).filter((i) => i.code === "行首标点")).toHaveLength(3);
+    expect(checkPptDeck([svg], { requireCover: false }).filter((i) => i.code === "行首标点")).toHaveLength(3);
   });
 
   it("缩进空格后仍是标点开头也算（trim 后判）", () => {
@@ -518,7 +555,7 @@ describe("checkPptDeck — 孤字行（#145：换行后末行 <3 字）", () => 
     );
     const lines = findOrphanLines(svg);
     expect(lines).toEqual(["留痕"]);
-    expect(checkPptDeck([svg]).filter((i) => i.code === "孤字行")).toHaveLength(1);
+    expect(checkPptDeck([svg], { requireCover: false }).filter((i) => i.code === "孤字行")).toHaveLength(1);
   });
 
   it("单行文字不算换行段（旁边另起一段近处的字也不算）", () => {

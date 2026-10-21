@@ -29,6 +29,7 @@
 
 /** 七种页面布局：@see docs/PPT输出要求.md §四 */
 export const PPT_LAYOUTS = [
+  "封面",
   "网格要点",
   "双栏对比",
   "流程阶段",
@@ -39,6 +40,63 @@ export const PPT_LAYOUTS = [
 ] as const;
 
 export type PptLayout = (typeof PPT_LAYOUTS)[number];
+
+/**
+ * 版面基线：**逐项取自用户给的模版**（`PPT模版.pptx`，6 页产品册，13.33×7.5in）
+ *
+ * 用户定调（2026-10-21）：「参照 PPT 模版重新优化 PPT 大纲生成的要求和 PPT 生成的要求，
+ * 以模版为基准，生成的 PPT 质量不能低于模版」。所以字号、颜色、页边距、页脚样式不再是
+ * 我们的审美选择，而是**模版实测值**：模板里 24pt 标题 / 16.5–20pt 副题 / 11.25pt 正文 /
+ * 10.5pt 小注与页脚，渲染层按这张表换算（1pt ≈ 1.333px，1280×720 画布）。
+ *
+ * 单测与质量门禁都从这里取值——**改这里等于改交付基线**。
+ */
+export const PPT_TEMPLATE = {
+  note: "版面基线取自用户模版 PPT模版.pptx（2026-10-21 实测）：只许对齐与收紧，不许放宽",
+  /** 画布（模版 13.33×7.5in，与 ppt-master 的 ppt169 一致） */
+  canvas: { width: 1280, height: 720, inchesW: 13.33, inchesH: 7.5 },
+  /** 颜色（模版里出现频次最高的六色 + 语义绿） */
+  colors: {
+    /** 标题 / 主色（模版 24pt 标题、块头、卡片数值） */
+    primary: "#1D2A8C",
+    /** 强调色（模版副题、英文小标、页码强调） */
+    accent: "#0070C0",
+    /** 次强调（模版 s2 副题） */
+    accentAlt: "#055CDD",
+    /** 正文（模版内容行） */
+    text: "#404040",
+    /** 次要文字（模版小注、页脚、年份） */
+    muted: "#7A7A7A",
+    /** 极浅文字（模版序号 01/02） */
+    faint: "#A8AEB8",
+    /** 语义绿（模版安全能力小标） */
+    green: "#22943A",
+    /** 浅底（模版浅蓝底块） */
+    light: "#EEF3FB",
+    /** 描边（模版细线） */
+    border: "#DCE6F5",
+  },
+  /** 字号（pt 为模版原值，px 为 1280×720 画布换算值 = pt × 4/3） */
+  font: {
+    titlePt: 24,
+    titlePx: 32,
+    subtitlePt: 16.5,
+    subtitlePx: 22,
+    /** 模版 s4 的一级小标（13.5pt） */
+    sectionPt: 13.5,
+    sectionPx: 18,
+    /** 模版正文（11.25pt） */
+    bodyPt: 11.25,
+    bodyPx: 15,
+    /** 模版小注 / 页脚（10.5pt） */
+    microPt: 10.5,
+    microPx: 14,
+  },
+  /** 页边距（英寸；模版实测：左 0.48、上 0.36、页脚 7.12） */
+  margins: { leftIn: 0.48, topIn: 0.36, footerIn: 7.12 },
+  /** 页脚：左产品线、右「NN / MM」（模版 s2/s3/s5/s6 都是这个样式） */
+  footer: { pageFormat: "NN / MM" },
+} as const;
 
 /** 缺布局时的默认布局（兜底排版：一页 5–6 行大字） */
 export const PPT_DEFAULT_LAYOUT: PptLayout = "要点清单";
@@ -129,14 +187,13 @@ export type PptIcon = (typeof PPT_ICONS)[number];
 export const PPT_DEFAULT_ICON: PptIcon = "presentation";
 
 /**
- * 内容文字的最小字号（变更表 #145，用户定调「最小字体可以调大一点」）
+ * 内容文字的最小字号（变更表 #253 按模版基线重定）
  *
- * 渲染层里所有**内容类**文字——正文行、小注、表格格、能力标签、层与阶段说明、清单次要说明、
- * 卡片说明——一律 ≥ 这个值；页脚与页码这类元信息文字允许低一档，但也不低于
- * `PPT_LIMITS.minMetaFontSize`。质量门禁按它判「字号过小」（`packages/infra/src/ppt-quality.ts`）：
- * **这是最低要求，不是建议**——改小它等于降低交付标准。
+ * 模版正文实测 **11.25pt = 15px**（模板 6 页里 11.25pt 出现 32/27/17 次），比 #145 定下的
+ * 16px 低一档。用户定调「以模版为基准，质量不能低于模版」——密度上不去，页面上就只有
+ * 两三张大卡，看着比模版空。所以内容类文字下限对齐模版 15px；小注 / 页脚 14px（10.5pt）。
  */
-export const PPT_MIN_FONT = 16;
+export const PPT_MIN_FONT = PPT_TEMPLATE.font.bodyPx;
 
 /**
  * 图标名归一（防错名字，确定性层与渲染层**共用这一处**）
@@ -255,33 +312,34 @@ export interface PptOutline {
  * 超了由 `parsePptOutline` 确定性截断，绝不让模型自由发挥。
  */
 export const PPT_LIMITS = {
-  /** 页数下限：少于这个数说明模型没按口径写（无法凭空造页，领域层只记录提示） */
-  minPages: 5,
+  /** 页数下限：封面 + 6 张内容页（少于这个数说明模型没按口径写） */
+  minPages: 7,
   /** 页数上限：超了截掉尾部页面 */
   maxPages: 10,
-  /** 目标页数（进提示词） */
-  targetPages: 7,
+  /** 目标页数（进提示词）：封面 + 7 张内容页 */
+  targetPages: 8,
   /** 小节标签 ≤ 8 字 */
   kickerChars: 8,
   /** 标题 ≤ 20 字 */
   titleChars: 20,
-  /** 一句副题 ≤ 32 字 */
-  subtitleChars: 32,
+  /** 一句副题（模版风格：一句加粗强调）≤ 40 字 */
+  subtitleChars: 40,
   /** 底部结论带 ≤ 34 字（每页都要有一条） */
   highlightChars: 34,
-  /** 网格要点：**恰好 4 块**（2×2）；块头 ≤14、小注 ≤24、每块 3–4 行、每行 ≤26 */
+  /** 网格要点：**恰好 4 块**（2×2）；块头 ≤14、小注 ≤24、每块 3–5 行、每行 ≤26 */
   blocks: {
     count: 4,
     min: 3,
     headChars: 14,
     noteChars: 24,
     minLines: 3,
-    maxLines: 4,
+    maxLines: 5,
     lineChars: 26,
   },
-  /** 双栏对比：恰好 2 组；栏头 ≤14、小注 ≤24、每组 3–5 行、每行 ≤26 */
+  /** 双栏对比：2–3 组（模版 s6 是三根支柱）；栏头 ≤14、小注 ≤24、每组 3–5 行、每行 ≤26 */
   columns: {
     count: 2,
+    max: 3,
     headChars: 14,
     noteChars: 24,
     minLines: 3,
@@ -290,22 +348,24 @@ export const PPT_LIMITS = {
   },
   /** 流程阶段：3–5 个；阶段名 ≤14、说明 ≤24 */
   stages: { min: 3, max: 5, headChars: 14, noteChars: 24 },
-  /** 分层架构：3–4 层；层名 ≤14、每层 2–4 个组件、组件 ≤10 */
-  layers: { min: 3, max: 4, headChars: 14, minItems: 2, maxItems: 4, itemChars: 10 },
+  /** 分层架构：3–5 层（模版 s3 是五层能力栈）；层名 ≤14、每层 2–6 个组件、组件 ≤10 */
+  layers: { min: 3, max: 5, headChars: 14, minItems: 2, maxItems: 6, itemChars: 10 },
   /** 数据卡片：3–4 张，值 ≤8 字、说明 ≤14 字 */
   cards: { min: 3, max: 4, valueChars: 8, labelChars: 14 },
   /** 表格：≤6 行 × ≤5 列，表头 ≤8 字、单元格 ≤20 字 */
   table: { maxRows: 6, maxCols: 5, headChars: 8, cellChars: 20 },
   /** 要点清单（兜底）：3–6 行、每行 ≤26 字 */
   bullets: { min: 3, max: 6, chars: 26 },
-  /** 技术/能力标签：0–5 个、每个 ≤10 字 */
-  chips: { max: 5, chars: 10 },
-  /** 内容量硬要求：每页至少 12 条有效短句（进提示词，也是质量门禁的判据） */
+  /** 技术/能力标签：0–6 个（模版封面 6 个落地版本）、每个 ≤10 字 */
+  chips: { max: 6, chars: 10 },
+  /** 版面门禁的密度下限（渲染后每页文字条数；卡片 / 阶段这类结构件少的页面也要过这条） */
   minSentencesPerPage: 12,
-  /** 内容文字最小字号（= `PPT_MIN_FONT`；渲染层与质量门禁同源） */
+  /** 大纲的密度要求：每页至少 16 条有效短句（模版内容页 29–57 条，取保守下限） */
+  targetSentencesPerPage: 16,
+  /** 内容文字最小字号（= `PPT_MIN_FONT` = 模版 11.25pt；渲染层与质量门禁同源） */
   minFontSize: PPT_MIN_FONT,
-  /** 页脚 / 页码这类元信息文字的最小字号（内容一律 ≥ `minFontSize`） */
-  minMetaFontSize: 15,
+  /** 页脚 / 页码这类元信息文字的最小字号（模版 10.5pt = 14px） */
+  minMetaFontSize: PPT_TEMPLATE.font.microPx,
 } as const;
 
 /**
@@ -562,10 +622,24 @@ export const PPT_OUTLINE_QUALITY = {
     "写",
     "压",
   ] as const,
+  /**
+   * ⑨ 模版基线（变更表 #253）
+   *
+   * 用户给了模版并定调「以模版为基准」。这三条是模版的结构特征，判据在
+   * `checkPptOutlineQuality`：第一页必须是封面、一页只用一种结构、整份至少四种结构。
+   */
+  /** 第一页必须是 `封面`（模版 s1：标题 + 四张能力卡 + 三步落地链 + 落地版本 + 一句话总结） */
+  coverLayout: "封面" as PptLayout,
+  /** 整份至少用到几种不同布局（模版 6 页用了 5 种结构） */
+  minLayoutVariety: 4,
+  /** 同一种布局最多连续几页（模版没有连续同构页） */
+  maxLayoutRun: 2,
+  /** 封面之后的每一页至少几条有效短句（模版内容页 29–57 条，这条是下限） */
+  minContentPageSentences: 16,
   /** ② 记忆点（`highlight`）最多几个字（= `PPT_LIMITS.highlightChars`，每页必须有一条） */
   highlightChars: PPT_LIMITS.highlightChars,
   /** ③ 每页最少几条有效短句（结构上限不足的版式按"写满"算，见 `pptLayoutSentenceMax`） */
-  minSentencesPerPage: PPT_LIMITS.minSentencesPerPage,
+  minSentencesPerPage: PPT_LIMITS.targetSentencesPerPage,
   /**
    * ④ 数字可溯源：正文里找不到的数字就是编造
    *

@@ -49,57 +49,81 @@ export const PPT_RETRY_PROMPT_MARKER = "## PPT：上一次的大纲不合要求�
  */
 export const PPT_LAYOUT_FIELD_RULES: readonly string[] = [
   "## 版式与字段必须成套（给不全就换版式）",
+  `- 写 \`${PPT_OUTLINE_QUALITY.coverLayout}\` ⇒ **必须**给 ${PPT_LIMITS.blocks.count} 张能力卡 \`blocks\` + 3 个 \`stages\`（落地三步）+ \`chips\` + \`highlight\`，缺一项这一页会被降级；`,
   "- 写 `表格` ⇒ **必须**同时给合规 `table`（表头 ≥2 列、列 ≤ 5、行 ≤ 6，给不出表就别写 `表格`）；",
   `- 写 \`流程阶段\` ⇒ **必须**给 ${PPT_LIMITS.stages.min}–${PPT_LIMITS.stages.max} 个 \`stages\`，**每个都要有 \`head\` 与 \`note\`**（步骤 / 阶段 / 批次 / 里程碑这类内容一律用它，不要写成表格）；`,
   `- 写 \`分层架构\` ⇒ **必须**给 ${PPT_LIMITS.layers.min}–${PPT_LIMITS.layers.max} 层 \`layers\`，每层 ${PPT_LIMITS.layers.minItems}–${PPT_LIMITS.layers.maxItems} 个 \`items\`；`,
   `- 写 \`网格要点\` ⇒ **必须**给满 ${PPT_LIMITS.blocks.count} 块，每块 ${PPT_LIMITS.blocks.minLines}–${PPT_LIMITS.blocks.maxLines} 行；`,
-  `- 写 \`双栏对比\` ⇒ **必须**给满 ${PPT_LIMITS.columns.count} 栏，每栏 ${PPT_LIMITS.columns.minLines}–${PPT_LIMITS.columns.maxLines} 行；`,
+  `- 写 \`双栏对比\` ⇒ **必须**给 ${PPT_LIMITS.columns.count}–${PPT_LIMITS.columns.max} 栏，每栏 ${PPT_LIMITS.columns.minLines}–${PPT_LIMITS.columns.maxLines} 行；`,
   `- 写 \`数据卡片\` ⇒ **必须**给 ${PPT_LIMITS.cards.min}–${PPT_LIMITS.cards.max} 张；`,
   `- **拿不准就一律用 \`网格要点\` 写满 ${PPT_LIMITS.blocks.count} 块**（每块 ${PPT_LIMITS.blocks.minLines}–${PPT_LIMITS.blocks.maxLines} 行）：`,
   "  宁可用网格要点写满，也**不要交一页只有两三条的空页**——交不出内容就别交这一页。",
 ];
 
+/**
+ * 模版基线（变更表 #253）
+ *
+ * 用户给了 `PPT模版.pptx` 并定调「以模版为基准，生成的 PPT 质量不能低于模版」。
+ * 模版实测：6 页、13.33×7.5in、24pt 标题顶格、16.5–20pt 加粗强调副题、11.25pt 正文、
+ * 10.5pt 页脚（左产品线 + 右「NN / MM」）、每页 29–57 条文字。
+ * 这一段把**模版的页面类型**翻成模型能执行的版式要求——大纲写成这样，渲染出来才有模版那个密度。
+ */
+export const PPT_TEMPLATE_RULES: readonly string[] = [
+  "## 模版基线（照这份模版的结构写，做不到就是不合格）",
+  `- 模版是 13.33×7.5in、白底、深蓝主色；标题一行判断（≤ ${PPT_LIMITS.titleChars} 字），下面一行加粗强调句（≤ ${PPT_LIMITS.subtitleChars} 字），`,
+  "  底部一行深灰总结（`highlight`），页脚由渲染层统一画（左「场景通 · 场景名」、右「NN / MM」）——**这些不用你写**。",
+  `- **第一页必须是 \`${PPT_OUTLINE_QUALITY.coverLayout}\`**（模版第一页）：${PPT_LIMITS.blocks.count} 张能力卡（这张卡讲什么、凭什么、给客户什么）+ 3 步落地链 + 落地版本/同类客户 \`chips\`（${PPT_LIMITS.chips.max} 个以内）+ 一句话总结。`,
+  "  **封面不是空扉页**：这四张卡就是方案的四个卖点，读者只看第一页也要知道我们要干什么。",
+  `- **正文每页一种结构，整份至少 ${PPT_OUTLINE_QUALITY.minLayoutVariety} 种，同一种最多连着 ${PPT_OUTLINE_QUALITY.maxLayoutRun} 页**（模版 6 页用了 5 种：枢纽图 / 五层栈 / 能力矩阵 / 路线图 / 三支柱）。`,
+  "- 模版的五种页面长什么样，照着找对应关系：",
+  `  ① 五层能力栈 → \`分层架构\`（${PPT_LIMITS.layers.min}–${PPT_LIMITS.layers.max} 层，每层 ${PPT_LIMITS.layers.minItems}–${PPT_LIMITS.layers.maxItems} 个组件：采集层 / 网络层 / 平台层 / 应用层…）；`,
+  `  ② 能力矩阵 → \`网格要点\`（${PPT_LIMITS.blocks.count} 块，每块 ${PPT_LIMITS.blocks.minLines}–${PPT_LIMITS.blocks.maxLines} 条，块头 + 一句小注）；`,
+  "  ③ 路线图 → `流程阶段`（3–5 段，每段一句说明：试点 / 复制 / 全量 / 验收）；",
+  "  ④ 枢纽图、三支柱 → `双栏对比`（今天 / 建成后，或 2–3 根支柱并排）；",
+  "  ⑤ 数字或关键结论 → `数据卡片`（3–4 张，`value` 只放正文里有的数字或短词）。",
+  "- **密度按模版对齐**：模版内容页 29–57 条文字，我们每页至少 "
+    + `${PPT_LIMITS.targetSentencesPerPage} 条、尽量写满 24 条以上；一页只有两三张卡、几行字，就是比模版空，不合格。`,
+  "- 文字长度按模版：块头 / 层名 ≤ 14 字，内容行 ≤ 26 字，能一句说完就不要两行（模版的正文就是短句密排，不是长段落）。",
+];
+
 /** 页面口径（逐条写死，模型不用猜） */
 export const PPT_PAGE_RULES: readonly string[] = [
-  `**${PPT_LIMITS.minPages}–${PPT_LIMITS.maxPages} 页，目标 ${PPT_LIMITS.targetPages} 页**；不要封面页、不要目录页、不要「谢谢 / 结束」这类尾页——第一页直接进内容。`,
-  "叙事走「问题 → 方案 → 价值」：开头 1–2 页讲现状与问题（读者今天的处境与代价），",
+  `**共 ${PPT_LIMITS.minPages}–${PPT_LIMITS.maxPages} 页，目标 ${PPT_LIMITS.targetPages} 页**：第 1 页是 \`${PPT_OUTLINE_QUALITY.coverLayout}\`，`,
+  "第 2 页起是正文（6–9 页），**不要目录页、不要「谢谢 / 结束」这类尾页**。",
+  "叙事走「问题 → 方案 → 价值」：封面之后 1–2 页讲现状与问题（读者今天的处境与代价），",
   "中间 3–4 页讲方案、建设内容与路径，最后 1–2 页讲价值与收益。",
   "",
   "## 信息量（硬要求，最要紧的一条）",
-  `- **一页至少 ${PPT_LIMITS.minSentencesPerPage} 条有效短句**：网格要点就是 4 块 × 3–4 行；双栏对比是两栏各 3–5 行；`,
-  "  流程阶段每个阶段都要有说明；分层架构每层 2–4 个组件；表格要写满行与列。**空页、只有两三条的大页一律不合格。**",
+  `- **一页至少 ${PPT_LIMITS.targetSentencesPerPage} 条有效短句**：网格要点就是 4 块 × 3–5 行；双栏对比是两栏各 3–5 行；`,
+  "  流程阶段每个阶段都要有说明；分层架构每层 2–6 个组件；表格要写满行与列。**空页、只有两三条的大页一律不合格。**",
   "- 内容必须**从这份报告正文里提炼**：可以用正文里出现过的名词、口径、数字，**但不许编造**",
   "  （金额、台数、比例、时间一律照抄正文，不许换算、不许加总、不许估）。",
   "- 不许出现「待客户提供」「待补齐」这类占位，不许出现「建议采用 / 推荐 / 值得投入 / 应当优先」这类决策建议，",
   "  也不许把 Word 里的表号、来源、页码、证据等级、核实结论写进 PPT。",
   "- 每条短句都说人话、能独立看懂，一条一件事；不要空话套话，不要「赋能、闭环、抓手」这类壳子词。",
   "",
+  ...PPT_TEMPLATE_RULES,
+  "",
   ...PPT_LAYOUT_FIELD_RULES,
   "",
   "## 字段限额（超了会被截断，按这个尺寸写）",
   `- 每页都要有：\`kicker\` 小节标签 ≤ ${PPT_LIMITS.kickerChars} 字、\`title\` ≤ ${PPT_LIMITS.titleChars} 字、`,
-  `  \`subtitle\` 一句副题 ≤ ${PPT_LIMITS.subtitleChars} 字、\`highlight\` 底部结论带 ≤ ${PPT_LIMITS.highlightChars} 字。`,
+  `  \`subtitle\` 一句加粗强调 ≤ ${PPT_LIMITS.subtitleChars} 字、\`highlight\` 底部一句话总结 ≤ ${PPT_LIMITS.highlightChars} 字。`,
+  `- \`${PPT_OUTLINE_QUALITY.coverLayout}\`：\`blocks\` **恰好 ${PPT_LIMITS.blocks.count} 张**（2×2），每张 \`head\` ≤ ${PPT_LIMITS.blocks.headChars} 字、`,
+  `  \`note\` ≤ ${PPT_LIMITS.blocks.noteChars} 字（写"凭什么"，可空）、\`lines\` 2 条、每条 ≤ ${PPT_LIMITS.blocks.lineChars} 字；\`stages\` **恰好 3 个**。`,
   `- \`网格要点\`：\`blocks\` **恰好 ${PPT_LIMITS.blocks.count} 块**（2×2），每块 \`head\` ≤ ${PPT_LIMITS.blocks.headChars} 字、`,
   `  \`note\` ≤ ${PPT_LIMITS.blocks.noteChars} 字（可空）、\`lines\` ${PPT_LIMITS.blocks.minLines}–${PPT_LIMITS.blocks.maxLines} 条、每条 ≤ ${PPT_LIMITS.blocks.lineChars} 字。`,
-  `- \`双栏对比\`：\`columns\` **恰好 ${PPT_LIMITS.columns.count} 组**，每组 \`head\` ≤ ${PPT_LIMITS.columns.headChars} 字、`,
+  `- \`双栏对比\`：\`columns\` ${PPT_LIMITS.columns.count}–${PPT_LIMITS.columns.max} 组，每组 \`head\` ≤ ${PPT_LIMITS.columns.headChars} 字、`,
   `  \`note\` ≤ ${PPT_LIMITS.columns.noteChars} 字（可空）、\`lines\` ${PPT_LIMITS.columns.minLines}–${PPT_LIMITS.columns.maxLines} 条、每条 ≤ ${PPT_LIMITS.columns.lineChars} 字。`,
   `- \`流程阶段\`：\`stages\` ${PPT_LIMITS.stages.min}–${PPT_LIMITS.stages.max} 个，每个 \`head\` ≤ ${PPT_LIMITS.stages.headChars} 字、\`note\` ≤ ${PPT_LIMITS.stages.noteChars} 字（**每个都要有 note**）。`,
   `- \`分层架构\`：\`layers\` ${PPT_LIMITS.layers.min}–${PPT_LIMITS.layers.max} 层，每层 \`head\` ≤ ${PPT_LIMITS.layers.headChars} 字、\`items\` ${PPT_LIMITS.layers.minItems}–${PPT_LIMITS.layers.maxItems} 个、每个 ≤ ${PPT_LIMITS.layers.itemChars} 字。`,
   `- \`数据卡片\`：\`cards\` ${PPT_LIMITS.cards.min}–${PPT_LIMITS.cards.max} 张，\`value\` ≤ ${PPT_LIMITS.cards.valueChars} 字、\`label\` ≤ ${PPT_LIMITS.cards.labelChars} 字。`,
   `- \`表格\`：\`table\` ≤ ${PPT_LIMITS.table.maxRows} 行 × ≤ ${PPT_LIMITS.table.maxCols} 列（表头 ≥2 列），表头 ≤ ${PPT_LIMITS.table.headChars} 字、单元格 ≤ ${PPT_LIMITS.table.cellChars} 字（**要写满行与列**）。`,
   `- \`要点清单\`（兜底）：\`bullets\` ${PPT_LIMITS.bullets.min}–${PPT_LIMITS.bullets.max} 行、每行 ≤ ${PPT_LIMITS.bullets.chars} 字；只在上面六种都排不出时用。`,
-  `- \`chips\` 技术/能力标签 ${PPT_LIMITS.chips.max} 个以内、每个 ≤ ${PPT_LIMITS.chips.chars} 字（排不排得下由页面决定，给最有信息量的几个）。`,
-  `- 图标：每页 1 个 \`icon\`、每个块/栏/阶段/层/卡片各 1 个 \`icon\`、\`table.icons\` 与表头列一一对应（见上面的「图标」一节）。`,
+  `- \`chips\` 技术/能力标签 ${PPT_LIMITS.chips.max} 个以内、每个 ≤ ${PPT_LIMITS.chips.chars} 字（封面上放"已落地版本/同类客户"，正文页放最有信息量的几个）。`,
+  "- 图标：每页 1 个 `icon`、每个块/栏/阶段/层/卡片各 1 个 `icon`、`table.icons` 与表头列一一对应（见上面的「图标」一节）。",
 ];
 
-/**
- * 大纲质量要求（变更表 #146）——**明确要求，不是几条原则**
- *
- * 用户定调：「PPT 大纲本身要有质量要求，不能只是简单的几条要求，要像 B 站 PPT 大纲生成的技能要求
- * 一样有明确的生成要求」。这里逐条写死：观点型标题（含正反例）、记忆点、每页信息量、
- * 数字可溯源、页间不重复、叙事顺序、自包含、图标与版式成套，最后附一份 ❌→✅ 常见错误清单。
- * 词表与阈值**全部取自契约 `PPT_OUTLINE_QUALITY`**，与领域层 `checkPptOutlineQuality` 同源。
- */
 export const PPT_OUTLINE_QUALITY_RULES: readonly string[] = [
   "## 大纲质量要求（每一条都会被逐页检查，请照着写）",
   "",
@@ -110,7 +134,7 @@ export const PPT_OUTLINE_QUALITY_RULES: readonly string[] = [
   "- ❌「项目概述」「背景」「现状」「小结」「设备清单」（最后一个是名词堆：既不是判断，也没有动词）。",
   "",
   "### 2. 每页都要有记忆点",
-  `- \`highlight\`（底部结论带）**每页必有**、≤ ${PPT_OUTLINE_QUALITY.highlightChars} 字、是能记住的一句话；不许空着，也不许把标题抄一遍。`,
+  `- \`highlight\`（底部一句话总结）**每页必有**、≤ ${PPT_OUTLINE_QUALITY.highlightChars} 字、是能记住的一句话；不许空着，也不许把标题抄一遍。`,
   "",
   "### 3. 每页都要写满",
   `- 每页**至少 ${PPT_OUTLINE_QUALITY.minSentencesPerPage} 条有效短句**（≈ 4 块 × 3–4 行）；`,
@@ -141,6 +165,11 @@ export const PPT_OUTLINE_QUALITY_RULES: readonly string[] = [
   "- **同一页不许重复使用同一个图标**（变更表 #151）：一页里的每个块 / 栏 / 阶段 / 层 / 卡片 / 表头列",
   "  **各给一个不同的图标**（同页两个元素撞图标 → 判 `图标重复`，那一页会被打回来重写）；",
   "- `layout` 声明的版式必须给全它自己的字段（见下面「版式与字段必须成套」一节）。",
+  "",
+  "### 9. 结构要对齐模版（变更表 #253）",
+  `- 第 1 页必须是 \`${PPT_OUTLINE_QUALITY.coverLayout}\`（四张能力卡 + 三步链），**不是空扉页**；`,
+  `- 整份至少 ${PPT_OUTLINE_QUALITY.minLayoutVariety} 种结构、同一种最多连续 ${PPT_OUTLINE_QUALITY.maxLayoutRun} 页——`,
+  "  模版 6 页用了 5 种结构；一页接一页都用「网格要点」会判 `版式单一` / `版式重复`。",
   "",
   "### 常见错误（❌ → ✅）",
   "- ❌ 标题写「项目概述」 → ✅ 标题写「四条硬规则管住现场」（一句判断）；",
@@ -174,14 +203,15 @@ function feedbackSection(issues: readonly PptIssue[]): string[] {
 
 /** 七个布局各要什么（与契约 `PptPage` 一一对应） */
 export const PPT_LAYOUT_SPEC: readonly string[] = [
-  "- `网格要点`：**默认布局，最密**。`blocks` 四块各讲一件事（如 设备台账 / 巡检任务 / 异常上报 / 数据口径），每块 3–4 条做法。",
-  "- `双栏对比`：`columns` 两栏对比「今天 / 建成后」或两种做法，各 3–5 行，左栏在今天、右栏在建成后。",
+  "- `封面`：**第 1 页专用**。四张能力卡（`blocks`：这张卡讲什么 / 凭什么 / 给客户什么）+ 三步落地链（`stages`：从哪开始 / 怎么铺开 / 怎么验收）+ `chips`（已落地版本或同类客户）+ 底部一句话总结。",
+  "- `网格要点`：**正文默认布局，最密**。`blocks` 四块各讲一件事（如 设备台账 / 巡检任务 / 异常上报 / 数据口径），每块 3–5 条做法。",
+  "- `双栏对比`：`columns` 2–3 栏对比「今天 / 建成后」或几根支柱并排，各 3–5 行，左栏在今天、右栏在建成后。",
   "- `流程阶段`：`stages` 讲推进路径（试点 → 复制 → 全量 这类），每阶段一句说明，别只写阶段名。",
-  "- `分层架构`：`layers` 自上而下给层（应用层 / 平台层 / 网络层 / 感知层），每层 2–4 个组件名。",
+  "- `分层架构`：`layers` 自上而下给层（应用层 / 平台层 / 网络层 / 感知层），3–5 层、每层 2–6 个组件名（模版的五层能力栈就是这个版式）。",
   "- `数据卡片`：`cards` 给关键数字或关键结论（`value` 是短词或正文里有的数字，`label` 说明它是什么），3–4 张。",
   "- `表格`：`table` 承载分层、分工、清单这类结构，列 ≤ 5、行 ≤ 6，别把长句塞进格子——**行与列都要写满**。",
   "- `要点清单`：只在实在排不出上面六种时用，5–6 行大字，一行一件事。",
-  "- **一份 PPT 里 `网格要点` 应占一半以上**，同一布局不要连着超过两页。",
+  "- **正文每页换一种结构**：整份至少 4 种，同一种最多连续 2 页（模版 6 页用了 5 种）。",
   "- **上面每种版式都必须带上它自己的字段**（`表格`→`table`、`流程阶段`→`stages`、`分层架构`→`layers`…）：",
   "  只写 `layout` 不给字段，这一页会被降级成兜底清单，页面上就只剩两三条——**宁可改用 `网格要点` 写满四块**。",
 ];
@@ -211,10 +241,30 @@ export const PPT_JSON_SPEC: readonly string[] = [
   "## 输出（**只输出这一段 JSON**）",
   "- **不要任何解释、不要 Markdown 代码围栏、不要前后缀**——你的回复会被直接 `JSON.parse`；",
   "- 只写这一页用到的字段也行，但字段名必须与下面完全一致，**不要自创字段**；",
-  "- 四页完整示例（覆盖四种版式，照这个形状写、照这个密度写，内容换成这份报告的）：",
+  "- 五页完整示例（封面 + 四种正文结构，照这个形状写、照这个密度写，内容换成这份报告的）：",
   "```",
   JSON.stringify({
     pages: [
+      {
+        layout: "封面",
+        kicker: "总体方案",
+        icon: "target",
+        title: "一个平台管住全厂的设备与能耗",
+        subtitle: "旁路取数、统一模型、按工艺段算账",
+        blocks: [
+          { head: "旁路采集不动机组", icon: "plug", note: "不改原 PLC 程序与安全回路", lines: ["从既有通信口取数", "新增点位只做接线与组态"] },
+          { head: "统一设备模型", icon: "database", note: "一处建档，全局共用", lines: ["设备、测点、口径一次定清", "报表与看板同源出数"] },
+          { head: "按工艺段算能耗", icon: "gauge", note: "吨水电耗可复算", lines: ["分项计量到工艺段", "与电费单逐月对账"] },
+          { head: "异常进工单", icon: "alert-triangle", note: "告警到人、处置留痕", lines: ["越限告警经 Webhook 派单", "处置过程可回查"] },
+        ],
+        stages: [
+          { head: "试点一座厂", icon: "building-community", note: "先跑通采集与出表" },
+          { head: "复制到其余厂站", icon: "sitemap", note: "按区域分批上线" },
+          { head: "验收与移交", icon: "circle-check", note: "按口径逐项验收" },
+        ],
+        chips: ["试点厂", "泵站", "集团监管平台"],
+        highlight: "先让设备看得见，再让账算得清",
+      },
       {
         layout: "网格要点",
         kicker: "项目硬规则",
@@ -335,7 +385,7 @@ export function buildPptRetryPrompt(
     `你上一次给《${scenarioName}${kindLabel(kind)}》的 PPT 大纲不合格：**${why}**。现在只重发那一段 JSON，并按下面两条改。`,
     "",
     "## 这次必须改掉的三件事",
-    `- **每一页都写到 ${PPT_LIMITS.minSentencesPerPage} 条以上有效短句**：被点名的页要整页重写，不要只补一句；`,
+    `- **每一页都写到 ${PPT_LIMITS.targetSentencesPerPage} 条以上有效短句**：被点名的页要整页重写，不要只补一句；`,
     `  步骤 / 阶段类内容写成 \`流程阶段\`（${PPT_LIMITS.stages.min}–${PPT_LIMITS.stages.max} 个 \`stages\`，每个都有 \`note\`），表格式内容写成 \`表格\`（带完整 \`table\`）。`,
     `- **给不出某种版式的字段就改用 \`网格要点\` 写满 ${PPT_LIMITS.blocks.count} 块**（每块 ${PPT_LIMITS.blocks.minLines}–${PPT_LIMITS.blocks.maxLines} 行）——`,
     "  **宁可用网格要点写满，也不要再交一页只有两三条的空页**。页数与叙事不变（5–10 页、问题 → 方案 → 价值、无封面目录尾页）。",

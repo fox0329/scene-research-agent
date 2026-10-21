@@ -188,7 +188,7 @@ const G_MARK = ["甲", "乙", "丙", "丁", "戊", "己", "庚", "辛"];
 const BLOCK_ICONS = ["file-text", "checkup-list", "database", "clock"] as const;
 const COLUMN_ICONS = ["arrows-split", "hierarchy"] as const;
 const STAGE_ICONS = ["route", "calendar-check", "users", "gauge", "circle-check"] as const;
-const LAYER_ICONS = ["hierarchy", "server", "network"] as const;
+const LAYER_ICONS = ["hierarchy", "server", "network", "database"] as const;
 const CARD_ICONS = ["chart-bar", "trending-up", "target", "bolt"] as const;
 const TABLE_ICONS = ["route", "users", "gauge", "circle-check"] as const;
 
@@ -258,7 +258,7 @@ function layoutPage(i: number): PptPage {
           note: `${G_NOTE_A[at(k) % G_NOTE_A.length]!}，${mark}组`,
           icon: COLUMN_ICONS[k]!,
           lines: Array.from(
-            { length: 4 },
+            { length: 5 },
             (_, j) => `${G_LINE_A[(at(k) * 5 + j) % G_LINE_A.length]!}${G_LINE_B[(at(k) * 5 + j) % G_LINE_B.length]!}，${mark}组`,
           ),
         })),
@@ -277,9 +277,9 @@ function layoutPage(i: number): PptPage {
       return {
         ...base,
         blocks: [],
-        layers: [0, 1, 2].map((k) => ({
+        layers: [0, 1, 2, 3].map((k) => ({
           head: G_HEADS[at(k) % G_HEADS.length]!,
-          icon: LAYER_ICONS[k]!,
+          icon: LAYER_ICONS[k % LAYER_ICONS.length]!,
           items: [0, 1, 2].map((j) => `${mark}组${G_NOTE_B[(at(k) + j) % G_NOTE_B.length]!}`.slice(0, 10)),
         })),
       };
@@ -311,9 +311,27 @@ function layoutPage(i: number): PptPage {
   }
 }
 
-/** 一份 n 页、判据**全部合格**的大纲 JSON */
-function outlineJson(pages = 6): string {
-  return JSON.stringify({ pages: Array.from({ length: pages }, (_, i) => layoutPage(i)) });
+/** 第 1 页：封面（模版 s1 的版式，四张能力卡 + 三步落地链） */
+function coverPage(): PptPage {
+  const base = goodPage(0, { layout: "封面", title: "一套平台管住全厂的设备与能耗" });
+  return {
+    ...base,
+    kicker: "总体方案",
+    subtitle: "旁路取数、统一模型、按工艺段算账",
+    stages: [0, 1, 2].map((k) => ({
+      head: G_HEADS[k]!,
+      note: `${G_NOTE_A[k]!}，${G_MARK[0]!}组`,
+      icon: STAGE_ICONS[k]!,
+    })),
+    chips: ["试点厂", "泵站", "集团平台"],
+  };
+}
+
+/** 一份 n 页、判据**全部合格**的大纲 JSON（第 1 页是封面） */
+function outlineJson(pages = 7): string {
+  return JSON.stringify({
+    pages: [coverPage(), ...Array.from({ length: Math.max(0, pages - 1) }, (_, i) => layoutPage(i + 1))],
+  });
 }
 
 /** 把第 at 页的标题改成章节式空词（一处「非观点型标题」问题） */
@@ -500,6 +518,7 @@ describe("exportReportPptx — 第一轮就通过（#146）", () => {
       "04_page.svg",
       "05_page.svg",
       "06_page.svg",
+      "07_page.svg",
     ]);
     expect(argv.slice(2)).toEqual(["-o", join(argv[1]!, "out.pptx"), "--no-compat", "-f", "ppt169"]);
     // 临时项目目录跑完就删
@@ -519,13 +538,13 @@ describe("exportReportPptx — 第一轮就通过（#146）", () => {
     const text = messages(h.events);
     expect(text).toContain("PPT：正在从正文提取大纲（第 1 轮）…");
     expect(text).toContain("PPT：正在优化大纲…");
-    expect(text).toContain("PPT：大纲 6 页，正在渲染第 3 页…");
+    expect(text).toContain("PPT：大纲 7 页，正在渲染第 3 页…");
     expect(text).toContain("PPT：正在做版面检查…");
-    expect(text).toContain("PPT：版面检查通过（6 页）");
+    expect(text).toContain("PPT：版面检查通过（7 页）");
     expect(text).toContain("PPT：正在转成 PPTX…");
     expect(text).toContain("PPT：已导出");
     // 每页一条，不逐帧刷屏
-    expect(text.match(/正在渲染第 /g)).toHaveLength(6);
+    expect(text.match(/正在渲染第 /g)).toHaveLength(7);
     expect(h.events.every((e) => e.type === "progress")).toBe(true);
     // 版面检查在转档之前
     expect(text.indexOf("版面检查通过")).toBeLessThan(text.indexOf("正在转成 PPTX"));
@@ -607,7 +626,7 @@ describe("exportReportPptx — 不合格就重跑（#146 修复闭环）", () =>
     const calls = { calls: 0 };
     const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     const result = await runExport(h, {
-      dshClient: mockDsh([duplicateJson(), duplicateJson()], { counter: calls }),
+      dshClient: mockDsh([duplicateJson(7), duplicateJson(7)], { counter: calls }),
     });
     expect(calls.calls).toBe(PPT_OUTLINE_ROUNDS * 2); // 三轮 × (生成 + 优化)
     expect(result.files).toHaveLength(1); // 文件确实产出来了
@@ -630,29 +649,29 @@ describe("exportReportPptx — 不合格就重跑（#146 修复闭环）", () =>
     // 第 1 轮 1 处问题（两页重复）、第 2 轮 2 处（两页空词标题）、第 3 轮 3 处 → 取第 1 轮（6 页）
     const result = await runExport(h, {
       dshClient: mockDsh([
-        duplicateJson(6),
-        duplicateJson(6),
+        duplicateJson(7),
+        duplicateJson(7),
         weakTitleJson(7, 2),
         weakTitleJson(7, 2),
-        weakTitleJson(5, 3),
-        weakTitleJson(5, 3),
+        weakTitleJson(7, 3),
+        weakTitleJson(7, 3),
       ]),
     });
     expect(result.files).toHaveLength(1);
-    expect(readLog(h.log).find((r) => r.step === "convert")!.svgs).toHaveLength(6);
+    expect(readLog(h.log).find((r) => r.step === "convert")!.svgs).toHaveLength(7);
     expect(result.notice).toContain("第 1 轮");
   });
 
   it("空页（第 5 页只有 2 条）→ 轮内重试一次；重试达标就采纳，不打扰用户", async () => {
     const calls = { calls: 0 };
     const result = await runExport(h, {
-      dshClient: mockDsh([thinOutlineJson(6), outlineJson(6), outlineJson(6)], { counter: calls }),
+      dshClient: mockDsh([thinOutlineJson(7), outlineJson(7), outlineJson(7)], { counter: calls }),
     });
     expect(result.files).toHaveLength(1);
     const text = messages(h.events);
     expect(text).toContain("第 5 页只有 2 条"); // 重试提示点名到页
     expect(text).toContain("重试一次");
-    expect(text).toContain("PPT：版面检查通过（6 页）");
+    expect(text).toContain("PPT：版面检查通过（7 页）");
     expect(result.notice ?? "").not.toContain("内容偏少");
     expect(calls.calls).toBe(3); // 生成 + 轮内重试 + 优化
   });
@@ -724,7 +743,7 @@ describe("exportReportPptx — 不合格就重跑（#146 修复闭环）", () =>
         scenario: h.scenario,
         kind: "solution",
         dir: h.dir,
-        dshClient: mockDsh([outlineJson(6), outlineJson(6)], { counter: calls }),
+        dshClient: mockDsh([outlineJson(7), outlineJson(7)], { counter: calls }),
         push: h.push,
         skillDir: h.skill,
       });
@@ -773,13 +792,13 @@ describe("exportReportPptx — 不合格就重跑（#146 修复闭环）", () =>
     expect(text.indexOf("正在嵌入图标")).toBeLessThan(text.indexOf("正在转成 PPTX"));
   });
 
-  it("#144 每页都有图标占位（≥4 个/页），收尾之后一个 data-icon 残留都不剩", async () => {
+  it("#144 每页都有图标占位（≥3 个/页），收尾之后一个 data-icon 残留都不剩", async () => {
     await runExport(h);
     const records = readLog(h.log);
     const fin = records.find((r) => r.step === "finalize")!;
-    expect(fin.pages).toHaveLength(6);
+    expect(fin.pages).toHaveLength(7);
     for (const page of fin.pages!) {
-      expect(page.icons, `${page.name} 只有 ${page.icons} 个图标占位`).toBeGreaterThanOrEqual(4);
+      expect(page.icons, `${page.name} 只有 ${page.icons} 个图标占位`).toBeGreaterThanOrEqual(3);
       expect(page.residue, `${page.name} 收尾后还有占位残留`).toBe(0);
     }
     expect(records.find((r) => r.step === "convert")!.finalResidue).toBe(0);
@@ -826,8 +845,8 @@ describe("exportReportPptx — 不合格就重跑（#146 修复闭环）", () =>
     expect(kept.map((i) => i.page)).toEqual([3, 4]);
   });
 
-  it("合同里的页数口径没被改歪（5–10 页、目标 7 页、三轮闭环）", () => {
-    expect(PPT_LIMITS.minPages).toBe(5);
+  it("合同里的页数口径没被改歪（7–10 页、目标 8 页、三轮闭环）", () => {
+    expect(PPT_LIMITS.minPages).toBe(7);
     expect(PPT_LIMITS.maxPages).toBe(10);
     expect(PPT_OUTLINE_ROUNDS).toBe(3);
   });

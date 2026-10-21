@@ -58,7 +58,7 @@ describe("首次提示 —— 硬约束在文案里", () => {
   });
 
   it("每页 ≥12 条短句、不许编造数字、不写内部痕迹", () => {
-    expect(firstSystem).toContain(`一页至少 ${PPT_LIMITS.minSentencesPerPage} 条有效短句`);
+    expect(firstSystem).toContain(`一页至少 ${PPT_LIMITS.targetSentencesPerPage} 条有效短句`);
     expect(firstSystem).toContain("空页、只有两三条的大页一律不合格");
     expect(firstSystem).toContain("不许编造");
     expect(firstSystem).toContain("不许出现「待客户提供」");
@@ -141,7 +141,7 @@ describe("重试提示 —— 点名到页", () => {
     expect(retry.system).toContain("这次必须改掉的三件事");
     // #145：版面检查的内容类问题（图标不足 / 重点不突出）也要能在这一次重试里被修掉
     expect(retry.system).toContain("每处内容都要有图标、每页都要有重点");
-    expect(retry.system).toContain(`每一页都写到 ${PPT_LIMITS.minSentencesPerPage} 条以上有效短句`);
+    expect(retry.system).toContain(`每一页都写到 ${PPT_LIMITS.targetSentencesPerPage} 条以上有效短句`);
     expect(retry.system).toContain("不要再交一页只有两三条的空页");
     expect(retry.system).toContain("版式与字段必须成套"); // 重试也带上成套规则
     // 重试是整页重发，图标清单必须一起带上（否则新写的块只能回落兜底图标）
@@ -236,10 +236,10 @@ describe("优化评审提示 —— 只输出 JSON、不许删内容、点对点
 
   it("system 里带全套质量要求 + schema 示例 + 图标白名单（改稿不能跑偏）", () => {
     expect(review.system).toContain("标题必须是观点");
-    expect(review.system).toContain("至少 12 条有效短句");
+    expect(review.system).toContain("至少 16 条有效短句");
     expect(review.system).toContain("版式与字段必须成套");
     expect(review.system).toContain(PPT_ICONS.join("、"));
-    expect(review.system).toContain("四页完整示例");
+    expect(review.system).toContain("五页完整示例");
     expect(review.system).toContain("不要 Markdown 代码围栏");
   });
 
