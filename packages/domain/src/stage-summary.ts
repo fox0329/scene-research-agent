@@ -33,6 +33,20 @@ import {
 import { gapsToSummaryLines, isEmptyValue, type InfoRow, type StageCompleteness } from "./completeness.js";
 import { isHttpUrl, normalizeUrl } from "./web-url.js";
 
+/** 资料库表在总结里的显示名：表号不露出；M4/M5 合并口径写清「不做/限制」 */
+function tableLabel(t: TableDef): string {
+  if (t.code === "M4") return "边界与限制（不做）";
+  if (t.code === "M5") return "边界与限制（限制）";
+  if (/^M[1-6]$/u.test(t.code) || t.code === t.name) return t.name;
+  return `${t.code} ${t.name}`;
+}
+
+/** 产出/引用清单用短名：资料库表用中文名，其他表只写表号（列表里不重复表名） */
+function tableRef(t: TableDef): string {
+  if (/^M[1-6]$/u.test(t.code) || t.code === t.name) return tableLabel(t);
+  return t.code;
+}
+
 export interface StageSummaryInput {
   stage: InfoStageId;
   /**
@@ -489,7 +503,7 @@ export function buildStageSummary(input: StageSummaryInput): string {
     for (const t of tables) {
       const tRows = input.rowsByTable[t.code] ?? [];
       if (tRows.length === 0) {
-        L.push(`- **${t.code} ${t.name}**：尚无数据`);
+        L.push(`- **${tableLabel(t)}**：尚无数据`);
         continue;
       }
       const keys = middleColumns(t).map((c) => c.key).slice(0, 3);
@@ -498,7 +512,7 @@ export function buildStageSummary(input: StageSummaryInput): string {
         .map((r) => valuesOf(r, keys))
         .filter((s) => s !== "");
       L.push(
-        `- **${t.code} ${t.name}**：${tRows.length} 行${sample.length ? `——${sample.join("；")}${tRows.length > 3 ? " …" : ""}` : ""}`,
+        `- **${tableLabel(t)}**：${tRows.length} 行${sample.length ? `——${sample.join("；")}${tRows.length > 3 ? " …" : ""}` : ""}`,
       );
     }
   }
@@ -580,13 +594,13 @@ export function buildStageSummary(input: StageSummaryInput): string {
   if (scope !== "step") {
     L.push("## 六、上下游衔接");
     L.push("");
-    L.push(`- 本阶段产出：${tables.map((t) => t.code).join("、") || "（无信息表）"}`);
+    L.push(`- 本阶段产出：${tables.map(tableRef).join("、") || "（无信息表）"}`);
     const downstream = new Map<InfoStageId, string[]>();
     for (const t of tables) {
       for (const s of t.consumedBy ?? []) {
         const list = downstream.get(s);
-        if (list) list.push(t.code);
-        else downstream.set(s, [t.code]);
+        if (list) list.push(tableRef(t));
+        else downstream.set(s, [tableRef(t)]);
       }
     }
     for (const [s, codes] of [...downstream.entries()].sort((a, b) => a[0] - b[0])) {
@@ -595,7 +609,7 @@ export function buildStageSummary(input: StageSummaryInput): string {
     }
     const upstream = TABLES.filter(
       (t) => t.stage < input.stage && (t.consumedBy ?? []).includes(input.stage),
-    ).map((t) => t.code);
+    ).map(tableLabel);
     L.push(`- 上游依据：${upstream.join("、") || "（无跨阶段依赖）"}`);
     L.push("");
   }

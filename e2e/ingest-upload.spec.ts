@@ -142,7 +142,7 @@ test.describe("上传入库（联真）", () => {
     /* 行点击 → 右栏行详情（补充信息 + 溯源全量） */
     await page.locator("tbody tr").first().click();
     await expect(page.locator(".row-detail")).toBeVisible();
-    await expect(page.locator(".det-h h3")).toContainText("行详情 · M1 产品清单");
+    await expect(page.locator(".det-h h3")).toContainText("行详情 · 产品清单");
     const labels = await page.locator(".row-detail .rd-label").allTextContents();
     expect(labels).toContain("曾用名");
     expect(labels).toContain("来源标注");

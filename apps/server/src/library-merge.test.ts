@@ -52,7 +52,7 @@ describe("collectUpstreamData — 通用库默认引用、可逐个取消", () =
     const { db, scenarioId } = setup();
     const sc = db.scenarioRepo.getById(scenarioId)!;
     const data = collectUpstreamData(db, sc, 3) as Record<string, Record<string, unknown>[]>;
-    const m1 = data["M1_产品型号"] ?? [];
+    const m1 = data["产品清单"] ?? [];
     expect(m1.length).toBeGreaterThanOrEqual(1);
     expect(m1.some((r) => String(r["data_scope"]).startsWith("主库"))).toBe(true);
   });
@@ -61,7 +61,7 @@ describe("collectUpstreamData — 通用库默认引用、可逐个取消", () =
     const { db, scenarioId } = setup();
     const sc = db.scenarioRepo.getById(scenarioId)!;
     const data = collectUpstreamData(db, sc, 3) as Record<string, Record<string, unknown>[]>;
-    const m1 = data["M1_产品型号"] ?? [];
+    const m1 = data["产品清单"] ?? [];
     const ipc = m1.filter((r) => r["model"] === "IPC-3000");
     expect(ipc).toHaveLength(1);
     expect(ipc[0]![ "data_scope"]).toBe("本场景");
@@ -72,7 +72,7 @@ describe("collectUpstreamData — 通用库默认引用、可逐个取消", () =
     const { db, scenarioId } = setup();
     const sc = db.scenarioRepo.getById(scenarioId)!;
     const data = collectUpstreamData(db, sc, 3) as Record<string, Record<string, unknown>[]>;
-    for (const key of ["M1_产品型号", "M2_规格参数", "M3_能力清单", "M4_边界声明"]) {
+    for (const key of ["产品清单", "规格书", "能力清单", "边界与限制"]) {
       for (const row of data[key] ?? []) {
         expect(typeof row["data_scope"], key).toBe("string");
       }
@@ -88,7 +88,7 @@ describe("collectUpstreamData — 通用库默认引用、可逐个取消", () =
       excluded: 1,
     } as never);
     const data = collectUpstreamData(db, sc, 3) as Record<string, Record<string, unknown>[]>;
-    const scopes = (data["M1_产品型号"] ?? []).map((r) => String(r["data_scope"]));
+    const scopes = (data["产品清单"] ?? []).map((r) => String(r["data_scope"]));
     // 主库被排除后，只剩本场景那条（IPC-3000 定制）
     expect(scopes.every((s) => !s.startsWith("主库"))).toBe(true);
     expect(scopes).toContain("本场景");
@@ -104,9 +104,9 @@ describe("collectUpstreamData — 通用库默认引用、可逐个取消", () =
     } as never);
     db.scenarioLinkedLineRepo.update(rel.id, { excluded: 0 } as never);
     const data = collectUpstreamData(db, sc, 3) as Record<string, Record<string, unknown>[]>;
-    const scopes = (data["M1_产品型号"] ?? []).map((r) => String(r["data_scope"]));
+    const scopes = (data["产品清单"] ?? []).map((r) => String(r["data_scope"]));
     expect(scopes).toContain("主库：公司产品库");
-    expect(data["M1_产品型号"]?.map((r) => r["model"])).toContain("SEN-200");
+    expect(data["产品清单"]?.map((r) => r["model"])).toContain("SEN-200");
   });
 });
 

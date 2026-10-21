@@ -1,14 +1,11 @@
 /**
  * 资料库入库门禁（纯函数，可单测）
  *
- * 两条用户定调的口径落在这里，**不交给模型**：
+ * 用户定调的口径落在这里，**不交给模型**：
  *
- * ① 「不做」是重话，必须过两道门槛：**材料出处可定位**（`文件名:页码`）与
- *    **依据非空**（`boundary.reason`，为什么判不做）。缺一条就不入库——
- *    材料提取（ingest）与手工新增（路由）两条来源路径共用同一判定，避免一边严一边松。
- *
- * ② 价格只有一个家：结构化报价进 M6（`price_quote`），O3 只留**报价单文件级引用**
- *    `{file, note}`，单价/计价方式一律不落 O3。
+ * 「不做」是重话，必须过两道门槛：**材料出处可定位**（`文件名:页码`）与
+ * **依据非空**（`boundary.reason`，为什么判不做）。缺一条就不入库——
+ * 材料提取（ingest）与手工新增（路由）两条来源路径共用同一判定，避免一边严一边松。
  *
  * 为什么正则要"扩展名 + 冒号"或"冒号 + 数字"：来源串里文件名可能带空格、中文，
  * 但一定有可识别的扩展名或数字页码；只要求"有冒号"会让 `边界:未知` 这类糊弄串过关，
@@ -59,20 +56,4 @@ export function boundaryEvidenceError(source: unknown, reason: unknown): string 
     return "「不做」边界必须写「依据」（boundary.reason：为什么判不做），不能为空";
   }
   return null;
-}
-
-/**
- * O3 只允许文件级引用：把模型/用户给的字段收敛为 `{file, note}`。
- *
- * 返回 `null` = 没有文件引用（该行不落 O3——价格明细应进 M6，不能以"价格行"的名义留在 O3）。
- * 单价、币种、计价方式等字段**一律丢弃**，保证「一个价格事实只有一个家」。
- */
-export function o3FileRefPayload(fields: Record<string, unknown>): {
-  file: string;
-  note?: string;
-} | null {
-  const file = String(fields["file"] ?? fields["file_name"] ?? "").trim();
-  if (!file) return null;
-  const note = String(fields["note"] ?? "").trim();
-  return note ? { file, note } : { file };
 }

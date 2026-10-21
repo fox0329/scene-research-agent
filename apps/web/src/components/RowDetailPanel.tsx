@@ -26,6 +26,8 @@ export interface RowDetail {
   fields: Record<string, string>;
   /** 补充信息字段（从主表收进来，可编辑） */
   editableKeys: RowDetailField[];
+  /** 已从主表隐藏、但仍需可查的历史/结构字段（只读，例如 M4 的类型/对象、M6 的价格口径） */
+  readonlyKeys?: RowDetailField[];
   /** 溯源字段（M 表可编辑；O 表只读——此前主表也不展示） */
   traceKeys: RowDetailField[];
   /** 溯源字段是否可编辑（M 表 true） */
@@ -99,6 +101,12 @@ export const RowDetailPanel: React.FC<RowDetailPanelProps> = ({ detail, onClose 
           <div className="rd-group">
             <h4>补充信息（可编辑）</h4>
             {detail.editableKeys.map((f) => renderField(f, true))}
+          </div>
+        )}
+        {detail.readonlyKeys && detail.readonlyKeys.length > 0 && (
+          <div className="rd-group">
+            <h4>原始字段（只读）</h4>
+            {detail.readonlyKeys.map((f) => renderField(f, false))}
           </div>
         )}
         <div className="rd-group">

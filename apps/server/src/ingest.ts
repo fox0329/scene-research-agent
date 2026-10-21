@@ -23,7 +23,7 @@ import type { ParseResult } from "@scene/infra";
 import { createSourceLookup, upsertSourcePages } from "@scene/infra";
 import type { DbInstance } from "@scene/infra";
 import { resolveProductForModel, upsertSpecParam } from "./library-service.js";
-import { boundaryEvidenceError, o3FileRefPayload } from "./library-gate.js";
+import { boundaryEvidenceError } from "./library-gate.js";
 import { evaluateGates, normalizeModel } from "@scene/domain";
 import type {
   QualityAssessment,
@@ -120,7 +120,7 @@ const OUTPUT_CONTRACT: Record<string, unknown> = {
         properties: {
           table_code: {
             type: "string",
-            enum: ["M1", "M2", "M3", "M4", "M5", "M6", "O1", "O2", "O3", "O4", "O5", "O6"],
+            enum: ["M1", "M2", "M3", "M4", "M5", "M6", "O1", "O2", "O4", "O5", "O6"],
             description: "目标表编号",
           },
           fields: {
@@ -140,43 +140,42 @@ const OUTPUT_CONTRACT: Record<string, unknown> = {
 
 // ─── System Prompt 构建 ────────────────────────────────────
 
-const SYSTEM_PROMPT = `你是产品资料解析专家。你的任务是将输入的产品文档内容按表格分类归入以下 12 张表：
+const SYSTEM_PROMPT = `你是产品资料解析专家。你的任务是将输入的产品文档内容按表格分类归入以下 11 张表：
 
-## M1 产品型号
+## 产品清单（table_code=M1）
 字段：model(型号), name(产品名称), status(在售/停售/在研/规划/待确认)
 必填：model, name, status
 
-## M2 规格参数
+## 规格书（table_code=M2）
 字段：param_class(参数类别), param_name(参数名称), value(参数值), measured(实测/宣称/未提及)
 必填：param_class, param_name, value, measured
-注意：每条 spec_param 需关联到 M1 中的某个产品，用 fields.product_model 指定关联的 model 字段值
+注意：每条规格参数需关联到产品清单中的某个产品，用 fields.product_model 指定关联的 model 字段值
 
-## M3 能力清单
-字段：domain(领域), name(能力名称), description(描述，依赖条件也写在这里), maturity(已交付/组件具备/在研/规划), inapplicable_scene(不适用场景)
+## 能力清单（table_code=M3）
+字段：domain(领域), name(能力名称), description(描述，依赖条件也写在这里), maturity(已交付/组件具备/在研/规划)
 必填：domain, name, description, maturity
 
-## M4 边界声明（不做什么）
+## 边界与限制·不做的事（table_code=M4）
 字段：description(不做的事), reason(依据：凭什么判"不做"，要能对上材料里的原话/限制条件), has_plan(有/无/未定), response(客户要求时怎么办), owner(负责人)
 必填：description, reason, has_plan, response, owner, source
 注意：「不做」是硬结论，必须同时给**可定位出处**（source 形如 文件名:页码）与**依据**（reason）；缺任一条就不要输出这一行，不许用"行业通例/通常"编理由。
 
-## M5 已知限制
+## 已知限制（table_code=M5）
 字段：product_name(产品名称), description(限制描述), impact(高/中/低), fix_status(已修复/修复中/无计划/硬件限制), external_visible(可提/内部可提/不可提), owner(负责人)
 必填：product_name, description, impact, fix_status, external_visible, owner
 
-## M6 硬件报价
-字段：model(所属产品型号，必须能在 M1 找到), config(配置/构成), unit_price(含税单价，元，可写区间如 12000–15000 或「面议」), price_scope(纯设备/含安装/含三年维保/年费), valid_until(报价有效期，日期或「长期」)
-必填：model, config, unit_price, price_scope, source
-注意：**任何价格/报价信息一律写 M6**（单价、区间、含税参考价、年费都算）；一行只写一个报价口径；没有报价单/销售确认/历史项目出处就不要写，禁止编价格。
+## 报价（table_code=M6）
+字段：model(型号，必须能在产品清单找到), config(配置构成), unit_price(含税单价，元，可写区间如 12000–15000 或「面议」)
+必填：model, config, unit_price
+注意：**任何价格/报价信息一律写这里**（单价、区间、含税参考价、年费都算）；一行只写一个报价口径；禁止编价格。
 
-## O1-O6 可选材料（fields 的键名必须逐字用下面这些，否则入不了表）
+## 可选材料（table_code=O1/O2/O4/O5/O6；fields 的键名必须逐字用下面这些，否则入不了表）
 - O1认证：model(型号), cert_type(证书类型), cert_no(证书号), valid_until(有效期至), issuer(发证机构), covered_models(覆盖型号)
 - O2案例：name(案例名), scene(场景), delivered_at(交付时间), acceptance(验收指标与结果)
-- O3报价单引用：file(报价单文件名或编号), note(说明)——**只存文件级引用，不存单价/金额/计价方式**；价格一律进 M6，O3 没有报价单文件就不要输出
 - O4SDK：product(产品), doc_name(资料名称) 及其余开发资料字段（见表格定义）
 - O5路线图：feature(功能), expected_release(预计时间), priority(优先级)
 - O6生态：partner_name(伙伴名称), integration_type(集成方式), maturity(成熟度)
-注意：证书号、有效期、发证机构、交付时间、验收指标都是必填，材料里没有就写「未提及」，不要换键名；O3 只收报价单文件引用（file/note），价格明细写 M6。
+注意：证书号、有效期、发证机构、交付时间、验收指标都是必填，材料里没有就写「未提及」，不要换键名。价格与报价一律写报价表，可选材料不再有价格类别。
 
 ## 来源标注规则
 每条记录的 source 字段必须包含"文件名:页码"（如 whitepaper.pdf:12）。
@@ -283,8 +282,9 @@ function runIngestGates(
   )) {
     rows.push({ id: r.id, tableCode: "M2", row: { ...r, product_id: r.model } });
   }
-  for (const r of q<{ id: string; domain: string; name: string; maturity: string; inapplicable_scene: string }>(
-    "SELECT id, domain, name, maturity, inapplicable_scene FROM capability WHERE product_line_id = ?",
+  /* M3 表定义已删「不适用场景」：入库体检只看现存列，存量 DB 列不参与门禁 */
+  for (const r of q<{ id: string; domain: string; name: string; maturity: string }>(
+    "SELECT id, domain, name, maturity FROM capability WHERE product_line_id = ?",
   )) {
     rows.push({ id: r.id, tableCode: "M3", row: r });
   }
@@ -303,10 +303,8 @@ function runIngestGates(
     model: string;
     config: string;
     unit_price: string;
-    price_scope: string;
-    source: string;
   }>(
-    `SELECT q.id, q.model, q.config, q.unit_price, q.price_scope, q.source
+    `SELECT q.id, q.model, q.config, q.unit_price
        FROM price_quote q JOIN product p ON p.id = q.product_id WHERE p.product_line_id = ?`,
   )) {
     rows.push({ id: r.id, tableCode: "M6", row: r });
@@ -369,9 +367,9 @@ function buildUserPrompt(fileName: string, parseResult: ParseResult): string {
 
   parts.push("");
   parts.push(
-    "请将上述内容按 M1-M6、O1-O6 表格分类，输出 JSON。每条记录的 source 字段必须包含「文件名:页码」；" +
-      "M4「不做」必须同时给可定位出处与依据（reason），缺一条就不要输出；M6 报价没有出处就不要输出；" +
-      "价格一律写 M6，O3 只写报价单文件引用。",
+    "请将上述内容按给定表格分类，输出 JSON。每条记录的 source 字段必须包含「文件名:页码」；" +
+      "边界与限制里的「不做」必须同时给可定位出处与依据（reason），缺一条就不要输出；" +
+      "价格一律写报价表（可选材料没有价格类别）。",
   );
 
   return parts.join("\n");
@@ -475,7 +473,7 @@ function validateRows(
 } {
   const validTables = new Set([
     "M1", "M2", "M3", "M4", "M5", "M6",
-    "O1", "O2", "O3", "O4", "O5", "O6",
+    "O1", "O2", "O4", "O5", "O6",
   ]);
   const valid: ClassifiedRow[] = [];
   const skipped: { table_code: string; source: string; reason: string }[] = [];
@@ -675,11 +673,9 @@ function insertCapability(
       name: String(f["name"] ?? ""),
       description: String(f["description"] ?? ""),
       maturity: (f["maturity"] as Capability["maturity"]) ?? "规划",
-      // DB 列保留（不迁移）；依赖条件按新口径并入 description，不再单独读 dependency
+      // DB 列保留（不迁移）；依赖条件按新口径并入 description，不再单独读 dependency；
+      // 「不适用场景」列已从表定义删除，新数据不再写入
       dependency: "",
-      inapplicable_scene: f["inapplicable_scene"]
-        ? String(f["inapplicable_scene"])
-        : undefined,
       source_type: "AI提取",
       source: row.source,
       source_authority: authorityOf(row.source, fileName),
@@ -768,9 +764,11 @@ function insertPriceQuote(
   const scopes: PriceQuote["price_scope"][] = ["纯设备", "含安装", "含三年维保", "年费"];
   const config = String(f["config"] ?? "").trim();
   const unitPrice = String(f["unit_price"] ?? "").trim();
-  const scope = String(f["price_scope"] ?? "") as PriceQuote["price_scope"];
-  // 契约必填：配置/含税单价/价格口径缺一项就不入库，避免留下无法用于成本测算的空报价
-  if (!config || !unitPrice || !scopes.includes(scope)) return false;
+  // 价格口径已不进表：材料给了合法口径就沿用，缺省按「纯设备」落库（DB 列保留）
+  const providedScope = String(f["price_scope"] ?? "") as PriceQuote["price_scope"];
+  const scope = scopes.includes(providedScope) ? providedScope : "纯设备";
+  // 契约必填：型号命中产品清单 + 配置/含税单价非空，否则不入库
+  if (!config || !unitPrice) return false;
   try {
     db.quoteRepo.insert({
       product_id: productId,
@@ -796,11 +794,10 @@ function insertOptionalMaterial(
   productLineId: string,
   fileName: string,
 ): boolean {
-  // O1-O6 → category 映射
+  // O1/O2/O4/O5/O6 → category 映射（价格类别已下线，报价只进 M6）
   const categoryMap: Record<string, OptionalMaterial["category"]> = {
     O1: "O1认证",
     O2: "O2案例",
-    O3: "O3价格",
     O4: "O4SDK",
     O5: "O5路线图",
     O6: "O6生态",
@@ -809,16 +806,11 @@ function insertOptionalMaterial(
   const category = categoryMap[row.table_code];
   if (!category) return false;
 
-  /* 价格只有一个家：O3 只留报价单文件引用，单价/计价方式一律不落这里（结构化报价走 M6） */
-  const payload =
-    category === "O3价格" ? o3FileRefPayload(row.fields) : row.fields;
-  if (!payload) return false;
-
   try {
     db.optionalMaterialRepo.insert({
       product_line_id: productLineId,
       category,
-      payload,
+      payload: row.fields,
       source_type: "AI提取",
       source: row.source,
       source_authority: authorityOf(row.source, fileName),

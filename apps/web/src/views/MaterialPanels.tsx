@@ -37,7 +37,7 @@ export const SpecPanel: React.FC = () => (
   <div className="pnl">
     <div className="pnl-h">
       <div>
-        <h2>M2 规格书</h2>
+        <h2>规格书</h2>
         <p>每型号一张，参数类按产品类型生成</p>
       </div>
       <span className="badge primary">4 参数类</span>
@@ -66,7 +66,6 @@ const capColumns: ColumnDef<CapabilityItem>[] = [
       return <span className={`badge ${cls}`}>{m}</span>;
     },
   },
-  { key: "inapplicable_scene", label: "不适用场景", editable: true },
   {
     key: "source",
     label: "来源",
@@ -82,7 +81,7 @@ export const CapabilityPanel: React.FC = () => (
   <div className="pnl">
     <div className="pnl-h">
       <div>
-        <h2>M3 能力清单</h2>
+        <h2>能力清单</h2>
         <p>产品线能做什么、做到什么程度；依赖条件写进描述</p>
       </div>
       <span className="badge primary">18 项 · 已交付 9</span>
@@ -95,16 +94,8 @@ export const CapabilityPanel: React.FC = () => (
 
 /* ── M4 边界与限制（合并展示：类型 = 不做 / 限制） ── */
 const boundaryColumns: ColumnDef<BoundaryItem>[] = [
-  {
-    key: "type",
-    label: "类型",
-    render: (value) => {
-      const t = value as BoundaryItem["type"];
-      return <span className={`badge ${t === "不做" ? "warning" : "primary"}`}>{t}</span>;
-    },
-  },
-  { key: "target",      label: "对象（产品/能力）", editable: true },
   { key: "description", label: "说明",             editable: true },
+  { key: "reason",      label: "依据",             editable: true },
   {
     key: "impact",
     label: "影响程度",
@@ -116,14 +107,13 @@ const boundaryColumns: ColumnDef<BoundaryItem>[] = [
     },
   },
   { key: "response", label: "客户要求时怎么办", editable: true },
-  { key: "source",   label: "来源" },
 ];
 
 export const BoundaryPanel: React.FC = () => (
   <div className="pnl">
     <div className="pnl-h">
       <div>
-        <h2>M4 边界与限制</h2>
+        <h2>边界与限制</h2>
         <p>一张表看清「不做」与「已知限制」；底层仍按两张表存，读取时合并</p>
       </div>
       <span className="badge primary">{boundaryRows.length} 条</span>
@@ -134,25 +124,18 @@ export const BoundaryPanel: React.FC = () => (
   </div>
 );
 
-/* ── M6 硬件报价（示例数据） ── */
+/* ── 报价（示例数据） ── */
 const quoteColumns: ColumnDef<QuoteItem>[] = [
-  { key: "model",       label: "所属产品",   editable: true },
-  { key: "config",      label: "配置/构成",  editable: true },
+  { key: "model",       label: "型号",   editable: true },
+  { key: "config",      label: "配置构成",  editable: true },
   { key: "unit_price",  label: "含税单价（元）", editable: true },
-  {
-    key: "price_scope",
-    label: "价格口径",
-    render: (value) => <span className="badge primary">{String(value)}</span>,
-  },
-  { key: "valid_until", label: "报价有效期", editable: true },
-  { key: "source",      label: "来源" },
 ];
 
 export const QuotePanel: React.FC = () => (
   <div className="pnl">
     <div className="pnl-h">
       <div>
-        <h2>M6 硬件报价</h2>
+        <h2>报价</h2>
         <p>一行一个报价口径；报价用于成本测算与赢面判断，不许自己编价格</p>
       </div>
       <div style={{ display: "flex", gap: "var(--s2)", alignItems: "center" }}>
@@ -166,7 +149,7 @@ export const QuotePanel: React.FC = () => (
   </div>
 );
 
-/* ── O 可选材料：已交付案例 ── */
+/* ── 可选材料：已交付案例 ── */
 const caseColumns: ColumnDef<CaseItem>[] = [
   { key: "name",   label: "案例名",     editable: true },
   { key: "client", label: "客户（脱敏）", editable: true },
@@ -188,7 +171,7 @@ export const OptionalPanel: React.FC = () => (
     <div className="pnl">
       <div className="pnl-h">
         <div>
-          <h2>O2 已交付案例</h2>
+          <h2>已交付案例</h2>
           <p>整理过往案例，验证真实交付能力</p>
         </div>
         <span className="badge primary">{cases.length} 案例</span>
@@ -203,7 +186,7 @@ export const OptionalPanel: React.FC = () => (
         <line x1="12" y1="9" x2="12" y2="13" />
         <line x1="12" y1="17" x2="12.01" y2="17" />
       </svg>
-      <span>O1 认证 / O3 价格 / O4 SDK / O5 路线图 / O6 生态 共 5 项待补充</span>
+      <span>认证 / SDK / 路线图 / 生态 共 4 项待补充</span>
     </div>
   </>
 );

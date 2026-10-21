@@ -160,9 +160,9 @@ const STAGE_NOTES: Partial<Record<InfoStage, string>> = {
 前三步（场景定义 / 认识场景 / 商业梳理）只梳理了场景与市场，本阶段才把**公司能力**放进来对照：
 
 - **表4-1 能力底账**：只登记**本场景会用到**的能力 8–20 行（全量能力在 M3，禁止整表重抄 78 行）；
-  能力名逐字用 M3 原名，限制绑型号（"依赖 GW4300；无以太网口时做不到"）。
+  能力名逐字用能力清单原名，限制绑型号（"依赖 GW4300；无以太网口时做不到"）。
 - **表4-2 我方参与地图**：逐个业务环节（对齐表1-2）给一个角色（替代/辅助/外围/不参与）+
-  **我方承担**（我们做哪块、不做哪块，一句话），依据引自 M3/M4 的具体条目（M4 含边界与已知限制），注入右栏。
+  **我方承担**（我们做哪块、不做哪块，一句话），依据引自能力清单/边界与限制的具体条目（边界与限制含边界与已知限制），注入右栏。
   这几张表**只在本阶段及之后**才会给你。
 - **表1-2 场景环节地图**：本阶段要把客户现状的「现在怎么做」写成**可量的频次或单次耗时**
   （每班 2 次／每次 30 分钟），否则后面的收益基线与工作量都无从算起。
@@ -181,9 +181,9 @@ const STAGE_NOTES: Partial<Record<InfoStage, string>> = {
   **胜负**：有对手信息就给 强/平/弱；对手写「未知」时胜负也写「未知」，同样在右栏写缺什么；
   一个项目里至少 1 行要给出 强/平/弱。
 
-口径：涉及**我方能力**的判断必须能回溯到 M1–M4 + M6 的具体条目；没有对应能力就如实写「需补齐」「不能做」，
-不许拔高。**M6 硬件报价用于成本测算与赢面判断，不许自己编价格**：报价数字必须来自该表，
-表里没有就写「未提供」并在右栏说明缺哪类报价；报价的有效期与价格口径（纯设备/含安装/含三年维保/年费）要一起引用。
+口径：涉及**我方能力**的判断必须能回溯到产品清单、规格书、能力清单、边界与限制、报价的具体条目；没有对应能力就如实写「需补齐」「不能做」，
+不许拔高。**报价用于成本测算与赢面判断，不许自己编价格**：报价数字必须来自报价表，
+表里没有就写「未提供」并在右栏说明缺哪类报价。
 
 **中栏说结果**（本阶段用户点名的重点）：
 - **表4-1 能力底账**：中栏三列就回答三件事——\`ability\` 有什么能力（写产品/型号/能力名，不写材料名）、
@@ -217,7 +217,7 @@ const STAGE_NOTES: Partial<Record<InfoStage, string>> = {
   \`man_days\` **必须给数字**（量级估算也可以，但口径写右栏）；\`rollback\` 写可执行的退路，不写"做好备份"。
 - **表5-4 交付与运维**：\`SLA\` 写**可验收的量化承诺**（可用率、响应时长、恢复时长、备件到货时长），
   **不写**"及时响应""快速处理""有保障"这类空话。
-- **涉及硬件成本时只用 M6_硬件报价 的口径**：报价用于成本测算与赢面判断，**不许自己编价格**；
+- **涉及硬件成本时只用「报价」的口径**：报价用于成本测算与赢面判断，**不许自己编价格**；
   没有对应型号/配置的报价就写「未提供」，不许拿行业均价、记忆里的价格或竞品报价代替我方报价。
 - 出现我方产品时写型号（如 CT15/CT32），不写"我司产品"。`,
 };
@@ -248,10 +248,21 @@ function renderColumn(c: TableColumn): string {
   return `  - \`${c.key}\`（${c.label}）${bits.length ? "：" + bits.join("；") : ""}`;
 }
 
-/** 渲染一张表的完整定义（表号/名称/级别/行粒度/中栏列/右栏补充列/完整度规则） */
+/**
+ * 表在提示词里的显示名
+ *
+ * 资料库表号（M1…）只保留在接口/契约里，不写进展示名；其他阶段表仍用「表号 + 名称」。
+ * 可选材料的表号与名称相同，只显示一次。
+ */
+function displayTableName(t: TableDef): string {
+  if (/^M[1-6]$/u.test(t.code)) return t.name;
+  return t.code === t.name ? t.name : `${t.code} ${t.name}`;
+}
+
+/** 渲染一张表的完整定义（名称/级别/行粒度/中栏列/右栏补充列/完整度规则） */
 export function renderTableSpec(t: TableDef, category?: string): string {
   const lines: string[] = [
-    `### ${t.code} ${t.name}（级别：${t.tier}；行粒度：${t.rowUnit}）`,
+    `### ${displayTableName(t)}（级别：${t.tier}；行粒度：${t.rowUnit}）`,
     `目的：${t.purpose}`,
   ];
   if (t.fixedRows) {
@@ -292,7 +303,9 @@ function renderUpstream(upstreamData: Record<string, unknown>): string {
   for (const [code, rowsRaw] of Object.entries(upstreamData)) {
     const rows = Array.isArray(rowsRaw) ? (rowsRaw as Record<string, unknown>[]) : [];
     if (rows.length === 0) continue;
-    const t = TABLES.find((x) => x.code === code);
+    /* 阶段 3 起的公司材料用展示名作 key（产品清单/规格书/能力清单/报价…），
+     * 既有上游表仍用表号；两种都认，避免投影不到列。 */
+    const t = TABLES.find((x) => x.code === code || x.name === code);
     /* 只渲染**这一批行实际带了的列**（变更表 #225）
      *
      * 上游依赖会按需投影（如只带表3-8 的排序/缺口/谁在痛/痛到什么程度）。
@@ -314,7 +327,7 @@ function renderUpstream(upstreamData: Record<string, unknown>): string {
     const body = rows
       .slice(0, 50)
       .map((r) => `| ${keys.map((k) => String(r[k] ?? "").replace(/\|/g, "/")).join(" | ")} |`);
-    sections.push(`### ${code}${t ? " " + t.name : ""}（${rows.length} 行）\n${[head, sep, ...body].join("\n")}`);
+    sections.push(`### ${t ? displayTableName(t) : code}（${rows.length} 行）\n${[head, sep, ...body].join("\n")}`);
   }
   return sections.length ? sections.join("\n\n") : "（暂无上游数据）";
 }
@@ -323,8 +336,10 @@ function renderUpstream(upstreamData: Record<string, unknown>): string {
 function siblingSpec(codes: readonly string[]): string {
   return codes
     .map((code) => {
-      const t = TABLES.find((x) => x.code === code);
-      return t ? `${t.code} ${t.name}（${t.purpose}）` : code;
+      /* 阶段 3 起的公司材料用展示名作 key（产品清单/规格书/能力清单/报价…），
+       * 既有上游表仍用表号；两种都认，避免投影不到列。 */
+      const t = TABLES.find((x) => x.code === code || x.name === code);
+      return t ? `${displayTableName(t)}（${t.purpose}）` : code;
     })
     .join("；");
 }
@@ -464,7 +479,7 @@ export function buildStagePrompt(
     "```json",
     '{"rows":[{"table_code":"<本阶段表号>","fields":{...},"source":"文件名:页码","source_type":"AI提取|AI推断"}]}',
     "```",
-    `- \`table_code\` 只能取：${tables.map((t) => t.code).join("、") || "（本阶段无表）"}`,
+    `- \`table_code\` 只能取：${tables.map((t) => `${t.code}（${t.name}）`).join("、") || "（本阶段无表）"}`,
     ...(opts?.siblings?.length
       ? [
           `- 本步的其它表（**由并行的另一次调用产出，你不要产出它们**，但口径要与它们一致：` +

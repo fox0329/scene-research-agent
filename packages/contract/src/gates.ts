@@ -19,7 +19,7 @@ export interface GateScope {
   column: string;
   /** 有值/为空时才判（缺省按 equals 分支） */
   present?: boolean;
-  /** 等于某值时才判（同一张表装多种 payload 时用，如可选材料的 O1/O2/O3） */
+  /** 等于某值时才判（同一张表装多种 payload 时用，如可选材料的 O1/O2） */
   equals?: string;
 }
 
@@ -109,10 +109,9 @@ export const TABLE_GATES: Readonly<Record<string, readonly ScopedGate[]>> = {
   ],
   M2: [
     { kind: "enum-of-column", column: "param_class", text: "参数类只取八类（核心配置/接口与端口/电气规格/环境与防护/机械结构/通信协议/认证与安规/软件）" },
-    { kind: "cross-ref", column: "product_id", table: "M1", target: "model", text: "参数须挂在 M1 现存型号上" }
+    { kind: "cross-ref", column: "product_id", table: "M1", target: "model", text: "参数须挂在产品清单现存型号上" }
   ],
   M3: [
-    { kind: "non-empty", columns: ["inapplicable_scene"], text: "不适用场景必填（什么工况下不能用）" },
     { kind: "unique", columns: ["name"], text: "同一能力只登记一行" }
   ],
   M4: [
@@ -123,16 +122,14 @@ export const TABLE_GATES: Readonly<Record<string, readonly ScopedGate[]>> = {
     { kind: "not-vague", columns: ["description"], text: "限制须是可复现缺陷（什么工况出现、影响什么），免责话术不算" }
   ],
   M6: [
-    { kind: "non-empty", columns: ["model", "config", "unit_price", "price_scope", "source"], text: "型号/配置/含税单价/价格口径/来源五项必填" },
-    { kind: "cross-ref", column: "model", table: "M1", target: "model", text: "报价型号必须能在 M1 产品清单里找到" },
-    { kind: "enum-of-column", column: "price_scope", text: "价格口径只能取 纯设备/含安装/含三年维保/年费" },
+    { kind: "non-empty", columns: ["model", "config", "unit_price"], text: "型号/配置/含税单价三项必填" },
+    { kind: "cross-ref", column: "model", table: "M1", target: "model", text: "报价型号必须能在产品清单里找到" },
     { kind: "not-vague", columns: ["unit_price"], text: "单价须给含税金额、区间或「面议」，不许写「优惠」「按项目」" }
   ],
   可选材料: [
     { kind: "enum-of-column", column: "category", text: "材料类别取该列枚举" },
     { kind: "non-empty", columns: ["cert_no", "valid_until", "issuer"], text: "认证类材料须给证书号、有效期与发证机构（无证书号视为未取得）", when: { column: "category", equals: "O1认证" } },
-    { kind: "non-empty", columns: ["delivered_at", "acceptance"], text: "案例类材料须给交付时间与可验收指标（「效果良好」不算）", when: { column: "category", equals: "O2案例" } },
-    { kind: "non-empty", columns: ["file"], text: "价格材料只存报价单/价格表文件引用；具体单价与口径请录到「M6 硬件报价」", when: { column: "category", equals: "O3价格" } }
+    { kind: "non-empty", columns: ["delivered_at", "acceptance"], text: "案例类材料须给交付时间与可验收指标（「效果良好」不算）", when: { column: "category", equals: "O2案例" } }
   ],
 
   "表1-1": [
@@ -216,7 +213,7 @@ export const TABLE_GATES: Readonly<Record<string, readonly ScopedGate[]>> = {
     { kind: "non-empty", columns: ["ability", "maturity"], text: "能力与成熟度必填" },
     { kind: "unique", columns: ["ability"], text: "同一能力不许重复登记（会虚高能力面）" },
     { kind: "enum-of-column", column: "maturity", text: "成熟度取该列枚举" },
-    { kind: "cross-ref", column: "ability", table: "M3", target: "name", text: "能力项须逐字用 M3 能力清单的名字（改名即视为新能力，会虚高）" }
+    { kind: "cross-ref", column: "ability", table: "M3", target: "name", text: "能力项须逐字用能力清单的名字（改名即视为新能力，会虚高）" }
   ],
   "表4-2": [
     { kind: "non-empty", columns: ["link", "our_role", "our_scope"], text: "环节/我方角色/我方承担必填" },

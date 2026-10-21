@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   STAGE0_TABLES,
+  ENUMS,
   STAGE1_TABLES,
   STAGE2_TABLES,
   STAGE3_TABLES,
@@ -81,10 +82,11 @@ describe("@scene/contract 通用枚举", () => {
 });
 
 describe("@scene/contract 表编号常量", () => {
-  it("STAGE0 12 张表", () => {
-    expect(STAGE0_TABLES).toHaveLength(12);
+  it("STAGE0 11 张表（O3 价格已下线）", () => {
+    expect(STAGE0_TABLES).toHaveLength(11);
     expect(STAGE0_TABLES[0]).toBe("M1");
-    expect(STAGE0_TABLES[11]).toBe("O6");
+    expect(STAGE0_TABLES[10]).toBe("O6");
+    expect(STAGE0_TABLES).not.toContain("O3");
   });
 
   it("STAGE1 5 张表", () => {
@@ -215,9 +217,10 @@ describe("@scene/contract 产品资料库接口", () => {
   });
 
 
-  it("OptionalMaterial category 六种", () => {
-    const cats: OptionalMaterial["category"][] = ["O1认证", "O2案例", "O3价格", "O4SDK", "O5路线图", "O6生态"];
-    expect(cats).toHaveLength(6);
+  it("OptionalMaterial category 五种（价格已并入报价表）", () => {
+    const cats: OptionalMaterial["category"][] = ["O1认证", "O2案例", "O4SDK", "O5路线图", "O6生态"];
+    expect(cats).toHaveLength(5);
+    expect(ENUMS.optional_category).toEqual(cats);
   });
 });
 

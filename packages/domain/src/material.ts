@@ -274,7 +274,7 @@ const DIMENSIONS: DimensionDef[] = [
     name: "含边界",
     evaluate: (_products, _specParams, boundaries) => {
       if (boundaries.length === 0) {
-        return { status: "fail", description: "M4 边界与限制里没有「不做」类记录，缺少边界信息" };
+        return { status: "fail", description: "边界与限制里没有「不做」类记录，缺少边界信息" };
       }
       const withDesc = boundaries.filter((b) => !!b.description).length;
       if (withDesc === boundaries.length) {
@@ -290,7 +290,7 @@ const DIMENSIONS: DimensionDef[] = [
     name: "含反面",
     evaluate: (_products, _specParams, _boundaries, limitations) => {
       if (limitations.length === 0) {
-        return { status: "fail", description: "M4 边界与限制里没有「限制」类记录，缺少反面信息" };
+        return { status: "fail", description: "边界与限制里没有「限制」类记录，缺少反面信息" };
       }
       const withDesc = limitations.filter((l) => !!l.description).length;
       if (withDesc === limitations.length) {
@@ -577,35 +577,35 @@ export function checkCompleteness(
     risk: string;
   }> = [
     {
-      name: "M1 产品清单已填写",
+      name: "产品清单已填写",
       hasData: products.length > 0,
       count: products.length,
       unit: "项",
       risk: "阶段三匹配矩阵缺少候选池",
     },
     {
-      name: "M2 规格书已填写",
+      name: "规格书已填写",
       hasData: specParams.length > 0,
       count: specParams.length,
       unit: "个",
       risk: "阶段四选型缺少参数依据",
     },
     {
-      name: "M3 能力清单已填写",
+      name: "能力清单已填写",
       hasData: capabilities.length > 0,
       count: capabilities.length,
       unit: "项",
       risk: "阶段三匹配矩阵缺少行",
     },
     {
-      name: "M4 边界与限制（不做）已填写",
+      name: "边界与限制（不做）已填写",
       hasData: boundaries.length > 0,
       count: boundaries.length,
       unit: "条",
       risk: "阶段一门槛扫描缺少判据，阶段四边界声明只能靠推断",
     },
     {
-      name: "M4 边界与限制（限制）已填写",
+      name: "边界与限制（限制）已填写",
       hasData: limitations.length > 0,
       count: limitations.length,
       unit: "条",
@@ -638,7 +638,7 @@ export function checkCompleteness(
   for (const c of checks) {
     if (!c.hasData) {
       reminders.push({
-        table: c.name.split(" ")[0]!,
+        table: c.name.replace("已填写", ""),
         missing: c.name.replace("已填写", "未填写"),
         impact: c.risk,
         suggestion: "用户手动编辑 / 上传补充材料",
@@ -669,7 +669,7 @@ export function checkCompleteness(
   }
   if (!hasAssessment) {
     reminders.push({
-      table: "M1–M4 + M6",
+      table: "资料库",
       missing: "质量六维未评估",
       impact: "材料质量未评估",
       suggestion: "补充材料或在对应表格手动编辑后重新评估",

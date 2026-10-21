@@ -1280,15 +1280,15 @@ export function collectUpstreamData(
       params: lineIds,
     }) as Product[];
 
-    // M1 只给四列（型号/名称/状态/来源）；DB 里的上市日期、定位、曾用名不再进提示词
-    data["M1_产品型号"] = dedupeBy(annotate(ownFirst(products)), "model").map((p) => ({
+    // 产品清单只给四列（型号/名称/状态/来源）；DB 里的上市日期、定位、曾用名不再进提示词
+    data["产品清单"] = dedupeBy(annotate(ownFirst(products)), "model").map((p) => ({
       model: p.model,
       name: p.name,
       status: p.status,
       source: p.source,
       data_scope: p.data_scope,
     }));
-    data["M2_规格参数"] = annotate(db.specParamRepo.list({
+    data["规格书"] = annotate(db.specParamRepo.list({
       where: specByLines,
       params: lineIds,
     }) as SpecParam[]).map((p) => ({
@@ -1299,8 +1299,8 @@ export function collectUpstreamData(
       measured: p.measured,
       data_scope: p.data_scope,
     }));
-    // M3 依赖条件已并入 description，不再单独给 dependency
-    data["M3_能力清单"] = annotate(db.capabilityRepo.list({
+    // 能力清单：依赖条件已并入 description，不再单独给 dependency；「不适用场景」列已删
+    data["能力清单"] = annotate(db.capabilityRepo.list({
       where: `product_line_id IN ${inLines}`,
       params: lineIds,
     }) as Capability[]).map((c) => ({
@@ -1308,12 +1308,11 @@ export function collectUpstreamData(
       name: c.name,
       maturity: c.maturity,
       description: c.description,
-      inapplicable_scene: c.inapplicable_scene,
       source: c.source,
       data_scope: c.data_scope,
     }));
 
-    // M4 = 边界（不做）+ 已知限制，读取层合并；底层两张表保留、数据不迁移
+    // 边界与限制 = 边界（不做）+ 已知限制，读取层合并；底层两张表保留、数据不迁移
     const boundaries = annotate(db.boundaryRepo.list({
       where: `product_line_id IN ${inLines}`,
       params: lineIds,
@@ -1322,11 +1321,12 @@ export function collectUpstreamData(
       where: `product_line_id IN ${inLines}`,
       params: lineIds,
     }) as Limitation[]);
-    data["M4_边界与限制"] = [
+    data["边界与限制"] = [
       ...boundaries.map((b) => ({
         类型: "不做",
         对象: "公司/业务",
         说明: b.description,
+        依据: b.reason ?? "",
         影响程度: "—",
         客户要求时怎么办: b.response,
         来源: b.source,
@@ -1336,6 +1336,7 @@ export function collectUpstreamData(
         类型: "限制",
         对象: l.product_name,
         说明: l.description,
+        依据: "—",
         影响程度: l.impact,
         客户要求时怎么办: "—",
         来源: l.source,
@@ -1343,26 +1344,25 @@ export function collectUpstreamData(
       })),
     ];
 
-    // M6 硬件报价：报价只作为成本测算与赢面判断的锚点，模型不得自编价格
+    // 报价：只作为成本测算与赢面判断的锚点，模型不得自编价格
     const quoteRows = db.quoteRepo.list({
       where: `product_id IN (SELECT id FROM product WHERE product_line_id IN ${inLines})`,
       params: lineIds,
     });
     const lineOfProduct = new Map(products.map((p) => [p.id, p.product_line_id]));
-    data["M6_硬件报价"] = quoteRows.map((q) => ({
+    data["报价"] = quoteRows.map((q) => ({
       model: q.model,
       config: q.config,
       unit_price: q.unit_price,
-      price_scope: q.price_scope,
-      valid_until: q.valid_until ?? "",
       source: q.source,
       data_scope: scopeOf(lineOfProduct.get(q.product_id) ?? ""),
     }));
 
-    data["O_可选材料"] = annotate(db.optionalMaterialRepo.list({
+    /* 可选材料：O3 价格类别已下线，存量行不再进上下文（数据仍在库里） */
+    data["可选材料"] = annotate(db.optionalMaterialRepo.list({
       where: `product_line_id IN ${inLines}`,
       params: lineIds,
-    }) as OptionalMaterial[]);
+    }) as OptionalMaterial[]).filter((m) => String(m.category) !== "O3价格");
   }
 
   // 阶段 2+ 需要阶段 1 的结果

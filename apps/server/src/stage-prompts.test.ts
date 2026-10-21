@@ -33,11 +33,13 @@ describe("stage-prompts — 阶段覆盖（8 阶段口径）", () => {
 });
 
 describe("stage-prompts — 内容由注册表派生", () => {
-  it("system 列出本阶段全部表（表号 + 名称 + 级别 + 行粒度）", () => {
+  it("system 列出本阶段全部表（展示名 + 级别 + 行粒度）", () => {
     for (const s of STAGE_DEFS) {
       const p = buildStagePrompt(s.id, {}, scenario);
       for (const t of tablesOfStage(s.id)) {
-        expect(p.system, `阶段 ${s.id} / ${t.code}`).toContain(`${t.code} ${t.name}`);
+        // 资料库表的表号不进入展示名；其他阶段表仍是「表号 + 名称」
+        const label = /^M[1-6]$/u.test(t.code) || t.code === t.name ? t.name : `${t.code} ${t.name}`;
+        expect(p.system, `阶段 ${s.id} / ${t.code}`).toContain(label);
         expect(p.system).toContain(t.rowUnit);
         expect(p.system).toContain(`级别：${t.tier}`);
       }
@@ -84,12 +86,22 @@ describe("stage-prompts — 内容由注册表派生", () => {
     expect(p.system).not.toContain("需用户确认");
   });
 
-  it("renderTableSpec 对可选材料列出 6 种 payload", () => {
+  it("renderTableSpec 对可选材料列出 5 种 payload（价格类别已下线）", () => {
     const t = tablesOfStage(0).find((x) => x.code === "可选材料")!;
     const spec = renderTableSpec(t);
-    for (const cat of ["O1认证", "O2案例", "O3价格与授权", "O4开发资料", "O5路线图", "O6交付与生态"]) {
+    for (const cat of ["O1认证", "O2案例", "O4开发资料", "O5路线图", "O6交付与生态"]) {
       expect(spec).toContain(cat);
     }
+    expect(spec).not.toContain("O3");
+  });
+
+  it("资料库表的提示词标题不带 M 前缀，但仍给出 table_code 对照", () => {
+    const t = tablesOfStage(0).find((x) => x.code === "M3")!;
+    const spec = renderTableSpec(t);
+    expect(spec.startsWith("### 能力清单（")).toBe(true);
+    expect(spec).not.toContain("M3 能力清单");
+    const p = buildStagePrompt(0, {}, scenario);
+    expect(p.user).toContain("M3（能力清单）");
   });
 
   it("多子块表（方案架构 + 接口清单）按块渲染字段", () => {
@@ -171,7 +183,7 @@ describe("stage-prompts — 信息版口径（不给决策建议 + 每条信息�
     const p = buildStagePrompt(
       3,
       {
-        M1_产品型号: [
+        产品清单: [
           { model: "IPC-3000", name: "边缘控制器", data_scope: "本场景" },
           { model: "SEN-200", name: "压力变送器", data_scope: "主库：公司产品库" },
         ],
@@ -185,8 +197,8 @@ describe("stage-prompts — 信息版口径（不给决策建议 + 每条信息�
 
   it("上游数据按表渲染为表格，空表不出现", () => {
     const p = buildStagePrompt(1, { M1: [{ model: "IPC-3000", name: "IPC" }], M2: [] }, scenario);
-    expect(p.user).toContain("M1 产品清单（1 行）");
-    expect(p.user).not.toContain("M2 规格书（0 行）");
+    expect(p.user).toContain("产品清单（1 行）");
+    expect(p.user).not.toContain("规格书（0 行）");
   });
 });
 

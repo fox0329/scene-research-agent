@@ -154,9 +154,9 @@ describe("表定义注册表 — 列预算（中栏 ≤6 列）", () => {
     expect(rowBelongsToBlock(tableDef("表5-3"), "任意", {})).toBe(true); // 非块表不参与过滤
   });
 
-  it("可选材料：1 张表 6 种 payload，每种 payload 的中栏列（含类别列）≤ 上限", () => {
+  it("可选材料：1 张表 5 种 payload，每种 payload 的中栏列（含类别列）≤ 上限", () => {
     const t = tableDef("可选材料");
-    expect(Object.keys(t.payloads ?? {})).toHaveLength(6);
+    expect(Object.keys(t.payloads ?? {})).toHaveLength(5);
     for (const [, cols] of Object.entries(t.payloads ?? {})) {
       expect(middleColumns(t, cols.length ? undefined : undefined).length).toBeLessThanOrEqual(
         MIDDLE_COLUMN_BUDGET,
@@ -371,7 +371,7 @@ describe("v2.11 资料库精简口径", () => {
     ).toEqual(["model", "name", "status", "source"]);
   });
 
-  it("M3 去掉 dependency（依赖并入 description），保留 6 个业务列", () => {
+  it("M3 去掉 dependency 与不适用场景，保留 5 个业务列", () => {
     const keys = tableDef("M3")!.columns
       .map((c) => c.key)
       .filter((k) => !k.startsWith("verification"));
@@ -380,31 +380,26 @@ describe("v2.11 资料库精简口径", () => {
       "name",
       "maturity",
       "description",
-      "inapplicable_scene",
       "source",
     ]);
     expect(keys).not.toContain("dependency");
+    expect(keys).not.toContain("inapplicable_scene");
   });
 
-  it("M6 硬件报价：阶段 0 / 支撑 / 一个报价口径 / 被阶段 2、3 消费", () => {
+  it("M6 报价：阶段 0 / 支撑 / 一个报价口径 / 只保留型号-配置-单价", () => {
     const def = tableDef("M6")!;
+    expect(def.name).toBe("报价");
     expect(def.stage).toBe(0);
     expect(def.tier).toBe("支撑");
     expect(def.rowUnit).toBe("一个报价口径");
     expect(
       def.columns.map((c) => c.key).filter((k) => !k.startsWith("verification")),
-    ).toEqual([
-      "model",
-      "config",
-      "unit_price",
-      "price_scope",
-      "valid_until",
-      "source",
-    ]);
+    ).toEqual(["model", "config", "unit_price"]);
     expect(def.columns.find((c) => c.key === "model")?.refTable).toBe("M1");
-    expect(def.columns.find((c) => c.key === "price_scope")?.enum).toBe("price_scope");
-    expect(def.columns.find((c) => c.key === "source")?.required).toBe(true);
-    expect(def.completeness?.join(" ")).toContain("M1");
+    expect(def.columns.some((c) => c.key === "price_scope")).toBe(false);
+    expect(def.columns.some((c) => c.key === "valid_until")).toBe(false);
+    expect(def.columns.some((c) => c.key === "source")).toBe(false);
+    expect(def.completeness?.join(" ")).toContain("产品清单");
     expect(def.consumedBy).toEqual([2, 3]);
   });
 });

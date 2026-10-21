@@ -270,11 +270,11 @@ export const DEMO_ROWS: Record<string, InfoRow[]> = {
       fit_for: "10 个以上站点的集团客户，预算百万级",
     },
   ],
-  "表4-1": [{ capability: "设备接入", level: "已具备", evidence: "M3 能力清单", gap: "无" }],
+  "表4-1": [{ capability: "设备接入", level: "已具备", evidence: "能力清单", gap: "无" }],
   "表4-2": [
-    { link: "制水", can_touch: "可以碰", our_role: "辅助", role_reason: "M3 有采集能力，M4 声明不碰加药控制" },
-    { link: "输配", can_touch: "可以碰", our_role: "替代", role_reason: "M3 具备漏损分析能力" },
-    { link: "原水取水", can_touch: "不能碰", our_role: "不参与", role_reason: "M4 边界声明明确不承担水源安全责任" },
+    { link: "制水", can_touch: "可以碰", our_role: "辅助", role_reason: "能力清单有采集能力，边界与限制声明不碰加药控制" },
+    { link: "输配", can_touch: "可以碰", our_role: "替代", role_reason: "能力清单具备漏损分析能力" },
+    { link: "原水取水", can_touch: "不能碰", our_role: "不参与", role_reason: "边界与限制明确不承担水源安全责任" },
   ],
   "表5-1": [
     {

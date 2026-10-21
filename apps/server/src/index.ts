@@ -34,8 +34,8 @@ async function main() {
   if (db.o3PriceMigration) {
     const { migrated, skipped } = db.o3PriceMigration;
     app.log.info(
-      `O3 价格 → M6 报价迁移：已归位 ${migrated} 条、跳过 ${skipped} 条` +
-        (skipped > 0 ? "（跳过项因型号不在 M1/缺金额而保留在 O3）" : ""),
+      `存量价格记录 → 报价迁移：已归位 ${migrated} 条、跳过 ${skipped} 条` +
+        (skipped > 0 ? "（跳过项因型号不在产品清单/缺金额而保留在历史记录）" : ""),
     );
   }
 

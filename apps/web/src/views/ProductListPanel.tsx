@@ -69,7 +69,7 @@ export const ProductListPanel: React.FC = () => {
     <div className="pnl">
       <div className="pnl-h">
         <div>
-          <h2>M1 产品清单</h2>
+          <h2>产品清单</h2>
           <p>把所有产品列出来，建立候选池</p>
         </div>
         <div style={{ display: "flex", gap: "var(--s2)", alignItems: "center" }}>

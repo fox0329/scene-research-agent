@@ -44,7 +44,7 @@ export const ENUMS = {
   stock_maturity: ["空白", "零散", "拥挤"],
   match: ["真能解", "需补齐", "不能做"],
   level_hml: ["高", "中", "低"],
-  optional_category: ["O1认证", "O2案例", "O3价格", "O4SDK", "O5路线图", "O6生态"],
+  optional_category: ["O1认证", "O2案例", "O4SDK", "O5路线图", "O6生态"],
   element_type: ["硬件", "软件", "服务"],
   competition: ["高", "中", "低", "未知"],
   /** 上游供给集中度（表3-5）：这一环是少数几家说了算，还是谁都能做 */
@@ -398,12 +398,10 @@ const TABLES_STAGE_0: readonly TableDef[] = [
       mid("name", "能力项", { required: true }),
       mid("maturity", "成熟度", { required: true, enum: "maturity" }),
       sup("description", "一句话描述", { required: true, type: "longText", note: "依赖条件（需要什么硬件/平台/配置）并入本列写清，不再单列" }),
-      sup("inapplicable_scene", "不适用场景"),
       sup("source", "来源", { required: true }),
     ],
-    completeness: ["domain/name/maturity 非空", "每行有来源", "已交付行须有 O2 案例佐证或标『无案例』",
+    completeness: ["domain/name/maturity 非空", "每行有来源", "已交付行须有案例佐证或标『无案例』",
       "依赖条件并入 description：需要什么硬件/平台/配置，和一句话描述一起写",
-      "不适用场景必填：什么工况下不能用（这是本表唯一能做边界的地方）",
       "说明书里写着的记「组件具备」；「已交付」只给有案例或验收记录的",],
     consumedBy: [1, 3],
   },
@@ -450,23 +448,21 @@ const TABLES_STAGE_0: readonly TableDef[] = [
   },
   {
     code: "M6",
-    name: "硬件报价",
+    name: "报价",
     stage: 0,
     tier: "支撑",
     rowUnit: "一个报价口径",
     purpose: "给成本测算与赢面判断提供真实报价锚点，禁止模型自己编价格",
     columns: [
-      mid("model", "所属产品", { required: true, type: "ref", refTable: "M1", note: "必须能在 M1 产品清单里找到同型号" }),
-      mid("config", "配置/构成", { required: true, note: "报价对应的硬件配置或交付构成" }),
-      mid("unit_price", "含税单价（元）", { required: true, note: "允许写区间（12000–15000）或「面议」，但必须含税并写清口径" }),
-      mid("price_scope", "价格口径", { required: true, enum: "price_scope", note: "纯设备 / 含安装 / 含三年维保 / 年费" }),
-      mid("valid_until", "报价有效期", { note: "日期或「长期」" }),
-      sup("source", "来源", { required: true, note: "报价单/销售确认/历史项目，必须可回查" }),
+      mid("model", "型号", { required: true, type: "ref", refTable: "M1", note: "必须能在产品清单里找到同型号" }),
+      mid("config", "配置构成", { required: true, note: "报价对应的硬件配置或交付构成" }),
+      mid("unit_price", "含税单价（元）", { required: true, note: "允许写区间（12000–15000）或「面议」，但必须含税" }),
     ],
     completeness: [
-      "model 必须能在 M1 产品清单中找到对应型号；找不到先补 M1，不许凭空建型号",
-      "unit_price 必须含税且写清 price_scope（纯设备/含安装/含三年维保/年费）；区间或「面议」要保留原文口径",
-      "每行有来源（报价单/销售确认/历史项目），无来源不要入表",
+      "model 必须能在产品清单中找到对应型号；找不到先补产品清单，不许凭空建型号",
+      "unit_price 必须含税：允许区间或「面议」，保留原文口径",
+      "价格口径缺省按「纯设备」落库（DB 列保留，不进表）；有效期为选填，由材料带出",
+      "每行仍记录材料出处（source 由解析结果带出，不要求模型另填）",
       "一行一个报价口径：同型号不同配置或不同口径分行，不合并成一行",
     ],
     consumedBy: [2, 3],
@@ -477,7 +473,7 @@ const TABLES_STAGE_0: readonly TableDef[] = [
     stage: 0,
     tier: "支撑",
     rowUnit: "一条材料记录",
-    purpose: "按类别记录认证/案例/价格/开发资料/路线图/生态（1 张表 6 种 payload）",
+    purpose: "按类别记录认证/案例/开发资料/路线图/生态（1 张表 5 种 payload）",
     columns: [
       mid("category", "类别", { required: true, enum: "optional_category" }),
       sup("source", "出处", { required: true }),
@@ -502,12 +498,6 @@ const TABLES_STAGE_0: readonly TableDef[] = [
         sup("revisit_allowed", "可否回访"),
         sup("evidence_level", "证据等级", { enum: "evidence_level" }),
       ],
-      O3价格与授权: [
-        // 2026-10-21 起：价格明细统一进 M6 硬件报价（一行一个口径、可溯源），
-        // O3 只保留「报价单/价格表文件」引用，避免同一价格在两处出现（用户质问「为什么重复了」）
-        sup("file", "报价单/价格表文件", { required: true }),
-        sup("note", "口径备注"),
-      ],
       O4开发资料: [
         mid("product", "产品", { required: true }),
         mid("doc_name", "资料名称", { required: true }),
@@ -529,7 +519,7 @@ const TABLES_STAGE_0: readonly TableDef[] = [
         sup("depth", "合作深度"),
       ],
     },
-    completeness: ["category/payload 非空且 payload 必填齐全", "每行有出处", "O1 有效期已过须标注", "O5 低置信不得作能力证明"],
+    completeness: ["category/payload 非空且 payload 必填齐全", "每行有出处", "认证有效期已过须标注", "路线图低置信不得作能力证明"],
     consumedBy: [1, 3, 4],
   },
 ];
@@ -928,7 +918,7 @@ const TABLES_STAGE_3: readonly TableDef[] = [
     ],
     completeness: ["ability/maturity/proof 非空", "已交付行须有案例或验收数据",
       "只登记本场景会用的能力（8–20 行），全量能力归 M3，禁止整表重抄",
-      "能力项逐字用 M3 能力名；场景特有说法写进限制条件，不改名",
+      "能力项逐字用能力清单里的名字；场景特有说法写进限制条件，不改名",
       "限制绑定型号/产品线（CT15 无 NPU；AI Box 6TOPS）；无限制写「无已知限制（依据 …）」",],
     /* 客户现状表已移到本阶段（2026-10-14）：现成现状，再谈能不能满足 */
     dependsOnTables: ["表1-2"],
@@ -948,7 +938,7 @@ const TABLES_STAGE_3: readonly TableDef[] = [
       mid("our_role", "我方角色", { required: true, enum: "our_role", note: "替代/辅助/外围/不参与；「不参与」就是不能碰" }),
       mid("our_scope", "我方承担", { required: true, note: "≤40 字：我们做哪块、不做哪块（做 X，不做 Y），不许只写「配合」「支持」" }),
       sup("can_touch", "能否碰（原判定）", { enum: "can_touch" }),
-      sup("role_reason", "角色判定依据", { type: "longText", truncate: TRUNCATE_DEFAULT, note: "依据 M3 能力清单 / M4 边界与限制；写清型号或产品线（依据属右栏，不进中栏）" }),
+      sup("role_reason", "角色判定依据", { type: "longText", truncate: TRUNCATE_DEFAULT, note: "依据能力清单 / 边界与限制；写清型号或产品线（依据属右栏，不进中栏）" }),
       sup("source", "来源", { required: true }),
       sup("evidence_level", "证据等级", { required: true, enum: "evidence_level" }),
       sup("authority", "来源权威性", { required: true, enum: "authority" }),
@@ -956,7 +946,7 @@ const TABLES_STAGE_3: readonly TableDef[] = [
     completeness: [
       "每个环节一行（对齐表1-2）",
       "our_role 非空且取值合法；our_scope 写「做 X、不做 Y」，不写空话",
-      "判定依据须引用 M3/M4 的具体条目",
+      "判定依据须引用能力清单/边界与限制的具体条目",
     
       "环节与表1-2 一一对应、逐字同名；写「不能碰」必须给底账查找结论与反证型号",
       "依据写「【表4-1|能力项】+ 事实」，不写行业套话、不复述结论；缺算法与缺硬件分开写",],

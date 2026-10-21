@@ -10,7 +10,7 @@
  * 三条口径：
  *  ① **逐文件报**：每跑完一个文件就报它自己的行数，只报总数等于没报；
  *  ② **0 行要说话**：0 行不是失败，但也不能沉默——单独一行点名，并说清原因（没有可归入
- *     M1–M6 / O1–O6 的信息），免得用户以为文件被吞了；
+ *     资料库表格的信息），免得用户以为文件被吞了；
  *  ③ **不重复计数**：已经报过「【错误】」的文件不再进 0 行名单，同一件事只说一遍。
  *
  * 纯函数：不碰 DOM 也不碰网络，组件只负责把事件流喂进来、把返回的文案贴出去。
@@ -42,10 +42,26 @@ export interface IngestReceipt {
   emptyFiles: string[];
 }
 
-/** 单表计数拼成 `M1×8、M2×81`；空对象给空串 */
+/** 表号 → 用户可见名称（表号只留在接口/数据里，不显示给用户；O3 价格类别已下线） */
+const TABLE_LABELS: Record<string, string> = {
+  M1: "产品清单",
+  M2: "规格书",
+  M3: "能力清单",
+  M4: "边界与限制",
+  M5: "已知限制",
+  M6: "报价",
+  O1: "认证",
+  O2: "案例",
+  O4: "SDK",
+  O5: "路线图",
+  O6: "生态",
+};
+
+/** 单表计数拼成 `产品清单×8、规格书×81`；空对象给空串 */
 function tableCountsText(tableCounts: Record<string, number>): string {
   return Object.entries(tableCounts)
-    .map(([table, count]) => `${table}×${count}`)
+    .filter(([table]) => table !== "O3")
+    .map(([table, count]) => `${TABLE_LABELS[table] ?? table}×${count}`)
     .join("、");
 }
 
@@ -78,7 +94,7 @@ export function buildIngestReceipt(
       emptyFiles.length === 0
         ? null
         : `【注意】${emptyFiles.length} 个文件未产出可校验记录：${emptyFiles.join("、")}。` +
-          "文件已解析，但没有可归入 M1–M6 / O1–O6 的信息。",
+          "文件已解析，但没有可归入资料库表格的信息。",
     toast:
       `解析完成：入库 ${totalRows} 行${countsPart}` +
       (emptyFiles.length > 0 ? `，${emptyFiles.length} 个文件 0 行` : "") +

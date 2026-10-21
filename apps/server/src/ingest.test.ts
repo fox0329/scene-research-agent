@@ -340,8 +340,8 @@ describe("createIngestCommand", () => {
     });
   });
 
-  describe("价格只有一个家：M6 落报价，O3 不存明细", () => {
-    it("价格类信息写入 M6（price_quote），不再写 O3价格", async () => {
+  describe("报价只进 M6，价格类别已下线", () => {
+    it("价格类信息写入 M6；O3 行不再落可选材料", async () => {
       const output = makeDshOutput();
       output.rows.push({
         table_code: "O3",
@@ -354,8 +354,6 @@ describe("createIngestCommand", () => {
           model: "IPC-3000",
           config: "8G+128G",
           unit_price: "约 3800 元/台",
-          price_scope: "含安装",
-          valid_until: "2025-11",
         },
         source: "whitepaper.pdf:14",
       });
@@ -368,12 +366,12 @@ describe("createIngestCommand", () => {
         productLineId: "pl1",
       });
 
-      // M6 落库；O3 的价格明细行没有文件引用 → 不落 O3
       expect(db.quoteRepo.insert).toHaveBeenCalledTimes(1);
       const quote = (db.quoteRepo.insert as ReturnType<typeof vi.fn>).mock.calls[0]![0];
       expect(quote.model).toBe("IPC-3000");
       expect(quote.unit_price).toBe("约 3800 元/台");
-      expect(quote.price_scope).toBe("含安装");
+      // 价格口径不进表：材料没给就按「纯设备」落库；有效期可空
+      expect(quote.price_scope).toBe("纯设备");
       expect(quote.source).toBe("whitepaper.pdf:14");
 
       const optionalCategories = (
@@ -384,16 +382,11 @@ describe("createIngestCommand", () => {
       expect(result.tableCounts["O3"]).toBeUndefined();
     });
 
-    it("O3 只存文件级引用 {file, note}，价格字段被丢弃", async () => {
+    it("O3 报价单文件引用也不再写入可选材料（类别已下线）", async () => {
       const output = makeDshOutput();
       output.rows.push({
         table_code: "O3",
-        fields: {
-          file: "报价单-2026Q1.pdf",
-          note: "含税参考价，单价明细见 M6",
-          price: "3800",
-          currency: "CNY",
-        },
+        fields: { file: "报价单-2026Q1.pdf", note: "含税参考价" },
         source: "报价单-2026Q1.pdf:1",
       });
       dshClient = createMockDshClient(JSON.stringify(output));
@@ -402,14 +395,39 @@ describe("createIngestCommand", () => {
       const cmd = createIngestCommand(deps);
       await cmd.execute({ filePath: "/tmp/whitepaper.pdf", productLineId: "pl1" });
 
-      const o3 = (
+      const categories = (
         db.optionalMaterialRepo.insert as ReturnType<typeof vi.fn>
-      ).mock.calls.map((c) => c[0]).find((row) => row.category === "O3价格");
-      expect(o3).toBeDefined();
-      expect(o3.payload).toEqual({
-        file: "报价单-2026Q1.pdf",
-        note: "含税参考价，单价明细见 M6",
+      ).mock.calls.map((c) => c[0].category);
+      expect(categories).toEqual(["O2案例"]);
+      expect(categories).not.toContain("O3价格");
+    });
+  });
+
+  describe("能力清单不再写「不适用场景」", () => {
+    it("模型多给的 inapplicable_scene 不落库", async () => {
+      const output = makeDshOutput();
+      output.rows.push({
+        table_code: "M3",
+        fields: {
+          domain: "视频监控",
+          name: "客流统计",
+          description: "支持客流统计",
+          maturity: "已交付",
+          inapplicable_scene: "无摄像头的场景",
+        },
+        source: "whitepaper.pdf:9",
       });
+      dshClient = createMockDshClient(JSON.stringify(output));
+      deps = { db, dshClient, docParser };
+
+      const cmd = createIngestCommand(deps);
+      await cmd.execute({ filePath: "/tmp/whitepaper.pdf", productLineId: "pl1" });
+
+      const caps = (db.capabilityRepo.insert as ReturnType<typeof vi.fn>).mock.calls.map(
+        (c) => c[0],
+      );
+      expect(caps.length).toBeGreaterThanOrEqual(2);
+      for (const cap of caps) expect(cap).not.toHaveProperty("inapplicable_scene");
     });
   });
 

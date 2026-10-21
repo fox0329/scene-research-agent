@@ -170,10 +170,10 @@ describe("assessQuality", () => {
     for (const dim of result.dimensions) {
       expect(dim.status).toBe("fail");
     }
-    // 含边界失败说明应提及 M4
-    expect(result.dimensions[4]!.description).toContain("M4");
-    // 含反面失败说明也提及 M4（边界与限制已合并）
-    expect(result.dimensions[5]!.description).toContain("M4");
+    // 含边界失败说明应点名边界与限制
+    expect(result.dimensions[4]!.description).toContain("边界与限制");
+    // 含反面失败说明也点名边界与限制（已合并）
+    expect(result.dimensions[5]!.description).toContain("边界与限制");
   });
 
   it("有产品但无规格参数 — 可验证失败", () => {
@@ -361,10 +361,11 @@ describe("checkCompleteness", () => {
     // 质量六维：含边界/含反面会失败 → 未评估
     expect(report.items[6]!.status).toBe("❌ 未评估");
 
-    // 提醒应包含 M3 与 M4（不做 / 限制两项）
+    // 提醒用中文名，不做/限制各点名一次
     const tables = report.reminders.map((r) => r.table);
-    expect(tables).toContain("M3");
-    expect(tables.filter((t) => t === "M4")).toHaveLength(2);
+    expect(tables).toContain("能力清单");
+    expect(tables).toContain("边界与限制（不做）");
+    expect(tables).toContain("边界与限制（限制）");
   });
 
   it("检查项 ID 连续 1-7", () => {
@@ -376,11 +377,11 @@ describe("checkCompleteness", () => {
 
   it("检查项名称符合 §2.4 规范", () => {
     const report = checkCompleteness([], [], [], [], []);
-    expect(report.items[0]!.name).toBe("M1 产品清单已填写");
-    expect(report.items[1]!.name).toBe("M2 规格书已填写");
-    expect(report.items[2]!.name).toBe("M3 能力清单已填写");
-    expect(report.items[3]!.name).toBe("M4 边界与限制（不做）已填写");
-    expect(report.items[4]!.name).toBe("M4 边界与限制（限制）已填写");
+    expect(report.items[0]!.name).toBe("产品清单已填写");
+    expect(report.items[1]!.name).toBe("规格书已填写");
+    expect(report.items[2]!.name).toBe("能力清单已填写");
+    expect(report.items[3]!.name).toBe("边界与限制（不做）已填写");
+    expect(report.items[4]!.name).toBe("边界与限制（限制）已填写");
     expect(report.items[5]!.name).toBe("来源抽查");
     expect(report.items[6]!.name).toBe("质量六维已评估");
   });
@@ -439,10 +440,10 @@ describe("checkCompleteness", () => {
     // 质量六维未评估
     expect(report.items[6]!.status).toBe("❌ 未评估");
 
-    // 提醒应包含 M4 与六维
+    // 提醒应包含边界与限制与质量六维
     const tables = report.reminders.map((r) => r.table);
-    expect(tables).toContain("M4");
-    expect(tables).toContain("M1–M4 + M6");
+    expect(tables).toContain("边界与限制（不做）");
+    expect(tables).toContain("资料库");
     // 不应含全局来源提醒
     expect(tables).not.toContain("全局");
   });

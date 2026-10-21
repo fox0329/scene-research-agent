@@ -73,12 +73,13 @@ describe("文档生成 — 内容完整性", () => {
     }
   });
 
-  it("可选材料渲染 6 种 payload", () => {
+  it("可选材料渲染 5 种 payload（价格类别已下线）", () => {
     const i = body.indexOf("### 可选材料 ");
     const section = body.slice(i, body.indexOf("\n## ", i + 1));
-    for (const cat of ["O1认证", "O2案例", "O3价格与授权", "O4开发资料", "O5路线图", "O6交付与生态"]) {
+    for (const cat of ["O1认证", "O2案例", "O4开发资料", "O5路线图", "O6交付与生态"]) {
       expect(section, cat).toContain(`**${cat}**`);
     }
+    expect(section).not.toContain("O3");
   });
 
   it("多子块表（方案架构）按块渲染，且用能独立看懂的显示名（v1.26）", () => {

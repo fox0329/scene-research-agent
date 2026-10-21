@@ -567,7 +567,8 @@ describe("O3 价格 → M6 报价迁移", () => {
     });
     first.optionalMaterialRepo.insert({
       product_line_id: line.id,
-      category: "O3价格",
+      // 历史库里的 O3 行（类别已下线）：仅用于验证一次性迁移，不再从类型层暴露
+      category: "O3价格" as never,
       payload: {
         model: "YS-EC3200",
         price: "约 3800 元/台",
@@ -629,7 +630,7 @@ describe("O3 价格 → M6 报价迁移", () => {
     });
     first.optionalMaterialRepo.insert({
       product_line_id: line.id,
-      category: "O3价格",
+      category: "O3价格" as never,
       payload: { model: "NOT-IN-M1", price: "100", date: "2025-11" },
       source: "报价单.pdf:1",
     });

@@ -77,7 +77,7 @@ export interface TraceableFields {
 // ─── stage_data 表编号常量（00b 表号，v1.1 补齐阶段 3-8） ──
 
 /** 阶段 0 表号 */
-export const STAGE0_TABLES = ["M1", "M2", "M3", "M4", "M5", "M6", "O1", "O2", "O3", "O4", "O5", "O6"] as const;
+export const STAGE0_TABLES = ["M1", "M2", "M3", "M4", "M5", "M6", "O1", "O2", "O4", "O5", "O6"] as const;
 /** 阶段 1 表号 */
 export const STAGE1_TABLES = ["表1-1", "表1-2", "表1-3", "表1-4", "表1-5"] as const;
 /**
@@ -161,6 +161,7 @@ export interface Capability extends TraceableFields {
   description: string;
   maturity: Maturity;
   dependency: string;
+  /** 历史 DB 列保留；表定义已删该列，新数据不再写入 */
   inapplicable_scene?: string;
   created_at: string;
   updated_at: string;
@@ -218,11 +219,11 @@ export interface PriceQuote extends TraceableFields {
   updated_at: string;
 }
 
-/** 可选材料（O1-O6，含溯源） */
+/** 可选材料（O1/O2/O4/O5/O6，含溯源；价格已统一到报价表） */
 export interface OptionalMaterial extends TraceableFields {
   id: string;
   product_line_id: string;
-  category: "O1认证" | "O2案例" | "O3价格" | "O4SDK" | "O5路线图" | "O6生态";
+  category: "O1认证" | "O2案例" | "O4SDK" | "O5路线图" | "O6生态";
   /** JSON，结构按 category 异构 */
   payload: Record<string, unknown>;
   created_at: string;

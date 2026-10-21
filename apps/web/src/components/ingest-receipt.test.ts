@@ -56,7 +56,13 @@ describe("buildIngestReceipt — 文案口径", () => {
       [ok("白皮书.docx", 145), ok("规格参数表.xlsx", 77)],
       { M2: 81, M1: 8 },
     );
-    expect(receipt.doneLine).toBe("【完成】2 个文件 · 共入库 222 行（M2×81、M1×8）");
+    expect(receipt.doneLine).toBe("【完成】2 个文件 · 共入库 222 行（规格书×81、产品清单×8）");
+  });
+
+  it("表号显示为中文名，O3 价格类别不再出现在回执里", () => {
+    const receipt = buildIngestReceipt([ok("报价单.pdf", 2)], { M6: 1, O3: 1 });
+    expect(receipt.doneLine).toContain("报价×1");
+    expect(receipt.doneLine).not.toContain("O3");
   });
 
   it("没有每表计数时不出现空括号", () => {
@@ -70,7 +76,7 @@ describe("buildIngestReceipt — 文案口径", () => {
       [ok("a.docx", 7), ok("b.pptx", 0), { name: "c.pdf", rows: 0, failed: true }],
       { M1: 7 },
     );
-    expect(receipt.toast).toBe("解析完成：入库 7 行（M1×7），1 个文件 0 行 · 失败 1 个");
+    expect(receipt.toast).toBe("解析完成：入库 7 行（产品清单×7），1 个文件 0 行 · 失败 1 个");
   });
 });
 

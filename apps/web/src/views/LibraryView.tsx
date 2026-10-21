@@ -18,12 +18,12 @@ interface TabDef {
 }
 
 const tabs: TabDef[] = [
-  { key: "m1",       label: "M1 产品清单" },
-  { key: "m2",       label: "M2 规格书" },
-  { key: "m3",       label: "M3 能力清单" },
-  { key: "m4",       label: "M4 边界与限制" },
-  { key: "m6",       label: "M6 硬件报价" },
-  { key: "optional", label: "O 可选材料" },
+  { key: "m1",       label: "产品清单" },
+  { key: "m2",       label: "规格书" },
+  { key: "m3",       label: "能力清单" },
+  { key: "m4",       label: "边界与限制" },
+  { key: "m6",       label: "报价" },
+  { key: "optional", label: "可选材料" },
 ];
 
 /**

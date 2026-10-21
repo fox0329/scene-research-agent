@@ -51,7 +51,7 @@ async function openLibrary(page: import("@playwright/test").Page, lineName: stri
   await expect(picker).toHaveValue(/.+/);
 }
 
-test("M2 规格书：一个产品一张表（按产品出表，不做类别折叠）", async ({ page }) => {
+test("规格书：一个产品一张表（按产品出表，不做类别折叠）", async ({ page }) => {
   const line = await newLine(page, "M2出表");
   const prod = await addRow(page, "M1", line.id, {
     model: "E2E-M2",
@@ -75,7 +75,7 @@ test("M2 规格书：一个产品一张表（按产品出表，不做类别折�
   }
 
   await openLibrary(page, line.name);
-  await page.getByRole("button", { name: "M2 规格书" }).click();
+  await page.getByRole("button", { name: "规格书" }).click();
 
   // 一个产品一张表：没有折叠组，规格行平铺，列里有「参数类别」
   await expect(page.locator(".row-group")).toHaveCount(0);
@@ -94,26 +94,25 @@ test("M2 规格书：一个产品一张表（按产品出表，不做类别折�
   await expect(page.locator(".row-group")).toHaveCount(0);
 });
 
-test("O 可选材料：六类共用一个面板（类别选择器切换），不再是 6 张表叠一页", async ({ page }) => {
+test("可选材料：五类共用一个面板（类别选择器切换），不再叠成一页", async ({ page }) => {
   const line = await newLine(page, "O合并");
   await openLibrary(page, line.name);
-  await page.getByRole("button", { name: "O 可选材料" }).click();
+  await page.getByRole("button", { name: "可选材料" }).click();
   const picker = page.locator('select[aria-label="选择可选材料类别"]');
   await expect(picker).toBeVisible();
   await expect(picker.locator("option")).toHaveText([
-    "O1 认证",
-    "O2 案例",
-    "O3 价格",
-    "O4 SDK",
-    "O5 路线图",
-    "O6 生态",
+    "认证",
+    "案例",
+    "SDK",
+    "路线图",
+    "生态",
   ]);
   // 标题按选择器变（.pnl-h 里还有选项文本，断言要收在 h2 上）
-  await expect(page.locator(".pnl-h h2", { hasText: "O1 认证" })).toHaveCount(1);
-  await picker.selectOption("O3");
-  await expect(page.locator(".pnl-h h2", { hasText: "O3 价格" })).toHaveCount(1);
-  await expect(page.locator(".pnl-h h2", { hasText: "O1 认证" })).toHaveCount(0);
-  // 这条线没有 O3 数据 → 面板体只有一张表的空态（而不是 6 张表叠着）
+  await expect(page.locator(".pnl-h h2", { hasText: "认证" })).toHaveCount(1);
+  await picker.selectOption("O2");
+  await expect(page.locator(".pnl-h h2", { hasText: "案例" })).toHaveCount(1);
+  await expect(page.locator(".pnl-h h2", { hasText: "认证" })).toHaveCount(0);
+  // 这条线没有案例数据 → 面板体只有一张表的空态（而不是 5 张表叠着）
   await expect(page.locator(".ws .empty-state-title")).toHaveText(["本表暂无资料"]);
 });
 
@@ -127,7 +126,7 @@ test("溯源不占列：主表只留业务列，来源信息在右栏行详情�
     position_desc: "自动化造数",
   });
   await openLibrary(page, line.name);
-  await page.getByRole("button", { name: "M1 产品清单" }).click();
+  await page.getByRole("button", { name: "产品清单" }).click();
   const heads = page.locator(".ws table thead th");
   await expect(heads).toContainText(["型号", "产品名称", "状态"]);
   await expect(heads).not.toContainText(["溯源"]);

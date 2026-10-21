@@ -1180,7 +1180,7 @@ describe("资料库路由", () => {
     expect(body.completeness).toBeDefined();
   });
 
-  it("M6 硬件报价：写入 → 读取 → 改单价（含税/口径/来源）", async () => {
+  it("报价：写入 → 读取 → 改单价（只需型号/配置/含税单价）", async () => {
     const p = seedProduct();
     const created = await h.app.inject({
       method: "POST",
@@ -1191,16 +1191,16 @@ describe("资料库路由", () => {
           model: "X1",
           config: "8G+128G",
           unit_price: "12000–15000",
-          price_scope: "含安装",
-          valid_until: "2026-12-31",
-          source: "报价单.pdf:1",
         },
       },
     });
     expect(created.statusCode).toBe(200);
     const quote = created.json();
     expect(quote.product_id).toBe(p.id);
-    expect(quote.price_scope).toBe("含安装");
+    // 价格口径不进表：缺省按纯设备落库；来源/有效期可空（DB 列保留）
+    expect(quote.price_scope).toBe("纯设备");
+    expect(quote.source).toBe("");
+    expect(quote.valid_until).toBe("");
 
     const list = await h.app.inject({
       method: "GET",
@@ -1208,7 +1208,6 @@ describe("资料库路由", () => {
     });
     expect(list.statusCode).toBe(200);
     expect(list.json()).toHaveLength(1);
-    expect(list.json()[0].source).toBe("报价单.pdf:1");
 
     const patched = await h.app.inject({
       method: "PATCH",
@@ -1219,34 +1218,20 @@ describe("资料库路由", () => {
     expect(patched.json().unit_price).toBe("11800");
   });
 
-  it("O3 手工新增只收报价单文件引用，价格明细拒绝（统一走 M6）", async () => {
-    const priceOnly = await h.app.inject({
+  it("O3 已从资料库表清单下线（请求 400）", async () => {
+    const res = await h.app.inject({
       method: "POST",
       url: "/api/v1/library/rows/O3",
       payload: {
         product_line_id: plId,
-        values: { model: "X1", price: "3800", channel: "含税参考价" },
+        values: { file: "报价单-2026Q1.pdf", note: "明细见报价" },
       },
     });
-    expect(priceOnly.statusCode).toBe(400);
-    expect(priceOnly.json().error).toContain("M6");
-
-    const fileRef = await h.app.inject({
-      method: "POST",
-      url: "/api/v1/library/rows/O3",
-      payload: {
-        product_line_id: plId,
-        values: { file: "报价单-2026Q1.pdf", note: "明细见 M6", price: "3800" },
-      },
-    });
-    expect(fileRef.statusCode).toBe(200);
-    expect(fileRef.json().payload).toEqual({
-      file: "报价单-2026Q1.pdf",
-      note: "明细见 M6",
-    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toContain("表编号非法");
   });
 
-  it("M6 报价型号必须能在 M1 找到（凭空建型号 400）", async () => {
+  it("报价型号必须能在产品清单找到（凭空建型号 400）", async () => {
     const res = await h.app.inject({
       method: "POST",
       url: "/api/v1/library/rows/M6",
@@ -1256,13 +1241,11 @@ describe("资料库路由", () => {
           model: "NOT-EXIST",
           config: "标准",
           unit_price: "100",
-          price_scope: "纯设备",
-          source: "报价单.pdf:1",
         },
       },
     });
     expect(res.statusCode).toBe(400);
-    expect(res.json().error).toContain("M1");
+    expect(res.json().error).toContain("产品清单");
   });
 
   it("M4 读取层合并 boundary + limitation，并标「类型」= 不做/限制", async () => {
@@ -1301,10 +1284,13 @@ describe("资料库路由", () => {
     const no = rows.find((r) => r.type === "不做")!;
     expect(no.target).toBe("公司/业务");
     expect(no.response).toBe("转生态伙伴");
+    // type/target/source 仍保留在响应里（供编辑路由、行详情与依据门禁用），只是前端不显示
+    expect(no.source).toBe("边界.docx:2");
     // 「依据」= boundary.reason，用户据此看"凭什么判不做"
     expect(no.reason).toBe("不做定制");
     const limit = rows.find((r) => r.type === "限制")!;
     expect(limit.target).toBe("X1");
+    expect(limit.source).toBe("限制.docx:3");
     expect(limit.impact).toBe("中");
     // 限制类没有 reason 这一列，给「—」
     expect(limit.reason).toBe("—");

@@ -106,11 +106,7 @@ import {
   reopenFlowStep,
 } from "./flow-service.js";
 import { createIngestCommand } from "./ingest.js";
-import {
-  boundaryEvidenceError,
-  isLocatableSource,
-  o3FileRefPayload,
-} from "./library-gate.js";
+import { boundaryEvidenceError, isLocatableSource } from "./library-gate.js";
 import { parseStage, streamEvents } from "./sse-stream.js";
 import {
   assessQuality,
@@ -197,13 +193,12 @@ const LIBRARY_TABLES: Record<
     repo: (db) => db.quoteRepo as unknown as AnyRepo,
     lineWhere: "product_id IN (SELECT id FROM product WHERE product_line_id = ?)",
     viaProduct: true,
-    require: ["model", "config", "unit_price", "price_scope", "source"],
-    // 模型/配置/单价/口径/来源都是必填；有效期可空
-    defaults: { valid_until: "" },
+    require: ["model", "config", "unit_price"],
+    // 型号/配置/单价必填；价格口径缺省纯设备，来源与有效期可空（DB 列保留）
+    defaults: { price_scope: "纯设备", valid_until: "", source: "" },
   },
   O1: { repo: (db) => db.optionalMaterialRepo as unknown as AnyRepo, category: "O1认证" },
   O2: { repo: (db) => db.optionalMaterialRepo as unknown as AnyRepo, category: "O2案例" },
-  O3: { repo: (db) => db.optionalMaterialRepo as unknown as AnyRepo, category: "O3价格" },
   O4: { repo: (db) => db.optionalMaterialRepo as unknown as AnyRepo, category: "O4SDK" },
   O5: { repo: (db) => db.optionalMaterialRepo as unknown as AnyRepo, category: "O5路线图" },
   O6: { repo: (db) => db.optionalMaterialRepo as unknown as AnyRepo, category: "O6生态" },
@@ -1777,7 +1772,7 @@ function registerLibraryRoutes(app: FastifyInstance, deps: UiRoutesDeps) {
       const model = String(body.value ?? "").trim();
       const product = lineId ? findProductOfLine(db, lineId, model) : undefined;
       if (!lineId || !product) {
-        return badRequest(reply, `M6 型号「${model}」在 M1 产品清单里找不到，先补 M1 或改正型号`);
+        return badRequest(reply, `报价型号「${model}」在产品清单里找不到，先补产品清单或改正型号`);
       }
       const updated = db.quoteRepo.update(rowId, {
         model: product.model,
@@ -1787,15 +1782,6 @@ function registerLibraryRoutes(app: FastifyInstance, deps: UiRoutesDeps) {
       if (!updated) return notFound(reply, `${code} 表行 ${rowId} 不存在`);
       markDependentStale(db, code, rowId);
       return updated;
-    }
-
-    /* 手工编辑也不许把价格写回 O3：只保留文件级引用（价格只有一个家 = M6） */
-    if (code === "O3" && cell === "payload") {
-      const payload = o3FileRefPayload((body.value ?? {}) as Record<string, unknown>);
-      if (!payload) {
-        return badRequest(reply, "O3 只存报价单文件级引用（file/note）；单价请录入 M6 硬件报价");
-      }
-      body.value = payload;
     }
 
     const repo = spec.repo(db);
@@ -1848,32 +1834,19 @@ function registerLibraryRoutes(app: FastifyInstance, deps: UiRoutesDeps) {
       const model = String(values["model"] ?? "").trim();
       const product = findProductOfLine(db, productLineId, model);
       if (!product) {
-        return badRequest(reply, `M6 型号「${model}」在 M1 产品清单里找不到，先补 M1 或改正型号`);
+        return badRequest(reply, `报价型号「${model}」在产品清单里找不到，先补产品清单或改正型号`);
       }
       const scope = String(values["price_scope"] ?? "纯设备");
-      if (!["纯设备", "含安装", "含三年维保", "年费"].includes(scope)) {
-        return badRequest(reply, "price_scope 只能取：纯设备 / 含安装 / 含三年维保 / 年费");
-      }
       return db.quoteRepo.insert({
         product_id: product.id,
         model: product.model,
         config: String(values["config"] ?? ""),
         unit_price: String(values["unit_price"] ?? ""),
-        price_scope: scope as never,
+        price_scope: (["纯设备", "含安装", "含三年维保", "年费"].includes(scope)
+          ? scope
+          : "纯设备") as never,
         valid_until: String(values["valid_until"] ?? ""),
         source: String(values["source"] ?? ""),
-        source_type: "用户补充",
-      } as never);
-    }
-    if (code === "O3") {
-      const payload = o3FileRefPayload(values);
-      if (!payload) {
-        return badRequest(reply, "O3 只存报价单文件级引用（file/note）；单价请录入 M6 硬件报价");
-      }
-      return db.optionalMaterialRepo.insert({
-        product_line_id: productLineId,
-        category: "O3价格",
-        payload,
         source_type: "用户补充",
       } as never);
     }

@@ -162,7 +162,7 @@ describe("stage-summary — 阶段级六段骨架（交付物装配口径）", (
     expect(md).toContain("本阶段产出：表1-1、表1-3、表2-2、表2-3、表2-4、表2-5");
     expect(md).toContain("阶段 3 · 能力匹配 会引用：表1-1");
     expect(md).toContain("阶段 4 · 方案与实现 会引用：表1-1、表1-3、表2-2、表2-3、表2-4、表2-5");
-    expect(md).toContain("上游依据：M3、M4");
+    expect(md).toContain("上游依据：能力清单、边界与限制（不做）");
   });
 
   it("表1-2 的总结归阶段 3（能力匹配）：产出清单与行样例都在那里", () => {
@@ -222,8 +222,8 @@ describe("stage-summary — 确定性", () => {
       generatedAt: "2026-09-25",
     });
     expect(md).toContain("# 阶段 0 · 材料解析与入库 — 总结");
-    expect(md).toContain("本阶段产出：M1、M2、M3、M4、M5、M6、可选材料");
-    expect(md).toContain("**M1 产品清单**：1 行——IPC-3000·IPC");
+    expect(md).toContain("本阶段产出：产品清单、规格书、能力清单、边界与限制（不做）、边界与限制（限制）、报价、可选材料");
+    expect(md).toContain("**产品清单**：1 行——IPC-3000·IPC");
   });
 });
 

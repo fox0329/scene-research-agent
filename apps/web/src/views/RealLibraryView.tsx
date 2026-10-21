@@ -37,34 +37,43 @@ const DETAIL_ONLY_KEYS: Record<string, string[]> = {
 };
 
 /**
- * 固定列集与顺序（M4/M6）
+ * 固定列集与顺序（M3/M4/M6）
  *
- * M4 是 boundary + limitation 的合并视图，必须固定七列，不能按行数据"见什么列显什么"；
- * 「依据」（reason）必须在「影响程度」之前——先看凭什么判，再看影响多大，最后看客户
- * 要求时怎么办与出处。M6 同理。M1/M3 的已删列由 DETAIL_ONLY_KEYS 收进右栏，不再渲染。
+ * M4 是 boundary + limitation 的合并视图，只显示用户要的四列：说明 / 依据 / 影响程度 /
+ * 客户要求时怎么办。类型与对象仍在行数据里（依据门禁、编辑路由要用），但不占列；
+ * 来源也收进右栏。M6 同理，价格口径/有效期留在 DB 与右栏，不再进表。
+ * M3 固定能力五列中的四列（来源收右栏），不适用场景已从表定义删除。
  */
 const FIXED_COLUMNS: Record<string, string[]> = {
-  M4: ["type", "target", "description", "reason", "impact", "response", "source"],
-  M6: ["model", "config", "unit_price", "price_scope", "valid_until", "source"],
+  M3: ["domain", "name", "description", "maturity"],
+  M4: ["description", "reason", "impact", "response"],
+  M6: ["model", "config", "unit_price"],
 };
 
-/** 这两张表的「来源」按新口径要显示在主表（其余表仍收右栏） */
-const SHOW_SOURCE_CODES = new Set(["M4", "M6"]);
+/** 哪些表的「来源」要显示在主表；M3/M4/M6 均已收进右栏 */
+const SHOW_SOURCE_CODES = new Set<string>();
+
+/** 已从主表隐藏、但仍要在右栏可查的结构/历史字段（只读，避免把类型改坏） */
+const READONLY_DETAIL_KEYS: Record<string, string[]> = {
+  M3: ["inapplicable_scene"],
+  M4: ["type", "target"],
+  M6: ["price_scope", "valid_until"],
+};
 
 const M_TABS: { code: string; label: string }[] = [
-  { code: "M1", label: "M1 产品清单" },
-  { code: "M2", label: "M2 规格书" },
-  { code: "M3", label: "M3 能力清单" },
-  { code: "M4", label: "M4 边界与限制" },
-  { code: "M6", label: "M6 硬件报价" },
+  { code: "M1", label: "产品清单" },
+  { code: "M2", label: "规格书" },
+  { code: "M3", label: "能力清单" },
+  { code: "M4", label: "边界与限制" },
+  { code: "M6", label: "报价" },
 ];
 
-const O_CODES = ["O1", "O2", "O3", "O4", "O5", "O6"];
+const O_CODES = ["O1", "O2", "O4", "O5", "O6"];
 
 /**
- * O 可选材料：六类**共用一个面板**，用「类别」选择器切换（不再 6 张表叠一页）
+ * 可选材料：五类**共用一个面板**，用「类别」选择器切换（不再 5 张表叠一页；价格类别已下线）
  *
- * 为什么不并成一张表：六类字段完全不同（认证名称/项目名称/价格/SDK/特性/伙伴），
+ * 为什么不并成一张表：五类字段完全不同（认证/案例/SDK/特性/伙伴），
  * 合成一张会得到 20+ 列、绝大多数格是空的稀疏表——那是"更宽"而不是"更简"。
  */
 
@@ -101,7 +110,7 @@ const FIELD_LABELS: Record<string, Record<string, string>> = {
     description: "描述",
     maturity: "成熟度",
     dependency: "依赖项",
-    inapplicable_scene: "不适用场景",
+    inapplicable_scene: "不适用场景（历史）",
   },
   M4: {
     type: "类型",
@@ -121,8 +130,8 @@ const FIELD_LABELS: Record<string, Record<string, string>> = {
     owner: "负责人",
   },
   M6: {
-    model: "所属产品",
-    config: "配置/构成",
+    model: "型号",
+    config: "配置构成",
     unit_price: "含税单价（元）",
     price_scope: "价格口径",
     valid_until: "报价有效期",
@@ -130,16 +139,6 @@ const FIELD_LABELS: Record<string, Record<string, string>> = {
   },
   O1: { cert_name: "认证名称", cert_body: "认证机构", cert_date: "认证日期", scope: "认证范围" },
   O2: { project_name: "项目名称", client: "客户", year: "年份", scale: "规模", summary: "摘要" },
-  // O3 已不存价格明细（统一到 M6）；保留旧键名只为兼容未迁移的历史行展示
-  O3: {
-    file: "报价单文件",
-    note: "说明",
-    model: "型号（历史）",
-    price: "价格（历史）",
-    currency: "币种（历史）",
-    channel: "渠道（历史）",
-    date: "日期（历史）",
-  },
   O4: { name: "名称", version: "版本", language: "语言", url: "链接", maturity: "成熟度" },
   O5: { feature: "特性", expected_release: "预计发布", priority: "优先级" },
   O6: { partner_name: "伙伴名称", integration_type: "集成类型", maturity: "成熟度" },
@@ -151,12 +150,11 @@ function fieldLabel(code: string, key: string): string {
 }
 
 const O_LABELS: Record<string, string> = {
-  O1: "O1 认证",
-  O2: "O2 案例",
-  O3: "O3 价格",
-  O4: "O4 SDK",
-  O5: "O5 路线图",
-  O6: "O6 生态",
+  O1: "认证",
+  O2: "案例",
+  O4: "SDK",
+  O5: "路线图",
+  O6: "生态",
 };
 
 /** 值 → 单元格文本（对象转 JSON，null 转空） */
@@ -364,13 +362,11 @@ const TablePanel: React.FC<TablePanelProps> = ({
     const input = await promptText({
       title: optional ? "新增行字段（选填字段组，整体存入 payload）" : "新增行字段",
       message: optional
-        ? code === "O3"
-          ? 'JSON 格式，只存报价单文件级引用（价格明细请到 M6 新增）：{"file":"报价单-2026Q1.pdf","note":"含税参考价，明细见 M6"}'
-          : 'JSON 格式，例：{"cert_name":"CE","scope":"欧盟"}'
+        ? 'JSON 格式，例：{"cert_name":"CE","scope":"欧盟"}'
         : code === "M4"
           ? 'JSON 格式，例：{"type":"不做","description":"不做自建平台二次开发","reason":"安全功能须由独立的安全 PLC 承载","response":"转生态伙伴","source":"白皮书.pdf:12"}；限制类例：{"type":"限制","target":"CT21B","description":"无 5G","impact":"中","source":"报价单.pdf:1"}'
           : code === "M6"
-            ? 'JSON 格式，例：{"model":"CT21B","config":"8G+128G","unit_price":"12000–15000","price_scope":"含安装","valid_until":"2026-12-31","source":"报价单.pdf:1"}'
+            ? 'JSON 格式，例：{"model":"CT21B","config":"8G+128G","unit_price":"12000–15000"}'
             : 'JSON 格式，例：{"name":"型号A"}',
       multiline: true,
       okText: "新增",
@@ -408,6 +404,10 @@ const TablePanel: React.FC<TablePanelProps> = ({
         rowId: String(row.__id),
         fields,
         editableKeys: (DETAIL_ONLY_KEYS[code] ?? []).map((k) => ({
+          key: k,
+          label: fieldLabel(code, k),
+        })),
+        readonlyKeys: (READONLY_DETAIL_KEYS[code] ?? []).map((k) => ({
           key: k,
           label: fieldLabel(code, k),
         })),
@@ -513,11 +513,9 @@ const TablePanel: React.FC<TablePanelProps> = ({
         )}
         {rows.length === 0 ? (
           <div className="empty-state">
-            <div className="empty-state-title">{code === "O3" ? "O3 暂无资料" : "本表暂无资料"}</div>
+            <div className="empty-state-title">本表暂无资料</div>
             <div className="empty-state-desc">
-              {code === "O3"
-                ? "报价已统一到「M6 硬件报价」；O3 只保留报价单文件级引用（文件 + 说明）"
-                : '上传材料解析入库，或点击"新增行"手工补录'}
+              上传材料解析入库，或点击"新增行"手工补录
             </div>
           </div>
         ) : (
@@ -679,7 +677,7 @@ type TabKey = "materials" | "M1" | "M2" | "M3" | "M4" | "M6" | "O";
 const TABS: { key: TabKey; label: string }[] = [
   { key: "materials", label: "已导入资料" },
   ...M_TABS.map((t) => ({ key: t.code as TabKey, label: t.label })),
-  { key: "O", label: "O 可选材料" },
+  { key: "O", label: "可选材料" },
 ];
 
 export const RealLibraryView: React.FC<{
@@ -768,7 +766,7 @@ export const RealLibraryView: React.FC<{
     }
   }, [lines, lineId, onChanged, showToast]);
 
-  /** O 可选材料当前查看的类别（六类共用面板） */
+  /** 可选材料当前查看的类别（五类共用面板） */
   const [oPick, setOPick] = useState<string>("O1");
 
   const renderBody = () => {
@@ -804,7 +802,7 @@ export const RealLibraryView: React.FC<{
           <TablePanel
             key={`${oPick}-${lineId}`}
             code={oPick}
-            label={O_LABELS[oPick] ?? "O 可选材料"}
+            label={O_LABELS[oPick] ?? "可选材料"}
             lineId={lineId}
             optional
             reloadTick={reloadTick}
