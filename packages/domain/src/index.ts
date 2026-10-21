@@ -18,6 +18,18 @@ export {
 } from "./evidence.js";
 export type { SourceCategory } from "./evidence.js";
 
+// 资料库入库标准（新导入与存量体检共用）
+export {
+  ABSOLUTE_TERMS,
+  findAbsoluteTerms,
+  isAuthority,
+  isEvidenceLevel,
+  classifyLibrarySource,
+  gradeIncomingEvidence,
+  downgradeLibraryEvidence,
+} from "./library-standard.js";
+export type { LibrarySourceClass } from "./library-standard.js";
+
 // 阶段 0 — 材料解析与入表
 export {
   assessQuality,

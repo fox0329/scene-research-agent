@@ -51,6 +51,7 @@ import {
   type MaterialRowRef,
 } from "./library-materials.js";
 import { dedupeLibrary } from "./library-service.js";
+import { auditLibrary } from "./library-audit.js";
 import {
   parseDocument,
   registrySummary,
@@ -1736,6 +1737,40 @@ function registerLibraryRoutes(app: FastifyInstance, deps: UiRoutesDeps) {
       cascaded_quotes: cascadedQuotes.length,
       stale_marked_stages: staleMarked,
     };
+  });
+
+  /**
+   * 存量资料按新标准体检（0.6.9 入库标准只对新导入生效）
+   *
+   * GET = 只读预览：扫描全库或某产品线，返回同一份报告，`applied:false`，**不写库**；
+   * POST = 应用降级：只把 evidence_level 降为 C，不动其他字段，`applied:true`。
+   *
+   * 启动时只打日志预览（index.ts），不会自动改数据——存量数据的证据级属于用户资产，
+   * 什么时候接受降级由人点按钮决定。
+   */
+  app.get("/api/v1/library/reaudit", async (request, reply) => {
+    const raw = (request.query as { product_line_id?: unknown } | undefined)?.product_line_id;
+    if (raw !== undefined && typeof raw !== "string") {
+      return badRequest(reply, "product_line_id 必须是单个字符串");
+    }
+    const productLineId = raw?.trim() ?? "";
+    if (productLineId && !db.productLineRepo.getById(productLineId)) {
+      return notFound(reply, `产品线 ${productLineId} 不存在`);
+    }
+    return auditLibrary(db, productLineId ? { productLineId } : {});
+  });
+
+  app.post("/api/v1/library/reaudit", async (request, reply) => {
+    const body = (request.body ?? {}) as { product_line_id?: unknown };
+    if (body.product_line_id !== undefined && typeof body.product_line_id !== "string") {
+      return badRequest(reply, "product_line_id 必须是字符串");
+    }
+    const productLineId =
+      typeof body.product_line_id === "string" ? body.product_line_id.trim() : "";
+    if (productLineId && !db.productLineRepo.getById(productLineId)) {
+      return notFound(reply, `产品线 ${productLineId} 不存在`);
+    }
+    return auditLibrary(db, productLineId ? { productLineId, apply: true } : { apply: true });
   });
 
   app.patch("/api/v1/library/rows/:code/:rowId", async (request, reply) => {

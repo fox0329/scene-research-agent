@@ -6,6 +6,13 @@ import { MaterialUpload } from "../components/MaterialUpload";
 import type { RowDetail } from "../components/RowDetailPanel";
 import { useToast } from "../components/Toast";
 import { promptText } from "../components/prompt-text";
+import {
+  auditAbsoluteRows,
+  auditConflictRows,
+  auditSummaryText,
+  auditUnlocatableRows,
+  type AuditDisplayRow,
+} from "../components/library-audit";
 import { TABLES_BY_CODE } from "@scene/contract";
 
 /**
@@ -563,6 +570,42 @@ const LEGACY_TEMP_NAME_RE = /^ingest-\d+-\d+\.[A-Za-z0-9]+$/;
 /** 上传状态区（进度 / 跳过清单）的容器 id：头部固定高，状态不能待在头部（变更表 #157） */
 const LIB_UPLOAD_STATUS_ID = "lib-upload-status-slot";
 
+/**
+ * 体检清单表格（表 / 行摘要 / 来源 / 问题）
+ *
+ * 与主表不同：这里是只读排查清单，不逐格编辑；空清单给一句说明而不是空白表头。
+ */
+const AuditIssueTable: React.FC<{ rows: AuditDisplayRow[]; empty: string }> = ({
+  rows,
+  empty,
+}) => {
+  if (rows.length === 0) return <div className="mat-note">{empty}</div>;
+  return (
+    <div className="mat-audit-table-wrap">
+      <table className="mat-audit-table">
+        <thead>
+          <tr>
+            <th>表</th>
+            <th>行摘要</th>
+            <th>来源</th>
+            <th>问题</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, index) => (
+            <tr key={`${row.table}-${index}`}>
+              <td>{row.table}</td>
+              <td>{row.summary}</td>
+              <td>{row.source}</td>
+              <td>{row.issue}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+};
+
 const LibraryMaterialsPanel: React.FC<{
   lineId: string;
   /** 行数据变化（入库/编辑/删行）后由父级 +1，触发本面板重取 */
@@ -574,6 +617,43 @@ const LibraryMaterialsPanel: React.FC<{
     () => api.libraryMaterials(lineId),
     [lineId, reloadTick],
   );
+
+  /**
+   * 存量体检：GET 只读预览（不改数据），POST 才降级。
+   *
+   * 放在已导入资料页头部：用户问「存量按新标准梳理了吗」时，第一眼就能看到
+   * 扫描行数、证据分布、缺页码与冲突——而不是去翻某张表的单元格。
+   */
+  const audit = useAsync(() => api.libraryReauditPreview(lineId), [lineId, reloadTick]);
+  const [auditing, setAuditing] = useState(false);
+  const [auditList, setAuditList] = useState<"unlocatable" | "absolute" | "conflicts" | null>(null);
+
+  const handleReaudit = useCallback(async () => {
+    setAuditing(true);
+    try {
+      const report = await api.libraryReaudit(lineId);
+      showToast(
+        `体检完成：本次降级 ${report.downgraded} 行（只动证据级，未删行）`,
+      );
+      audit.reload();
+      // 证据级落在单元格里，刷新父级让表格/计数同步
+      onChanged();
+    } catch (err: unknown) {
+      showToast(`体检失败：${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setAuditing(false);
+    }
+  }, [lineId, audit, onChanged, showToast]);
+
+  const auditReport = audit.data;
+  const auditRows =
+    auditReport && auditList === "unlocatable"
+      ? auditUnlocatableRows(auditReport)
+      : auditReport && auditList === "absolute"
+        ? auditAbsoluteRows(auditReport)
+        : auditReport && auditList === "conflicts"
+          ? auditConflictRows(auditReport)
+          : [];
 
   const items = data ?? [];
   const totalRows = items.reduce((sum, g) => sum + g.rows, 0);
@@ -633,6 +713,77 @@ const LibraryMaterialsPanel: React.FC<{
         <span className="badge success">{items.length} 个文件 · {totalRows} 行</span>
       </div>
       <div className="pnl-b">
+        <div className="mat-audit">
+          <div className="mat-audit-head">
+            <span className="mat-audit-summary">
+              {auditReport
+                ? auditSummaryText(auditReport)
+                : audit.status === "error"
+                  ? `按新标准体检：预览失败（${audit.error ?? "未知原因"}）`
+                  : "按新标准体检：加载中…"}
+            </span>
+            <button
+              className="btn btn-sm"
+              type="button"
+              disabled={auditing}
+              onClick={() => void handleReaudit()}
+            >
+              {auditing ? "体检中…" : "按新标准体检"}
+            </button>
+          </div>
+          {auditReport && (
+            <>
+              <div className="mat-audit-actions">
+                <button
+                  className="btn btn-sm"
+                  type="button"
+                  aria-pressed={auditList === "unlocatable"}
+                  onClick={() =>
+                    setAuditList((cur) => (cur === "unlocatable" ? null : "unlocatable"))
+                  }
+                >
+                  缺页码 {auditReport.unlocatable.length}
+                </button>
+                <button
+                  className="btn btn-sm"
+                  type="button"
+                  aria-pressed={auditList === "conflicts"}
+                  onClick={() =>
+                    setAuditList((cur) => (cur === "conflicts" ? null : "conflicts"))
+                  }
+                >
+                  冲突 {auditReport.conflicts.length}
+                </button>
+                <button
+                  className="btn btn-sm"
+                  type="button"
+                  aria-pressed={auditList === "absolute"}
+                  onClick={() =>
+                    setAuditList((cur) => (cur === "absolute" ? null : "absolute"))
+                  }
+                >
+                  绝对化 {auditReport.absolute.length}
+                </button>
+              </div>
+              <div className="mat-note">
+                体检只降级证据、不删行；缺页码需补来源，冲突需人裁决。
+                当前是只读预览，点「按新标准体检」才把证据级降为 C。
+              </div>
+              {auditList && (
+                <AuditIssueTable
+                  rows={auditRows}
+                  empty={
+                    auditList === "unlocatable"
+                      ? "没有缺页码的行：所有来源都能定位到具体页码/章节。"
+                      : auditList === "conflicts"
+                        ? "没有同键不同值的冲突。"
+                        : "没有命中绝对化措辞的行。"
+                  }
+                />
+              )}
+            </>
+          )}
+        </div>
         {items.length === 0 ? (
           <div className="empty-state">
             <div className="empty-state-title">本库还没有导入资料</div>

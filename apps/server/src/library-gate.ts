@@ -15,10 +15,30 @@
 const PAGE_RE = /^\d+(?:\s*[-–—~]\s*\d+)?$/u;
 /** 章节号：`A.1`、`8.2`、`A.1.2`（字母前缀可省） */
 const SECTION_RE = /^(?:[A-Za-z]\.)?\d+(?:\.\d+)*$/u;
+/**
+ * 材料里常见的非页码定位符：`表格2`、`第3章`、`第 3 节`、`附件A`、`p.12`、`12页`、
+ * `3.1 核心配置`（章节号带标题）。
+ *
+ * 为什么认：白皮书/规格书是 docx，没有稳定页码，模型只能引「表格 2」「8.1 节」；
+ * 只认纯数字会把大量真实可回查的出处判成不可定位（实测 143/258 行），
+ * 反过来逼模型编页码，比宽松更糟。判据是「能按这个定位符翻到原文那一处」。
+ */
+const ANCHOR_RE =
+  /^(?:第\s*[0-9一二三四五六七八九十百]+\s*[章节页表]|(?:表格|附录|附件|图|表)\s*[A-Za-z0-9一二三四五六七八九十]+|[一二三四五六七八九十百]+[、.．]|p\.?\s*\d+|\d+(?:\.\d+)*(?:\s|$|[-–—~]|\s*[\u4e00-\u9fa5]))/u;
 
-/** 取最后一个冒号（中英文冒号都认）的位置；没有返回 -1 */
-function lastColonIndex(value: string): number {
-  return Math.max(value.lastIndexOf(":"), value.lastIndexOf("："));
+/**
+ * 取**第一个**冒号（中英文都认）的位置；没有返回 -1。
+ *
+ * 原来的实现取最后一个冒号，把「文件名:5.1 OEE 不可测：估算值…」这类
+ * 「定位符里本身带冒号」的来源切错，判成不可定位（实测 1 行误报）。
+ * 文件名不含冒号（Windows 也不允许），所以第一个冒号就是文件名与定位符的分界。
+ */
+function firstColonIndex(value: string): number {
+  const ascii = value.indexOf(":");
+  const full = value.indexOf("：");
+  if (ascii < 0) return full;
+  if (full < 0) return ascii;
+  return Math.min(ascii, full);
 }
 
 /**
@@ -32,12 +52,12 @@ function lastColonIndex(value: string): number {
 export function isLocatableSource(source: unknown): boolean {
   const text = String(source ?? "").trim();
   if (!text) return false;
-  const colon = lastColonIndex(text);
+  const colon = firstColonIndex(text);
   if (colon <= 0) return false;
   if (!text.slice(0, colon).trim()) return false;
   const location = text.slice(colon + 1).trim();
   if (!location) return false;
-  return PAGE_RE.test(location) || SECTION_RE.test(location);
+  return PAGE_RE.test(location) || SECTION_RE.test(location) || ANCHOR_RE.test(location);
 }
 
 /**

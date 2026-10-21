@@ -325,6 +325,50 @@ export interface ApiMaterialDeleteResult {
   stale_marked_stages: number[];
 }
 
+/** 存量资料体检：不可定位来源的行（只报告，不删除） */
+export interface ApiAuditUnlocatableRow {
+  table: string;
+  row_id: string;
+  source: string;
+  /** 行摘要（≤20 字） */
+  summary: string;
+}
+
+/** 存量资料体检：命中绝对化措辞的行 */
+export interface ApiAuditAbsoluteRow extends ApiAuditUnlocatableRow {
+  term: string;
+  terms: string[];
+}
+
+/** 存量资料体检：冲突里的一个取值 */
+export interface ApiAuditConflictValue {
+  value: string;
+  source: string;
+  row_id: string;
+}
+
+/** 存量资料体检：同键不同值（只报告，由人裁决） */
+export interface ApiAuditConflict {
+  table: string;
+  key: string;
+  values: ApiAuditConflictValue[];
+}
+
+/** 存量资料按新标准体检报告（GET 只读预览 / POST 应用后同一结构） */
+export interface ApiLibraryAuditReport {
+  scanned: number;
+  byTable: Record<string, number>;
+  evidence: { A: number; B: number; C: number; D: number };
+  /** 需要降级/已降级的行数（已是 C 的不计） */
+  downgraded: number;
+  unlocatable: ApiAuditUnlocatableRow[];
+  absolute: ApiAuditAbsoluteRow[];
+  conflicts: ApiAuditConflict[];
+  generatedAt: string;
+  /** false=只读预览；true=已把证据级写回库 */
+  applied: boolean;
+}
+
 /** 质量六维 + 完成度（领域层计算，契约 v1.4） */
 export interface ApiQualitySummary {
   quality: {
@@ -752,6 +796,23 @@ export const api = {
     req<ApiMaterialFile[]>(
       `/library/materials?product_line_id=${encodeURIComponent(productLineId)}`,
     ),
+  /**
+   * 存量资料按新标准只读体检（GET，不改数据）
+   *
+   * 不传 productLineId = 全库；报告结构与应用后完全一致，`applied:false`。
+   */
+  libraryReauditPreview: (productLineId?: string) =>
+    req<ApiLibraryAuditReport>(
+      `/library/reaudit${
+        productLineId ? `?product_line_id=${encodeURIComponent(productLineId)}` : ""
+      }`,
+    ),
+  /** 应用体检：只把证据级降为 C（不动其他字段），返回同一份报告 + `applied:true` */
+  libraryReaudit: (productLineId?: string) =>
+    req<ApiLibraryAuditReport>("/library/reaudit", {
+      method: "POST",
+      body: productLineId ? { product_line_id: productLineId } : {},
+    }),
   /** 按文件删除本库所有来自该文件的行（文件名全等匹配） */
   deleteLibraryMaterial: (productLineId: string, file: string) =>
     req<ApiMaterialDeleteResult>(

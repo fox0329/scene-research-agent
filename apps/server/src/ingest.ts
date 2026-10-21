@@ -35,7 +35,9 @@ import {
   assessQuality,
   checkCompleteness,
   spotCheckSources,
-  gradeSourceByCategory,
+  classifyLibrarySource,
+  findAbsoluteTerms,
+  gradeIncomingEvidence,
 } from "@scene/domain";
 import type { SourceSpotCheckReport } from "@scene/domain";
 import type { Authority } from "@scene/contract";
@@ -157,21 +159,6 @@ interface RowQuality {
   key: string;
   flags: IngestFlaggedRow[];
 }
-
-/** 绝对化/夸大措辞（命中任一即降 C 并留痕，不删行） */
-const ABSOLUTE_TERMS: readonly string[] = [
-  "100%",
-  "百分之百",
-  "唯一",
-  "最强",
-  "完全",
-  "绝对",
-  "零风险",
-  "保证",
-  "必然",
-  "彻底解决",
-  "全部覆盖",
-];
 
 /** 可选材料表号 → payload 类目（与 contract 的 payloads 键一致） */
 const OPTIONAL_CATEGORY: Readonly<Record<string, string>> = {
@@ -670,11 +657,12 @@ function assessRowQualities(
   for (const row of rows) {
     const key = rowKey(row);
     const flags = absoluteFlags(row, key);
-    const { authority, category } = gradeSourceByCategory("AI提取", row.source, fileName);
-    // T4 材料（自媒体/口述/未知）本身就不能当 B；夸大措辞再降一档到 C
-    const lowAuthority =
-      authority === "T4" || category === "自媒体" || category === "用户自述" || category === "未知";
-    const level: EvidenceLevel = lowAuthority || flags.length > 0 ? "C" : "B";
+    // 口径在 domain（`library-standard`）：材料低权威或命中绝对化 → C
+    const level = gradeIncomingEvidence(
+      row.source,
+      fileName,
+      flags.map((f) => f.term),
+    );
     out.set(row, { level, key, flags });
   }
   return out;
@@ -685,11 +673,7 @@ function absoluteFlags(row: ClassifiedRow, key: string): IngestFlaggedRow[] {
   const flags: IngestFlaggedRow[] = [];
   const fields = (row.fields ?? {}) as Record<string, unknown>;
   for (const [field, value] of Object.entries(fields)) {
-    if (value === null || value === undefined) continue;
-    if (typeof value === "object") continue;
-    const text = String(value);
-    for (const term of ABSOLUTE_TERMS) {
-      if (!text.includes(term)) continue;
+    for (const term of findAbsoluteTerms(value)) {
       flags.push({
         table_code: row.table_code,
         key,
@@ -867,7 +851,7 @@ function safeSpotCheck(
 }
 
 function authorityOf(source: string, fileName: string): Authority {
-  return gradeSourceByCategory("AI提取", source, fileName).authority;
+  return classifyLibrarySource(source, fileName).authority;
 }
 
 function insertSpecParam(
