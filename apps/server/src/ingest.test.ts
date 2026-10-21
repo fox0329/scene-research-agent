@@ -108,11 +108,12 @@ function makeDshOutput(): TestDshOutput {
       {
         table_code: "O2",
         fields: {
-          project_name: "某市智慧园区",
-          client: "XX科技",
-          year: "2024",
+          name: "某市智慧园区",
+          scene: "园区视频监控",
+          delivered_at: "2024-06",
+          acceptance: "500 路接入，验收通过",
+          customer: "XX科技",
           scale: "500路",
-          summary: "成功交付的大型监控项目",
         },
         source: "案例集.docx:2",
       },
@@ -336,7 +337,8 @@ describe("createIngestCommand", () => {
 
       expect(db.boundaryRepo.insert).not.toHaveBeenCalled();
       expect(result.rowsInserted).toBe(5);
-      expect(result.skippedRows[0]!.reason).toContain("文件名:页码");
+      expect(result.skippedRows[0]!.reason).toContain("来源不可定位");
+      expect(result.skippedRows[0]!.reason).toContain("边界:未知");
     });
   });
 
@@ -496,7 +498,7 @@ describe("createIngestCommand", () => {
       expect(result.rowsInserted).toBe(4);
     });
 
-    it("source 含文件名和'未知'页码应被保留", async () => {
+    it("source 含文件名但页码为「未知」→ 不可定位，不入库并给出原因", async () => {
       const output = makeDshOutput();
       output.rows[0]!.source = "whitepaper.pdf:未知";
       dshClient = createMockDshClient(JSON.stringify(output));
@@ -508,8 +510,232 @@ describe("createIngestCommand", () => {
         productLineId: "pl1",
       });
 
-      // M1 保留 → 7 行
+      // M1 被挡，M2 因无关联产品也不写入 → 4 行
+      expect(result.rowsInserted).toBe(4);
+      expect(result.skippedRows).toHaveLength(1);
+      expect(result.skippedRows[0]!.reason).toContain("来源不可定位");
+      expect(result.skippedRows[0]!.reason).toContain("whitepaper.pdf:未知");
+      expect(db.productRepo.insert).not.toHaveBeenCalled();
+    });
+
+    it.each(["12", "12-14", "8.2", "A.1"])("具体定位符「%s」放行", async (locator) => {
+      const output = makeDshOutput();
+      output.rows[0]!.source = `whitepaper.pdf:${locator}`;
+      dshClient = createMockDshClient(JSON.stringify(output));
+      deps = { db, dshClient, docParser };
+
+      const cmd = createIngestCommand(deps);
+      const result = await cmd.execute({
+        filePath: "/tmp/whitepaper.pdf",
+        productLineId: "pl1",
+      });
+
       expect(result.rowsInserted).toBe(6);
+      expect(result.skippedRows).toHaveLength(0);
+      const call = (db.productRepo.insert as ReturnType<typeof vi.fn>).mock.calls[0]![0];
+      expect(call.source).toBe(`whitepaper.pdf:${locator}`);
+    });
+  });
+
+  describe("证据等级：材料权威级 + 绝对化措辞（确定性）", () => {
+    it("T1 材料（国标）→ evidence_level B", async () => {
+      const output = makeDshOutput();
+      output.rows[0]!.source = "GB/T 12345:8.2"; // 法规标准 T1，8.2 可定位
+      dshClient = createMockDshClient(JSON.stringify(output));
+      deps = { db, dshClient, docParser };
+
+      const cmd = createIngestCommand(deps);
+      const result = await cmd.execute({ filePath: "/tmp/whitepaper.pdf", productLineId: "pl1" });
+
+      const call = (db.productRepo.insert as ReturnType<typeof vi.fn>).mock.calls[0]![0];
+      expect(call.evidence_level).toBe("B");
+      expect(result.evidenceSummary.B).toBeGreaterThanOrEqual(1);
+      expect(result.evidenceSummary.C).toBe(0);
+    });
+
+    it("T4 材料（口述）→ evidence_level C，并计入 evidenceSummary.C", async () => {
+      const output = makeDshOutput();
+      output.rows[4]!.source = "用户口述:12"; // M5 一手口述，T4
+      dshClient = createMockDshClient(JSON.stringify(output));
+      deps = { db, dshClient, docParser };
+
+      const cmd = createIngestCommand(deps);
+      const result = await cmd.execute({ filePath: "/tmp/whitepaper.pdf", productLineId: "pl1" });
+
+      const call = (db.limitationRepo.insert as ReturnType<typeof vi.fn>).mock.calls[0]![0];
+      expect(call.evidence_level).toBe("C");
+      expect(result.evidenceSummary.C).toBe(1);
+      expect(result.evidenceSummary.B).toBe(result.rowsInserted - 1);
+    });
+
+    it("含「100%」的行 → 降为 C + flaggedRows 留痕（不删行）", async () => {
+      const output = makeDshOutput();
+      output.rows[2]!.fields["description"] = "100% 覆盖所有人脸识别场景";
+      dshClient = createMockDshClient(JSON.stringify(output));
+      deps = { db, dshClient, docParser };
+
+      const cmd = createIngestCommand(deps);
+      const result = await cmd.execute({ filePath: "/tmp/whitepaper.pdf", productLineId: "pl1" });
+
+      const call = (db.capabilityRepo.insert as ReturnType<typeof vi.fn>).mock.calls[0]![0];
+      expect(call.evidence_level).toBe("C");
+      expect(result.rowsInserted).toBe(6); // 不删行
+      expect(result.flaggedRows).toContainEqual(
+        expect.objectContaining({
+          table_code: "M3",
+          field: "description",
+          term: "100%",
+          reason: "绝对化措辞，需核实",
+        }),
+      );
+      expect(result.evidenceSummary.C).toBe(1);
+    });
+  });
+
+  describe("必填列校验（契约 required）", () => {
+    it("缺 required 列 → 不入库，reason 含列中文名", async () => {
+      const output = makeDshOutput();
+      output.rows[2]!.fields["description"] = ""; // M3 一句话描述（required）
+      dshClient = createMockDshClient(JSON.stringify(output));
+      deps = { db, dshClient, docParser };
+
+      const cmd = createIngestCommand(deps);
+      const result = await cmd.execute({ filePath: "/tmp/whitepaper.pdf", productLineId: "pl1" });
+
+      expect(db.capabilityRepo.insert).not.toHaveBeenCalled();
+      expect(result.rowsInserted).toBe(5);
+      expect(result.skippedRows).toHaveLength(1);
+      expect(result.skippedRows[0]!.table_code).toBe("M3");
+      expect(result.skippedRows[0]!.reason).toContain("缺必填列");
+      expect(result.skippedRows[0]!.reason).toContain("一句话描述");
+    });
+
+    it("可选材料按类目校验 payload 必填列（O1 缺证书号）", async () => {
+      const output = makeDshOutput();
+      output.rows.push({
+        table_code: "O1",
+        fields: {
+          model: "IPC-3000",
+          cert_type: "3C",
+          valid_until: "2028-01",
+          issuer: "中国质量认证中心",
+        },
+        source: "认证证书.pdf:1",
+      });
+      dshClient = createMockDshClient(JSON.stringify(output));
+      deps = { db, dshClient, docParser };
+
+      const cmd = createIngestCommand(deps);
+      const result = await cmd.execute({ filePath: "/tmp/whitepaper.pdf", productLineId: "pl1" });
+
+      expect(result.skippedRows.some((r) => r.reason.includes("证书号"))).toBe(true);
+      expect(result.tableCounts["O1"]).toBeUndefined();
+    });
+  });
+
+  describe("同键冲突：不覆盖、不新增、留冲突证据", () => {
+    it("M2 同 product/class/name 不同值 → 只保留原值，conflicts 1 条", async () => {
+      const output = makeDshOutput();
+      output.rows.push({
+        table_code: "M2",
+        fields: {
+          product_model: "IPC-3000",
+          param_class: "计算",
+          param_name: "CPU",
+          value: "8核 ARM",
+          measured: "宣称",
+        },
+        source: "新规格书.pdf:7",
+      });
+      dshClient = createMockDshClient(JSON.stringify(output));
+      deps = { db, dshClient, docParser };
+
+      const cmd = createIngestCommand(deps);
+      const result = await cmd.execute({ filePath: "/tmp/whitepaper.pdf", productLineId: "pl1" });
+
+      expect(db.specParamRepo.insert).toHaveBeenCalledTimes(1);
+      expect(result.rowsInserted).toBe(6);
+      expect(result.conflicts).toHaveLength(1);
+      expect(result.conflicts[0]).toMatchObject({
+        table_code: "M2",
+        existing: "4核 ARM",
+        incoming: "8核 ARM",
+        source: "新规格书.pdf:7",
+      });
+    });
+
+    it("M2 同键同值 → 静默跳过，不产生冲突", async () => {
+      const output = makeDshOutput();
+      output.rows.push({
+        table_code: "M2",
+        fields: {
+          product_model: "IPC-3000",
+          param_class: "计算",
+          param_name: "CPU",
+          value: " 4核 ARM ",
+          measured: "实测",
+        },
+        source: "重复材料.pdf:9",
+      });
+      dshClient = createMockDshClient(JSON.stringify(output));
+      deps = { db, dshClient, docParser };
+
+      const cmd = createIngestCommand(deps);
+      const result = await cmd.execute({ filePath: "/tmp/whitepaper.pdf", productLineId: "pl1" });
+
+      expect(db.specParamRepo.insert).toHaveBeenCalledTimes(1);
+      expect(result.rowsInserted).toBe(6);
+      expect(result.conflicts).toHaveLength(0);
+    });
+
+    it("M3 同 domain/name 但描述或成熟度不同 → 冲突，保留原值", async () => {
+      const output = makeDshOutput();
+      output.rows.push({
+        table_code: "M3",
+        fields: {
+          domain: "视频监控",
+          name: "人脸识别",
+          description: "仅支持抓拍，不支持比对",
+          maturity: "在研",
+        },
+        source: "roadmap.pdf:4",
+      });
+      dshClient = createMockDshClient(JSON.stringify(output));
+      deps = { db, dshClient, docParser };
+
+      const cmd = createIngestCommand(deps);
+      const result = await cmd.execute({ filePath: "/tmp/whitepaper.pdf", productLineId: "pl1" });
+
+      expect(db.capabilityRepo.insert).toHaveBeenCalledTimes(1);
+      expect(result.conflicts).toHaveLength(1);
+      expect(result.conflicts[0]!.table_code).toBe("M3");
+      expect(result.conflicts[0]!.existing).toContain("支持实时人脸检测与识别");
+      expect(result.conflicts[0]!.incoming).toContain("仅支持抓拍");
+    });
+
+    it("M4 同 description 但 reason 不同 → 冲突，保留原值", async () => {
+      const output = makeDshOutput();
+      output.rows.push({
+        table_code: "M4",
+        fields: {
+          description: "不承担第三方云平台对接",
+          reason: "商务原因：不在本次范围",
+          has_plan: "未定",
+          response: "转交生态伙伴",
+        },
+        source: "会议纪要.docx:3",
+      });
+      dshClient = createMockDshClient(JSON.stringify(output));
+      deps = { db, dshClient, docParser };
+
+      const cmd = createIngestCommand(deps);
+      const result = await cmd.execute({ filePath: "/tmp/whitepaper.pdf", productLineId: "pl1" });
+
+      expect(db.boundaryRepo.insert).toHaveBeenCalledTimes(1);
+      expect(result.conflicts).toHaveLength(1);
+      expect(result.conflicts[0]!.table_code).toBe("M4");
+      expect(result.conflicts[0]!.existing).toBe("无 SDK 支持");
+      expect(result.conflicts[0]!.incoming).toBe("商务原因：不在本次范围");
     });
   });
 

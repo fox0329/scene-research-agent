@@ -8,6 +8,10 @@ import {
   buildIngestReceipt,
   fileResultLine,
   type FileIngestResult,
+  type IngestConflict,
+  type IngestEvidenceSummary,
+  type IngestFlaggedRow,
+  type IngestSkippedRow,
 } from "./ingest-receipt";
 
 /**
@@ -77,6 +81,11 @@ export const MaterialUpload: React.FC<{
       let totalRows = 0;
       let failed = 0;
       const tableCounts: Record<string, number> = {};
+      /* 质量三件套：done 事件逐文件累计，最后汇总成一条质量行 */
+      const evidenceSummary: IngestEvidenceSummary = { A: 0, B: 0, C: 0, D: 0 };
+      const flaggedRows: IngestFlaggedRow[] = [];
+      const conflicts: IngestConflict[] = [];
+      const skippedRows: IngestSkippedRow[] = [];
       /** 逐文件结果：只报总数的话，「哪个文件一行没落」是看不出来的 */
       const perFile: FileIngestResult[] = [];
       try {
@@ -97,6 +106,13 @@ export const MaterialUpload: React.FC<{
                 for (const [t, n] of Object.entries(counts ?? {})) {
                   tableCounts[t] = (tableCounts[t] ?? 0) + Number(n);
                 }
+                const summary = ev.evidenceSummary as Partial<IngestEvidenceSummary> | undefined;
+                for (const level of ["A", "B", "C", "D"] as const) {
+                  evidenceSummary[level] += Number(summary?.[level] ?? 0);
+                }
+                flaggedRows.push(...((ev.flaggedRows as IngestFlaggedRow[] | undefined) ?? []));
+                conflicts.push(...((ev.conflicts as IngestConflict[] | undefined) ?? []));
+                skippedRows.push(...((ev.skipped_rows as IngestSkippedRow[] | undefined) ?? []));
               } else if (ev.type === "error") {
                 failed++;
                 fileFailed = true;
@@ -120,12 +136,19 @@ export const MaterialUpload: React.FC<{
           const line = fileResultLine(result);
           if (line !== null) setProgress((prev) => [...prev, line].slice(-8));
         }
-        const receipt = buildIngestReceipt(perFile, tableCounts);
+        const receipt = buildIngestReceipt(perFile, tableCounts, {
+          evidenceSummary,
+          flaggedRows,
+          conflicts,
+          skippedRows,
+        });
         setProgress((prev) => [...prev, receipt.doneLine].slice(-8));
         // 0 行的文件单独点名：可能是这个格式没被真正读进去（如 pptx 的表格）
         if (receipt.emptyLine !== null) {
           setProgress((prev) => [...prev, receipt.emptyLine!].slice(-8));
         }
+        // 质量行放最后：证据分布、夸大措辞、冲突、被挡行与"系统不保证内容真伪"的边界
+        setProgress((prev) => [...prev, receipt.qualityLine].slice(-8));
         setFinished(true);
         showToast(receipt.toast);
         onDone?.();
@@ -172,7 +195,12 @@ export const MaterialUpload: React.FC<{
       {progress.length > 0 && (
         <div className="stale-banner" role="status">
           <span className="badge primary">{uploading ? "入库进度" : "入库结果"}</span>
-          {progress[progress.length - 1]}
+          {/* 收尾时同时保留【完成】总账与质量行（各占一行），进度中仍只显示最后一条 */}
+          <div>
+            {(uploading ? progress.slice(-1) : progress.slice(-2)).map((line, i) => (
+              <div key={`${progress.length}-${i}`}>{line}</div>
+            ))}
+          </div>
           {!uploading && (
             <button className="btn btn-sm" type="button" onClick={dismissStatus}>
               关闭

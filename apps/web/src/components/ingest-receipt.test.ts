@@ -80,6 +80,59 @@ describe("buildIngestReceipt — 文案口径", () => {
   });
 });
 
+describe("buildIngestReceipt — 质量行（证据分布与冲突）", () => {
+  const quality = {
+    evidenceSummary: { A: 0, B: 18, C: 3, D: 0 },
+    flaggedRows: [
+      { table_code: "M3", key: "视频监控/人脸识别", field: "description", term: "100%" },
+      { table_code: "M2", key: "IPC-3000/计算/CPU", field: "value", term: "最强" },
+    ],
+    conflicts: [
+      {
+        table_code: "M2",
+        key: "IPC-3000/计算/CPU",
+        existing: "4核 ARM",
+        incoming: "8核 ARM",
+        source: "新规格书.pdf:7",
+      },
+      {
+        table_code: "M4",
+        key: "不承担第三方云平台对接",
+        existing: "无 SDK 支持",
+        incoming: "商务原因",
+        source: "会议纪要.docx:3",
+      },
+    ],
+    skippedRows: [
+      { table_code: "M5", source: "材料.pdf:未知", reason: "来源不可定位（缺少页码/章节）：材料.pdf:未知" },
+    ],
+  };
+
+  it("qualityLine 含证据分布、夸大措辞行数、冲突数与被挡行数", () => {
+    const receipt = buildIngestReceipt([ok("a.docx", 21)], { M2: 18, M3: 3 }, quality);
+
+    expect(receipt.qualityLine).toContain("B 18 行");
+    expect(receipt.qualityLine).toContain("C 3 行");
+    expect(receipt.qualityLine).toContain("夸大措辞 2 行");
+    expect(receipt.qualityLine).toContain("低权威来源 1 行");
+    expect(receipt.qualityLine).toContain("冲突 2 条未覆盖");
+    expect(receipt.qualityLine).toContain("被挡 1 行");
+  });
+
+  it("qualityLine 声明系统保证边界：可溯源可分级冲突可见，但不保证内容真伪", () => {
+    const receipt = buildIngestReceipt([ok("a.docx", 21)], {}, quality);
+    expect(receipt.qualityLine).toContain("系统保证可溯源、可分级、冲突可见");
+    expect(receipt.qualityLine).toContain("材料本身真伪仍需交叉核验");
+  });
+
+  it("没有质量数据时不编造数字：明说暂无入库行、冲突与被挡都是 0", () => {
+    const receipt = buildIngestReceipt([ok("a.docx", 0)], {});
+    expect(receipt.qualityLine).toContain("暂无入库行");
+    expect(receipt.qualityLine).toContain("冲突 0 条未覆盖");
+    expect(receipt.qualityLine).toContain("被挡 0 行");
+  });
+});
+
 describe("fileResultLine — 单文件进度行", () => {
   it("有行数就报行数", () => {
     expect(fileResultLine(ok("a.docx", 145))).toBe("　→ 入库 145 行");

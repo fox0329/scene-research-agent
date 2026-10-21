@@ -12,12 +12,11 @@
 
 import {
   matchExistingProduct,
-  normalizeValue,
   planProductMerge,
   planSpecDedupe,
   gradeSourceByCategory,
 } from "@scene/domain";
-import type { Product, SpecParam } from "@scene/contract";
+import type { EvidenceLevel, Product, SpecParam } from "@scene/contract";
 import type { DbInstance } from "@scene/infra";
 
 /** 去重报告（接口返回给 UI，也在日志里说清动了什么） */
@@ -136,6 +135,8 @@ export function resolveProductForModel(
   source: string,
   /** 原始文件名（类目线索，变更表 #210） */
   fileName?: string,
+  /** 证据等级（由来源权威级与夸大措辞确定性判定，缺省 B） */
+  evidenceLevel: EvidenceLevel = "B",
 ): ProductResolution {
   const model = String(fields["model"] ?? "");
   const products = db.productRepo.list({
@@ -165,15 +166,20 @@ export function resolveProductForModel(
     source,
     // 按材料类目判权威性（变更表 #210）：国标→T1、厂商官方→T2、媒体→T3、自媒体→T4
     source_authority: gradeSourceByCategory("AI提取", source, fileName).authority,
-    evidence_level: "B",
+    evidence_level: evidenceLevel,
   } as never);
   return { productId: created.id, created: true };
 }
 
 /**
- * 写入一条规格：完全相同的不再写第二遍，近重复的留更完整的那句
+ * 写入一条规格：同 key 已存在就不写第二遍，也**不覆盖**
  *
- * 返回 true = 落库（新增或更新），false = 库里的那条已经更完整、本次不写。
+ * 为什么不再"取更完整的那句"：覆盖就是静默改事实，用户看到的值会随材料到达顺序变化，
+ * 且没有任何留痕（2026-10-21 定调）。现在同 product/class/name 只要已有值，
+ * 无论新旧是否相同都不写；不同值的冲突由 ingest 的 `conflicts` 报出来，
+ * 交给人决定保留哪条。
+ *
+ * 返回 true = 新落库，false = 同 key 已有值（未写、未覆盖）。
  */
 export function upsertSpecParam(
   db: DbInstance,
@@ -182,17 +188,23 @@ export function upsertSpecParam(
   source: string,
   /** 原始文件名（类目线索，变更表 #210）；不传则只按来源串判 */
   fileName?: string,
+  /** 证据等级（ingest 按来源权威级与夸大措辞确定性判定；缺省 B） */
+  evidenceLevel: EvidenceLevel = "B",
 ): boolean {
   const paramClass = String(fields["param_class"] ?? "");
   const paramName = String(fields["param_name"] ?? "");
   const value = String(fields["value"] ?? "");
-  const nv = normalizeValue(value);
   const existing = (
     db.specParamRepo.list({
       where: "product_id = ? AND param_class = ? AND param_name = ?",
       params: [productId, paramClass, paramName],
     }) as SpecParam[]
-  ).filter((s) => s.param_class === paramClass && s.param_name === paramName);
+  ).filter(
+    (s) =>
+      s.product_id === productId &&
+      s.param_class === paramClass &&
+      s.param_name === paramName,
+  );
 
   const insert = () =>
     void db.specParamRepo.insert({
@@ -204,25 +216,13 @@ export function upsertSpecParam(
       source_type: "AI提取",
       source,
       source_authority: gradeSourceByCategory("AI提取", source, fileName).authority,
-      evidence_level: "B",
+      evidence_level: evidenceLevel,
     } as never);
 
   if (existing.length === 0) {
     insert();
     return true;
   }
-  // ① 已经有一模一样的一句 → 不写第二遍（历史库里 53 行完全重复就是这么来的）
-  if (existing.some((e) => normalizeValue(e.value) === nv)) return false;
-  // ② 库里那条更完整（包含新材料这句）→ 保留库里那条
-  if (existing.some((e) => normalizeValue(e.value).includes(nv))) return false;
-  // ③ 新材料更完整 → 用完整那句覆盖库里被它包含的那条，并清掉同键的冗余
-  const covered = existing.filter((e) => nv.includes(normalizeValue(e.value)));
-  if (covered.length > 0) {
-    db.specParamRepo.update(covered[0]!.id, { value, source, source_type: "AI提取" } as never);
-    for (const extra of covered.slice(1)) db.specParamRepo.deleteById(extra.id);
-    return true;
-  }
-  // ④ 互不包含 = 两个不同的事实（如工作温度两个值）→ 并存，由来源与核实去分辨
-  insert();
-  return true;
+  // 同值 / 不同值都不写：重复不新增，冲突不覆盖（冲突由调用方 ingest 单独记录）
+  return false;
 }

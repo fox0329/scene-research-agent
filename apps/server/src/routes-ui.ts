@@ -639,8 +639,13 @@ async function* runIngestJob(
       table_counts: result.tableCounts,
       quality: result.qualityAssessment,
       completeness: result.completenessReport,
-      // 被门禁挡下的行也要报：否则用户只看到"少了 1 行"，不知道是 M4 缺依据/缺出处
+      // 被门禁挡下的行也要报：否则用户只看到"少了 1 行"，不知道是 M4 缺依据/缺出处、
+      // 来源不可定位或缺必填列
       skipped_rows: result.skippedRows,
+      // 质量回执三件套（字段名与 IngestResult 一致）：证据分布、夸大措辞留痕、冲突
+      evidenceSummary: result.evidenceSummary,
+      flaggedRows: result.flaggedRows,
+      conflicts: result.conflicts,
     };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);

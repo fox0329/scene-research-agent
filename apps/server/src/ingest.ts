@@ -18,13 +18,15 @@ import type {
   Limitation,
   PriceQuote,
   OptionalMaterial,
+  EvidenceLevel,
 } from "@scene/contract";
+import { TABLES_BY_CODE, VERIFICATION_KEYS } from "@scene/contract";
 import type { ParseResult } from "@scene/infra";
 import { createSourceLookup, upsertSourcePages } from "@scene/infra";
 import type { DbInstance } from "@scene/infra";
 import { resolveProductForModel, upsertSpecParam } from "./library-service.js";
-import { boundaryEvidenceError } from "./library-gate.js";
-import { evaluateGates, normalizeModel } from "@scene/domain";
+import { boundaryEvidenceError, isLocatableSource } from "./library-gate.js";
+import { evaluateGates, isEmptyValue, normalizeModel, normalizeValue } from "@scene/domain";
 import type {
   QualityAssessment,
   CompletenessReport,
@@ -67,6 +69,40 @@ export interface IngestOpts {
   fileName?: string;
 }
 
+/** 证据等级分布（本次入库行的 B/C 等） */
+export interface IngestEvidenceSummary {
+  A: number;
+  B: number;
+  C: number;
+  D: number;
+}
+
+/** 命中绝对化措辞的行（不删除，降为 C 并留痕） */
+export interface IngestFlaggedRow {
+  table_code: string;
+  /** 行标识（型号/参数/能力名等，便于人工回查） */
+  key: string;
+  /** 命中字段（英文字段名） */
+  field: string;
+  /** 命中词 */
+  term: string;
+  /** 固定原因文案 */
+  reason: string;
+}
+
+/** 同键不同值的冲突（保留原值，不覆盖、不新增） */
+export interface IngestConflict {
+  table_code: string;
+  /** 行标识 */
+  key: string;
+  /** 库里已有值 */
+  existing: string;
+  /** 新材料给的值 */
+  incoming: string;
+  /** 新材料来源 */
+  source: string;
+}
+
 /** ingest 返回结果 */
 export interface IngestResult {
   rowsInserted: number;
@@ -84,10 +120,17 @@ export interface IngestResult {
   /**
    * 被门禁挡下的行（未入库，逐条给出原因）
    *
-   * 现在只有一种：M4「不做」缺可定位出处或缺「依据」。宁可少一行，也不让
-   * 没有材料出处的硬结论混进资料库；原因随结果返回，上传回执/日志能说清"少了什么"。
+   * M4「不做」缺可定位出处或缺「依据」、来源不可定位、缺必填列都走这里。
+   * 宁可少一行，也不让没有材料出处/缺必填的行混进资料库；原因随结果返回，
+   * 上传回执/日志能说清"少了什么"。
    */
   skippedRows: { table_code: string; source: string; reason: string }[];
+  /** 本次成功入库行的证据等级分布（A/B/C/D） */
+  evidenceSummary: IngestEvidenceSummary;
+  /** 命中绝对化措辞的行（已降为 C，未删除） */
+  flaggedRows: IngestFlaggedRow[];
+  /** 同键不同值的冲突（未覆盖、未新增，保留原值） */
+  conflicts: IngestConflict[];
 }
 
 // ─── DSH 产出 JSON 结构 ────────────────────────────────────
@@ -105,6 +148,44 @@ interface ClassifiedRow {
 /** DSH 返回的完整 JSON */
 interface DshOutput {
   rows: ClassifiedRow[];
+}
+
+/** 单行的确定性质量判定结果 */
+interface RowQuality {
+  level: EvidenceLevel;
+  /** 行标识（冲突/留痕共用） */
+  key: string;
+  flags: IngestFlaggedRow[];
+}
+
+/** 绝对化/夸大措辞（命中任一即降 C 并留痕，不删行） */
+const ABSOLUTE_TERMS: readonly string[] = [
+  "100%",
+  "百分之百",
+  "唯一",
+  "最强",
+  "完全",
+  "绝对",
+  "零风险",
+  "保证",
+  "必然",
+  "彻底解决",
+  "全部覆盖",
+];
+
+/** 可选材料表号 → payload 类目（与 contract 的 payloads 键一致） */
+const OPTIONAL_CATEGORY: Readonly<Record<string, string>> = {
+  O1: "O1认证",
+  O2: "O2案例",
+  O4: "O4开发资料",
+  O5: "O5路线图",
+  O6: "O6交付与生态",
+};
+
+/** 来源不可定位的固定原因（被拒行必须说清缺什么） */
+function sourceRejectedReason(source: unknown): string {
+  const text = String(source ?? "").trim();
+  return `来源不可定位（缺少页码/章节）：${text || "空"}`;
 }
 
 // ─── 输出 JSON Schema（Function Calling 注入） ─────────────
@@ -178,9 +259,11 @@ const SYSTEM_PROMPT = `你是产品资料解析专家。你的任务是将输入
 注意：证书号、有效期、发证机构、交付时间、验收指标都是必填，材料里没有就写「未提及」，不要换键名。价格与报价一律写报价表，可选材料不再有价格类别。
 
 ## 来源标注规则
-每条记录的 source 字段必须包含"文件名:页码"（如 whitepaper.pdf:12）。
-如果你无法确定页码，用文件名加推测的位置（如 whitepaper.pdf:未知）。
-如果文档内容完全无法确定来源，用文件名作为最低来源。
+每条记录的 source 字段必须包含"文件名:定位符"。定位符只接受两类：
+- 具体页码：12、12-14（页码范围）
+- 章节号：8.2、A.1（标准/文档章节）
+禁止写「未知」「?」「-」或只写文件名——来源不可定位的记录不会入库。
+如果材料确实没有页码，用能定位到原文的章节号；连章节号都没有就不要输出该行。
 
 ## 输出格式
 输出 JSON 对象，包含 rows 数组。每条记录包含 table_code、fields、source 三个字段。
@@ -234,11 +317,20 @@ async function executeIngest(
   const session = await dshClient.createSession({ title: `ingest:${fileName}` });
   const dshOutput = await consumeDshPrompt(dshClient, session, userPrompt);
 
-  // 4. 验证产出（来源校验 + 丢弃无效行）
+  // 4. 验证产出（来源校验 + 必填列 + M4 门禁 + 丢弃无效行）
   const { valid: validRows, skipped: skippedRows } = validateRows(dshOutput, fileName);
 
+  // 4.5 证据等级与夸大措辞（确定性判定，零 LLM）
+  const qualities = assessRowQualities(validRows, fileName);
+
   // 5. 写入数据库
-  const { inserted, tableCounts, mergedProducts } = writeRows(db, validRows, productLineId, fileName);
+  const { inserted, tableCounts, mergedProducts, evidenceSummary, conflicts, acceptedRows } =
+    writeRows(db, validRows, productLineId, fileName, qualities);
+
+  // 5.5 只报真正入库的行：被冲突/关联失败挡下的行不冒充"已入库但降级"
+  const flaggedRows = [...qualities.entries()]
+    .filter(([row]) => acceptedRows.has(row))
+    .flatMap(([, quality]) => quality.flags);
 
   // 6. 质量评估 + 完成度检查
   const gateFindings = runIngestGates(db, productLineId);
@@ -253,6 +345,9 @@ async function executeIngest(
     completenessReport,
     gateFindings,
     skippedRows,
+    evidenceSummary,
+    flaggedRows,
+    conflicts,
   };
 }
 
@@ -367,7 +462,9 @@ function buildUserPrompt(fileName: string, parseResult: ParseResult): string {
 
   parts.push("");
   parts.push(
-    "请将上述内容按给定表格分类，输出 JSON。每条记录的 source 字段必须包含「文件名:页码」；" +
+    "请将上述内容按给定表格分类，输出 JSON。每条记录的 source 字段必须是「文件名:具体页码/章节号」" +
+      "（如 白皮书.pdf:12、白皮书.pdf:12-14、标准.pdf:8.2、标准.pdf:A.1）；" +
+      "写「未知」「?」「-」的行不会入库；" +
       "边界与限制里的「不做」必须同时给可定位出处与依据（reason），缺一条就不要输出；" +
       "价格一律写报价表（可选材料没有价格类别）。",
   );
@@ -457,16 +554,21 @@ function isDshOutput(val: unknown): val is DshOutput {
   return Array.isArray(obj["rows"]);
 }
 
-// ─── 子函数：来源校验 ──────────────────────────────────────
+// ─── 子函数：来源 + 必填列 + 门禁校验 ──────────────────────
 
 /**
- * 校验规则：table_code 和 source 必须合法，缺则丢弃；M4 还要过「出处+依据」门禁。
+ * 校验规则（顺序有意义，先报最根本的缺失）：
+ *  ① table_code 必须合法；
+ *  ② 来源必须可定位（具体页码/章节号，拒绝「未知」「?」「-」）；
+ *  ③ M4「不做」还要有依据（reason）；
+ *  ④ 契约里的 required 列必须非空（只校验 required，条件必填不管）。
  *
- * 返回被丢弃的 M4 行原因：门禁不能静默——用户要知道"材料里明明写了不做，为什么没进来"。
+ * 被拒行全部进 skippedRows 并给出具体原因：门禁不能静默——用户要知道
+ * "材料里明明写了，为什么没进来"。
  */
 function validateRows(
   output: DshOutput,
-  fileName: string,
+  _fileName: string,
 ): {
   valid: ClassifiedRow[];
   skipped: { table_code: string; source: string; reason: string }[];
@@ -481,7 +583,16 @@ function validateRows(
   for (const row of output.rows) {
     // table_code 必须是合法的表编号
     if (!row.table_code || !validTables.has(row.table_code)) continue;
-    /* M4 门禁先于通用来源校验：它要给出"缺出处/缺依据"的具体原因，而不是静默丢弃 */
+    // 来源必须可定位（2026-10-21 收紧：页码/章节号必须是具体值）
+    if (!isValidSource(row.source)) {
+      skipped.push({
+        table_code: row.table_code,
+        source: String(row.source ?? ""),
+        reason: sourceRejectedReason(row.source),
+      });
+      continue;
+    }
+    /* M4 门禁：来源已过通用校验，这里只剩「依据」一项要查 */
     if (row.table_code === "M4") {
       const fields = (row.fields ?? {}) as Record<string, unknown>;
       const gate = boundaryEvidenceError(row.source, fields["reason"]);
@@ -494,8 +605,16 @@ function validateRows(
         continue;
       }
     }
-    // source 必须含文件名 + 页码
-    if (!isValidSource(row.source, fileName)) continue;
+    // 必填列（契约 required；条件必填不做机器判定）
+    const missing = missingRequiredLabels(row);
+    if (missing.length > 0) {
+      skipped.push({
+        table_code: row.table_code,
+        source: String(row.source ?? ""),
+        reason: `缺必填列：${missing.join("、")}`,
+      });
+      continue;
+    }
     valid.push(row);
   }
 
@@ -503,28 +622,116 @@ function validateRows(
 }
 
 /**
- * 来源校验：
- * 1. source 非空
- * 2. 文件名部分非空（不强制等于上传文件名——AI 可能引用补充资料）
- * 3. 包含页码或"未知"标记
+ * 取该行缺失的必填列中文名。
+ *
+ * 用契约注册表（`TABLES_BY_CODE`）的 `required`，不另抄一份列清单：
+ * 表定义改了，门禁自动跟着改。两处例外是数据形态差异，不是绕过：
+ *  · M2 的「所属产品」在契约里叫 product_id，材料行给的是 product_model；
+ *  · 可选材料的 category 不进 fields，而由 table_code 映射。
+ * 核实两列（verification_*）是分析阶段的要求，材料入库不产出，跳过。
  */
-function isValidSource(source: string, _fileName: string): boolean {
-  if (!source || source.trim().length === 0) return false;
+function missingRequiredLabels(row: ClassifiedRow): string[] {
+  const category = OPTIONAL_CATEGORY[row.table_code];
+  const def = TABLES_BY_CODE[category ? "可选材料" : row.table_code];
+  if (!def) return [];
+  const payload = category ? (def.payloads?.[category] ?? []) : [];
+  const verification = new Set<string>(VERIFICATION_KEYS);
+  return [...def.columns, ...payload]
+    .filter((c) => c.required === true && !verification.has(c.key))
+    .filter((c) => isEmptyValue(requiredValue(row, c.key)))
+    .map((c) => c.label);
+}
 
-  // 必须有文件名部分（: 分隔）
-  const colonIndex = source.lastIndexOf(":");
-  if (colonIndex <= 0) return false;
+/** 必填列的取值：字段优先，其次行级（source 在行上）；处理两个数据形态别名 */
+function requiredValue(row: ClassifiedRow, key: string): unknown {
+  const fields = (row.fields ?? {}) as Record<string, unknown>;
+  if (key === "product_id") return fields["product_id"] ?? fields["product_model"];
+  if (key === "category") return fields["category"] ?? OPTIONAL_CATEGORY[row.table_code];
+  return fields[key] ?? (row as unknown as Record<string, unknown>)[key];
+}
 
-  const filePart = source.slice(0, colonIndex);
-  const pagePart = source.slice(colonIndex + 1);
+/**
+ * 来源校验（委托共享模块，server 的 ingest 与手工边界入口同一把尺子）：
+ * `文件名:12`、`文件名:12-14`、`文件名:8.2`、`文件名:A.1` 放行；
+ * `文件名:未知`、`文件名:?`、`文件名:-` 一律不可定位。
+ */
+function isValidSource(source: unknown, _fileName?: string): boolean {
+  return isLocatableSource(source);
+}
 
-  // 文件名部分必须非空（与上传文件名匹配优先，但也接受其他文件名模式）
-  if (filePart.trim().length === 0) return false;
+// ─── 子函数：证据等级与夸大措辞（确定性） ──────────────────
 
-  // 页码部分必须存在（数字、"未知"、或范围如 12-14）
-  if (pagePart.trim().length === 0) return false;
+/** 本批次的证据等级与留痕（按行对象引用索引） */
+function assessRowQualities(
+  rows: readonly ClassifiedRow[],
+  fileName: string,
+): Map<ClassifiedRow, RowQuality> {
+  const out = new Map<ClassifiedRow, RowQuality>();
+  for (const row of rows) {
+    const key = rowKey(row);
+    const flags = absoluteFlags(row, key);
+    const { authority, category } = gradeSourceByCategory("AI提取", row.source, fileName);
+    // T4 材料（自媒体/口述/未知）本身就不能当 B；夸大措辞再降一档到 C
+    const lowAuthority =
+      authority === "T4" || category === "自媒体" || category === "用户自述" || category === "未知";
+    const level: EvidenceLevel = lowAuthority || flags.length > 0 ? "C" : "B";
+    out.set(row, { level, key, flags });
+  }
+  return out;
+}
 
-  return true;
+/** 命中绝对化措辞的字段（同一字段同一词只留一条） */
+function absoluteFlags(row: ClassifiedRow, key: string): IngestFlaggedRow[] {
+  const flags: IngestFlaggedRow[] = [];
+  const fields = (row.fields ?? {}) as Record<string, unknown>;
+  for (const [field, value] of Object.entries(fields)) {
+    if (value === null || value === undefined) continue;
+    if (typeof value === "object") continue;
+    const text = String(value);
+    for (const term of ABSOLUTE_TERMS) {
+      if (!text.includes(term)) continue;
+      flags.push({
+        table_code: row.table_code,
+        key,
+        field,
+        term,
+        reason: "绝对化措辞，需核实",
+      });
+    }
+  }
+  return flags;
+}
+
+/** 行标识：用于 flaggedRows / conflicts 的人工回查（不是数据库主键） */
+function rowKey(row: ClassifiedRow): string {
+  const f = (row.fields ?? {}) as Record<string, unknown>;
+  const s = (key: string): string => String(f[key] ?? "").trim();
+  switch (row.table_code) {
+    case "M1":
+      return s("model");
+    case "M2":
+      return [s("product_model"), s("param_class"), s("param_name")].filter(Boolean).join("/");
+    case "M3":
+      return [s("domain"), s("name")].filter(Boolean).join("/");
+    case "M4":
+      return s("description");
+    case "M5":
+      return [s("product_name"), s("description")].filter(Boolean).join("/");
+    case "M6":
+      return [s("model"), s("config")].filter(Boolean).join("/");
+    case "O1":
+      return s("cert_no") || [s("model"), s("cert_type")].filter(Boolean).join("/");
+    case "O2":
+      return s("name");
+    case "O4":
+      return [s("product"), s("doc_name")].filter(Boolean).join("/");
+    case "O5":
+      return s("item");
+    case "O6":
+      return [s("item"), s("coverage")].filter(Boolean).join("/");
+    default:
+      return row.table_code;
+  }
 }
 
 // ─── 子函数：写入数据库 ────────────────────────────────────
@@ -535,71 +742,97 @@ function writeRows(
   rows: ClassifiedRow[],
   productLineId: string,
   fileName: string,
-): { inserted: number; tableCounts: Record<string, number>; mergedProducts: number } {
+  qualities: Map<ClassifiedRow, RowQuality>,
+): {
+  inserted: number;
+  tableCounts: Record<string, number>;
+  mergedProducts: number;
+  evidenceSummary: IngestEvidenceSummary;
+  conflicts: IngestConflict[];
+  acceptedRows: Set<ClassifiedRow>;
+} {
   let inserted = 0;
   /** 并入已有型号的 M1 行数（没新建产品行，但材料内容已补进去） */
   let mergedProducts = 0;
   const tableCounts: Record<string, number> = {};
-  const count = (table: string) => {
+  const evidenceSummary: IngestEvidenceSummary = { A: 0, B: 0, C: 0, D: 0 };
+  const conflicts: IngestConflict[] = [];
+  /** 真正被资料库接受的行（含并入已有型号的 M1）：未入库的行不报夸大措辞 */
+  const acceptedRows = new Set<ClassifiedRow>();
+  const count = (table: string, level: EvidenceLevel, row: ClassifiedRow) => {
     tableCounts[table] = (tableCounts[table] ?? 0) + 1;
+    evidenceSummary[level] += 1;
+    acceptedRows.add(row);
     inserted++;
   };
+  const qualityOf = (row: ClassifiedRow): RowQuality =>
+    qualities.get(row) ?? { level: "B", key: rowKey(row), flags: [] };
   // model → product_id 缓存（同一次 ingest 内共享）
   const modelToProductId = new Map<string, string>();
 
   // 先遍历一次，把 M1 行落到产品（已有型号并入、没有才新建），收集 model → id 映射
   for (const row of rows) {
     if (row.table_code !== "M1") continue;
-    const { productId, created } = resolveProductForModel(db, productLineId, row.fields, row.source, fileName);
+    const q = qualityOf(row);
+    const { productId, created } = resolveProductForModel(
+      db,
+      productLineId,
+      row.fields,
+      row.source,
+      fileName,
+      q.level,
+    );
     if (!productId) continue;
     // 用归一型号做 key：材料里写出「在鸿 7885平板」时也要能接到已有「在鸿7885平板」
     modelToProductId.set(normalizeModel(String(row.fields["model"] ?? "")), productId);
-    if (created) count("M1");
+    acceptedRows.add(row);
+    if (created) count("M1", q.level, row);
     else mergedProducts += 1;
   }
 
   // 再遍历，写入其余表
   for (const row of rows) {
     if (row.table_code === "M1") continue;
+    const q = qualityOf(row);
 
     switch (row.table_code) {
       case "M2": {
-        const ok = insertSpecParam(db, row, productLineId, modelToProductId, fileName);
-        if (ok) count("M2");
+        const ok = insertSpecParam(db, row, productLineId, modelToProductId, fileName, q, conflicts);
+        if (ok) count("M2", q.level, row);
         break;
       }
       case "M3": {
-        const ok = insertCapability(db, row, productLineId, fileName);
-        if (ok) count("M3");
+        const ok = insertCapability(db, row, productLineId, fileName, q, conflicts);
+        if (ok) count("M3", q.level, row);
         break;
       }
       case "M4": {
-        const ok = insertBoundary(db, row, productLineId, fileName);
-        if (ok) count("M4");
+        const ok = insertBoundary(db, row, productLineId, fileName, q, conflicts);
+        if (ok) count("M4", q.level, row);
         break;
       }
       case "M5": {
-        const ok = insertLimitation(db, row, productLineId, fileName);
-        if (ok) count("M5");
+        const ok = insertLimitation(db, row, productLineId, fileName, q);
+        if (ok) count("M5", q.level, row);
         break;
       }
       case "M6": {
-        const ok = insertPriceQuote(db, row, productLineId, modelToProductId, fileName);
-        if (ok) count("M6");
+        const ok = insertPriceQuote(db, row, productLineId, modelToProductId, fileName, q);
+        if (ok) count("M6", q.level, row);
         break;
       }
       default: {
         // O1-O6
         if (row.table_code.startsWith("O")) {
-          const ok = insertOptionalMaterial(db, row, productLineId, fileName);
-          if (ok) count(row.table_code);
+          const ok = insertOptionalMaterial(db, row, productLineId, fileName, q);
+          if (ok) count(row.table_code, q.level, row);
         }
         break;
       }
     }
   }
 
-  return { inserted, tableCounts, mergedProducts };
+  return { inserted, tableCounts, mergedProducts, evidenceSummary, conflicts, acceptedRows };
 }
 
 /**
@@ -643,6 +876,8 @@ function insertSpecParam(
   _productLineId: string,
   modelToProductId: Map<string, string>,
   fileName: string,
+  quality: RowQuality,
+  conflicts: IngestConflict[],
 ): boolean {
   const f = row.fields;
   const productModel = String(f["product_model"] ?? "");
@@ -651,9 +886,32 @@ function insertSpecParam(
   if (!productId) return false;
 
   try {
-    // upsert：同产品 + 同类别 + 同名称下，完全相同的不再写第二遍，
-    // 新材料更完整时用完整那句覆盖（历史库里 843 行有 53 行完全重复就是这么来的）
-    return upsertSpecParam(db, productId, f as Record<string, unknown>, row.source, fileName);
+    const paramClass = String(f["param_class"] ?? "");
+    const paramName = String(f["param_name"] ?? "");
+    const value = String(f["value"] ?? "");
+    const existing = (db.specParamRepo.list({
+      where: "product_id = ? AND param_class = ? AND param_name = ?",
+      params: [productId, paramClass, paramName],
+    }) as SpecParam[]).filter(
+      (s) =>
+        s.product_id === productId &&
+        s.param_class === paramClass &&
+        s.param_name === paramName,
+    );
+    if (existing.length > 0) {
+      // 值相同 → 静默跳过（历史库里 53 行完全重复就是这么来的）
+      if (existing.some((s) => normalizeValue(s.value) === normalizeValue(value))) return false;
+      // 值不同 → 不覆盖、不新增，留下冲突证据；保留库里已有值
+      conflicts.push({
+        table_code: "M2",
+        key: quality.key,
+        existing: existing.map((s) => s.value).join(" / "),
+        incoming: value,
+        source: row.source,
+      });
+      return false;
+    }
+    return upsertSpecParam(db, productId, f as Record<string, unknown>, row.source, fileName, quality.level);
   } catch {
     return false;
   }
@@ -664,22 +922,51 @@ function insertCapability(
   row: ClassifiedRow,
   productLineId: string,
   fileName: string,
+  quality: RowQuality,
+  conflicts: IngestConflict[],
 ): boolean {
   const f = row.fields;
+  const domain = String(f["domain"] ?? "");
+  const name = String(f["name"] ?? "");
+  const description = String(f["description"] ?? "");
+  const maturity = (f["maturity"] as Capability["maturity"]) ?? "规划";
   try {
+    const existing = (db.capabilityRepo.list({
+      where: "product_line_id = ?",
+      params: [productLineId],
+    }) as Capability[]).filter(
+      (c) =>
+        c.product_line_id === productLineId && c.domain === domain && c.name === name,
+    );
+    if (existing.length > 0) {
+      const same = existing.some(
+        (c) =>
+          normalizeValue(c.description) === normalizeValue(description) &&
+          c.maturity === maturity,
+      );
+      if (same) return false;
+      conflicts.push({
+        table_code: "M3",
+        key: quality.key,
+        existing: `${existing[0]!.description}｜${existing[0]!.maturity}`,
+        incoming: `${description}｜${maturity}`,
+        source: row.source,
+      });
+      return false;
+    }
     db.capabilityRepo.insert({
       product_line_id: productLineId,
-      domain: String(f["domain"] ?? ""),
-      name: String(f["name"] ?? ""),
-      description: String(f["description"] ?? ""),
-      maturity: (f["maturity"] as Capability["maturity"]) ?? "规划",
+      domain,
+      name,
+      description,
+      maturity,
       // DB 列保留（不迁移）；依赖条件按新口径并入 description，不再单独读 dependency；
       // 「不适用场景」列已从表定义删除，新数据不再写入
       dependency: "",
       source_type: "AI提取",
       source: row.source,
       source_authority: authorityOf(row.source, fileName),
-      evidence_level: "B",
+      evidence_level: quality.level,
     });
     return true;
   } catch {
@@ -692,13 +979,37 @@ function insertBoundary(
   row: ClassifiedRow,
   productLineId: string,
   fileName: string,
+  quality: RowQuality,
+  conflicts: IngestConflict[],
 ): boolean {
   const f = row.fields;
+  const description = String(f["description"] ?? "");
+  const reason = String(f["reason"] ?? "");
   try {
+    const existing = (db.boundaryRepo.list({
+      where: "product_line_id = ?",
+      params: [productLineId],
+    }) as Boundary[]).filter(
+      (b) =>
+        b.product_line_id === productLineId &&
+        normalizeValue(b.description) === normalizeValue(description),
+    );
+    if (existing.length > 0) {
+      // 同 description、reason 相同 → 静默跳过；reason 不同 → 冲突，保留原值
+      if (existing.some((b) => normalizeValue(b.reason) === normalizeValue(reason))) return false;
+      conflicts.push({
+        table_code: "M4",
+        key: quality.key,
+        existing: existing[0]!.reason,
+        incoming: reason,
+        source: row.source,
+      });
+      return false;
+    }
     db.boundaryRepo.insert({
       product_line_id: productLineId,
-      description: String(f["description"] ?? ""),
-      reason: String(f["reason"] ?? ""),
+      description,
+      reason,
       has_plan: (f["has_plan"] as Boundary["has_plan"]) ?? "未定",
       response: String(f["response"] ?? ""),
       owner: String(f["owner"] ?? ""),
@@ -706,7 +1017,7 @@ function insertBoundary(
       source_type: "AI提取",
       source: row.source,
       source_authority: authorityOf(row.source, fileName),
-      evidence_level: "B",
+      evidence_level: quality.level,
     });
     return true;
   } catch {
@@ -719,6 +1030,7 @@ function insertLimitation(
   row: ClassifiedRow,
   productLineId: string,
   fileName: string,
+  quality: RowQuality,
 ): boolean {
   const f = row.fields;
   try {
@@ -734,7 +1046,7 @@ function insertLimitation(
       source_type: "AI提取",
       source: row.source,
       source_authority: authorityOf(row.source, fileName),
-      evidence_level: "B",
+      evidence_level: quality.level,
     });
     return true;
   } catch {
@@ -749,6 +1061,7 @@ function insertPriceQuote(
   productLineId: string,
   modelToProductId: Map<string, string>,
   fileName: string,
+  quality: RowQuality,
 ): boolean {
   const f = row.fields;
   const model = String(f["model"] ?? "").trim();
@@ -780,7 +1093,7 @@ function insertPriceQuote(
       source: row.source,
       source_type: "AI提取",
       source_authority: authorityOf(row.source, fileName),
-      evidence_level: "B",
+      evidence_level: quality.level,
     });
     return true;
   } catch {
@@ -793,6 +1106,7 @@ function insertOptionalMaterial(
   row: ClassifiedRow,
   productLineId: string,
   fileName: string,
+  quality: RowQuality,
 ): boolean {
   // O1/O2/O4/O5/O6 → category 映射（价格类别已下线，报价只进 M6）
   const categoryMap: Record<string, OptionalMaterial["category"]> = {
@@ -814,7 +1128,7 @@ function insertOptionalMaterial(
       source_type: "AI提取",
       source: row.source,
       source_authority: authorityOf(row.source, fileName),
-      evidence_level: "B",
+      evidence_level: quality.level,
     });
     return true;
   } catch {

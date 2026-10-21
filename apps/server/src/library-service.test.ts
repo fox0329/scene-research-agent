@@ -169,7 +169,7 @@ describe("ingest 写入前匹配：从源头不再造重复产品行（根因修
   });
 });
 
-describe("规格写入：完全相同不重写、更完整则覆盖、冲突则并存", () => {
+describe("规格写入：同 key 不重写、不覆盖（冲突留给 ingest 报）", () => {
   const fields = (value: string) => ({ param_class: "功耗", param_name: "电源", value });
 
   it("库里已有完全相同 → 不写第二遍", () => {
@@ -181,23 +181,25 @@ describe("规格写入：完全相同不重写、更完整则覆盖、冲突则�
     expect(db.specParamRepo.list({ where: "product_id = ?", params: [p.id] })).toHaveLength(1);
   });
 
-  it("新材料更完整 → 用完整那句覆盖", () => {
+  it("新材料更完整也不覆盖：保留库里原值，等待人工裁", () => {
     const { db, lineId } = setup();
     db0 = db;
     const p = product(lineId, "CT15", "在售", "2026-09-23T14:42");
     upsertSpecParam(db, p.id, fields("DC24V/1A"), "a.pptx:1");
-    expect(upsertSpecParam(db, p.id, fields("DC24V/1A，支持9-36V宽电压输入"), "b.pptx:2")).toBe(true);
+    expect(upsertSpecParam(db, p.id, fields("DC24V/1A，支持9-36V宽电压输入"), "b.pptx:2")).toBe(false);
     const specs = db.specParamRepo.list({ where: "product_id = ?", params: [p.id] });
     expect(specs).toHaveLength(1);
-    expect(specs[0]!.value).toBe("DC24V/1A，支持9-36V宽电压输入");
+    expect(specs[0]!.value).toBe("DC24V/1A");
   });
 
-  it("值冲突（互不包含）→ 两条并存，不擅自覆盖", () => {
+  it("值冲突（互不包含）→ 不新增也不覆盖，保留原值", () => {
     const { db, lineId } = setup();
     db0 = db;
     const p = product(lineId, "CT15", "在售", "2026-09-23T14:42");
     upsertSpecParam(db, p.id, fields("-10~50℃"), "a.pptx:1");
-    expect(upsertSpecParam(db, p.id, fields("-20~60℃"), "b.pptx:2")).toBe(true);
-    expect(db.specParamRepo.list({ where: "product_id = ?", params: [p.id] })).toHaveLength(2);
+    expect(upsertSpecParam(db, p.id, fields("-20~60℃"), "b.pptx:2")).toBe(false);
+    const specs = db.specParamRepo.list({ where: "product_id = ?", params: [p.id] });
+    expect(specs).toHaveLength(1);
+    expect(specs[0]!.value).toBe("-10~50℃");
   });
 });
