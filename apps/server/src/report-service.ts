@@ -98,7 +98,7 @@ export function getReport(db: DbInstance, scenario: Scenario, kind: ReportKind):
   return { kind, markdown: "", chars: 0, generated: false, generated_at: null, digest };
 }
 
-/** 取两份交付物（GET /deliverables 的形状） */
+/** 取交付物（GET /deliverables 的形状；变更表 #246 起只有 solution 一份） */
 export function getReports(db: DbInstance, scenario: Scenario): Record<ReportKind, DeliverableReportView> {
   const out = {} as Record<ReportKind, DeliverableReportView>;
   for (const kind of REPORT_KINDS) {

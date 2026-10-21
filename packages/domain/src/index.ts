@@ -266,7 +266,10 @@ export {
   repairProseHeads,
   firstProseParagraph,
   leadParagraphIssue,
+  splitOverlongLead,
+  replaceFirstProseParagraph,
   LEAD_PARAGRAPH_MAX_CHARS,
+  LEAD_PARAGRAPH_SOFT_MAX_CHARS,
 } from "./prose-shape.js";
 
 // ─── 交付物终检（通读找问题 → 只改被点名的段落；变更表 #139） ──────

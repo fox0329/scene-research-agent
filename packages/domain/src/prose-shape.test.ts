@@ -15,6 +15,7 @@ import {
   repairProseHeads,
   firstProseParagraph,
   leadParagraphIssue,
+  splitOverlongLead,
 } from "./prose-shape.js";
 
 describe("brokenProseHeads — 认断头段", () => {
@@ -197,5 +198,30 @@ describe("leadParagraphIssue — 章首段是不是总纲（变更表 #139）", 
     expect(
       leadParagraphIssue("智慧会议室分散在总部与各园区，跨地域协同靠云平台；多园区由 IT 支持。"),
     ).toBeNull();
+  });
+});
+
+describe("splitOverlongLead — 章首段超 120 字就断成两段（变更表 #247）", () => {
+  it("超长首段在第一个能收住的句号后断开，文字一个字不改", () => {
+    const long = "本方案针对市政污水处理厂的设备监控与能耗管理需求。".repeat(6);
+    const md = `### 组织保障\n\n${long}后面还有一句。\n\n第二段原文。`;
+    const out = splitOverlongLead(md);
+    expect(out.split).toBe(true);
+    // 第一段在 120 字以内，且全篇字数（去空白）不变
+    const lead = out.markdown.split("\n\n")[1]!;
+    expect(lead.length).toBeLessThanOrEqual(120);
+    const strip = (s: string) => s.replace(/\s/g, "");
+    expect(strip(out.markdown)).toBe(strip(md));
+    expect(out.markdown).toContain("第二段原文。");
+  });
+
+  it("首段不超长 → 原样返回", () => {
+    const md = "### 组织保障\n\n成立专项工作组，由分管副总牵头。\n\n第二段。";
+    expect(splitOverlongLead(md)).toEqual({ markdown: md, split: false });
+  });
+
+  it("整段只有一句话但超长 → 不硬切，留给硬伤如实报", () => {
+    const md = `${"很长的一句话没有句号".repeat(30)}。`;
+    expect(splitOverlongLead(md).split).toBe(false);
   });
 });

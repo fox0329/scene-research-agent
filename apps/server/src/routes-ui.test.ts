@@ -12,6 +12,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
+import { REPORT_KINDS } from "@scene/contract";
 import type { DshClient, FollowEvent, StageId } from "@scene/contract";
 import { buildReportMarkdown, createDb } from "@scene/infra";
 import type { DbInstance } from "@scene/infra";
@@ -1684,13 +1685,13 @@ describe("上传入库路由", () => {
 function generateReports(h: ReturnType<typeof makeHarness>, scenarioId: string): void {
   const scenario = h.db.scenarioRepo.getById(scenarioId)!;
   const stageData = h.db.stageDataRepo.list({ where: "scenario_id = ?", params: [scenarioId] });
-  for (const kind of ["solution", "construction"] as const) {
+  for (const kind of REPORT_KINDS) {
     saveReportFile(scenario, kind, buildReportMarkdown({ scenario, stageSummaries: [], stageData }, kind));
   }
 }
 
 describe("交付物导出", () => {
-  it("POST export 写出两份 md：<场景>解决方案.md + <场景>建设工作方案.md（变更表 #137）", async () => {
+  it("POST export 写出一份 md：<场景>解决方案.md（变更表 #246）", async () => {
     const h = makeHarness();
     const { scenarioId } = seedScenario(h.db, "导出场景");
     const dir = mkdtempSync(join(tmpdir(), "scene-deliverable-export-"));
@@ -1703,14 +1704,11 @@ describe("交付物导出", () => {
       });
       expect(res.statusCode).toBe(200);
       const { files } = res.json() as { files: string[] };
-      // 两份都是客户端可读的正式交付物，各按自己的章节骨架装配
-      expect(files).toHaveLength(2);
+      // 只有一份客户端可读的正式交付物
+      expect(files).toHaveLength(1);
       for (const f of files) expect(existsSync(f), f).toBe(true);
       expect(files[0]!.endsWith("导出场景解决方案.md")).toBe(true);
-      expect(files[1]!.endsWith("导出场景建设工作方案.md")).toBe(true);
-      expect(readFileSync(files[0]!, "utf-8")).toContain("## 现状");
-      expect(readFileSync(files[1]!, "utf-8")).toContain("## 建设背景与必要性");
-      expect(readFileSync(files[1]!, "utf-8")).not.toContain("## 现状");
+      expect(readFileSync(files[0]!, "utf-8")).toContain("## 现状与问题");
 
       // 再导一次：两份都还在，文件名不变（导出幂等）
       const again = await h.app.inject({
@@ -1719,9 +1717,8 @@ describe("交付物导出", () => {
       });
       expect(again.statusCode).toBe(200);
       const second = again.json() as { files: string[] };
-      expect(second.files).toHaveLength(2);
+      expect(second.files).toHaveLength(1);
       expect(second.files[0]!.endsWith("导出场景解决方案.md")).toBe(true);
-      expect(second.files[1]!.endsWith("导出场景建设工作方案.md")).toBe(true);
     } finally {
       delete process.env.DELIVERABLE_DIR;
       rmSync(dir, { recursive: true, force: true });
@@ -1763,7 +1760,7 @@ describe("交付物导出", () => {
     expect(res.statusCode).toBe(404);
   });
 
-  it("POST export-docx 把两份交付物按同一版式写成 Word（变更表 #133 / #137）", async () => {
+  it("POST export-docx 把交付物按同一版式写成 Word（变更表 #133 / #246）", async () => {
     const h = makeHarness();
     const { scenarioId } = seedScenario(h.db, "Word 场景");
     const dir = mkdtempSync(join(homedir(), ".scene-docx-test-"));
@@ -1777,8 +1774,8 @@ describe("交付物导出", () => {
       });
       expect(res.statusCode).toBe(200);
       const { files } = res.json() as { files: string[] };
-      // 两份：解决方案 + 建设工作方案（同一个渲染器、同一套 Word 模板）
-      expect(files).toHaveLength(2);
+      // 一份：解决方案（同一个渲染器、同一套 Word 模板）
+      expect(files).toHaveLength(1);
       for (const f of files) {
         expect(f.startsWith(dir)).toBe(true);
         expect(f.endsWith(".docx")).toBe(true);
@@ -1786,7 +1783,6 @@ describe("交付物导出", () => {
         expect(head, f).toBe("PK"); // zip 魔数
       }
       expect(files[0]!.endsWith("Word 场景解决方案.docx")).toBe(true);
-      expect(files[1]!.endsWith("Word 场景建设工作方案.docx")).toBe(true);
       expect(files.some((f) => f.includes("内部调研报告"))).toBe(false);
       expect(files.some((f) => f.includes("对外汇报材料"))).toBe(false);
 
@@ -1799,9 +1795,8 @@ describe("交付物导出", () => {
       expect(again.statusCode).toBe(200);
       const second = again.json() as { files: string[]; unchanged: string[] };
       expect(second.files).toEqual([]);
-      expect(second.unchanged.length).toBe(2);
+      expect(second.unchanged.length).toBe(1);
       expect(second.unchanged[0]!.endsWith("Word 场景解决方案.docx")).toBe(true);
-      expect(second.unchanged[1]!.endsWith("Word 场景建设工作方案.docx")).toBe(true);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -1893,14 +1888,14 @@ describe("交付物导出", () => {
       const res = await h.app.inject({
         method: "POST",
         url: `/api/v1/projects/${scenarioId}/deliverables/export-pptx`,
-        payload: { dir, kind: "construction", run: "route-run-1" },
+        payload: { dir, kind: "solution", run: "route-run-1" },
       });
       expect(res.statusCode).toBe(200);
       const { files, unchanged } = res.json() as { files: string[]; unchanged: string[] };
       expect(unchanged).toEqual([]);
       expect(files).toHaveLength(1);
       expect(files[0]!.startsWith(dir)).toBe(true);
-      expect(files[0]!.endsWith("PPT 场景建设工作方案.pptx")).toBe(true);
+      expect(files[0]!.endsWith("PPT 场景解决方案.pptx")).toBe(true);
       expect(readFileSync(files[0]!).subarray(0, 2).toString("utf8")).toBe("PK");
 
       // 进度：阶段文案齐，且至少含「大纲」「PPTX」两个关键阶段
@@ -2030,25 +2025,23 @@ describe("交付物导出", () => {
     }
   });
 
-  it("PUT deliverables/construction 保存成功，且两份互不串（变更表 #137 新增）", async () => {
+  it("PUT deliverables/solution 保存成功，读回的就是手改稿（变更表 #135 / #246）", async () => {
     const h = makeHarness();
-    const { scenarioId } = seedScenario(h.db, "互不串场景");
-    const dir = mkdtempSync(join(homedir(), ".scene-save-kind-test-"));
+    const { scenarioId } = seedScenario(h.db, "手改场景");
+    const dir = mkdtempSync(join(tmpdir(), "scene-deliverable-put-"));
     process.env.DELIVERABLE_DIR = dir;
     try {
       const saved = await h.app.inject({
         method: "PUT",
-        url: `/api/v1/projects/${scenarioId}/deliverables/construction`,
-        payload: { markdown: "# 互不串场景建设工作方案\n\n## 建设路径\n\n手改的建设路径正文\n" },
+        url: `/api/v1/projects/${scenarioId}/deliverables/solution`,
+        payload: { markdown: "# 手改场景解决方案\n\n## 建设路径\n\n手改的建设路径正文\n" },
       });
       expect(saved.statusCode).toBe(200);
       const body = saved.json() as { path: string; written: boolean; overwritten: boolean };
       expect(body.written).toBe(true);
       expect(body.overwritten).toBe(false);
-      // 落盘是 <id>.construction.md，不碰 <id>.solution.md
-      expect(body.path).toBe(join(dir, `${scenarioId}.construction.md`));
+      expect(body.path).toBe(join(dir, `${scenarioId}.solution.md`));
       expect(readFileSync(body.path, "utf8")).toContain("手改的建设路径正文");
-      expect(existsSync(join(dir, `${scenarioId}.solution.md`))).toBe(false);
 
       const view = await h.app.inject({
         method: "GET",
@@ -2062,15 +2055,10 @@ describe("交付物导出", () => {
           >;
         }
       ).reports;
-      // 建设工作方案：读到刚保存的正文
-      expect(reports["construction"]!.markdown).toContain("手改的建设路径正文");
-      expect(reports["construction"]!.generated).toBe(true);
-      expect(reports["construction"]!.generated_at).toBeTruthy();
-      expect(reports["construction"]!.chars).toBeGreaterThan(0);
-      // 解决方案不受影响：未生成 → 留空（变更表 #174），也不含建设工作方案的正文
-      expect(reports["solution"]!.generated).toBe(false);
-      expect(reports["solution"]!.markdown).toBe("");
-      expect(reports["solution"]!.chars).toBe(0);
+      expect(reports["solution"]!.markdown).toContain("手改的建设路径正文");
+      expect(reports["solution"]!.generated).toBe(true);
+      expect(reports["solution"]!.generated_at).toBeTruthy();
+      expect(reports["solution"]!.chars).toBeGreaterThan(0);
     } finally {
       delete process.env.DELIVERABLE_DIR;
       rmSync(dir, { recursive: true, force: true });
@@ -2087,7 +2075,7 @@ describe("交付物导出", () => {
         payload: { markdown: "x" },
       });
       expect(res.statusCode, bad).toBe(400);
-      expect(res.json().error).toContain("solution、construction");
+      expect(res.json().error).toContain("报告类型只能是 solution");
       expect(res.json().error).toContain(bad);
     }
   });
@@ -2134,7 +2122,7 @@ describe("交付物导出", () => {
     expect(missing.statusCode).toBe(400);
   });
 
-  it("GET /deliverables：未生成时两份留空、不落盘；生成后取回正文（变更表 #174）", async () => {
+  it("GET /deliverables：未生成时留空、不落盘；生成后取回正文（变更表 #174 / #246）", async () => {
     const h = makeHarness();
     const { scenarioId } = seedScenario(h.db, "取正文场景");
     const outDir = process.env.EXPORT_DIR!;
@@ -2151,20 +2139,19 @@ describe("交付物导出", () => {
         { markdown: string; chars: number; generated: boolean; generated_at: string | null }
       >;
     };
-    // 变更表 #137：两份——解决方案 + 建设工作方案
-    expect(Object.keys(reports).sort()).toEqual(["construction", "solution"]);
+    // 变更表 #246：只有一份
+    expect(Object.keys(reports)).toEqual(["solution"]);
     /**
      * 变更表 #174（用户定调）：交付物没开始就不填内容
      *
      * 以前这里返回即时推导的"要点版"（1.6 万/2.2 万字）当预览，用户会以为报告已经生成；
      * 现在未生成就是空的，界面只留「生成报告」入口。
      */
-    for (const kind of ["solution", "construction"]) {
-      expect(reports[kind]!.markdown, kind).toBe("");
-      expect(reports[kind]!.chars, kind).toBe(0);
-      expect(reports[kind]!.generated, kind).toBe(false);
-      expect(reports[kind]!.generated_at, kind).toBeNull();
-    }
+    const solution = reports["solution"]!;
+    expect(solution.markdown).toBe("");
+    expect(solution.chars).toBe(0);
+    expect(solution.generated).toBe(false);
+    expect(solution.generated_at).toBeNull();
     // 不落盘：目录文件数不变
     expect(readdirSync(outDir).length).toBe(before);
 
@@ -2177,11 +2164,9 @@ describe("交付物导出", () => {
     const dir = mkdtempSync(join(tmpdir(), "scene-deliverable-"));
     process.env.DELIVERABLE_DIR = dir;
     try {
-      // 直接落两份"模型写的"正文，模拟生成完成（<id>.solution.md / <id>.construction.md）
-      const sampleSolution = "## 现状\n\n解决方案正式版正文。\n\n## 下一步\n\n边界。";
-      const sampleConstruction = "## 建设内容\n\n建设工作方案正式版正文。";
+      // 直接落一份"模型写的"正文，模拟生成完成（<id>.solution.md）
+      const sampleSolution = "## 现状与问题\n\n解决方案正式版正文。\n\n## 下一步\n\n边界。";
       writeFileSync(join(dir, `${scenarioId}.solution.md`), sampleSolution, "utf8");
-      writeFileSync(join(dir, `${scenarioId}.construction.md`), sampleConstruction, "utf8");
 
       const res = await h.app.inject({
         method: "GET",
@@ -2192,19 +2177,15 @@ describe("交付物导出", () => {
       };
       expect(reports["solution"]!.generated).toBe(true);
       expect(reports["solution"]!.markdown).toBe(sampleSolution);
-      expect(reports["construction"]!.generated).toBe(true);
-      expect(reports["construction"]!.markdown).toBe(sampleConstruction);
 
       const exp = await h.app.inject({
         method: "POST",
         url: `/api/v1/projects/${scenarioId}/deliverables/export`,
       });
       const { files } = exp.json() as { files: string[] };
-      expect(files).toHaveLength(2);
+      expect(files).toHaveLength(1);
       expect(files[0]!.endsWith("正式版场景解决方案.md")).toBe(true);
-      expect(files[1]!.endsWith("正式版场景建设工作方案.md")).toBe(true);
       expect(readFileSync(files[0]!, "utf8")).toBe(sampleSolution);
-      expect(readFileSync(files[1]!, "utf8")).toBe(sampleConstruction);
     } finally {
       delete process.env.DELIVERABLE_DIR;
       rmSync(dir, { recursive: true, force: true });
@@ -2229,9 +2210,6 @@ describe("交付物导出", () => {
       };
       expect(reports["solution"]!.generated).toBe(true);
       expect(reports["solution"]!.markdown).toBe(legacy);
-      // 兜底只对 solution 生效：建设工作方案不受旧文件影响（各写各的新路径）
-      expect(reports["construction"]!.generated).toBe(false);
-      expect(reports["construction"]!.markdown).not.toBe(legacy);
       expect(existsSync(join(dir, `${scenarioId}.solution.md`))).toBe(false);
     } finally {
       delete process.env.DELIVERABLE_DIR;

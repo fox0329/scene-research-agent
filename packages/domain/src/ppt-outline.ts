@@ -48,7 +48,7 @@ import { jsonSlice } from "./report-review.js";
 /**
  * 禁用词：出现即不许进 PPT（占位 / 决策建议 / 内部痕迹三类）
  *
- * 与《建设工作方案输出要求》§五、§六同口径——PPT 是客户看的中间页，连占位都不留。
+ * 与报告硬规则同口径——PPT 是客户看的中间页，连占位都不留。
  */
 export const PPT_BANNED_PATTERNS: readonly RegExp[] = [
   /待客户提供|待补齐|待现场勘查|待确认|暂缺|未提供|TBD/,

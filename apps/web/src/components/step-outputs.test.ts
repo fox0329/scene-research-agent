@@ -33,9 +33,9 @@ describe("stepOutputs（本步输出物口径）", () => {
     expect(railOutputsOf(7, [], 7)).toEqual([]);
   });
 
-  it("交付物这两份仍有唯一定义，且名字取契约（面板据此画 chip，变更表 #137 / #148）", () => {
-    expect(DELIVERY_OUTPUTS.map((o) => o.key)).toEqual(["solution", "construction"]);
-    expect(DELIVERY_OUTPUTS.map((o) => o.label)).toEqual(["解决方案", "建设工作方案"]);
+  it("交付物只有一份，名字取契约（面板据此画 chip，变更表 #246）", () => {
+    expect(DELIVERY_OUTPUTS.map((o) => o.key)).toEqual(["solution"]);
+    expect(DELIVERY_OUTPUTS.map((o) => o.label)).toEqual(["解决方案"]);
     expect(DELIVERY_OUTPUTS.every((o) => o.code === null)).toBe(true);
   });
 

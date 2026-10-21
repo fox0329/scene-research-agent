@@ -14,7 +14,7 @@
  *
  * 交付物口径（变更表 #137）：`kind` 决定这一份是**哪份交付物**——
  *  `solution` = <场景>解决方案（现状 / 场景与问题 / 方案 / 价值 / 下一步），
- *  `construction` = <场景>建设工作方案（建设背景与必要性 … 监管协同展望）。
+ *  变更表 #246：只剩 `solution`（七章），建设工作方案口径已下线。
  *  章名、章节数、每章的素材块全部由契约 `REPORT_CHAPTERS[kind]` 给出，本文件不维护第二份。
  *
  * 章节结构：
@@ -46,7 +46,7 @@ import {
   type ReportKind,
   type StageData,
 } from "@scene/contract";
-import { repairProseHeads } from "@scene/domain";
+import { repairProseHeads, splitOverlongLead } from "@scene/domain";
 
 // ─── 覆盖留档 ──────────────────────────────────────────────
 
@@ -177,7 +177,7 @@ export function reportTypeName(kind: ReportKind): string {
  *
  * 用户定调（2026-10-07）：「交付物不再分内部调研版和外部汇报版，直接用外部汇报版
  * 生成一个版本，就叫 XXX解决方案」——所以是 `智慧会议室解决方案.md`；
- * 变更表 #137 再加一份 `智慧会议室建设工作方案.md`。两份都不带日期。
+ * 变更表 #246 起只有一份 `智慧会议室解决方案.md`，不带日期。
  */
 export function exportFileName(scenarioName: string, kind: ReportKind): string {
   const safe = scenarioName.replace(/[/\\:*?"<>|]/g, "_").trim();
@@ -190,7 +190,7 @@ export function exportFileName(scenarioName: string, kind: ReportKind): string {
  * 生成交付物（按口径装配一份纯 Markdown）
  *
  * @param data 交付物输入（场景 + 阶段数据；阶段总结不进正文）
- * @param kind 交付物口径（`solution` / `construction`，变更表 #137）
+ * @param kind 交付物口径（只有 `solution`，变更表 #246）
  */
 export async function exportDeliverables(data: DeliverableInput, kind: ReportKind): Promise<string> {
   return buildReportMarkdown(data, kind);
@@ -365,7 +365,7 @@ export interface ChapterDigest {
  * ② 模型漏写某章或该章没过确定性校验时，用它顶上。两处同源，报告不会出现"模型写的
  * 章与要点版口径不一致"。
  *
- * @param kind 交付物口径——章节按 `reportChapters(kind)` 走，两份交付物的章节各归各的
+ * @param kind 交付物口径——章节按 `reportChapters(kind)` 走（只有一份，形参留作扩展）
  */
 export interface DigestOptions {
   /**
@@ -437,7 +437,11 @@ function buildReport(data: DeliverableInput, kind: ReportKind, bodyOf: (key: str
     const body: string[] = [`## ${reportChapterHeading(kind, chapter.key)}`, ""];
     // 兜最后一道（变更表 #138）：无论正文来自模型初稿、回炉稿还是历史文件，
     // 落盘前都过一遍断头段修复——装配是唯一出口，出口干净，交付物就不会带半句话。
-    const text = repairProseHeads(stripEchoedTitle(bodyOf(chapter.key).trim(), chapter.label)).markdown;
+    const cleaned = repairProseHeads(
+      stripEchoedTitle(bodyOf(chapter.key).trim(), chapter.label),
+    ).markdown;
+    // 章首段超 120 字是硬伤（变更表 #247）：在句号处断成两段，一字不删
+    const text = splitOverlongLead(cleaned).markdown;
     body.push(text || "（本节内容待补）");
     sections.push(body.join("\n").trimEnd());
   }

@@ -272,7 +272,7 @@ export const STAGE_DEFS: readonly StageDef[] = [
     id: 5,
     name: "最终交付物",
     producedBy: "系统组装",
-    goal: "《<场景>解决方案》+《<场景>建设工作方案》（文档产出，非表）",
+    goal: "《<场景>解决方案》（一份，七章，文档产出非表）",
     tableCodes: [],
     summaryTitle: "⑥ 交付说明",
   },
@@ -1388,31 +1388,32 @@ export function registryIssues(): readonly string[] {
 // ─── 交付物：章节 ← 表映射 ──────────────────────────────────
 // ─── 交付物：章节 ← 表映射 ──────────────────────────────────
 //
-// 交付物只有一份：**客户端可读的「<场景>解决方案」**（变更表 #136）。
-// 用户定调（2026-10-07 / 变更表 #136）：「交付物不再分内部调研版和外部汇报版，直接用
-// 外部汇报版生成一个版本，就叫 XXX解决方案」——内部口径的章节（主要风险点）、价值
-// 段落与能力边界、术语表全部退场。
+// 交付物只有一份：**客户端可读的「<场景>解决方案」**（变更表 #246，用户定调 2026-10-21）
 //
-// 变更表 #137（2026-10-08）：交付物**再加一份「<场景>建设工作方案」**（参照客户给的两份
-// 建设工作方案定稿），与「<场景>解决方案」并列——两份都是客户端可读的正式交付物，
-// 章节骨架完全不同，所以章节定义按口径分开（`REPORT_CHAPTERS[kind]`）。
+// 演变：v1.31 起先有「解决方案」一份 → #136 收成对外单一口径 → #137 又加了一份
+// 「建设工作方案」（客户给了两份定稿，章节骨架不同）→ #246 把两份**合成一份**：
+// 「不再区分汇报对象，就是一个对用户的解决方案材料」，章序按建设工作方案的"怎么建"
+// 主线展开，前面补客户现状与问题，后面收口下一步。
 //
-// 报告 = 素材（本章块里的表）+ 构件（报告自己长出来的设计原则、架构分层、主辅职责、
-// 编号连接关系、选型、价值表、实施要点与下一步）。素材是证据，构件才是报告的价值。
+// 报告 = 素材（本章块里的表）+ 构件（报告自己长出来的设计原则、架构分层、核心功能、
+// 主辅职责、编号连接关系、选型、实施要点与下一步）。素材是证据，构件才是报告的价值。
+//
+// 价值不单开表也不单开章（#246 用户定调：价值不一定要数据，"更多的还是从解决了什么问题
+// 的角度描述"）：写在「建设目标与思路」里——解决了什么问题、谁受益、怎么看出来；
+// 客户没给基线就如实写"待客户校准"，不许编数字。
 
-/** 交付物口径（变更表 #137：解决方案 + 建设工作方案，两份都是客户可读的正式交付物） */
-export const REPORT_KINDS = ["solution", "construction"] as const;
+/** 交付物口径：只有一份客户端可读的「<场景>解决方案」（变更表 #246） */
+export const REPORT_KINDS = ["solution"] as const;
 
 export type ReportKind = (typeof REPORT_KINDS)[number];
 
 /**
  * 报告类型名——拼在场景名后面，就是文件名与一级标题
  *
- * 例：`智慧会议室` → `智慧会议室解决方案` / `智慧会议室建设工作方案`。
+ * 例：`智慧会议室` → `智慧会议室解决方案`。
  */
 export const REPORT_KIND_LABEL: Record<ReportKind, string> = {
   solution: "解决方案",
-  construction: "建设工作方案",
 };
 
 export interface DeliverableSection {
@@ -1431,9 +1432,7 @@ export type ReportArtifact =
   /** 带编号的连接关系（① ② ③…），与接口表一一对应 */
   | "numbered-connections"
   /** 我方设计原则（原则一/原则二…） */
-  | "principles"
-  /** 价值表（价值 / 现在 / 采用后 / 怎么核 四列） */
-  | "value-table";
+  | "principles";
 
 export interface ReportSection {
   /** 小节名（`###` 级） */
@@ -1466,7 +1465,7 @@ export interface ReportBlock {
  * 报告章节
  *
  * 章标题**不带序号**：Word 交付物里由模板的多级列表自动编号（1 / 1.1 / 1.1.1），
- * 在 Word 里增删章节编号会自动重排（变更表 #136）；Markdown 正文里也不手写「一、」。
+ * 在 Word 里增删章节编号会自动重排；Markdown 正文里也不手写「一、」。
  */
 export interface ReportChapter {
   key: string;
@@ -1481,80 +1480,23 @@ export interface ReportChapter {
 }
 
 export const REPORT_CHAPTERS: Record<ReportKind, readonly ReportChapter[]> = {
-  /* ── <场景>解决方案：给客户看的方案，讲清现状 / 问题 / 方案 / 价值 / 下一步 ── */
+  /* ── 《<场景>解决方案》：一份材料讲完"现在什么样 / 要解决什么 / 怎么建 / 怎么落地" ──
+       七章（变更表 #246）：现状与问题 / 建设目标与思路 / 方案总体与建设内容 /
+       建设路径 / 工作安排 / 保障措施 / 下一步。 */
   solution: [
-  {
-    key: "status",
-    label: "现状",
-    sections: [
-      { title: "场景在业务中的位置", keywords: ["位置", "定位", "在业务中"] },
-      { title: "既有体系构成", keywords: ["体系", "现有", "构成"] },
-      { title: "现状特征与提升空间", keywords: ["现状", "提升", "空间"], artifacts: ["table"] },
-    ],
-    blocks: [
-      { code: "表1-1", heading: "场景锚（在讲哪个场景）" },
-      { code: "表1-2", heading: "业务环节与现在的做法", cols: ["link", "owner_now", "current_tool"] },
-    ],
-  },
-  {
-    key: "problems",
-    label: "场景与问题",
-    /* 用户定稿：章下直接写「场景边界」与「典型问题」两段，不套小节标题（变更表 #129/#131） */
-    sections: [
-      { title: "场景边界", keywords: ["边界"], noHeading: true },
-      { title: "典型问题", keywords: ["问题", "痛点"], noHeading: true },
-    ],
-    blocks: [
-      { code: "表1-2", heading: "各环节现在的问题", cols: ["link", "pain"] },
-      { code: "表3-8", heading: "值得打的缺口", cols: ["gap", "who_hurts", "pain_level", "acceptance"] },
-    ],
-  },
-  {
-    key: "solution",
-    label: "方案",
-    sections: [
-      { title: "设计原则", keywords: ["原则"], artifacts: ["principles"] },
-      { title: "总体架构", keywords: ["架构", "层次"], artifacts: ["table"] },
-      { title: "主辅职责对照", keywords: ["职责", "主辅"], artifacts: ["table"] },
-      { title: "连接关系与接口", keywords: ["连接", "接口"], artifacts: ["numbered-connections"] },
-      { title: "选型与配置", keywords: ["选型", "配置", "组成", "清单"], artifacts: ["table"] },
-      { title: "实施要点", keywords: ["实施", "要点", "部署"] },
-    ],
-    blocks: [
-      { code: "表4-2", heading: "我方在哪些环节参与、以什么角色", cols: ["link", "our_role", "our_scope"] },
-      { code: "表4-3", heading: "需求-能力对照", cols: ["gap_ref", "match", "our_product", "action"] },
-      { code: "表5-1", heading: "方案架构与接口", cols: ["layer", "components", "interface", "integration", "boundary", "interface_name", "type", "protocol"] },
-      { code: "表5-3", heading: "实施安排", cols: ["item", "content", "window"] },
-      { code: "表5-4", heading: "交付与运维", cols: ["item", "content", "sla"] },
-    ],
-  },
-  {
-    key: "next",
-    label: "下一步",
-    sections: [{ title: "步骤与交付物", keywords: ["步骤", "交付物", "计划", "安排"], artifacts: ["table"] }],
-    blocks: [
-      { code: "表5-3", heading: "实施安排", cols: ["item", "content", "window"] },
-      { code: "表5-4", heading: "交付与运维", cols: ["item", "content", "sla"] },
-    ],
-  },
-  ],
-
-  /* ── <场景>建设工作方案：给客户的"怎么建"——为什么建 / 建成什么样 / 建什么 /
-       怎么建 / 什么时候谁做什么 / 怎么保障 / 与监管怎么协同（变更表 #137） ── */
-  construction: [
     {
-      key: "background",
-      label: "建设背景与必要性",
-      /* 客户定稿：章下直接写，不套 `###` 小节标题 */
+      key: "status",
+      label: "现状与问题",
       sections: [
-        { title: "现场现状", keywords: ["现状", "现场", "今天"], noHeading: true },
-        { title: "主要痛点", keywords: ["痛点", "问题", "卡在"], noHeading: true },
-        { title: "监管与政策要求", keywords: ["监管", "政策", "合规", "要求"], noHeading: true },
-        { title: "不建设的代价", keywords: ["代价", "不建", "风险"], noHeading: true },
+        // 这两节按版式就是章下连续正文（不套 `###`），noHeading 让校验别把「没单独成节」当缺小节
+        { title: "场景在业务中的位置", keywords: ["位置", "定位", "在业务中"], noHeading: true },
+        { title: "既有体系与今天的做法", keywords: ["体系", "现有", "构成", "做法"], noHeading: true },
+        { title: "主要问题", keywords: ["问题", "痛点", "卡在"], noHeading: true },
+        { title: "现状特征与提升空间", keywords: ["现状", "提升", "空间"], artifacts: ["table"] },
       ],
       blocks: [
         { code: "表1-1", heading: "场景锚（在讲哪个场景）" },
-        { code: "表1-2", heading: "业务环节与现在的做法", cols: ["link", "owner_now", "current_tool", "pain"] },
+        { code: "表1-2", heading: "业务环节、现在的做法与问题", cols: ["link", "owner_now", "current_tool", "pain"] },
         { code: "表3-8", heading: "值得打的缺口", cols: ["gap", "who_hurts", "pain_level", "acceptance"] },
       ],
     },
@@ -1565,25 +1507,33 @@ export const REPORT_CHAPTERS: Record<ReportKind, readonly ReportChapter[]> = {
         { title: "总体目标", keywords: ["总体目标", "总目标"] },
         { title: "分项目标", keywords: ["分项目标", "子目标", "具体目标"] },
         { title: "总体建设思路", keywords: ["思路", "路径选择", "总体考虑"] },
+        /* 价值从"解决了什么问题"讲（#246）：谁受益、改变了什么、怎么看得出来 */
+        { title: "建成后改变什么", keywords: ["价值", "收益", "改变", "解决"], noHeading: true },
       ],
       blocks: [
-        { code: "表3-8", heading: "要解决的需求（目标要对得上）", cols: ["gap", "who_hurts", "pain_level"] },
+        { code: "表3-8", heading: "要解决的需求（目标要对得上）", cols: ["gap", "who_hurts", "pain_level", "acceptance"] },
         { code: "表4-4", heading: "哪些细分我们自己能扛", as: "table", cols: ["sub_scene", "opponent", "win_loss"] },
       ],
     },
     {
-      key: "content",
-      label: "建设内容",
+      key: "solution",
+      label: "方案总体与建设内容",
       sections: [
-        { title: "总体架构", keywords: ["架构", "总体架构", "层次"], artifacts: ["table"] },
+        { title: "设计原则", keywords: ["原则"], artifacts: ["principles"] },
+        { title: "总体架构", keywords: ["架构", "层次"], artifacts: ["table"] },
         { title: "核心功能", keywords: ["核心功能", "功能", "能力"], artifacts: ["table"] },
-        { title: "状态研判与分级管控", keywords: ["研判", "分级", "管控", "预警"] },
+        { title: "主辅职责对照", keywords: ["职责", "主辅"], artifacts: ["table"] },
+        { title: "连接关系与接口", keywords: ["连接", "接口"], artifacts: ["numbered-connections"] },
+        { title: "选型与配置", keywords: ["选型", "配置", "组成", "清单"], artifacts: ["table"] },
+        { title: "实施要点", keywords: ["实施", "要点", "部署"] },
       ],
       blocks: [
-        { code: "表5-1", heading: "方案架构与接口", cols: ["layer", "components", "interface", "integration", "boundary"] },
+        { code: "表5-1", heading: "方案架构与接口", cols: ["layer", "components", "interface", "integration", "boundary", "interface_name", "type", "protocol"] },
         { code: "表4-2", heading: "我方在哪些环节参与、以什么角色", cols: ["link", "our_role", "our_scope"] },
         { code: "表4-3", heading: "需求-能力对照", cols: ["gap_ref", "match", "our_product", "action"] },
-        ],
+        { code: "表5-3", heading: "实施安排", cols: ["item", "content", "window"] },
+        { code: "表5-4", heading: "交付与运维", cols: ["item", "content", "sla"] },
+      ],
     },
     {
       key: "path",
@@ -1602,7 +1552,7 @@ export const REPORT_CHAPTERS: Record<ReportKind, readonly ReportChapter[]> = {
     {
       key: "schedule",
       label: "工作安排",
-      /* 客户定稿：第 5 章章下直接就是那张里程碑计划表，不套 `###` 小节 */
+      /* 客户定稿：章下直接就是那张里程碑计划表，不套 `###` 小节 */
       sections: [
         { title: "阶段与时间安排", keywords: ["阶段", "时间", "计划", "安排", "进度"], artifacts: ["table"], noHeading: true },
       ],
@@ -1622,6 +1572,15 @@ export const REPORT_CHAPTERS: Record<ReportKind, readonly ReportChapter[]> = {
       ],
       blocks: [
         { code: "表4-4", heading: "哪些细分要借外力", as: "table", cols: ["sub_scene", "opponent", "win_loss", "entry_action"] },
+        { code: "表5-4", heading: "交付与运维", cols: ["item", "content", "sla"] },
+      ],
+    },
+    {
+      key: "next",
+      label: "下一步",
+      sections: [{ title: "步骤与交付物", keywords: ["步骤", "交付物", "计划", "安排"], artifacts: ["table"] }],
+      blocks: [
+        { code: "表5-3", heading: "实施安排", cols: ["item", "content", "window"] },
         { code: "表5-4", heading: "交付与运维", cols: ["item", "content", "sla"] },
       ],
     },

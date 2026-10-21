@@ -368,14 +368,14 @@ export interface FollowEvent {
   [key: string]: unknown;
 }
 
-// ─── 交付物（变更表 #137：解决方案 + 建设工作方案，两份并列） ──
+// ─── 交付物（变更表 #246：合成一份《<场景>解决方案》） ──
 
 /**
  * 交付物口径
  *
- * 与契约 `ReportKind` 一致：决定中栏看的是哪一份、保存写哪个 kind、导出写出哪个文件名。
+ * 与契约 `ReportKind` 一致（变更表 #246 起只有一个值）：保存写哪个 kind、导出写出哪个文件名。
  */
-export type DeliverableKind = "solution" | "construction";
+export type DeliverableKind = "solution";
 
 /** 一份交付物的正文与产出情况 */
 export interface ApiDeliverableReport {
@@ -387,7 +387,7 @@ export interface ApiDeliverableReport {
   generated_at: string | null;
 }
 
-/** 两份交付物：一次取回，中栏切份不再发请求 */
+/** 交付物：只有一份（变更表 #246） */
 export interface ApiDeliverables {
   reports: Record<DeliverableKind, ApiDeliverableReport>;
 }
@@ -673,20 +673,19 @@ export const api = {
       { method: "POST", body: { action } },
     ),
   /**
-   * 两份交付物正文（装配但不落盘）：中栏按当前这一份显示
+   * 交付物正文（装配但不落盘）：中栏显示这一份
    *
-   * 变更表 #137：交付物是两份——`solution`「<场景>解决方案」+ `construction`
-   * 「<场景>建设工作方案」，两份一起取回，切份不再发请求。
+   * 变更表 #246：只有一份 `solution`「<场景>解决方案」。
    */
   getDeliverables: (id: string) =>
     req<ApiDeliverables>(`/projects/${encodeURIComponent(id)}/deliverables`),
-  /** 导出两份 Markdown（写盘内容 = 界面所见），回显写出的文件路径 */
+  /** 导出 Markdown（写盘内容 = 界面所见），回显写出的文件路径 */
   exportDeliverables: (id: string, dir?: string) =>
     req<{ files: string[]; notice?: string }>(
       `/projects/${encodeURIComponent(id)}/deliverables/export`,
       { method: "POST", body: dir ? { dir } : {} },
     ),
-  /** 保存中栏编辑后的正文（变更表 #135）：按份保存，A 的正文不会写到 B */
+  /** 保存中栏编辑后的正文（变更表 #135 / #246） */
   saveDeliverable: (id: string, kind: DeliverableKind, markdown: string) =>
     req<{ path: string; written: boolean; overwritten: boolean; notice?: string }>(
       `/projects/${encodeURIComponent(id)}/deliverables/${kind}`,

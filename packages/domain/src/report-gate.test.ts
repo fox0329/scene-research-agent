@@ -22,13 +22,6 @@ function sectionBody(sec: ReportSection): string {
   }
   if (arts.includes("numbered-connections")) parts.push("① 仪表 → 网关；② 网关 → 平台。");
   if (arts.includes("principles")) parts.push("原则一 不替代原系统；原则二 不参与安全联锁。");
-  if (arts.includes("value-table"))
-    parts.push(
-      "| 价值 | 现在 | 采用后 | 怎么核 |\n|---|---|---|---|\n" +
-        "| 价值一：会前就绪 | 提前 5–10 分钟接线 | 碰一碰秒级就绪 | 预约时间与就绪时间戳差 |\n" +
-        "| 价值二：离场释放 | 占而不用 | 自动释放 | 按月比对预约与实际通电 |\n" +
-        "| 价值三：故障改远程 | 靠报修到场 | 远程监控与 OTA | 工单上门次数对比 |",
-    );
   return parts.join("\n\n");
 }
 
@@ -61,22 +54,25 @@ function kindsOf(kind: ReportKind, markdown: string): string[] {
   return checkReport(kind, markdown).violations.map((v) => v.kind as string);
 }
 
-describe("报告确定性校验（变更表 #112 / #113）：solution 口径", () => {
-  it("章节齐 + 方案构件齐 → 通过（四章：现状 / 场景与问题 / 方案 / 下一步）", () => {
+describe("报告确定性校验（变更表 #246）：一份《<场景>解决方案》，七章", () => {
+  it("章节齐 + 方案构件齐 → 通过", () => {
     const r = checkReport("solution", goodReport("solution"));
     expect(r.ok).toBe(true);
     expect(r.kind).toBe("solution");
     expect(r.chapters.length).toBe(reportChapters("solution").length);
     expect(reportChapters("solution").map((c) => c.label)).toEqual([
-      "现状",
-      "场景与问题",
-      "方案",
+      "现状与问题",
+      "建设目标与思路",
+      "方案总体与建设内容",
+      "建设路径",
+      "工作安排",
+      "保障措施",
       "下一步",
     ]);
   });
 
   it("缺章是硬伤（模型漏写一章不能就这么交付）", () => {
-    const r = checkReport("solution", withoutChapter("solution", "方案"));
+    const r = checkReport("solution", withoutChapter("solution", "方案总体与建设内容"));
     expect(r.ok).toBe(false);
     expect(r.violations.some((v) => v.kind === "缺章" && v.hard)).toBe(true);
   });
@@ -133,10 +129,10 @@ describe("报告确定性校验（变更表 #112 / #113）：solution 口径", (
   });
 
   it("篇幅超总上限只提示（#139 补丁：出稿前已定向回炉，这里再升硬伤会触发整篇重写）", () => {
-    const long = goodReport("solution") + "\n\n" + "补充废话。".repeat(1000);
+    const long = goodReport("solution") + "\n\n" + "补充废话。".repeat(2000);
     const v = checkReport("solution", long).violations.find((x) => x.kind === "篇幅超标");
     expect(v?.hard).toBe(false);
-    expect(v?.detail).toContain("超过 4500 字总上限");
+    expect(v?.detail).toContain("超过 6000 字总上限");
     // 只提示 = 不影响整体结论
     expect(checkReport("solution", long).ok).toBe(true);
   });
@@ -164,143 +160,108 @@ describe("报告确定性校验（变更表 #112 / #113）：solution 口径", (
   });
 
   it("章名识别忽略序号与多余空格", () => {
-    expect(reportChapterHeadings("## 一、现状 \n### 小节\n## 方案")).toEqual(["现状", "方案"]);
-    expect(reportChapterHeadings("## 现状\n## 场景与问题")).toEqual(["现状", "场景与问题"]);
+    expect(reportChapterHeadings("## 一、现状与问题 \n### 小节\n## 建设路径")).toEqual([
+      "现状与问题",
+      "建设路径",
+    ]);
+    expect(matchChapterKey("solution", "一、方案总体与建设内容")).toBe("solution");
   });
 });
 
-describe("建设工作方案口径（变更表 #137）", () => {
-  /** 六章：建设背景与必要性 / 建设目标与思路 / 建设内容 / 建设路径 / 工作安排 / 保障措施 */
-  it("六章齐 + 构件齐 → 通过", () => {
-    const r = checkReport("construction", goodReport("construction"));
+describe("合并后的七章口径（变更表 #246）", () => {
+  it("七章齐 + 构件齐 → 通过", () => {
+    const r = checkReport("solution", goodReport("solution"));
     expect(r.ok).toBe(true);
-    expect(r.kind).toBe("construction");
-    expect(r.chapters.length).toBe(6);
-    expect(reportChapters("construction").map((c) => c.label)).toEqual([
-      "建设背景与必要性",
-      "建设目标与思路",
-      "建设内容",
-      "建设路径",
-      "工作安排",
-      "保障措施",
-    ]);
+    expect(r.chapters.length).toBe(7);
   });
 
-  it("只写六章（漏「建设内容」）→ 硬伤「缺章」，detail 点到那一章名", () => {
-    const r = checkReport("construction", withoutChapter("construction", "建设内容"));
-    expect(r.ok).toBe(false);
+  it("漏「方案总体与建设内容」→ 硬伤「缺章」，detail 点到那一章名", () => {
+    const r = checkReport("solution", withoutChapter("solution", "方案总体与建设内容"));
     const v = r.violations.find((x) => x.kind === "缺章");
     expect(v?.hard).toBe(true);
-    expect(v?.detail).toBe("缺少章节：建设内容");
+    expect(v?.detail).toBe("缺少章节：方案总体与建设内容");
   });
 
-  it("「总体架构 / 核心功能」章缺自建表格 → 硬伤「缺少方案构件」", () => {
-    const r = checkReport("construction", bareReport("construction"));
-    expect(r.ok).toBe(false);
-    const v = r.violations.find((x) => x.kind === "缺少方案构件");
-    expect(v?.hard).toBe(true);
-    expect(v?.detail).toContain("「总体架构」");
-    expect(v?.detail).toContain("「核心功能」");
-  });
-
-  it("建设路径章缺那一张表（新增感知设备）→ 硬伤；成本评估小节已按用户要求删除", () => {
-    const v = checkReport("construction", bareReport("construction")).violations.find(
+  it("方案总体章缺自建表格（架构 / 核心功能 / 职责 / 选型）→ 硬伤「缺少方案构件」", () => {
+    const v = checkReport("solution", bareReport("solution")).violations.find(
       (x) => x.kind === "缺少方案构件",
     );
     expect(v?.hard).toBe(true);
+    expect(v?.detail).toContain("「总体架构」");
+    expect(v?.detail).toContain("「核心功能」");
+    expect(v?.detail).toContain("「主辅职责对照」");
+  });
+
+  it("建设路径章缺那张设备清单表 → 硬伤", () => {
+    const v = checkReport("solution", bareReport("solution")).violations.find(
+      (x) => x.kind === "缺少方案构件",
+    );
     expect(v?.detail).toContain("「新增感知设备」");
-    // 成本评估退场：建设路径只剩数据采集 + 新增感知设备，也不该再被当成缺构件
-    expect(v?.detail).not.toContain("成本评估");
     expect(
-      reportChapters("construction").find((c) => c.key === "path")?.sections.map((s) => s.title),
+      reportChapters("solution").find((c) => c.key === "path")?.sections.map((s) => s.title),
     ).toEqual(["数据采集", "新增感知设备"]);
   });
 
   it("工作安排章缺计划表 → 硬伤", () => {
-    const v = checkReport("construction", bareReport("construction")).violations.find(
+    const v = checkReport("solution", bareReport("solution")).violations.find(
       (x) => x.kind === "缺少方案构件",
     );
-    expect(v?.hard).toBe(true);
     expect(v?.detail).toContain("「阶段与时间安排」");
   });
 
-  it("篇幅按 construction 口径：不足 2000 只提示", () => {
-    const v = checkReport("construction", goodReport("construction")).violations.find(
+  it("篇幅上下限只有一套（2500 / 6000），下限同样只提示", () => {
+    expect([reportMinChars("solution"), reportMaxChars("solution")]).toEqual([2500, 6000]);
+    const v = checkReport("solution", goodReport("solution")).violations.find(
       (x) => x.kind === "篇幅不足",
     );
     expect(v?.hard).toBe(false);
-    expect(v?.detail).toContain("低于 2000 字");
+    expect(v?.detail).toContain("低于 2500 字");
   });
 
-  it("篇幅按 construction 口径：超过 5000 只提示（回炉在出稿前做，不靠这里拦）", () => {
-    const long = goodReport("construction") + "\n\n" + "补充废话。".repeat(1500);
-    const r = checkReport("construction", long);
-    const v = r.violations.find((x) => x.kind === "篇幅超标");
-    expect(v?.hard).toBe(false);
-    expect(v?.detail).toContain("超过 5000 字总上限");
-    expect(r.ok).toBe(true);
-  });
-
-  it("篇幅上下限按口径给（solution 1200/4500，construction 2000/5000）——下限同样只提示", () => {
-    expect([reportMinChars("solution"), reportMaxChars("solution")]).toEqual([1200, 4500]);
-    expect([reportMinChars("construction"), reportMaxChars("construction")]).toEqual([2000, 5000]);
-  });
-
-  it("章首段不是总纲 → 只提示（变更表 #139；不阻断出稿）", () => {
-    const bad = goodReport("construction").replace(
-      "这是现场现状的归纳正文。",
-      "多园区由 IT 与厂商支持；纪要手工或录音转写，无统一检索。",
+  it("章首段超过 120 字 / 以分号列举开头 → 硬伤（变更表 #247）", () => {
+    const bad = goodReport("solution").replace(
+      "这是场景在业务中的位置的归纳正文。",
+      "多园区由 IT 与厂商支持；纪要手工或录音转写，无统一检索；预约分散在三个系统里；" +
+        "设备维护靠电话报修，没有台账，也没有远程监控手段，问题长期无人闭环处理。",
     );
-    const v = checkReport("construction", bad).violations.find((x) => x.kind === "章首段不合规");
-    expect(v?.hard).toBe(false);
-    expect(v?.detail).toContain("建设背景与必要性");
+    const v = checkReport("solution", bad).violations.find((x) => x.kind === "章首段不合规");
+    expect(v?.hard).toBe(true);
+    expect(v?.detail).toContain("现状与问题");
     // 干净的那份不产生这条
-    expect(kindsOf("construction", goodReport("construction"))).not.toContain("章首段不合规");
+    expect(kindsOf("solution", goodReport("solution"))).not.toContain("章首段不合规");
   });
 
   it("整篇出现断头段 → 硬伤（终检的最后一道断言）", () => {
-    const broken = goodReport("construction").replace(
-      "这是现场现状的归纳正文。",
+    const broken = goodReport("solution").replace(
+      "这是场景在业务中的位置的归纳正文。",
       "、Teams 等云平台；多园区由 IT 支持。",
     );
-    const v = checkReport("construction", broken).violations.find((x) => x.kind === "悬空残句");
+    const v = checkReport("solution", broken).violations.find((x) => x.kind === "悬空残句");
     expect(v?.hard).toBe(true);
   });
 
-  it("跨章重复的长句与小节占位 → 只提示", () => {
+  it("小节占位 → 只提示；跨章重复句 → 只提示", () => {
     const dup =
-      goodReport("construction") +
+      goodReport("solution") +
       "\n\n现场巡检仍靠人工记录，数据分散在三个系统里，统计口径对不上。";
-    const kinds = kindsOf("construction", dup);
+    const kinds = kindsOf("solution", dup);
     expect(kinds).toContain("空节");
-    expect(checkReport("construction", dup).violations.find((x) => x.kind === "空节")?.hard).toBe(false);
+    expect(checkReport("solution", dup).violations.find((x) => x.kind === "空节")?.hard).toBe(false);
   });
 
-  it("不再产生已退场的违规类型（缺风险或边界 / 缺术语表）", () => {
-    const raw = JSON.stringify(checkReport("construction", goodReport("construction")).violations);
+  it("不再产生已退场的违规类型（缺风险或边界 / 缺术语表 / 价值写成缺口清单）", () => {
+    const raw = JSON.stringify(checkReport("solution", goodReport("solution")).violations);
     expect(raw).not.toContain("缺风险或边界");
     expect(raw).not.toContain("缺术语表");
+    expect(raw).not.toContain("价值写成缺口清单");
   });
 
-  it("价值章口吻检查对 construction 自然空转（它没有 value 章）", () => {
-    const md = goodReport("construction") + "\n\n待补待补待补充，基线未提供，无法核实。";
-    const kinds = kindsOf("construction", md);
-    expect(kinds).not.toContain("价值写成缺口清单");
-    expect(kinds).not.toContain("说明书腔");
-  });
-
-  it("别名回归：construction 的「建设路径」不会被认成 solution 的「下一步」", () => {
-    // 少一章时只报那一章；建设路径 / 建设内容 已被认出来，不算缺章
-    const r = checkReport("construction", withoutChapter("construction", "保障措施"));
+  it("别名回归：七章的章名都能认，别名不会串到别的章", () => {
+    expect(matchChapterKey("solution", "建设路径")).toBe("path");
+    expect(matchChapterKey("solution", "方案总体与建设内容")).toBe("solution");
+    expect(matchChapterKey("solution", "保障措施")).toBe("safeguards");
+    expect(matchChapterKey("solution", "现状")).toBe("status");
+    const r = checkReport("solution", withoutChapter("solution", "保障措施"));
     expect(r.violations.find((x) => x.kind === "缺章")?.detail).toBe("缺少章节：保障措施");
-    expect(matchChapterKey("construction", "建设路径")).toBe("path");
-    expect(matchChapterKey("solution", "建设路径")).toBeNull();
-  });
-
-  it("别名回归：construction 的「建设内容」不会被认成 solution 的「方案」", () => {
-    const r = checkReport("construction", withoutChapter("construction", "保障措施"));
-    expect(r.violations.find((x) => x.kind === "缺章")?.detail).toBe("缺少章节：保障措施");
-    expect(matchChapterKey("construction", "建设内容")).toBe("content");
-    expect(matchChapterKey("solution", "建设内容")).toBeNull();
   });
 });

@@ -451,7 +451,7 @@ function makeHarness(skillBody = FAKE_OK, finalizeBody: string | null = FAKE_FIN
 }
 
 /** 把交付物正文写到盘上（`getReport` 优先读它；每轮重读就是重读这个文件） */
-function writeReport(h: Harness, markdown: string, kind: ReportKind = "construction"): void {
+function writeReport(h: Harness, markdown: string, kind: ReportKind = "solution"): void {
   writeFileSync(deliverableReportPath(h.scenarioId, kind), markdown, "utf8");
 }
 
@@ -460,7 +460,7 @@ function runExport(h: Harness, over: Partial<Parameters<typeof exportReportPptx>
   return exportReportPptx({
     db: h.db,
     scenario: h.scenario,
-    kind: "construction",
+    kind: "solution",
     dir: h.dir,
     dshClient: mockDsh([outlineJson(), outlineJson()]),
     push: h.push,
@@ -486,8 +486,7 @@ describe("exportReportPptx — 第一轮就通过（#146）", () => {
     expect(result.files).toHaveLength(1);
     const saved = result.files[0]!;
     expect(saved.startsWith(h.dir)).toBe(true);
-    expect(saved.endsWith(pptFileName("PPT 场景", "construction"))).toBe(true);
-    expect(saved.endsWith("PPT 场景建设工作方案.pptx")).toBe(true);
+    expect(saved.endsWith(pptFileName("PPT 场景", "solution"))).toBe(true);
     expect(readFileSync(saved).subarray(0, 2).toString("utf8")).toBe("PK");
 
     // 假导出器记下的命令行：项目目录 + -o 输出 + --no-compat + -f ppt169
@@ -560,9 +559,9 @@ describe("exportReportPptx — 第一轮就通过（#146）", () => {
     expect(readdirSync(h.dir)).toEqual([]);
   });
 
-  it("PPT 文件名与 Word / Markdown 同口径（两份交付物各一份名）", () => {
+  it("PPT 文件名与 Word / Markdown 同口径（只有一份交付物）", () => {
     expect(pptFileName("智慧会议室", "solution")).toBe("智慧会议室解决方案.pptx");
-    expect(pptFileName("智慧会议室", "construction")).toBe("智慧会议室建设工作方案.pptx");
+    
     expect(pptFileName("带/斜杠:场景", "solution")).toBe("带_斜杠_场景解决方案.pptx");
   });
 });
@@ -612,7 +611,7 @@ describe("exportReportPptx — 不合格就重跑（#146 修复闭环）", () =>
     });
     expect(calls.calls).toBe(PPT_OUTLINE_ROUNDS * 2); // 三轮 × (生成 + 优化)
     expect(result.files).toHaveLength(1); // 文件确实产出来了
-    expect(existsSync(join(h.dir, pptFileName("PPT 场景", "construction")))).toBe(true);
+    expect(existsSync(join(h.dir, pptFileName("PPT 场景", "solution")))).toBe(true);
     expect(result.notice).toContain("已生成，但仍有");
     expect(result.notice).toContain("未达标");
     expect(result.notice).toContain("第 5 页两页重复");
@@ -723,7 +722,7 @@ describe("exportReportPptx — 不合格就重跑（#146 修复闭环）", () =>
       const result = await patched({
         db: h.db,
         scenario: h.scenario,
-        kind: "construction",
+        kind: "solution",
         dir: h.dir,
         dshClient: mockDsh([outlineJson(6), outlineJson(6)], { counter: calls }),
         push: h.push,

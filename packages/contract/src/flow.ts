@@ -137,7 +137,7 @@ export const FLOW_STEPS: readonly FlowStep[] = [
     key: "delivery",
     title: "交付物",
     short: "交付物",
-    goal: "输出《<场景>解决方案》与《<场景>建设工作方案》两份客户可读文档",
+    goal: "输出一份《<场景>解决方案》：客户可读、可直接拿去讲",
     kind: "组装",
     tables: [],
     stage: 5,

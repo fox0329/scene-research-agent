@@ -158,7 +158,7 @@ describe("flow-service — 锁步与就绪", () => {
     expect(flow.finished).toBe(true);
   });
 
-  it("交付物（第 6 步）：两份都生成才算就绪，未生成时提示说清还差什么（变更表 #178）", () => {
+  it("交付物（第 6 步）：生成那份解决方案才算就绪，未生成时提示说清还差什么（变更表 #178 / #246）", () => {
     const dir = mkdtempSync(join(tmpdir(), "scene-deliv-"));
     const prev = process.env["DELIVERABLE_DIR"];
     process.env["DELIVERABLE_DIR"] = dir;
@@ -167,18 +167,13 @@ describe("flow-service — 锁步与就绪", () => {
       const sc = () => db.scenarioRepo.getById(scenarioId)!;
       const step7 = () => getFlowState(db, sc()).steps.find((s) => s.id === 6)!;
 
-      // 一份都没有：不就绪，提示先回去生成
-      expect(step7().ready).toBe(false);
-      expect(step7().readyHint).toContain("还差 2 份");
-      expect(step7().readyHint).toContain("生成报告");
-
-      // 只生成一份：仍不就绪，差 1 份
-      saveReportFile(sc(), "solution", "# 解决方案\n\n正文");
+      // 还没生成：不就绪，提示先回去生成
       expect(step7().ready).toBe(false);
       expect(step7().readyHint).toContain("还差 1 份");
+      expect(step7().readyHint).toContain("生成报告");
 
-      // 两份齐了：就绪，提示指向「完成交付物」（末步按钮已改名，用户看得出怎么收尾）
-      saveReportFile(sc(), "construction", "# 建设工作方案\n\n正文");
+      // 生成了：就绪，提示指向「完成交付物」（末步按钮已改名，用户看得出怎么收尾）
+      saveReportFile(sc(), "solution", "# 解决方案\n\n正文");
       expect(step7().ready).toBe(true);
       expect(step7().readyHint).toContain("完成交付物");
     } finally {

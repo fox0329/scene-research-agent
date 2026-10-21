@@ -19,7 +19,7 @@ import {
 
 /** 待终检的整篇：第一章第二段是"病句"，其余段落逐字不许动 */
 const MD = [
-  "## 建设背景与必要性",
+  "## 现状与问题",
   "",
   "智慧会议室分散在总部与各园区，跨地域协同靠云平台。",
   "",
@@ -31,7 +31,7 @@ const MD = [
 ].join("\n");
 
 const CHAPTER_FIXED = [
-  "## 建设背景与必要性",
+  "## 现状与问题",
   "",
   "智慧会议室分散在总部与各园区，跨地域协同靠云平台。",
   "",
@@ -41,7 +41,7 @@ const CHAPTER_FIXED = [
 const ISSUES = JSON.stringify({
   issues: [
     {
-      chapter: "建设背景与必要性",
+      chapter: "现状与问题",
       anchor: "这句话前后矛盾",
       type: "前后矛盾",
       note: "「这句话前后矛盾，要改掉」与「智慧会议室分散在总部与各园区」两处说法对不上",
@@ -75,7 +75,7 @@ function dshMock(respond: (input: { system: string; user: string }) => string | 
 function runReview(mock: Mock, markdown = MD, enabled = true) {
   const progress: string[] = [];
   return reviewReport({
-    kind: "construction",
+    kind: "solution",
     markdown,
     scenarioName: "智慧会议室",
     dshClient: mock.client,
@@ -250,7 +250,7 @@ describe("reviewReport — 通读 → 逐章修 → 复查", () => {
   it("空话套话这类软问题仍是提示，不进第二轮回炉（hard: false）", async () => {
     const softIssues = JSON.stringify({
       issues: [
-        { chapter: "建设背景与必要性", anchor: "这句话前后矛盾", type: "空话套话", note: "没有信息" },
+        { chapter: "现状与问题", anchor: "这句话前后矛盾", type: "空话套话", note: "没有信息" },
       ],
     });
     const mock = dshMock((input) => {
@@ -290,9 +290,9 @@ describe("reviewReport — 通读 → 逐章修 → 复查", () => {
       if (input.user.includes(REVIEW_PROMPT_MARKER)) {
         return JSON.stringify({
           issues: [
-            { chapter: "建设背景与必要性", anchor: "正文里没有这句", type: "重复", note: "编的" },
+            { chapter: "现状与问题", anchor: "正文里没有这句", type: "重复", note: "编的" },
             {
-              chapter: "建设背景与必要性",
+              chapter: "现状与问题",
               anchor: "这句话前后矛盾",
               type: "前后矛盾",
               note: "真的",

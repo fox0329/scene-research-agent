@@ -21,6 +21,7 @@ import {
   tableDef,
   stageDef,
   reportChapters,
+  REPORT_KINDS,
 } from "./tables.js";
 
 describe("表定义注册表 — 完整性", () => {
@@ -363,7 +364,7 @@ describe("章节映射与表定义一致", () => {
   it("所有章节映射声明的列都能在表里解到（含右栏补充列）——否则报告会静默丢列", () => {
     /* 防回归（变更表 #153）：装配层 `renderBlock` 按映射里显式写明的 key 取列（不按中栏/右栏过滤）。
        这条用例守住"映射里写的 key 一定存在于表定义"，任何一侧改坏都会在这里被点名。 */
-    for (const kind of ["solution", "construction"] as const) {
+    for (const kind of REPORT_KINDS) {
       for (const chapter of reportChapters(kind)) {
         for (const b of chapter.blocks) {
           // tableDef 对未知表号直接抛错——映射里写错表号这条用例立刻红

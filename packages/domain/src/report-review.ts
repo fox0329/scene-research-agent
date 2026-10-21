@@ -14,7 +14,12 @@
  */
 
 import { proseChars } from "./md-metrics.js";
-import { brokenProseHeads, firstProseParagraph, leadParagraphIssue } from "./prose-shape.js";
+import {
+  brokenProseHeads,
+  firstProseParagraph,
+  leadParagraphIssue,
+  LEAD_PARAGRAPH_SOFT_MAX_CHARS,
+} from "./prose-shape.js";
 import type { ReportViolation } from "./report-gate.js";
 
 /** 终检允许的问题条数上限（再多就不是"读者会卡住"，是风格偏好） */
@@ -218,7 +223,12 @@ export function duplicateSentences(markdown: string): string[] {
   return [...where.entries()].filter(([, chapters]) => chapters.size >= 2).map(([s]) => s);
 }
 
-/** 空节：`###` 小节下的正文不足 30 字（像占位，没真写内容） */
+/**
+ * 空节：`###` 小节下既没有正文、也没有表（像占位）
+ *
+ * 有表的节不算空——「主辅职责对照」「选型与配置」这类节的内容就在表里，要求它们再写 30 字
+ * 正文等于逼模型重复表格（变更表 #246 实跑噪音）。
+ */
 export function stubSections(markdown: string): string[] {
   const lines = markdown.split("\n");
   const out: string[] = [];
@@ -235,7 +245,8 @@ export function stubSections(markdown: string): string[] {
       body.push(lines[j]!);
       j += 1;
     }
-    if (proseChars(body.join("\n")) < STUB_SECTION_CHARS) out.push(m[1].trim());
+    const hasTable = body.some((line) => line.trim().startsWith("|"));
+    if (!hasTable && proseChars(body.join("\n")) < STUB_SECTION_CHARS) out.push(m[1].trim());
     i = j;
   }
   return out;
@@ -254,8 +265,8 @@ export function leadParagraphProblems(markdown: string): { chapter: string; reas
 /**
  * 整篇上的确定性终检（接进 `checkReport`，终检环节也会再跑一遍做最终断言）
  *
- * 断头段是**硬伤**（`#138` 的兜底理论上已经修掉了，这里是最后一道断言）；
- * 重复 / 空节 / 章首段不合规只提示，不阻断出稿。
+ * 断头段与**章首段不合规**是硬伤（`#247`：≤120 字、点明对象与处境、不以分号列举、
+ * 不以半句开头——全是确定性判据，没有审美成分）；重复 / 空节只提示，不阻断出稿。
  */
 export function deterministicReviewFindings(markdown: string): ReviewFinding[] {
   const out: ReviewFinding[] = [];
@@ -288,13 +299,30 @@ export function deterministicReviewFindings(markdown: string): ReviewFinding[] {
     });
   }
   const leads = leadParagraphProblems(markdown);
-  if (leads.length > 0) {
+  // 只超一点（121–132 字）按提示：读者感知不到 2 个字的差别，判硬伤只会制造噪音（#245 教训）
+  const overChars = (reason: string): number => Number(/首段 (\d+) 字/.exec(reason)?.[1] ?? 0);
+  const isSoftOnly = (reason: string): boolean => {
+    const n = overChars(reason);
+    return n > 120 && n <= LEAD_PARAGRAPH_SOFT_MAX_CHARS;
+  };
+  const hardLeads = leads.filter((l) => !isSoftOnly(l.reason));
+  const softLeads = leads.filter((l) => isSoftOnly(l.reason));
+  if (hardLeads.length > 0) {
+    out.push({
+      kind: "章首段不合规",
+      hard: true,
+      detail:
+        "这几章的第一段不像总纲（≤120 字、点明对象与当前处境、不以分号列举或半句开头）：" +
+        hardLeads.map((l) => `${l.chapter}（${l.reason}）`).join("、"),
+    });
+  }
+  if (softLeads.length > 0) {
     out.push({
       kind: "章首段不合规",
       hard: false,
       detail:
-        "这几章的第一段不像总纲（≤120 字、点明对象与当前处境、不以分号列举或半句开头）：" +
-        leads.map((l) => `${l.chapter}（${l.reason}）`).join("、"),
+        `这几章的第一段略超 120 字（≤${LEAD_PARAGRAPH_SOFT_MAX_CHARS} 字按提示，不改也算过）——能压就压一句：` +
+        softLeads.map((l) => `${l.chapter}（${l.reason}）`).join("、"),
     });
   }
   return out;

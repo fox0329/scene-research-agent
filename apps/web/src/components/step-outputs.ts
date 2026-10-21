@@ -10,7 +10,7 @@
  *  - 分析步：流程定义 `flowStep(n).tables` 里的表；**多子块表的每块各占一项**
  *    （与中栏 v1.26 的口径一致：架构块 / 接口块各自成"表"，列结构本来就不同）
  *  - 交付物步：不是表，而是**两份**客户端可读的正式交付物——「<场景>解决方案」
- *    与「<场景>建设工作方案」（变更表 #136 / #137）。这两份的 chip 与本步动作一起挂在
+ *    （变更表 #246 起只有这一份）。它的 chip 与本步动作一起挂在
  *    **流程轴第二行**（变更表 #148，作废 #147 的"移到中栏"）——由 `DeliveryPanel` 用
  *    `createPortal` 渲染进 `#delivery-row-slot`，所以 `railOutputsOf` 在这一步仍返回空
  *    （这一行的内容不从 `StepOutput` 来，而是面板自己的状态）。
@@ -35,26 +35,24 @@ export interface StepOutput {
   block: string | null;
 }
 
-/** 交付物这一步的输出物：`key` 直接是交付物口径（solution / construction） */
+/** 交付物这一步的输出物：`key` 直接是交付物口径（solution） */
 export interface DeliveryOutput extends StepOutput {
   key: DeliverableKind;
 }
 
 /**
- * 交付物这一步的输出物：**两份**（变更表 #137）
+ * 交付物这一步的输出物：**一份**（变更表 #246）
  *
  * 名字取自契约 `REPORT_KIND_LABEL`——它同时是报告的一级标题与文件名前缀，
  * 这里写死就会与导出出来的文件名对不上。
  */
 export const DELIVERY_OUTPUTS: readonly DeliveryOutput[] = [
   { key: "solution", label: REPORT_KIND_LABEL.solution, code: null, block: null },
-  { key: "construction", label: REPORT_KIND_LABEL.construction, code: null, block: null },
 ];
 
-/** 两份交付物的说明（流程轴第二行 chip 与面板共用）：各一句话说清这份讲什么 */
+/** 交付物的说明（流程轴第二行 chip 与面板共用）：一句话说清这份讲什么 */
 export const DELIVERY_OUTPUT_HINT: Record<string, string> = {
-  solution: "现状 / 场景与问题 / 方案 / 价值 / 下一步——给客户看的「怎么解决」",
-  construction: "建设背景 / 目标 / 内容 / 路径 / 安排 / 保障——给客户看的「怎么建」",
+  solution: "现状与问题 / 目标与思路 / 方案总体与建设内容 / 建设路径 / 工作安排 / 保障措施 / 下一步",
 };
 
 /** 表集 → 输出物清单（多子块表按块拆项，与中栏 v1.26 口径一致） */

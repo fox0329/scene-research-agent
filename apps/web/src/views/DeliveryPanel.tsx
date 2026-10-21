@@ -7,13 +7,11 @@
  *
  * 变更表 #136（用户定调）：「交付物不再分内部调研版和外部汇报版，直接用外部汇报版生成
  * 一个版本，就叫 XXX解决方案」。
- * 变更表 #137：交付物是**两份并列**——「<场景>解决方案」与「<场景>建设工作方案」。
- * 中栏一次只显示一份：看哪份由**流程轴第二行左边的两个 chip** 决定（`tab`），编辑与保存
- * 都只作用于当前这一份（切份即丢弃未保存的草稿，绝不把 A 的草稿写到 B）。
+ * 变更表 #246（用户定调）：交付物**合成一份**《<场景>解决方案》七章，建设工作方案下线，
+ * 不再区分汇报对象。流程轴第二行只剩一个 chip（`tab` 仍保留形状，多份口径时不用重构）。
  *
- * 变更表 #140（用户定调）：「重新生成报告 / 编辑 / 导出这几个按钮移到上面去」「解决方案 和
- * 工作方案放左边」——两份交付物的 chip 靠左、本步动作靠右合成一行（原来挂在流程轴第二行，
- * #148 又搬了回去）。
+ * 变更表 #140（用户定调）：「重新生成报告 / 编辑 / 导出这几个按钮移到上面去」——交付物的
+ * chip 靠左、本步动作靠右合成一行（原来挂在流程轴第二行，#148 又搬了回去）。
  *
  * 变更表 #148（用户两次纠正，**#147 作废**）：「不是把交付物放下来　是把解决方案　工作方案　
  * 重新生成报告　编辑　导出这些全部移上去　比如现在方案实现阶段所有的输出表格的名称不就直接在
@@ -72,9 +70,9 @@ function deliveryHint(key: DeliverableKind): string {
   return DELIVERY_OUTPUT_HINT[key] ?? deliveryLabel(key);
 }
 
-/** 流程轴 chip 的 key → 交付物口径；不是这两份（如表号）就不该切这里的份 */
+/** 流程轴 chip 的 key → 交付物口径；不是交付物（如表号）就不该切这里的份 */
 function asDeliverableKind(code: string | null | undefined): DeliverableKind | null {
-  return code === "solution" || code === "construction" ? code : null;
+  return code === "solution" ? code : null;
 }
 
 /**
@@ -248,7 +246,7 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
       return;
     }
     showToast(
-      `开始生成两份交付物：模型会读完前面所有表格，一次写出「${deliveryLabel("solution")}」与「${deliveryLabel("construction")}」（约几分钟）`,
+      `开始生成「${deliveryLabel("solution")}」：模型会读完前面所有表格，一次写出七章（约几分钟）`,
     );
     gen.start();
   }, [live, projectId, showToast, gen]);

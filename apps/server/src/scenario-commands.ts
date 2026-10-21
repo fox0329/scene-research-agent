@@ -8,7 +8,7 @@
  *
  * 命令清单（新增能力在此登记，同步更新 converse 提示词的操作手册）：
  * - advance_stage：跑指定（或当前）阶段分析
- * - export_deliverables：导出两份交付物（解决方案 + 建设工作方案）
+ * - export_deliverables：导出交付物（<场景>解决方案）
  * - dedupe_products：产品去重（同型号合并）
  * - clarify_scenario：发起场景澄清
  */
@@ -131,7 +131,7 @@ export async function executeAppCommand(
 
     case "export_deliverables": {
       const stageRows = db.stageDataRepo.list({ where: "scenario_id = ?", params: [scenario.id] });
-      // 变更表 #137：两份交付物（解决方案 + 建设工作方案），章节 ← 表映射各自装配
+      // 变更表 #246：一份交付物，章节 ← 表映射按七章装配
       const outDir = process.env["EXPORT_DIR"] ?? join(process.cwd(), "exports");
       mkdirSync(outDir, { recursive: true });
       const paths: string[] = [];

@@ -4,16 +4,15 @@
  * 报告正文改由模型撰写后，「不给决策建议」「对外材料不含内部信息」「章节齐全」这些
  * **不能再靠提示词自觉**——它们是产品铁律，必须落确定性层（AGENTS.md §三.5）。
  *
- * 变更表 #137：交付物从「只有一份解决方案」变成**两份并列**——`<场景>解决方案`
- * （solution，五章）与 `<场景>建设工作方案`（construction，七章）。两份口径的章节骨架
- * 完全不同，所以校验一律**按口径**进行：章节定义、章名别名、篇幅上下限都随 `kind` 变。
- * 章名别名按口径隔离匹配，避免「建设路径」被当成 solution 的「实施路径」这类串台。
+ * 变更表 #246（2026-10-21）：交付物**合成一份**《<场景>解决方案》（七章：现状与问题 /
+ * 建设目标与思路 / 方案总体与建设内容 / 建设路径 / 工作安排 / 保障措施 / 下一步）。
+ * 章节定义、别名、篇幅上下限都只有一套；`kind` 参数保留一个值，只为接口稳定。
  *
  * 判定分两档：
  *  - **硬伤**（缺章 / 缺少方案构件 / 对外泄漏内部信息 / 出现决策建议 / **断头段**）：必须重写，
  *    调用方会带着违规清单重试一次；仍不过就用确定性兜底版。
- *  - **存疑**（缺小节、手写章号、说明性套话、价值写成缺口清单、篇幅超上限、篇幅不足、重复、
- *    空节、章首段不合规）：只提示，不拦。
+ *  - **存疑**（缺小节、手写章号、说明性套话、篇幅超上限、篇幅不足、重复、空节）：
+ *    只提示，不拦。章首段不合规是硬伤（变更表 #247：判据是确定性的 ≤120 字、不列举、整句开头）。
  *
  * 变更表 #139：篇幅改由**总字数预算前置管住**——超总量时调用方"定向回炉最长的 1–2 章"（#139 补丁：
  * 触发条件是**全篇总量**，不是逐章超线；逐章预算只是提示词里的写作指引），这里只留提示，
@@ -45,7 +44,7 @@ export interface ReportViolation {
     | "出现决策建议"
     | "正文用了章号式编号"
     | "说明性套话"
-    | "价值写成缺口清单"
+
     | "说明书腔"
     | "篇幅超标"
     | "篇幅不足"
@@ -92,13 +91,13 @@ const EXTERNAL_LEAK_PATTERNS: readonly RegExp[] = [
 ];
 
 /**
- * 篇幅下限（变更表 #116；#137 起按口径给）
+ * 篇幅下限（变更表 #116 / #246）
  *
- * 建设工作方案七章、含成本与计划表，比解决方案长：客户两份定稿正文实测 4539 / 4707 字
- * （表格不计），解决方案定稿 2644 字——所以下限抬到 2000。
+ * 合成一份后是七章、含成本与计划表，客户两份定稿正文实测 4539 / 4707 字（表格不计），
+ * 合并稿下限按 2500 字给（低于它基本是没写全，但仍只提示、不阻断出稿）。
  */
-export function reportMinChars(kind: ReportKind): number {
-  return kind === "construction" ? 2000 : 1200;
+export function reportMinChars(_kind: ReportKind): number {
+  return 2500;
 }
 
 /**
@@ -107,10 +106,10 @@ export function reportMinChars(kind: ReportKind): number {
  * 用户定调（变更表 #139）：「文档生成可以设置一个**总的字数**，比如 2000–5000 字左右，
  * 没必要直接截断」——所以上限就是**总字数预算**这条线：超了先定向回炉最长的 1–2 章
  * （#139 补丁：总量驱动），仍超就保留、只提示；任何时候都不截断。
- * construction 由 6000 收到 5000（逐章写作指引之和 4550，留出章间浮动）。
+ * 变更表 #246 合并后只剩一档：2,500–6,000（逐章写作指引之和 5,750，留出章间浮动）。
  */
-export function reportMaxChars(kind: ReportKind): number {
-  return kind === "construction" ? 5000 : 4500;
+export function reportMaxChars(_kind: ReportKind): number {
+  return 6000;
 }
 
 /** 自我说明 / 免责声明这类"澄清文字"（用户要求全部删掉，变更表 #116） */
@@ -190,31 +189,11 @@ function markdownTableCount(markdown: string): number {
 const ARTIFACT_LABEL: Record<ReportArtifact, string> = {
   table: "自建表格",
   "numbered-connections": "带编号的连接关系",
-  "value-table": "价值表（价值/现在/采用后/怎么核）",
   principles: "设计原则",
 };
 
 /** 每种构件的存在性判据（宁可宽松，只拦"完全没长出来"） */
 const ARTIFACT_CHECKS: Record<ReportArtifact, (md: string, tables: number) => boolean> = {
-  // 对外价值表：要有一行表头同时含「价值 / 现在 / 采用后 / 怎么核」，表头之后至少 3 行价值
-  // （注意：价值表通常不是全文第一张表——现状章的分层表在前，所以按表头行去找）
-  "value-table": (md) => {
-    const lines = md.split("\n");
-    const cols = ["价值", "现在", "采用后", "怎么核"];
-    for (let i = 0; i < lines.length; i += 1) {
-      const head = lines[i] ?? "";
-      if (!head.trim().startsWith("|")) continue;
-      if (!cols.every((c) => head.includes(c))) continue;
-      let body = 0;
-      for (let j = i + 2; j < lines.length; j += 1) {
-        const l = lines[j] ?? "";
-        if (!l.trim().startsWith("|")) break;
-        body += 1;
-      }
-      if (body >= 3) return true;
-    }
-    return false;
-  },
   // 要的是"报告自己画了表"：架构 / 职责对照 / 选型 / 步骤这类，至少三张（全文计数，宁宽）
   table: (_md, tables) => tables >= 3,
   "numbered-connections": (md) =>
@@ -277,13 +256,6 @@ export function missingChapterArtifacts(
 }
 
 /** 切出某一章的正文（含标题行），用于按章做口吻检查 */
-function chapterSlice(markdown: string, kind: ReportKind, key: string): string {
-  const parts = markdown.split(/\n(?=## )/);
-  return (
-    parts.find((p) => matchChapterKey(kind, (p.match(/^## [^\n]*/) ?? [""])[0]) === key) ?? ""
-  );
-}
-
 /** 小节是否写了（认小节名，也认同义关键词） */
 function sectionWritten(sec: ReportSection, subs: readonly string[]): boolean {
   const name = chapterName(sec.title);
@@ -302,7 +274,7 @@ function missingSections(
     .map((sec) => `「${sec.title}」`);
 }
 
-/** 一份报告的确定性校验（按交付物口径：解决方案 / 建设工作方案） */
+/** 一份报告的确定性校验（交付物只有一份七章《解决方案》）#246 */
 export function checkReport(kind: ReportKind, markdown: string): ReportGateReport {
   const text = markdown.replace(/\s/g, "");
   const chapters = reportChapterHeadings(markdown);
@@ -365,29 +337,6 @@ export function checkReport(kind: ReportKind, markdown: string): ReportGateRepor
       kind: "正文用了章号式编号",
       hard: false,
       detail: `正文有 ${numbered.length} 处用「一、二、」当条目编号，与章节层级混淆；分条改用「价值一 / 第一 / 其一」`,
-    });
-  }
-
-  // 价值章的口吻：用户实测反馈——六条价值每条都挂一句「本客户基线未提供 / 待补」，
-  // 那不是价值，是缺口清单。逐条免责算硬伤（要重写），说明书句式只提示。
-  // construction 口径没有 value 章，这里自然空转（不需要特判）。
-  const valueChapter = chapterSlice(markdown, kind, "value");
-  const gapHits = valueChapter.match(/(?:待补|未提供|待补充|无法核实|需客户提供|尚需)/g) ?? [];
-  if (gapHits.length >= 3) {
-    violations.push({
-      kind: "价值写成缺口清单",
-      hard: true,
-      detail:
-        `「核心价值」章里有 ${gapHits.length} 处「待补 / 未提供 / 无法核实」——价值要写成"采用之后变成什么样"，` +
-        "缺口与核实状态最多在章末一句话交代，逐条缺口放「客观与风险」章",
-    });
-  }
-  const manualHits = valueChapter.match(/(?:度量口径是|口径是|本条信息|数据来源[：:])/g) ?? [];
-  if (manualHits.length >= 2) {
-    violations.push({
-      kind: "说明书腔",
-      hard: false,
-      detail: `「核心价值」章有 ${manualHits.length} 处说明书句式（如「度量口径是…」）——指标名放进「怎么核」括号里就够`,
     });
   }
 

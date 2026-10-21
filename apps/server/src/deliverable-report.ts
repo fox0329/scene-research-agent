@@ -8,7 +8,7 @@
  * 为什么校验在服务端而不只写在提示词里：不给建议、对外不带内部信息是产品铁律，
  * 靠模型自觉迟早会漏（AGENTS.md §三.5 高风险判定必须落确定性层）。
  *
- * 落盘位置：`data/deliverables/<场景 id>.<口径>.md`（`solution` / `construction`）。
+ * 落盘位置：`data/deliverables/<场景 id>.solution.md`（变更表 #246：只剩一份）。
  * 不新增数据库表（报告是产物，不是业务事实；事实仍在 33 张表里），导出到 `exports/`
  * 由 report-service 负责。
  *
@@ -44,9 +44,11 @@ import {
   missingChapterArtifacts,
   firstProseParagraph,
   leadParagraphIssue,
+  replaceFirstProseParagraph,
+  LEAD_PARAGRAPH_SOFT_MAX_CHARS,
   type ReportViolation,
 } from "@scene/domain";
-import { buildChapterPrompt, buildReportPrompt } from "./report-prompts.js";
+import { buildChapterPrompt, buildLeadFixPrompt, buildReportPrompt } from "./report-prompts.js";
 import { streamPrompt } from "./dsh-stream.js";
 import { reviewReport, type ReviewMode } from "./report-review.js";
 
@@ -61,7 +63,7 @@ export function deliverableDir(): string {
 }
 
 /**
- * 交付物文件路径（按口径一份：`<id>.solution.md` / `<id>.construction.md`）
+ * 交付物文件路径（`<id>.solution.md`）
  *
  * 历史遗留：`#136` 之前落的是 `<id>.internal.md` / `<id>.external.md`，读取时按
  * `legacyDeliverableReportPath` 兜底（只对 `solution`），已有项目的定稿不会因为改名而消失。
@@ -269,6 +271,49 @@ async function writeOneReport(args: {
       if (body.trim()) written.set(key, body);
     }
     if (r.error) error = r.error;
+  }
+
+  // 定向修章首段（变更表 #247）：超长的第一段只改那一段
+  if (error === undefined) {
+    const broken = digest
+      .map((d) => ({ d, para: firstProseParagraph(written.get(d.key) ?? "") }))
+      .map(({ d, para }) => ({ d, para, chars: proseChars(para), reason: leadParagraphIssue(para) }))
+      .filter(
+        ({ chars, reason }) =>
+          reason !== null && (chars > LEAD_PARAGRAPH_SOFT_MAX_CHARS || !reason.startsWith("首段")),
+      );
+    for (const { d, para, chars } of broken) {
+      push({ type: "progress", message: `${label}：${d.title} 的章首段 ${chars} 字太长了，单独改这一段…` });
+      const r = await streamPrompt({
+        dshClient,
+        session,
+        ...buildLeadFixPrompt({
+          scenarioName: scenario.name,
+          chapterTitle: d.title,
+          paragraph: para,
+          chars,
+        }),
+        label: `${label}（改章首段）`,
+        keepaliveMs,
+        push,
+      });
+      if (r.error) {
+        push({ type: "progress", message: `${label}：${d.title} 章首段没改成（${r.error}），保留原段` });
+        continue;
+      }
+      const candidate = r.text.trim().replace(/^["'「『]|["'」』]$/g, "").split(/\n{2,}/)[0]!.trim();
+      const reason = leadParagraphIssue(candidate);
+      const shortEnough = proseChars(candidate) <= 120;
+      if (candidate !== "" && shortEnough && reason === null) {
+        written.set(d.key, replaceFirstProseParagraph(written.get(d.key) ?? "", candidate));
+        push({ type: "progress", message: `${label}：${d.title} 章首段改成 ${proseChars(candidate)} 字` });
+      } else {
+        push({
+          type: "progress",
+          message: `${label}：${d.title} 章首段改稿不合格（${reason ?? "空段"}），保留原段`,
+        });
+      }
+    }
   }
 
   // 篇幅回炉（变更表 #139 补丁：**总量驱动**）
@@ -493,17 +538,16 @@ export function createDeliverableReportCommand(deps: DeliverableReportDeps) {
 
     const today = new Date().toISOString().slice(0, 10);
     const result: DeliverableReportResult = {
-      markdowns: { solution: "", construction: "" },
+      markdowns: { solution: "" },
       passed: true,
       sources: [],
       violations: [],
       retried: false,
       review: [],
     };
-    /** 一份写失败不该拖住另一份：失败信息攒起来，两份都跑完再报 */
     const failures: string[] = [];
     const summaries = new Map<ReportKind, KindSummary>();
-    /** 本次要跑哪几份（默认两份；给了 kinds 就只跑那几份） */
+    /** 只有一份（变更表 #246）；`kinds` 入参保留，传了也只跑 solution */
     const kindsToWrite = REPORT_KINDS.filter((k) => !input.kinds || input.kinds.includes(k));
 
     // 撰写是长跑（几分钟），进度必须边跑边出：事件进队列，主循环统一发出
@@ -637,7 +681,6 @@ export function createDeliverableReportCommand(deps: DeliverableReportDeps) {
       type: "done",
       report: {
         solution_chars: result.markdowns.solution.length,
-        construction_chars: result.markdowns.construction.length,
       },
       sources: result.sources,
       violations: result.violations,

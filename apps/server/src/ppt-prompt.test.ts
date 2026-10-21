@@ -133,7 +133,7 @@ describe("首次提示 —— 图标（#144）", () => {
 
 describe("重试提示 —— 点名到页", () => {
   const reason = "第 5 页只有 2 条（每页请写到 12 条以上）";
-  const retry = buildPptRetryPrompt("construction", "智慧会议室", reason);
+  const retry = buildPptRetryPrompt("solution", "智慧会议室", reason);
 
   it("把上一次卡在哪、要改什么逐字写进 system 与 user", () => {
     expect(retry.system).toContain(reason);
@@ -219,7 +219,7 @@ describe("优化评审提示 —— 只输出 JSON、不许删内容、点对点
   const outline: PptOutline = { pages: [] };
   const issues: PptIssue[] = [{ page: 3, code: "信息量不足", detail: "只有 6 条有效短句，少于 12 条" }];
   const review = buildPptOutlineReviewPrompt({
-    kind: "construction",
+    kind: "solution",
     scenarioName: "智慧会议室",
     outline,
     issues,

@@ -191,7 +191,7 @@ describe("leadParagraphProblems / deterministicReviewFindings — 章首段与�
     expect(problems[0]!.reason).toBe("以分号列举开头");
   });
 
-  it("整篇终检：断头段是硬伤，重复 / 空节 / 章首段是提示", () => {
+  it("整篇终检：断头段与章首段不合规是硬伤，重复 / 空节是提示", () => {
     const md = [
       "## 建设背景与必要性",
       "",
@@ -203,17 +203,24 @@ describe("leadParagraphProblems / deterministicReviewFindings — 章首段与�
       "",
       "短。",
       "",
-      "| 层次 | 组成 | 作用 |",
+      "### 主辅职责对照",
+      "",
+      "| 环节 | 谁主责 | 我方角色 |",
       "|---|---|---|",
-      "| 主链 | PLC | 控制闭环 |",
+      "| 采集 | 客户 | 配合 |",
     ].join("\n");
     const kinds = deterministicReviewFindings(md).map((f) => f.kind);
     expect(kinds).toContain("悬空残句");
     expect(kinds).toContain("章首段不合规");
     expect(kinds).toContain("空节");
+    // 有表的节不算空节（内容就在表里）
+    const stub = deterministicReviewFindings(md).find((f) => f.kind === "空节")!;
+    expect(stub.detail).toContain("总体架构");
+    expect(stub.detail).not.toContain("主辅职责对照");
     const broken = deterministicReviewFindings(md).find((f) => f.kind === "悬空残句")!;
     expect(broken.hard).toBe(true);
-    expect(deterministicReviewFindings(md).find((f) => f.kind === "章首段不合规")!.hard).toBe(false);
+    // 变更表 #247：章首段判据全是确定性的（≤120 字 / 不以分号列举 / 不以半句开头），升为硬伤
+    expect(deterministicReviewFindings(md).find((f) => f.kind === "章首段不合规")!.hard).toBe(true);
   });
 
   it("干净的整篇 → 一条确定性发现都没有", () => {
@@ -356,5 +363,25 @@ describe("fixAccepted — 终检改动的四道关卡", () => {
     expect(
       fixAccepted({ before, after: "   ", anchors, missingBefore: [], missingAfter: [] }).ok,
     ).toBe(false);
+  });
+});
+
+describe("章首段字数容忍线（变更表 #247 收尾）", () => {
+  const chapter = (lead: string): string =>
+    `## 现状与问题\n\n${lead}\n\n本段第二段正文。\n\n## 下一步\n\n短句开场，说清下一步。`;
+
+  it("121–132 字：只提示，不判硬伤（读者感知不到 2 个字的差别）", () => {
+    const lead = `${"本场景按环节说清谁在做什么".repeat(10)}。`; // 131 字：在容忍线内
+    const findings = deterministicReviewFindings(chapter(lead));
+    const hit = findings.filter((f) => f.kind === "章首段不合规");
+    expect(hit.length).toBe(1);
+    expect(hit[0]!.hard).toBe(false);
+    expect(hit[0]!.detail).toContain("略超 120 字");
+  });
+
+  it("超过 132 字：仍判硬伤", () => {
+    const lead = `${"本场景按环节说清谁在做什么".repeat(13)}。`; // 170 字：远超过线
+    const hit = deterministicReviewFindings(chapter(lead)).filter((f) => f.kind === "章首段不合规");
+    expect(hit.some((f) => f.hard)).toBe(true);
   });
 });

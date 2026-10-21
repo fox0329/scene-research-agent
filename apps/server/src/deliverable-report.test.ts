@@ -4,17 +4,15 @@
  * 真 SQLite（:memory:）+ mock dshClient：覆盖「模型撰写 → 确定性校验 → 逐章兜底 → 落盘」
  * 全链路，以及三条铁律（章节齐全 / 不给决策建议 / 不带内部信息痕迹）在模型不听话时的行为。
  *
- * 变更表 #137 起交付物**两份**：《<场景>解决方案》（落盘 `<场景 id>.solution.md`）与
- * 《<场景>建设工作方案》（`<场景 id>.construction.md`）——一趟生成各跑一遍，章节骨架不同，
- * 两份互不串；也不再有「内部调研报告 / 对外汇报材料」两份口径与「主要风险点」章、附录、术语表。
+ * 变更表 #246 起交付物**只有一份**《<场景>解决方案》（落盘 `<场景 id>.solution.md`，七章）；
+ * 不再有「内部调研报告 / 对外汇报材料 / 建设工作方案」这些口径，也没有「主要风险点」章、附录、术语表。
  */
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, readFileSync, writeFileSync, existsSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, readdirSync, writeFileSync, existsSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
-  REPORT_KINDS,
   reportChapterHeading,
   reportChapters,
   type ReportKind,
@@ -28,6 +26,7 @@ import {
   createDeliverableReportCommand,
   splitReportChapters,
 } from "./deliverable-report.js";
+import { LEAD_FIX_PROMPT_MARKER } from "./report-prompts.js";
 import {
   FIX_PROMPT_MARKER,
   REVIEW_PROMPT_MARKER,
@@ -48,15 +47,6 @@ function goodReport(kind: ReportKind): string {
           }
           if (arts.includes("numbered-connections")) lines.push("", "① 仪表 → 网关；② 网关 → 平台。");
           if (arts.includes("principles")) lines.push("", "原则一 不替代原系统；原则二 不参与联锁。");
-          if (arts.includes("value-table"))
-            lines.push(
-              "",
-              "| 价值 | 现在 | 采用后 | 怎么核 |",
-              "|---|---|---|---|",
-              "| 价值一：会前不再逐台开机 | 提前 5–10 分钟接线（行业 3~10 分钟） | 碰一碰拉起，秒级就绪 | 预约开始时间与设备就绪时间戳差 |",
-              "| 价值二：离场自动释放 | 占而不用与找不到房并存 | 自动释放、超时回收 | 按月比对预约与实际通电时段 |",
-              "| 价值三：故障改远程 | 靠报修与到场 | 远程监控与 OTA | 工单上门次数与修复时长同期对比 |",
-            );
           return lines.join("\n");
         })
         .join("\n\n");
@@ -68,27 +58,6 @@ function goodReport(kind: ReportKind): string {
     .join("\n\n");
 }
 
-/**
- * 提示词里出现的是哪一份的章节，就说明这一趟在写哪个口径
- *
- * 补写调用只列缺的那几章，所以按"只在建设工作方案里出现的章名"判口径。
- */
-const CONSTRUCTION_ONLY_MARKERS = [
-  "建设背景与必要性",
-  "建设目标与思路",
-  "建设内容",
-  "建设路径",
-  "工作安排",
-  "保障措施",
-  "监管协同展望",
-];
-
-function kindOfPrompt(input: { system: string; user: string }): ReportKind {
-  const text = `${input.system}\n${input.user}`;
-  return CONSTRUCTION_ONLY_MARKERS.some((m) => text.includes(m)) ? "construction" : "solution";
-}
-
-/** 按提示词内容决定返回什么（两份一起跑时靠它分辨口径） */
 /** 终检通读一律回"没问题"：这些用例只关心撰写链路，别让终检重试多打一次调用 */
 const REVIEW_CLEAN = '{"issues":[]}';
 
@@ -215,7 +184,7 @@ describe("chapterRewriteRejection — 回炉稿的采纳门槛（变更表 #139 
       .replace("一段说研判模型与结论口径，另一段说分级机制与管控频次的差异。", "说清研判与分级。");
 
   const check = (after: string): string | null =>
-    chapterRewriteRejection({ kind: "construction", key: "content", before, after });
+    chapterRewriteRejection({ kind: "solution", key: "solution", before, after });
 
   it("更短、构件不少、小节不少、章首段合格 → 采纳（返回 null）", () => {
     expect(check(shorter(before))).toBeNull();
@@ -244,23 +213,21 @@ describe("chapterRewriteRejection — 回炉稿的采纳门槛（变更表 #139 
   });
 });
 
-describe("交付物报告生成（两份：模型撰写 + 确定性校验）", () => {
-  it("模型写好两份 → 各落盘一份，全部来自模型，done 事件带两个字数", async () => {
-    const { client } = dshByPrompt((input) => goodReport(kindOfPrompt(input)));
+describe("交付物报告生成（一份：模型撰写 + 确定性校验）", () => {
+  it("模型写好一份 → 落盘一份，全部来自模型，done 带字数与门限结论", async () => {
+    const { client } = dshByPrompt(() => goodReport("solution"));
     const events = await run(h.db, client, h.scenarioId);
 
     const done = events.find((e) => e.type === "done")!;
     expect(done).toBeDefined();
     const sources = done["sources"] as { kind: string; key: string; from: string }[];
-    // 解决方案 4 章 + 建设工作方案 6 章，两份都来自模型（价值验证阶段删除后各少一章）
-    expect(sources).toHaveLength(10);
-    expect(sources.filter((s) => s.kind === "solution")).toHaveLength(4);
-    expect(sources.filter((s) => s.kind === "construction")).toHaveLength(6);
+    // 七章一份，各章都来自模型
+    expect(sources).toHaveLength(7);
+    expect(sources.every((s) => s.kind === "solution")).toBe(true);
     expect(sources.every((s) => s.from === "模型")).toBe(true);
 
-    const report = done["report"] as { solution_chars: number; construction_chars: number };
+    const report = done["report"] as { solution_chars: number };
     expect(report.solution_chars).toBeGreaterThan(0);
-    expect(report.construction_chars).toBeGreaterThan(0);
     // 变更表 #136 的旧字段与更早的双口径字段都退场
     expect(report).not.toHaveProperty("internal_chars");
     expect(report).not.toHaveProperty("external_chars");
@@ -270,20 +237,19 @@ describe("交付物报告生成（两份：模型撰写 + 确定性校验）", (
       .filter((e) => e.type === "progress")
       .map((e) => String(e["message"] ?? ""));
     expect(progress.some((m) => m.includes("正在撰写「智慧会议室解决方案」"))).toBe(true);
-    expect(progress.some((m) => m.includes("正在撰写「智慧会议室建设工作方案」"))).toBe(true);
-    expect(progress.some((m) => m.includes(`下限 ${reportMinChars("construction")} 字`))).toBe(true);
+    expect(progress.some((m) => m.includes(`下限 ${reportMinChars("solution")} 字`))).toBe(true);
 
     const solutionPath = join(h.dir, `${h.scenarioId}.solution.md`);
-    const constructionPath = join(h.dir, `${h.scenarioId}.construction.md`);
     expect(existsSync(solutionPath)).toBe(true);
-    expect(existsSync(constructionPath)).toBe(true);
+    // 变更表 #246：建设工作方案那份文件不再落盘
+    expect(existsSync(join(h.dir, `${h.scenarioId}.construction.md`))).toBe(false);
     // 变更表 #136 之前的两份口径文件不再落盘
     expect(existsSync(join(h.dir, `${h.scenarioId}.internal.md`))).toBe(false);
     expect(existsSync(join(h.dir, `${h.scenarioId}.external.md`))).toBe(false);
 
     const solution = readFileSync(solutionPath, "utf8");
-    expect(solution).toContain("## 现状");
-    expect(solution).toContain("## 方案");
+    expect(solution).toContain("## 现状与问题");
+    expect(solution).toContain("## 方案总体与建设内容");
     expect(solution).toContain("## 下一步");
     // 章标题不带手写序号（编号交给 Word 自动编号）
     expect(solution).not.toContain("## 一、");
@@ -291,18 +257,10 @@ describe("交付物报告生成（两份：模型撰写 + 确定性校验）", (
     expect(solution).not.toContain("主要风险点");
     expect(solution).not.toContain("附录");
     expect(solution).not.toContain("术语表");
-    // 两份互不串：建设工作方案的章不许跑进解决方案
-    expect(solution).not.toContain("## 建设路径");
-    expect(solution).not.toContain("## 保障措施");
-
-    const construction = readFileSync(constructionPath, "utf8");
-    for (const c of reportChapters("construction")) {
-      expect(construction).toContain(`## ${reportChapterHeading("construction", c.key)}`);
+    // 七章齐（变更表 #246）
+    for (const c of reportChapters("solution")) {
+      expect(solution).toContain(`## ${reportChapterHeading("solution", c.key)}`);
     }
-    // 解决方案的章也不许跑进建设工作方案
-    expect(construction).not.toContain("## 现状");
-    expect(construction).not.toContain("## 下一步");
-    expect(construction).not.toContain("主要风险点");
   });
 
   /** 往某章末尾追加 n 段正文（不改首段，所以"章首段是总纲"这条不会被自己踩到） */
@@ -311,7 +269,7 @@ describe("交付物报告生成（两份：模型撰写 + 确定性校验）", (
 
   it("全篇总量在上限内 → 一章都不回炉（逐章预算只是写作指引）", async () => {
     const { client, calls } = dshByPrompt((input) =>
-      input.user.includes(REVIEW_PROMPT_MARKER) ? REVIEW_CLEAN : goodReport(kindOfPrompt(input)),
+      input.user.includes(REVIEW_PROMPT_MARKER) ? REVIEW_CLEAN : goodReport("solution"),
     );
     const events = await run(h.db, client, h.scenarioId, ["solution"]);
 
@@ -319,7 +277,7 @@ describe("交付物报告生成（两份：模型撰写 + 确定性校验）", (
     expect(calls.filter((c) => c.includes("本章正文预算"))).toEqual([]);
     expect(calls).toHaveLength(2);
     const progress = events.filter((e) => e.type === "progress").map((e) => String(e["message"] ?? ""));
-    expect(progress.some((m) => m.includes("在总上限 4500 字内，不回炉"))).toBe(true);
+    expect(progress.some((m) => m.includes("在总上限 6000 字内，不回炉"))).toBe(true);
     expect(progress.some((m) => /回炉最长的|回炉后|已回炉|回炉重写/.test(m))).toBe(false);
   });
 
@@ -328,7 +286,6 @@ describe("交付物报告生成（两份：模型撰写 + 确定性校验）", (
     const fat = pad(goodReport("solution"), "现状特征与提升空间的归纳正文。", 400);
     const { client, calls } = dshByPrompt((input) => {
       if (input.user.includes(REVIEW_PROMPT_MARKER)) return REVIEW_CLEAN;
-      if (kindOfPrompt(input) !== "solution") return goodReport("construction");
       if (input.user.includes("本章正文预算")) return goodReport("solution"); // 回炉：达标稿
       return fat;
     });
@@ -337,12 +294,12 @@ describe("交付物报告生成（两份：模型撰写 + 确定性校验）", (
     const rewrites = calls.filter((c) => c.includes("本章正文预算"));
     expect(rewrites).toHaveLength(1); // 够用就停手：不为了"凑满两章"多跑一次
     expect(rewrites[0]).toContain("现状"); // 挑的是最长的章
-    expect(rewrites[0]).toContain("本章正文预算不超过 1000 字");
+    expect(rewrites[0]).toContain("本章正文预算不超过 1100 字");
     expect(rewrites[0]).toContain("第一段是本章总纲");
 
     const progress = events.filter((e) => e.type === "progress").map((e) => String(e["message"] ?? ""));
-    expect(progress.some((m) => m.includes("超总上限 4500 字，回炉最长的 2 章"))).toBe(true);
-    expect(progress.some((m) => m.includes("回炉后正文") && m.includes("已在总上限 4500 字内"))).toBe(true);
+    expect(progress.some((m) => m.includes("超总上限 6000 字，回炉最长的 2 章"))).toBe(true);
+    expect(progress.some((m) => m.includes("回炉后正文") && m.includes("已在总上限 6000 字内"))).toBe(true);
 
     const saved = readFileSync(join(h.dir, `${h.scenarioId}.solution.md`), "utf8");
     expect(saved).not.toContain("补充说明现场情况与处置口径。");
@@ -364,7 +321,6 @@ describe("交付物报告生成（两份：模型撰写 + 确定性校验）", (
     let rewriteNo = 0;
     const { client, calls } = dshByPrompt((input) => {
       if (input.user.includes(REVIEW_PROMPT_MARKER)) return REVIEW_CLEAN;
-      if (kindOfPrompt(input) !== "solution") return goodReport("construction");
       if (input.user.includes("本章正文预算")) {
         rewriteNo += 1;
         if (rewriteNo === 1) expect(input.user).toContain("现状"); // 降序：先最长的
@@ -376,7 +332,7 @@ describe("交付物报告生成（两份：模型撰写 + 确定性校验）", (
 
     expect(calls.filter((c) => c.includes("本章正文预算"))).toHaveLength(2); // 上限内就不再动第二章
     const progress = events.filter((e) => e.type === "progress").map((e) => String(e["message"] ?? ""));
-    expect(progress.some((m) => /超总上限 4500（已回炉 2 章），保留正文不截断/.test(m))).toBe(true);
+    expect(progress.some((m) => /超总上限 6000（已回炉 2 章），保留正文不截断/.test(m))).toBe(true);
 
     // 采纳的是更短的那版，但一个字都没再删
     const saved = readFileSync(join(h.dir, `${h.scenarioId}.solution.md`), "utf8");
@@ -400,7 +356,6 @@ describe("交付物报告生成（两份：模型撰写 + 确定性校验）", (
     let rewriteNo = 0;
     const { client } = dshByPrompt((input) => {
       if (input.user.includes(REVIEW_PROMPT_MARKER)) return REVIEW_CLEAN;
-      if (kindOfPrompt(input) !== "solution") return goodReport("construction");
       if (input.user.includes("本章正文预算")) {
         rewriteNo += 1;
         return rewriteNo === 1 ? longer : dropped;
@@ -422,7 +377,6 @@ describe("交付物报告生成（两份：模型撰写 + 确定性校验）", (
     const fat = pad(goodReport("solution"), "现状特征与提升空间的归纳正文。", 400);
     const { client } = dshByPrompt((input) => {
       if (input.user.includes(REVIEW_PROMPT_MARKER)) return REVIEW_CLEAN;
-      if (kindOfPrompt(input) !== "solution") return goodReport("construction");
       if (input.user.includes("本章正文预算")) throw new Error("回炉这一次断连了");
       return fat;
     });
@@ -436,19 +390,19 @@ describe("交付物报告生成（两份：模型撰写 + 确定性校验）", (
   });
 
   it("终检：通读发现 1 处并改掉 → 落盘里那处已改、其它章逐字不变、done 带终检提示数", async () => {
-    const kind: ReportKind = "construction";
+    const kind: ReportKind = "solution";
     const before = goodReport(kind);
     // 在「建设内容」章开头插一句读不通的话（它成为该章首段，正好是终检要改的段落）
     const withProblem = before.replace(
-      "## 建设内容\n\n",
-      "## 建设内容\n\n这句前后矛盾的话要改掉，它和上一段说的是两回事。\n\n",
+      "## 方案总体与建设内容\n\n",
+      "## 方案总体与建设内容\n\n这句前后矛盾的话要改掉，它和上一段说的是两回事。\n\n",
     );
     // 章与章之间装配层会插 `---` 分隔线；比对章正文时把它剥掉
     const chapterOf = (md: string, title: string): string =>
       (md.split(/\n(?=## )/).find((p) => p.startsWith(`## ${title}`)) ?? "")
         .replace(/\n+---\s*$/, "")
         .trim();
-    const fixedChapter = chapterOf(withProblem, "建设内容").replace(
+    const fixedChapter = chapterOf(withProblem, "方案总体与建设内容").replace(
       "这句前后矛盾的话要改掉，它和上一段说的是两回事。",
       "建设内容按感知、平台、应用三层展开，逐层说明组件与职责。",
     );
@@ -458,7 +412,7 @@ describe("交付物报告生成（两份：模型撰写 + 确定性校验）", (
         return JSON.stringify({
           issues: [
             {
-              chapter: "建设内容",
+              chapter: "方案总体与建设内容",
               anchor: "这句前后矛盾的话要改掉",
               type: "前后矛盾",
               note: "与上一段冲突",
@@ -470,17 +424,17 @@ describe("交付物报告生成（两份：模型撰写 + 确定性校验）", (
       if (input.user.includes(VERIFY_PROMPT_MARKER)) return '{"unresolved":[]}';
       return withProblem;
     });
-    const events = await run(h.db, client, h.scenarioId, ["construction"]);
+    const events = await run(h.db, client, h.scenarioId, ["solution"]);
 
     // 三次终检调用：通读 / 改章 / 复查
     expect(calls.filter((p) => p.includes(REVIEW_PROMPT_MARKER))).toHaveLength(1);
     expect(calls.filter((p) => p.includes(FIX_PROMPT_MARKER))).toHaveLength(1);
 
-    const saved = readFileSync(join(h.dir, `${h.scenarioId}.construction.md`), "utf8");
+    const saved = readFileSync(join(h.dir, `${h.scenarioId}.solution.md`), "utf8");
     expect(saved).toContain("建设内容按感知、平台、应用三层展开，逐层说明组件与职责。");
     expect(saved).not.toContain("这句前后矛盾的话要改掉");
     // 没被点名的段落与章节逐字不变
-    for (const title of ["建设背景与必要性", "建设路径", "保障措施"]) {
+    for (const title of ["现状与问题", "建设路径", "保障措施"]) {
       expect(chapterOf(saved, title), title).toBe(chapterOf(before, title));
     }
 
@@ -489,39 +443,49 @@ describe("交付物报告生成（两份：模型撰写 + 确定性校验）", (
 
     const done = events.find((e) => e.type === "done")!;
     expect(done["review"]).toEqual([
-      { kind: "construction", issues: 1, fixed: 1, remaining: 0 },
+      { kind: "solution", issues: 1, fixed: 1, remaining: 0 },
     ]);
   });
 
-  it("同一条校验提示只报一次：初稿校验与终检后校验的确定性判据不重复计数", async () => {
-    const kind: ReportKind = "construction";
-    // 把「建设内容」章首段灌成 >120 字的长段：checkReport 的确定性判据（章首段不合规）
-    // 初稿与终检后各会命中一次，去重后只该剩一条
-    const longLead = "本段刻意写得很长，用来触发章首段不合规的确定性判据。" + "内容".repeat(70) + "。";
-    const withProblem = goodReport(kind).replace("## 建设内容\n\n", `## 建设内容\n\n${longLead}\n\n`);
+  it("章首段定向修复：只改那一段，改好后不再报硬伤", async () => {
+    const kind: ReportKind = "solution";
+    // 一句到底的长段（中间没有句号，所以装配层断不开），只能靠定向修复压短
+    const longLead = `本段刻意写成一句话来触发章首段不合规的硬伤判据，${"内容".repeat(80)}。`;
+    const withProblem = goodReport(kind).replace(
+      "## 方案总体与建设内容\n\n",
+      `## 方案总体与建设内容\n\n${longLead}\n\n`,
+    );
+    const fixedLead = "本方案针对车间设备联网，先把采集做扎实再谈平台编排。";
 
-    const { client } = dshByPrompt((input) => (input.user.includes("## 建设内容") ? withProblem : goodReport(kind)));
-    // 只跑建设方案这一份：两份各有一条同名提示是正常的，这里查的是"同一份里不许重复"
+    const { client, calls } = dshByPrompt((input) => {
+      if (input.user.includes(REVIEW_PROMPT_MARKER)) return REVIEW_CLEAN;
+      if (input.user.includes(LEAD_FIX_PROMPT_MARKER)) return fixedLead;
+      return withProblem;
+    });
     const events = await run(h.db, client, h.scenarioId, [kind]);
     const done = events.find((e) => e.type === "done")!;
+    // 整篇写 2 次（有硬伤重写）+ 定向修章首段 1 次 + 终检通读 1 次
+    expect(calls.length).toBe(4);
+    // 定稿里那一章的第一段就是改后的这段，其余章不被动过
+    const saved = readFileSync(join(h.dir, `${h.scenarioId}.solution.md`), "utf8");
+    expect(saved).toContain(fixedLead);
+    expect(saved).not.toContain("本段刻意写成一句话");
     const violations = done["violations"] as { kind: string; detail: string }[];
-    const lead = violations.filter((v) => v.kind === "章首段不合规");
-    expect(lead).toHaveLength(1);
+    expect(violations.filter((v) => v.kind === "章首段不合规")).toEqual([]);
+    // 同一判据不重复计数
     expect(new Set(violations.map((v) => `${v.kind}|${v.detail}`)).size).toBe(violations.length);
   });
 
-  it("两份交付物都不装内部附录，也不出现内部表号与内部口径的章", async () => {
-    const { client } = dshByPrompt((input) => goodReport(kindOfPrompt(input)));
+  it("交付物不装内部附录，也不出现内部表号与内部口径的章", async () => {
+    const { client } = dshByPrompt(() => goodReport("solution"));
     await run(h.db, client, h.scenarioId);
-    for (const kind of REPORT_KINDS) {
-      const saved = readFileSync(join(h.dir, `${h.scenarioId}.${kind}.md`), "utf8");
-      expect(saved, kind).not.toContain("来源索引");
-      expect(saved, kind).not.toContain("信息覆盖概览");
-      expect(saved, kind).not.toContain("附录");
-      expect(saved, kind).not.toContain("术语表");
-      expect(saved, kind).not.toContain("主要风险点");
-      expect(saved, kind).not.toMatch(/表\d+-\d+/);
-    }
+    const saved = readFileSync(join(h.dir, `${h.scenarioId}.solution.md`), "utf8");
+    expect(saved).not.toContain("来源索引");
+    expect(saved).not.toContain("信息覆盖概览");
+    expect(saved).not.toContain("附录");
+    expect(saved).not.toContain("术语表");
+    expect(saved).not.toContain("主要风险点");
+    expect(saved).not.toMatch(/表\d+-\d+/);
   });
 
   it("模型漏章 + 写决策建议 → 重写一次；仍不达标则该章用要点版兜底", async () => {
@@ -531,63 +495,51 @@ describe("交付物报告生成（两份：模型撰写 + 确定性校验）", (
     );
     const events = await run(h.db, client, h.scenarioId);
 
-    // 每个口径：整篇写 2 次（重写）+ 缺章补写 1 次 + 终检通读 1 次 = 4 次；两份共 8 次
-    expect(calls.length).toBe(8);
+    // 整篇写 2 次（重写）+ 缺章补写 1 次 + 终检通读 1 次 = 4 次
+    expect(calls.length).toBe(4);
     expect(calls.some((c) => c.includes("只写下面这几节"))).toBe(true);
     // 第二次整篇调用带上一版的问题清单
     expect(calls[1]).toContain("上一次的问题");
 
     const done = events.find((e) => e.type === "done")!;
     expect((done["violations"] as { hard: boolean }[]).some((v) => v.hard)).toBe(true);
-    for (const kind of REPORT_KINDS) {
-      const saved = readFileSync(join(h.dir, `${h.scenarioId}.${kind}.md`), "utf8");
-      // 缺的章由确定性要点版补上：章节齐全
-      for (const c of reportChapters(kind)) {
-        expect(saved, `${kind}.${c.key}`).toContain(`## ${reportChapterHeading(kind, c.key)}`);
-      }
+    const saved = readFileSync(join(h.dir, `${h.scenarioId}.solution.md`), "utf8");
+    // 缺的章由确定性要点版补上：章节齐全
+    for (const c of reportChapters("solution")) {
+      expect(saved, c.key).toContain(`## ${reportChapterHeading("solution", c.key)}`);
     }
   });
 
-  it("交付物泄漏内部信息 → 硬伤，触发重写；重写合格即通过（两份各自重写一次）", async () => {
-    const seen = new Map<ReportKind, number>();
+  it("交付物泄漏内部信息 → 硬伤，触发重写；重写合格即通过", async () => {
+    let n = 0;
     const { client, calls } = dshByPrompt((input) => {
       if (input.user.includes(REVIEW_PROMPT_MARKER)) return REVIEW_CLEAN;
-      const kind = kindOfPrompt(input);
-      const n = (seen.get(kind) ?? 0) + 1;
-      seen.set(kind, n);
-      const good = goodReport(kind);
+      n += 1;
+      const good = goodReport("solution");
       // 第一次带内部痕迹，第二次是干净版
       return n === 1 ? good.replace(/^(## .+)$/m, "$1\n\n见 表3-8，来源：客户台账。") : good;
     });
     const events = await run(h.db, client, h.scenarioId);
-    // 泄漏被拦下重写一次（每口径 2 次调用），干净版再走 1 次终检：两份共 6 次
-    expect(calls.length).toBe(6);
+    // 泄漏被拦下重写一次（2 次调用），干净版再走 1 次终检：共 3 次
+    expect(calls.length).toBe(3);
     const done = events.find((e) => e.type === "done")!;
     expect((done["violations"] as { hard: boolean }[]).filter((v) => v.hard)).toEqual([]);
-    for (const kind of REPORT_KINDS) {
-      expect(readFileSync(join(h.dir, `${h.scenarioId}.${kind}.md`), "utf8"), kind).not.toMatch(
-        /表\d+-\d+/,
-      );
-    }
+    expect(readFileSync(join(h.dir, `${h.scenarioId}.solution.md`), "utf8")).not.toMatch(/表\d+-\d+/);
   });
 
-  it("只跑其中一份（kinds）：重跑建设工作方案不动用户手改过的解决方案", async () => {
-    const sample = "# 用户自己改过的解决方案\n\n## 现状\n\n这段是用户手写的，不许被覆盖。";
+  it("旧稿被手改过 → 不覆盖，新版本另存「应用版」", async () => {
+    const sample = "# 用户自己改过的解决方案\n\n## 现状与问题\n\n这段是用户手写的。";
     writeFileSync(join(h.dir, `${h.scenarioId}.solution.md`), sample, "utf8");
 
-    const { client, calls } = dshOf([goodReport("construction")]);
-    const events = await run(h.db, client, h.scenarioId, ["construction"]);
+    const { client } = dshOf([goodReport("solution")]);
+    await run(h.db, client, h.scenarioId, ["solution"]);
 
-    // 只跑了建设方案这一份：模型只被叫了建设方案该有的次数，解决方案一个字节没动
-    expect(calls.length).toBeGreaterThan(0);
+    // 手改稿一字不动
     expect(readFileSync(join(h.dir, `${h.scenarioId}.solution.md`), "utf8")).toBe(sample);
-    const construction = readFileSync(join(h.dir, `${h.scenarioId}.construction.md`), "utf8");
-    expect(construction).toContain("## 建设内容");
-
-    const done = events.find((e) => e.type === "done")!;
-    const report = done["report"] as Record<string, number>;
-    expect(report["construction_chars"]).toBeGreaterThan(0);
-    expect(report["solution_chars"]).toBe(0);
+    // 新版本另存，名字带「应用版」，供用户比对
+    const aside = readdirSync(h.dir).filter((f) => f.includes("应用版"));
+    expect(aside).toHaveLength(1);
+    expect(readFileSync(join(h.dir, aside[0]!), "utf8")).toContain("## 方案总体与建设内容");
   });
 
   it("还没有任何表格数据 → 直接报错，不去调用模型", async () => {
@@ -605,16 +557,14 @@ describe("交付物报告生成（两份：模型撰写 + 确定性校验）", (
   });
 });
 
-describe("报告服务：两份各自的正式版优先，未生成则留空（变更表 #174）", () => {
-  it("未生成时两份都是空的（generated=false、chars=0），生成后各自读自己的正式版", async () => {
+describe("报告服务：正式版优先，未生成则留空（变更表 #174 / #246）", () => {
+  it("未生成时是空的（generated=false、chars=0），生成后读正式版", async () => {
     const db = h.db;
     const scenario = db.scenarioRepo.getById(h.scenarioId)!;
     const before = getReports(db, scenario);
-    expect(Object.keys(before).sort()).toEqual(["construction", "solution"]);
+    expect(Object.keys(before)).toEqual(["solution"]);
     expect(before.solution.generated).toBe(false);
-    expect(before.construction.generated).toBe(false);
     expect(before.solution.generated_at).toBeNull();
-    expect(before.construction.generated_at).toBeNull();
     /**
      * 用户定调 2026-10-09：「价值验证完成后 交付物没有开始的时候不需要填充内容」
      *
@@ -622,49 +572,46 @@ describe("报告服务：两份各自的正式版优先，未生成则留空（�
      * 就是空的，界面只留「生成报告」入口。要点版只在生成过程中按章兜底。
      */
     expect(before.solution.markdown).toBe("");
-    expect(before.construction.markdown).toBe("");
     expect(before.solution.chars).toBe(0);
-    expect(before.construction.chars).toBe(0);
 
-    const { client } = dshByPrompt((input) => goodReport(kindOfPrompt(input)));
+    const { client } = dshByPrompt(() => goodReport("solution"));
     await run(db, client, h.scenarioId);
     const after = getReports(db, scenario);
     expect(after.solution.generated).toBe(true);
-    expect(after.construction.generated).toBe(true);
     expect(after.solution.generated_at).toBeTruthy();
-    expect(after.construction.generated_at).toBeTruthy();
-    // 读到的是模型撰写的正式版（各自的 `<id>.<kind>.md`），不是即时推导的要点版
-    expect(after.solution.markdown).toContain("## 方案");
-    expect(getReport(db, scenario, "construction").markdown).toContain("## 建设路径");
-    expect(getReport(db, scenario, "construction").kind).toBe("construction");
+    // 读到的是模型撰写的正式版（`<id>.solution.md`），不是即时推导的要点版
+    expect(after.solution.markdown).toContain("## 方案总体与建设内容");
+    expect(getReport(db, scenario, "solution").kind).toBe("solution");
   });
 });
 
 describe("splitReportChapters：模型输出的分章解析", () => {
   it("按 ## 章名切分并忽略序号差异", () => {
-    const map = splitReportChapters("## 一、现状\n甲\n## 三、方案\n乙", "solution");
+    const map = splitReportChapters(
+      "## 一、现状与问题\n甲\n## 三、方案总体与建设内容\n乙",
+      "solution",
+    );
     expect(map.get("status")).toBe("甲");
     expect(map.get("solution")).toBe("乙");
   });
 
   it("章名前有杂音、章内出现 ### 小标题都不影响切分", () => {
-    const map = splitReportChapters("## 二、场景与问题\n### 小节\n内容", "solution");
-    expect(map.get("problems")).toContain("### 小节");
+    const map = splitReportChapters("## 二、现状与问题\n### 小节\n内容", "solution");
+    expect(map.get("status")).toContain("### 小节");
   });
 
-  it("章名匹配只在本口径自己的章里找（两份不互相误判）", () => {
-    // 建设工作方案的章名，在解决方案口径里认不出来
-    expect(splitReportChapters("## 建设路径\n甲", "construction").get("path")).toBe("甲");
-    expect(splitReportChapters("## 建设路径\n甲", "solution").size).toBe(0);
-    // 反之亦然
-    expect(splitReportChapters("## 场景与问题\n乙", "solution").get("problems")).toBe("乙");
-    expect(splitReportChapters("## 场景与问题\n乙", "construction").size).toBe(0);
+  it("认不出的章名不硬塞进任何一章（分章解析只认契约里的章名与别名）", () => {
+    expect(splitReportChapters("## 建设路径\n甲", "solution").get("path")).toBe("甲");
+    expect(splitReportChapters("## 随便写点什么\n甲", "solution").size).toBe(0);
   });
 });
 
 describe("splitReportChapters：同义章名与补写兜底", () => {
-  it("模型写「场景概述」「解决方案」这类同义标题也认得出是哪一章", () => {
-    const map = splitReportChapters("## 一、场景概述\n内容甲\n## 三、解决方案\n内容乙", "solution");
+  it("模型写「场景概述」「方案总体」这类同义标题也认得出是哪一章", () => {
+    const map = splitReportChapters(
+      "## 一、场景概述\n内容甲\n## 三、方案总体\n内容乙",
+      "solution",
+    );
     expect(map.get("status")).toBe("内容甲");
     expect(map.get("solution")).toBe("内容乙");
   });

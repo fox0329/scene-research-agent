@@ -149,6 +149,15 @@ export function firstProseParagraph(markdown: string): string {
 /** 章首段（本章总纲）的字数上限 */
 export const LEAD_PARAGRAPH_MAX_CHARS = 120;
 
+/**
+ * 章首段「超一点」的容忍线（120 × 1.1）
+ *
+ * 变更表 #247 定的是「超 120 字算硬伤」，但实跑出现过 122 字被判硬伤、整份不算通过——
+ * 读者感知不到 2 个字的差别，这种判罚只会制造噪音（#245 的教训）。所以：121–132 字按**提示**，
+ * 超过 132 字才升硬伤；提示词里仍写 120，不放松写作要求。
+ */
+export const LEAD_PARAGRAPH_SOFT_MAX_CHARS = 132;
+
 /** 段落里的第一个分句边界（用于判"一开口就是分号列举"） */
 const FIRST_CLAUSE = /^([^，。！？；：]*)([，。！？；：])/;
 
@@ -173,6 +182,67 @@ export function leadParagraphIssue(paragraph: string): string | null {
   // 分号列举开头：第一个分句一收尾就是「；」——一开口就是并列项，不是一句自足的判断
   if (FIRST_CLAUSE.exec(t)?.[2] === "；") return "以分号列举开头";
   return null;
+}
+
+/**
+ * 章首段超长就断成两段（确定性、不动一个字）
+ *
+ * 用户定调（变更表 #247）：「章首段超 120 字」是硬伤。模型经常一段写完「对象 + 处境 + 三件事」，
+ * 硬伤随之亮起，而它能做的补救又常是删内容（更糟）。这里只做一件事：**在句号处插入一个空行**，
+ * 把超出的部分挪到第二段，文字一个字不改。这样「第一段是总纲」与「内容不丢」同时成立。
+ *
+ * 只在第一个句号之后切（读者读到的一句仍然是完整句子）；切不出来（整段就一句、或首句本身就超长）
+ * 就原样返回，让硬伤如实报出来——不猜、不删。
+ *
+ * @returns 断段后的 markdown 与是否断过（未断即原样返回）
+ */
+export function splitOverlongLead(markdown: string): { markdown: string; split: boolean } {
+  const para = firstProseParagraph(markdown);
+  if (para === "" || proseChars(para) <= LEAD_PARAGRAPH_MAX_CHARS) {
+    return { markdown, split: false };
+  }
+  const sentences: string[] = [];
+  let start = 0;
+  for (let i = 0; i < para.length; i += 1) {
+    if (!"。！？".includes(para[i]!)) continue;
+    sentences.push(para.slice(start, i + 1));
+    start = i + 1;
+  }
+  const tail = para.slice(start);
+  if (sentences.length === 0) return { markdown, split: false };
+  // 取「第一段尽量完整但不超过上限」的那个句号位置
+  let head = "";
+  let rest: string[] = [];
+  for (let n = 1; n <= sentences.length; n += 1) {
+    const candidate = sentences.slice(0, n).join("");
+    if (proseChars(candidate) > LEAD_PARAGRAPH_MAX_CHARS) break;
+    head = candidate;
+    rest = [...sentences.slice(n), tail];
+  }
+  const body = rest.join("").trim();
+  if (head === "" || body === "") return { markdown, split: false };
+  const at = markdown.indexOf(para);
+  if (at < 0) return { markdown, split: false };
+  const replaced = `${head.trim()}\n\n${body}`;
+  return {
+    markdown: `${markdown.slice(0, at)}${replaced}${markdown.slice(at + para.length)}`,
+    split: true,
+  };
+}
+
+/**
+ * 换掉第一段正文（其余一字不动）
+ *
+ * 定向修章首段时用：模型只给一段替换文字，这里把它放回原位，前后文（小节标题、表格）原样保留。
+ * 找不到原段落就原样返回。
+ */
+export function replaceFirstProseParagraph(markdown: string, text: string): string {
+  const para = firstProseParagraph(markdown);
+  const next = text.trim();
+  if (para === "" || next === "") return markdown;
+  const at = markdown.indexOf(para);
+  if (at < 0) return markdown;
+  return `${markdown.slice(0, at)}${next}${markdown.slice(at + para.length)}`;
 }
 
 /** 按空行分段（每段是若干非空行；空行不算段） */

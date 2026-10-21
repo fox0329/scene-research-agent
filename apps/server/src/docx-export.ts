@@ -25,7 +25,7 @@ export interface DocxExportResult {
   notice?: string;
 }
 
-/** 把两份交付物都写成 Word 落到 `dir` */
+/** 把交付物写成 Word 落到 `dir` */
 export async function exportReportDocx(
   db: DbInstance,
   scenario: Scenario,

@@ -393,7 +393,7 @@ export function registerUiRoutes(app: FastifyInstance, deps: UiRoutesDeps): void
     await streamEvents(hub, runId, request, reply, lastEventId);
   });
 
-  // ── 交付物：模型撰写报告 + 两份交付物导出（变更表 #112 / #137） ────────
+  // ── 交付物：模型撰写报告 + 导出（变更表 #112 / #246） ──────────────
   /**
    * 取两份报告正文（不落盘）
    *
@@ -404,7 +404,7 @@ export function registerUiRoutes(app: FastifyInstance, deps: UiRoutesDeps): void
     const { id } = request.params as { id: string };
     const scenario = db.scenarioRepo.getById(id);
     if (!scenario) return notFound(reply, `场景 ${id} 不存在`);
-    // 变更表 #137：两份交付物——「<场景>解决方案」与「<场景>建设工作方案」，各带
+    // 变更表 #246：只有一份「<场景>解决方案」，按它的章节装配导出；
     // markdown / chars / generated / generated_at
     return { reports: getReports(db, scenario) };
   });
@@ -519,7 +519,7 @@ export function registerUiRoutes(app: FastifyInstance, deps: UiRoutesDeps): void
   /**
    * 导出 Word（按《Word 输出格式规范》生成 docx）到用户选的文件夹（变更表 #133 / #137）
    *
-   * 两份交付物同一个版式：`<场景>解决方案.docx` + `<场景>建设工作方案.docx`
+   * 交付物一个版式：`<场景>解决方案.docx`
    */
   app.post("/api/v1/projects/:id/deliverables/export-docx", async (request, reply) => {
     const { id } = request.params as { id: string };
