@@ -36,6 +36,7 @@ import {
   middleColumns,
   stageDef,
   tableDef,
+  tableDisplayName,
   tablesOfStage,
   upstreamDepsOf,
   type InfoStageId,
@@ -1060,7 +1061,7 @@ async function* executeAdvanceStage(
       type: "progress",
       stage,
       message: `有 ${failedTables.length} 张表这次没生成成功：${failedTables
-        .map((r) => r.code)
+        .map((r) => tableDisplayName(r.code))
         .join("、")}（这些表沿用了原有内容，可单独重试）`,
     });
   }

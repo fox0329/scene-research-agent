@@ -12,6 +12,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { tableDisplayName } from "@scene/contract";
 import { advanceStageStream, reconnectStageStream, type FollowEvent } from "../api";
 import { consumeAnalysisStream } from "./analysis-stream";
 
@@ -167,10 +168,10 @@ export function useStageAnalysis(opts: {
                     "（报告已出，但不算通过，请先改上面的问题）"
                   : "",
                 tablesFailed.length > 0
-                  ? `${tablesFailed.join("、")} 未生成成功（沿用原有内容）`
+                  ? `${tablesFailed.map(tableDisplayName).join("、")} 未生成成功（沿用原有内容）`
                   : "",
                 tablesNeedMaterial.length > 0
-                  ? `${tablesNeedMaterial.join("、")} 需要先补客户材料（现状类表，本次未生成）`
+                  ? `${tablesNeedMaterial.map(tableDisplayName).join("、")} 需要先补客户材料（现状类表，本次未生成）`
                   : "",
               ].filter((x) => x !== "");
               push(

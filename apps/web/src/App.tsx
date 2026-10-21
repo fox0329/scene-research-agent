@@ -254,7 +254,7 @@ const AppShell: React.FC = () => {
   const handleDefinitionConsolidated = useCallback(async () => {
     setDefinitionRefresh((n) => n + 1);
     await refreshProjects().catch(() => {});
-    showToast("场景定义已整理成表1-1——本步已可就绪，可直接点「完成本步」；想更准就去右栏表态或留待定");
+    showToast("场景定义已整理——本步已可就绪，可直接点「完成本步」；想更准就去右栏表态或留待定");
   }, [refreshProjects, showToast]);
 
   /** 关闭 App 层的定义对话：让第 1 步面板重取对话条数与表1-1 */

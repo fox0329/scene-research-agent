@@ -1,6 +1,6 @@
 {
   "name": "scene-master",
-  "version": "0.7.2",
+  "version": "0.7.3",
   "private": true,
   "description": "场景通 — 场景落地分析智能体",
   "packageManager": "pnpm@9.15.4",

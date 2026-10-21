@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { FLOW_TOTAL, flowStep, type InfoStageId } from "@scene/contract";
+import { FLOW_TOTAL, flowStep, tableDisplayName, type InfoStageId } from "@scene/contract";
 import { RealStagePanel } from "./RealStagePanel";
 import { DemoStagePanel } from "./DemoStagePanel";
 import { AnchorStepPanel } from "./AnchorStepPanel";
@@ -237,10 +237,10 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
          不是失败，是让用户先补材料（用户定调 2026-10-14：干脆不生成，直接提示需要先补材料） */
       const parts = [
         failed.length > 0
-          ? `${failed.join("、")} 这次没生成成功，已沿用原有内容——可稍后重算本步补齐`
+          ? `${failed.map(tableDisplayName).join("、")} 这次没生成成功，已沿用原有内容——可稍后重算本步补齐`
           : "",
         needMaterial.length > 0
-          ? `${needMaterial.join("、")} 需要先补客户材料：这两张表问的是"该客户现在怎么做"，材料里没有就只能拿行业通例占位，所以本次没有生成——补上材料后重算本表即可`
+          ? `${needMaterial.map(tableDisplayName).join("、")} 需要先补客户材料：这两张表问的是"该客户现在怎么做"，材料里没有就只能拿行业通例占位，所以本次没有生成——补上材料后重算本表即可`
           : "",
       ].filter((x) => x !== "");
       setAnalysisNotice(parts.length > 0 ? { kind: "warning", text: parts.join("；") } : null);

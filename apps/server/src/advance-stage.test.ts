@@ -1277,14 +1277,12 @@ describe("createAdvanceStageCommand", () => {
       // 命令别再整阶段删了：那会把失败表的原有内容一起清掉
       expect(db.stageDataRepo.deleteByScenarioStage).not.toHaveBeenCalled();
       expect(db.stageDataRepo.insert).toHaveBeenCalled();
-      // 失败必须在进度里说出来，不能悄悄过去
-      expect(
-        events.some(
-          (e) =>
-            e.type === "progress" &&
-            String((e as { message?: string }).message ?? "").includes("表2-2"),
-        ),
-      ).toBe(true);
+      // 失败必须在进度里说出来，且用**业务表名**（界面从 v2.10 起不再显示表号）
+      const failedProgress = events.find(
+        (e) => e.type === "progress" && String((e as { message?: string }).message ?? "").includes("没生成成功"),
+      ) as { message?: string } | undefined;
+      expect(failedProgress?.message).toContain("场景要素清单");
+      expect(failedProgress?.message).not.toContain("表2-2");
     });
 
     it("全部表都没产出 → 报错且一行不写、旧数据一行不删", async () => {

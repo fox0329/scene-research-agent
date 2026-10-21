@@ -1228,6 +1228,17 @@ export function tableDef(code: string): TableDef {
   return t;
 }
 
+/**
+ * 表号 → 用户看得懂的表名（界面文案一律用它）
+ *
+ * 产品界面从 v2.10 起只显示业务表名（「能力底账」），不再显示内部表号（表4-1）。
+ * 但服务端事件/日志里仍以表号为稳定标识；**展示层必须翻译**，否则用户不知道在说哪张表。
+ * 未登记的表号原样返回，绝不抛错——提示文案不能因为查表定义而把整步搞挂。
+ */
+export function tableDisplayName(code: string): string {
+  return TABLES_BY_CODE[code]?.name ?? code;
+}
+
 /** 本阶段的表 */
 export function tablesOfStage(id: InfoStageId): readonly TableDef[] {
   return TABLES.filter((t) => t.stage === id);

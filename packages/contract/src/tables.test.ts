@@ -6,6 +6,7 @@ import {
   ENUMS,
   SCENARIO_BRIEF_FIELDS,
   SUMMARY_DOC_SECTIONS,
+  tableDisplayName,
   MIDDLE_COLUMN_BUDGET,
   columnBudgetViolations,
   registryIssues,
@@ -422,5 +423,16 @@ describe("章节映射与表定义一致", () => {
         }
       }
     }
+  });
+});
+
+describe("tableDisplayName（界面文案用表名）", () => {
+  it("已知表号返回业务表名，不是内部表号", () => {
+    expect(tableDisplayName("表4-1")).toBe("能力底账");
+    expect(tableDisplayName("表2-2")).toBe("场景要素清单");
+  });
+
+  it("未知表号原样返回，绝不抛错（提示文案不能因此挂掉）", () => {
+    expect(tableDisplayName("表9-9")).toBe("表9-9");
   });
 });
