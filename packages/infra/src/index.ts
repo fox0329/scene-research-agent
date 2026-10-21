@@ -21,6 +21,8 @@ export type {
   ScenarioBriefRepo,
   StageSummaryRepo,
   ScenarioStepRepo,
+  ResearchSource,
+  ResearchRepo,
 } from "./sqlite-repo.js";
 
 export { parseDocument } from "./doc-parser.js";

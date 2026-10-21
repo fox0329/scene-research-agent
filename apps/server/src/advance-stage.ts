@@ -58,15 +58,39 @@ import { runScenarioClarify, clarifyAbortEvent } from "./scenario-clarify.js";
 import { generateStageSummary } from "./stage-summary-service.js";
 import { makeSourceLookup, runPostcheck } from "./postcheck-pass.js";
 import { readAnchorRows, writeAnchorRows } from "./scenario-anchor.js";
-import { runStepResearch } from "./step-research.js";
+import {
+  researchBriefLines,
+  researchHostsOf,
+  runStepResearch,
+  type StepResearchResult,
+} from "./step-research.js";
+import type { ResearchSource } from "@scene/infra";
+import type { ResearchPromptContext } from "./stage-prompts.js";
 
 // ─── 依赖注入接口 ──────────────────────────────────────────
+
+/**
+ * 本步调研执行器（可注入：单测不联网）
+ *
+ * 生产默认 `runStepResearch`；测试注入假结果验证「提示词注入」与「saved=0 仍继续」。
+ */
+export type StepResearchRunner = (
+  db: DbInstance,
+  scenario: Scenario,
+  step: number,
+  deps?: { keywords?: string[] },
+) => Promise<StepResearchResult>;
 
 /** advance-stage command 依赖 */
 export interface AdvanceStageDeps {
   db: DbInstance;
   dshClient: DshClient;
+  /** 覆盖默认联网调研（测试用；不传=真联网，但没有 researchRepo 时跳过） */
+  research?: StepResearchRunner;
 }
+
+/** 调研等待上限（用户要求 60 秒；超时按「调研未完成」处理，不阻断分析） */
+const RESEARCH_TIMEOUT_MS = 60_000;
 
 // ─── DSH 产出结构 ──────────────────────────────────────────
 
@@ -252,6 +276,48 @@ function researchStepOf(stage: InfoStageId, tables?: readonly string[]): number 
   return steps.length > 0 ? steps[0]!.id : undefined;
 }
 
+/**
+ * 收集本步调研的实体关键词（上游已产出的门槛名 / 对手名 / 能力名）
+ *
+ * 用户要的是"深度调研"：只搜「场景名 + 表名」会得到一堆泛泛的行业页；
+ * 带上本步真实存在的实体（如「等保三级」「CT15」）才能搜到具体标准与资质要求。
+ * 拿不到就返回空数组——query 构造会退回表名/通用词，不影响调研本身。
+ */
+export function collectResearchKeywords(db: DbInstance, scenarioId: string): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  const push = (raw: unknown): void => {
+    for (const part of String(raw ?? "").split(/[、,，；;/|\n]+/u)) {
+      const k = part.replace(/[（(][^）)]*[）)]/gu, "").replace(/\s+/gu, " ").trim();
+      const len = Array.from(k).length;
+      if (len < 2 || len > 20) continue;
+      if (/^(未知|未提供|无|暂无|待确认|其他)$/u.test(k)) continue;
+      if (seen.has(k)) continue;
+      seen.add(k);
+      out.push(k);
+      if (out.length >= 3) return;
+    }
+  };
+  const read = (tableCode: string, keys: readonly string[]): void => {
+    try {
+      const rows = db.stageDataRepo
+        .list({ where: "scenario_id = ? AND table_code = ?", params: [scenarioId, tableCode] })
+        .filter((r) => String(r.table_code) === tableCode)
+        .slice(0, 5);
+      for (const r of rows) {
+        for (const key of keys) push((r.row as Record<string, unknown>)[key]);
+        if (out.length >= 3) return;
+      }
+    } catch {
+      /* 老库/测试替身没有该表：没有关键词就用通用 query，不影响调研 */
+    }
+  };
+  read("表1-3", ["barrier_name"]);
+  read("表3-2", ["players"]);
+  read("表4-1", ["ability"]);
+  return out.slice(0, 3);
+}
+
 /** 单张表的生成结果 */
 interface TableGenResult {
   code: string;
@@ -325,6 +391,8 @@ async function generateOneTable(
     upstreamData: Record<string, unknown>;
     siblings: readonly string[];
     keepaliveMs: number;
+    /** 本步联网调研上下文（先调研、再分析；没跑调研时不传） */
+    research?: ResearchPromptContext;
     push: (event: FollowEvent) => void;
   },
 ): Promise<TableGenResult> {
@@ -335,6 +403,7 @@ async function generateOneTable(
   const prompt = buildStagePrompt(d.stage, d.upstreamData, d.scenario, {
     tables: [code],
     siblings: d.siblings,
+    ...(d.research ? { research: d.research } : {}),
   });
   progress(`正在生成 ${label}…`);
 
@@ -550,28 +619,107 @@ async function* executeAdvanceStage(
     return;
   }
 
-  // 调研先行（2026-10-21）：本步分析**开始**时先发起一次真实联网调研。
+  // 调研先行（2026-10-21 用户定调）：**先完成一轮真实联网调研，再构造分析提示词**。
   //
-  // 用户质问「调研信息来源为什么一个链接都没有」——根因不是展示层，而是分析来源
-  // 一直只写「行业通例（模型知识）」，产品从来没真正联网查过。这一步补的正是
-  // "先查、再分析"的第一环：链接落 research_source，右栏「调研信息来源」直接列出。
+  // 旧实现是 fire-and-forget：模型已经写完，链接才慢慢落库，提示词里根本没有来源，
+  // 于是分析只能写「行业通例（模型知识）」——用户质问的正是这个。
+  // 现在是 await（60 秒上限）：调研结果进提示词，saved=0 时强制来源写「未知」，
+  // 但**绝不阻断分析**（超时/失败/引擎不可用都照常往下走）。
   //
-  // fire-and-forget：调研与模型分析**并行**推进，检索慢/失败绝不能拖住分析；
-  // 没有 `researchRepo` 的库（测试替身/极老版本）跳过：没有落点就不做无谓的联网。
+  // 没有 `researchRepo` 的库（测试替身/极老版本）且没有注入执行器时跳过：
+  // 没有落点就不做无谓的联网。
   const researchStep = researchStepOf(effectiveStage, opts.tables);
-  if (researchStep !== undefined && typeof db.researchRepo?.upsert === "function") {
-    void runStepResearch(db, scenario, researchStep)
-      .then((r) => {
-        const tail = r.errors.length > 0 ? `，errors=${r.errors.join("；")}` : "";
-        console.info(
-          `[step-research] 场景 ${scenario.id} 第 ${researchStep} 步：saved=${r.saved}，queries=${r.queries}，engine=${r.engine}${tail}`,
-        );
-      })
-      .catch((err: unknown) => {
-        console.warn(
-          `[step-research] 第 ${researchStep} 步调研失败：${err instanceof Error ? err.message : String(err)}`,
-        );
+  const researchEnabled =
+    deps.research !== undefined || typeof db.researchRepo?.upsert === "function";
+  let researchContext: ResearchPromptContext | undefined;
+  let researchRows: ResearchSource[] = [];
+  if (researchStep !== undefined && researchEnabled) {
+    const runResearch = deps.research ?? runStepResearch;
+    const keywords = collectResearchKeywords(db, scenario.id);
+    const startedAt = Date.now();
+    yield emit({
+      type: "progress",
+      stage,
+      message:
+        `开始本步联网调研（检索 + 抓正文验真，最多 ${Math.round(RESEARCH_TIMEOUT_MS / 1000)} 秒）` +
+        (keywords.length > 0 ? `，关键实体：${keywords.join("、")}` : "") +
+        "…",
+    });
+
+    type ResearchRace =
+      | { kind: "done"; result: StepResearchResult }
+      | { kind: "timeout" }
+      | { kind: "error"; message: string };
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<ResearchRace>((resolve) => {
+      timer = setTimeout(() => resolve({ kind: "timeout" }), RESEARCH_TIMEOUT_MS);
+    });
+    const outcome = await Promise.race<ResearchRace>([
+      runResearch(db, scenario, researchStep, { keywords }).then(
+        (result) => ({ kind: "done" as const, result }),
+        (err: unknown) => ({
+          kind: "error" as const,
+          message: err instanceof Error ? err.message : String(err),
+        }),
+      ),
+      timeout,
+    ]);
+    if (timer) clearTimeout(timer);
+    const elapsed = Math.round((Date.now() - startedAt) / 1000);
+
+    if (outcome.kind === "done") {
+      researchRows = outcome.result.sources;
+      const lines = researchBriefLines(researchRows);
+      const saved = outcome.result.saved;
+      const verified = outcome.result.verified;
+      const t1 = outcome.result.authorityCounts.T1;
+      const t2 = outcome.result.authorityCounts.T2;
+      const firstError = outcome.result.errors[0];
+      researchContext = {
+        lines,
+        strict: lines.length === 0,
+        ...(lines.length === 0
+          ? { note: firstError ?? "联网检索未取得可用来源" }
+          : {}),
+      };
+      const tail = outcome.result.errors.length > 0 ? `；${outcome.result.errors[0]}` : "";
+      console.info(
+        `[step-research] 场景 ${scenario.id} 第 ${researchStep} 步：saved=${saved}，verified=${verified}，` +
+          `T1=${t1}，T2=${t2}，fetched=${outcome.result.fetched}，queries=${outcome.result.queries}，` +
+          `engine=${outcome.result.engine}，${elapsed}s${tail}`,
+      );
+      if (saved > 0) {
+        yield emit({
+          type: "progress",
+          stage,
+          message:
+            `联网调研完成：取得 ${saved} 条来源，其中 ${verified} 条已抓正文验真` +
+            `（T1 ${t1} 条、T2 ${t2} 条），用时 ${elapsed} 秒` +
+            (firstError ? `；部分检索未完成：${firstError}` : ""),
+        });
+      } else {
+        /* saved=0：不阻断分析，但必须让用户看见"这一步没有联网来源"（用户要求如实说明） */
+        yield emit({
+          type: "progress",
+          stage,
+          message:
+            `联网调研未取得来源（${firstError ?? "检索没有返回可用结果"}）；` +
+            "本步「来源」列只能写「未知」，分析继续",
+        });
+      }
+    } else {
+      const reason =
+        outcome.kind === "timeout"
+          ? `调研超过 ${Math.round(RESEARCH_TIMEOUT_MS / 1000)} 秒未完成，按「调研未完成」处理`
+          : `联网调研失败（${outcome.message}）`;
+      researchRows = [];
+      researchContext = { lines: [], strict: true, note: reason };
+      yield emit({
+        type: "progress",
+        stage,
+        message: `${reason}；本步「来源」列只能写「未知」，分析继续（不阻断）`,
       });
+    }
   }
 
   // 2. 取上游数据（按阶段依赖）
@@ -658,6 +806,7 @@ async function* executeAdvanceStage(
           },
           siblings: coveredCodes.filter((c) => c !== code),
           keepaliveMs,
+          ...(researchContext ? { research: researchContext } : {}),
           push,
         })
           .then((result) => {
@@ -959,6 +1108,10 @@ async function* executeAdvanceStage(
     onProgress: (message) => pcQueue.push(message),
     scenarioName: scenario.name,
     stage,
+    /* 来源门禁：模型引用的 URL host 必须在本步调研结果里（空数组=本步没有任何来源） */
+    ...(researchStep !== undefined && researchEnabled
+      ? { researchHosts: () => researchHostsOf(researchRows) }
+      : {}),
   })
     .then((outcome) => {
       pcReport = outcome.report;

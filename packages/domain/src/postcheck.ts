@@ -74,7 +74,11 @@ export type PostcheckKind =
   | "枚举非法"
   | "缺来源"
   | "自称用户确认"
-  | "核实推诿";
+  | "核实推诿"
+  /** 把模型知识/行业通例/常识当来源（用户定调 2026-10-21：模型知识不能当来源） */
+  | "模型知识当来源"
+  /** 引用的 URL host 不在本步 research_source 里（没查过就当依据） */
+  | "来源未在本步调研中核实";
 
 export type PostcheckSeverity = "硬伤" | "存疑";
 
@@ -130,6 +134,13 @@ export interface PostcheckInput {
    * 不传 = 不做该判定（表3-2 未生成时不误伤）。
    */
   knownOpponents?: readonly string[];
+  /**
+   * 本步联网调研结果的 host 列表（`researchHostsOf` 给出，已去 www）。
+   *
+   * 给了才做「来源 host 必须在本步调研里」判定；不传=不做该判定（老调用/单测不误伤）。
+   * 传空数组是有意义的：本步没有任何来源 → 任何 URL 都不算核实过。
+   */
+  researchHosts?: readonly string[];
 }
 
 // ─── 常量 ────────────────────────────────────────────────
@@ -636,6 +647,148 @@ function customerScopeLeak(r: PostcheckRow, stage?: number): PostcheckFinding | 
   };
 }
 
+/** 模型知识 / 行业通例 / 常识：用户定调 2026-10-21「模型知识不能当来源」 */
+export const MODEL_KNOWLEDGE_SOURCE_RE = /行业通例|模型知识|常识|经验判断|推测/u;
+/** 命中模型知识来源后的确定性改写值 */
+export const UNKNOWN_SOURCE_MATERIAL = "未知（未检索到公开来源）";
+/** 来源 URL 的 host 不在本步调研里时的确定性改写值 */
+export const UNKNOWN_SOURCE_UNVERIFIED = "未知（来源未在本步调研中核实）";
+
+/** 一行里所有"来源性质"的文本（DB source 列 + 行内 source / proof） */
+function sourceTextsOf(r: PostcheckRow): Array<{ field: "source" | "proof"; text: string }> {
+  const out: Array<{ field: "source" | "proof"; text: string }> = [];
+  const push = (field: "source" | "proof", raw: unknown): void => {
+    const text = Array.isArray(raw) ? raw.join("；") : String(raw ?? "").trim();
+    if (text === "") return;
+    if (out.some((x) => x.field === field && x.text === text)) return;
+    out.push({ field, text });
+  };
+  push("source", r.source);
+  push("source", r.row["source"]);
+  push("proof", r.row["proof"]);
+  return out;
+}
+
+/** 文本里的 URL host（去 www、小写） */
+function hostsInText(text: string): string[] {
+  const out: string[] = [];
+  for (const m of String(text ?? "").matchAll(/https?:\/\/[^\s<>"'`，。；：、）】》\]}]+/giu)) {
+    try {
+      out.push(new URL(m[0]).hostname.toLowerCase().replace(/^www\./u, ""));
+    } catch {
+      /* 不成形的 URL 不是"引用了来源"，不判 */
+    }
+  }
+  return out;
+}
+
+function normalizeHost(host: string): string {
+  return String(host ?? "").trim().toLowerCase().replace(/^www\./u, "");
+}
+
+/** host 是否在本步调研结果里（host 级精确匹配，避免 query 参数差异误伤） */
+function hostIsResearched(host: string, researchHosts: readonly string[]): boolean {
+  const h = normalizeHost(host);
+  return h !== "" && researchHosts.some((x) => normalizeHost(x) === h);
+}
+
+/** 一行里的来源违规（模型知识当来源 / URL host 不在本步调研） */
+function sourceDisciplineFindings(
+  r: PostcheckRow,
+  researchHosts?: readonly string[],
+): PostcheckFinding[] {
+  const out: PostcheckFinding[] = [];
+  for (const { field, text } of sourceTextsOf(r)) {
+    const label = field === "proof" ? "证明材料" : "来源";
+    const banned = MODEL_KNOWLEDGE_SOURCE_RE.exec(text);
+    if (banned) {
+      out.push({
+        tableCode: r.tableCode,
+        rowId: r.rowId,
+        label: r.label,
+        kind: "模型知识当来源",
+        detail: `${label}写「${banned[0]}」——模型知识/行业通例不能当来源（用户定调 2026-10-21）。只能用本步调研来源列表里的真实 URL 或材料「文件名:页码」；没有就写「未知」`,
+        severity: "硬伤",
+      });
+    }
+    if (researchHosts !== undefined) {
+      const bad = hostsInText(text).find((h) => !hostIsResearched(h, researchHosts));
+      if (bad !== undefined) {
+        out.push({
+          tableCode: r.tableCode,
+          rowId: r.rowId,
+          label: r.label,
+          kind: "来源未在本步调研中核实",
+          detail: `${label}引用了 ${bad}，但该 host 不在本步联网调研结果里——没查过的链接不能当依据`,
+          severity: "硬伤",
+        });
+      }
+    }
+  }
+  return out;
+}
+
+/** 确定性改写：模型知识来源 / 未在本步调研中的 URL → 未知（用户要求"不编来源"） */
+export interface SourceDisciplineResult {
+  rowId: string;
+  row: InfoRow;
+  /** 改写后的 DB `source` 列（未改则 undefined） */
+  source?: string;
+  /** 改写了几处 */
+  rewritten: number;
+  /** 改写原因（写进进度/报告，可审计） */
+  reasons: string[];
+}
+
+export function enforceSourceDiscipline(
+  rows: readonly PostcheckRow[],
+  researchHosts?: readonly string[],
+): SourceDisciplineResult[] {
+  const out: SourceDisciplineResult[] = [];
+  for (const r of rows) {
+    const next: Record<string, unknown> = { ...r.row };
+    const reasons: string[] = [];
+    let rewritten = 0;
+    const fix = (field: "source" | "proof", text: string): string => {
+      const banned = MODEL_KNOWLEDGE_SOURCE_RE.exec(text);
+      if (banned) {
+        rewritten++;
+        reasons.push(`${field}「${banned[0]}」→ ${UNKNOWN_SOURCE_MATERIAL}`);
+        return UNKNOWN_SOURCE_MATERIAL;
+      }
+      if (researchHosts !== undefined) {
+        const bad = hostsInText(text).find((h) => !hostIsResearched(h, researchHosts));
+        if (bad !== undefined) {
+          rewritten++;
+          reasons.push(`${field} host ${bad} 不在本步调研 → ${UNKNOWN_SOURCE_UNVERIFIED}`);
+          return UNKNOWN_SOURCE_UNVERIFIED;
+        }
+      }
+      return text;
+    };
+
+    const oldSource = String(r.source ?? "");
+    const newSource = oldSource === "" ? "" : fix("source", oldSource);
+    for (const key of ["source", "proof"] as const) {
+      const value = next[key];
+      const text = Array.isArray(value) ? value.join("；") : String(value ?? "");
+      if (text.trim() === "") continue;
+      // DB source 列与行内 source 常常是同一串：已经按 DB 列改过，不再重复计一次
+      if (key === "source" && oldSource !== "" && text === oldSource) continue;
+      next[key] = fix(key, text);
+    }
+    if (rewritten === 0 && newSource === oldSource) continue;
+    out.push({
+      rowId: r.rowId,
+      row: next as InfoRow,
+      ...(newSource !== oldSource ? { source: newSource } : {}),
+      rewritten,
+      reasons,
+    });
+  }
+  return out;
+}
+
 export function runDeterministicPostcheck(input: PostcheckInput): PostcheckFinding[] {
   const findings: PostcheckFinding[] = [];
   // 跨表校验先跑（判据要对照整批行，不能只看当前行）
@@ -644,6 +797,8 @@ export function runDeterministicPostcheck(input: PostcheckInput): PostcheckFindi
     findings.push(...opponentsWithoutBasis(input.rows, input.knownOpponents, input.lookup));
   }
   for (const r of input.rows) {
+    /* ⓪-d 来源门禁：模型知识不是来源；URL host 必须在本步调研结果里（用户定调 2026-10-21） */
+    findings.push(...sourceDisciplineFindings(r, input.researchHosts));
     const hard = hardVerdictWithoutBasis(r);
     if (hard) findings.push(hard);
     const citations = parseCitations(r.source);

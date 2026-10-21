@@ -31,6 +31,8 @@ import {
 } from "@scene/domain";
 import { readAnchorRows, readBrief } from "./scenario-anchor.js";
 import { ownLineOf } from "./scenario-lines.js";
+import { publishedMonth, sortResearchSources } from "./step-research.js";
+import type { ResearchSource } from "@scene/infra";
 
 /**
  * 阶段编号归一：旧编号 8（交付物）合并为 7
@@ -161,10 +163,48 @@ const BRIEF_SOURCES_MAX = 20;
 /** 调研来源标签截断长度（与行内来源一致，~24 字） */
 const RESEARCH_LABEL_MAX = 24;
 
-/** 调研标题截成可读标签；标题为空时退回 URL，链接仍然可点开 */
-function researchLabel(title: string, url: string): string {
-  const text = String(title ?? "").trim() || url;
-  return Array.from(text).slice(0, RESEARCH_LABEL_MAX).join("");
+/** 截到指定字数（中文按字算） */
+function clipLabel(text: string, max: number): string {
+  const chars = Array.from(text);
+  return chars.length > max ? chars.slice(0, max).join("") : text;
+}
+
+/**
+ * 右栏来源标签：`标题 · 发布方 · YYYY-MM`
+ *
+ * 规则（用户定调 2026-10-21）：
+ *  - 有发布方/月份就带上，整体仍截 24 字，**日期保留在后**（先压标题，再压发布方，最后才舍日期）；
+ *  - `stale=1` 的标题后缀加「（较早）」，让它一眼看出是旧资料；
+ *  - 标题为空时退回 URL。
+ */
+function researchLabel(row: ResearchSource): string {
+  const url = String(row.url ?? "").trim();
+  const title = String(row.title ?? "").trim() || url;
+  const staleSuffix = Number(row.stale ?? 0) === 1 ? "（较早）" : "";
+  const date = publishedMonth(row.published_at);
+  const publisher = clipLabel(String(row.publisher ?? "").trim(), 8);
+
+  // 先保「标题 + 日期」（日期必须在最末），发布方有空间再带上
+  const dateTail = date !== "" ? ` · ${date}` : "";
+  const fullMeta = [publisher, date].filter((x) => x !== "").join(" · ");
+  const fullTail = fullMeta !== "" ? ` · ${fullMeta}` : "";
+  const budgetFull = RESEARCH_LABEL_MAX - Array.from(fullTail).length;
+  if (budgetFull >= 6) {
+    return (
+      clipLabel(title, Math.max(1, budgetFull - Array.from(staleSuffix).length)) +
+      staleSuffix +
+      fullTail
+    );
+  }
+  const budgetDate = RESEARCH_LABEL_MAX - Array.from(dateTail).length;
+  if (dateTail !== "" && budgetDate >= 3) {
+    return (
+      clipLabel(title, Math.max(1, budgetDate - Array.from(staleSuffix).length)) +
+      staleSuffix +
+      dateTail
+    );
+  }
+  return clipLabel(title + staleSuffix + fullTail, RESEARCH_LABEL_MAX);
 }
 
 /**
@@ -183,7 +223,7 @@ function mergeResearchSources(
   sources: readonly StageBriefSource[],
 ): StageBriefSource[] {
   if (step === undefined || typeof db.researchRepo?.listByStep !== "function") return [...sources];
-  let rows: Array<{ status: string; url: string; title: string }> = [];
+  let rows: ResearchSource[] = [];
   try {
     rows = db.researchRepo.listByStep(scenarioId, step);
   } catch {
@@ -193,11 +233,13 @@ function mergeResearchSources(
 
   const out: StageBriefSource[] = [];
   const seen = new Set<string>();
-  for (const row of rows) {
+  // 权威 T1→T4、已验真优先、发布时间倒序（与提示词摘要同一顺序）
+  for (const row of sortResearchSources(rows)) {
     const url = String(row.url ?? "").trim();
-    if (row.status !== "有效" || url === "" || seen.has(url)) continue;
+    if (row.status !== "有效" || url === "" || !/^https?:\/\//iu.test(url)) continue;
+    if (seen.has(url)) continue;
     seen.add(url);
-    out.push({ label: researchLabel(row.title, url), url });
+    out.push({ label: researchLabel(row), url });
     if (out.length >= BRIEF_SOURCES_MAX) return out;
   }
   for (const source of sources) {

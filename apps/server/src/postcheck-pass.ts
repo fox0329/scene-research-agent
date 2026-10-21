@@ -17,6 +17,7 @@
 
 import {
   enforceMidCleanliness,
+  enforceSourceDiscipline,
   enforceTruthfulDowngrade,
   runDeterministicPostcheck,
   summarizePostcheck,
@@ -72,7 +73,13 @@ const ROUND_TIMEOUT_MS = 180_000;
 const DIGEST_FIELD_CHARS = 100;
 
 /** 模型改不了的那几类问题：只由确定性层收口，别让它在三轮里反复"改" */
-const DETERMINISTIC_ONLY_KINDS: ReadonlySet<string> = new Set(["声称有据但无出处", "结论与证据矛盾"]);
+const DETERMINISTIC_ONLY_KINDS: ReadonlySet<string> = new Set([
+  "声称有据但无出处",
+  "结论与证据矛盾",
+  // 来源类问题一律由确定性层改写：模型补来源最容易凭空编 URL / 文件名
+  "模型知识当来源",
+  "来源未在本步调研中核实",
+]);
 
 /** 允许模型改写的键：内容字段 + 核实两列 + 出处 */
 const FIXABLE_KEYS = new Set(["verification", "verification_verdict", "source"]);
@@ -108,6 +115,13 @@ export interface PostcheckRunnerDeps {
    * 「未知」。传空/不传 = 不做该判定（表3-2 未生成时不误伤）。
    */
   knownOpponents?: () => readonly string[];
+  /**
+   * 本步调研结果的 host 列表（`researchHostsOf`）。
+   *
+   * 传了才做「URL host 必须在本步调研里」判定；不传=不做（老调用不误伤）。
+   * 传空数组表示本步没有来源：任何 URL 都会被改写成「未知」。
+   */
+  researchHosts?: () => readonly string[];
 }
 
 export interface PostcheckOutcome {
@@ -474,6 +488,8 @@ export async function runPostcheck(deps: PostcheckRunnerDeps): Promise<Postcheck
     deps.onProgress?.(m);
   };
   const { lookup } = deps;
+  /** 调研 host 只取一次：三轮里数据库不会变，反复查没有意义 */
+  const researchHosts = deps.researchHosts?.();
 
   let all = toPostcheckRows(deps.listRows());
   if (all.length === 0) {
@@ -489,6 +505,7 @@ export async function runPostcheck(deps: PostcheckRunnerDeps): Promise<Postcheck
       lookup,
       stage: deps.stage,
       knownOpponents: deps.knownOpponents?.(),
+      ...(researchHosts !== undefined ? { researchHosts } : {}),
     }),
     ...violationsOf(),
   ];
@@ -565,6 +582,7 @@ export async function runPostcheck(deps: PostcheckRunnerDeps): Promise<Postcheck
       lookup,
       stage: deps.stage,
       knownOpponents: deps.knownOpponents?.(),
+      ...(researchHosts !== undefined ? { researchHosts } : {}),
     }),
         ...violationsOf(),
       ];
@@ -631,9 +649,35 @@ export async function runPostcheck(deps: PostcheckRunnerDeps): Promise<Postcheck
     );
   }
 
+  /* 来源门禁：三轮之后仍把模型知识/未调研 URL 当来源的，确定性改写为未知
+     （与「中栏夹带出处」同一处理方式：版面/口径问题不能靠模型自觉）。 */
+  const sourceFixes = enforceSourceDiscipline(all, researchHosts);
+  const sourceFixedIds = new Set(sourceFixes.map((f) => f.rowId));
+  for (const f of sourceFixes) {
+    deps.applyFix(f.rowId, {
+      row: f.row,
+      ...(f.source !== undefined ? { source: f.source } : {}),
+    });
+    all = all.map((r) =>
+      r.rowId === f.rowId
+        ? { ...r, row: f.row, ...(f.source !== undefined ? { source: f.source } : {}) }
+        : r,
+    );
+  }
+  if (sourceFixes.length > 0) {
+    const total = sourceFixes.reduce((n, f) => n + f.rewritten, 0);
+    progress(
+      `来源门禁：${sourceFixes.length} 行的来源不合规（模型知识/未在本步调研中的 URL），` +
+        `已确定性改写 ${total} 处为「未知」——不许把模型知识当来源`,
+    );
+  }
+
   // 降级行的矛盾已消解，不再是"待办"；但 byKind 仍保留，便于看这一轮抓到了什么
   const open = findings.filter(
-    (f) => !downgradedIds.has(f.rowId) && !sweeps.some((sw) => sw.rowId === f.rowId),
+    (f) =>
+      !downgradedIds.has(f.rowId) &&
+      !sweeps.some((sw) => sw.rowId === f.rowId) &&
+      !sourceFixedIds.has(f.rowId),
   );
 
   const report = summarizePostcheck({

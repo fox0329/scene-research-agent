@@ -114,6 +114,36 @@ function runMigrations(db: Database.Database): void {
   const sql = readFileSync(sqlPath, "utf-8");
   db.exec(sql);
   // 存量库增量升级：001 的 CREATE IF NOT EXISTS 不会给已存在的表补列，幂等 ALTER 兜底
+  /**
+   * 历史「模型知识当来源」一次性回填（变更表 #260）
+   *
+   * 2026-10-21 用户定调：来源必须真实、客观、最新，模型知识不能算来源。
+   * 新生成的行已由 postcheck 确定性改写；这里把**存量**行一并改成
+   * 「未知（未检索到公开来源）」，避免老结论继续挂着"行业通例"冒充证据。
+   * 幂等：改写后不再命中正则，重复打开不会二次改动。
+   */
+  try {
+    const MODEL_SOURCE_RE = /行业通例|模型知识|常识|经验判断/u;
+    const rows = db
+      .prepare("SELECT id, row FROM stage_data")
+      .all() as { id: string; row: string }[];
+    const update = db.prepare("UPDATE stage_data SET row = ? WHERE id = ?");
+    for (const r of rows) {
+      let parsed: Record<string, unknown>;
+      try {
+        parsed = JSON.parse(r.row) as Record<string, unknown>;
+      } catch {
+        continue;
+      }
+      const src = String(parsed["source"] ?? "");
+      if (!MODEL_SOURCE_RE.test(src)) continue;
+      parsed["source"] = "未知（未检索到公开来源）";
+      update.run(JSON.stringify(parsed), r.id);
+    }
+  } catch {
+    // 极老库没有 stage_data 或列结构不同：跳过，不影响启动
+  }
+
   const cols = db.pragma("table_info(product_line)") as { name: string }[];
   if (!cols.some((c) => c.name === "scenario_id")) {
     db.exec("ALTER TABLE product_line ADD COLUMN scenario_id TEXT");
@@ -181,11 +211,36 @@ function runMigrations(db: Database.Database): void {
   fetched_at       TEXT NOT NULL,
   status           TEXT NOT NULL DEFAULT '有效',
   error            TEXT NOT NULL DEFAULT '',
+  publisher        TEXT NOT NULL DEFAULT '',
+  domain           TEXT NOT NULL DEFAULT '',
+  published_at     TEXT NOT NULL DEFAULT '',
+  authority        TEXT NOT NULL DEFAULT '',
+  verified         INTEGER NOT NULL DEFAULT 0,
+  stale            INTEGER NOT NULL DEFAULT 0,
   UNIQUE(scenario_id, step, url_key)
 )`);
   db.exec(
     "CREATE INDEX IF NOT EXISTS idx_research_source_step ON research_source(scenario_id, step)",
   );
+  /**
+   * 存量库（0.6.5 起已有该表）补列：先 pragma 判断再 ALTER，重复启动是空操作。
+   *
+   * 为什么要这些列：只存检索标题/URL 等于"搜了一下"，用户要的是**真来源**——
+   * 发布方、发布时间、权威级、是否抓过正文验真、是否过期（>3 年），
+   * 右栏与门禁都靠它们判"这条能不能当依据"。
+   */
+  const researchCols = db.pragma("table_info(research_source)") as { name: string }[];
+  const addResearchCol = (name: string, ddl: string): void => {
+    if (researchCols.some((c) => c.name === name)) return;
+    db.exec(`ALTER TABLE research_source ADD COLUMN ${ddl}`);
+  };
+  addResearchCol("publisher", "publisher TEXT NOT NULL DEFAULT ''");
+  // 域名单独留列：右栏标签与「来源 host 是否在本步调研里」都要用，且不要每次重新解析 URL
+  addResearchCol("domain", "domain TEXT NOT NULL DEFAULT ''");
+  addResearchCol("published_at", "published_at TEXT NOT NULL DEFAULT ''");
+  addResearchCol("authority", "authority TEXT NOT NULL DEFAULT ''");
+  addResearchCol("verified", "verified INTEGER NOT NULL DEFAULT 0");
+  addResearchCol("stale", "stale INTEGER NOT NULL DEFAULT 0");
 }
 
 /**
@@ -289,6 +344,18 @@ export interface ResearchSource {
   status: string;
   /** 失败原因（成功时为空串） */
   error: string;
+  /** 抓正文后回读的发布方（web_source.publisher；没抓成功时为空串） */
+  publisher?: string;
+  /** 注册域（web_source.domain；用于右栏标签与 host 级来源核对） */
+  domain?: string;
+  /** 页面声明的发布时间（ISO 或可解析串；没有则为空串） */
+  published_at?: string;
+  /** 权威性 T1–T4（抓正文入库后由领域层判定；未验真时为空串） */
+  authority?: string;
+  /** 正文抓取成功 = 1（失败仍保留检索命中，但不算"已验真来源"） */
+  verified?: number;
+  /** 发布时间早于「当前 − 3 年」= 1；没有日期不判过期 */
+  stale?: number;
 }
 
 /**
@@ -311,15 +378,20 @@ function createResearchRepo(db: Database.Database): ResearchRepo {
       .prepare(
         `SELECT * FROM research_source
          WHERE scenario_id = ? AND step = ?
-         ORDER BY CASE status WHEN '有效' THEN 0 ELSE 1 END, fetched_at DESC, id ASC`,
+         ORDER BY CASE status WHEN '有效' THEN 0 ELSE 1 END,
+                  verified DESC,
+                  CASE authority WHEN 'T1' THEN 1 WHEN 'T2' THEN 2 WHEN 'T3' THEN 3
+                                 WHEN 'T4' THEN 4 ELSE 5 END,
+                  published_at DESC, fetched_at DESC, id ASC`,
       )
       .all(scenarioId, step) as ResearchSource[];
 
   const upsert = (row: ResearchSource): ResearchSource => {
     db.prepare(
       `INSERT INTO research_source
-         (id, scenario_id, step, query, title, url, url_key, snippet, engine, fetched_at, status, error)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         (id, scenario_id, step, query, title, url, url_key, snippet, engine, fetched_at, status, error,
+          publisher, domain, published_at, authority, verified, stale)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(scenario_id, step, url_key) DO UPDATE SET
          id = excluded.id,
          query = excluded.query,
@@ -329,7 +401,13 @@ function createResearchRepo(db: Database.Database): ResearchRepo {
          engine = excluded.engine,
          fetched_at = excluded.fetched_at,
          status = excluded.status,
-         error = excluded.error`,
+         error = excluded.error,
+         publisher = excluded.publisher,
+         domain = excluded.domain,
+         published_at = excluded.published_at,
+         authority = excluded.authority,
+         verified = excluded.verified,
+         stale = excluded.stale`,
     ).run(
       row.id,
       row.scenario_id,
@@ -343,6 +421,12 @@ function createResearchRepo(db: Database.Database): ResearchRepo {
       row.fetched_at,
       row.status,
       row.error,
+      row.publisher ?? "",
+      row.domain ?? "",
+      row.published_at ?? "",
+      row.authority ?? "",
+      row.verified ?? 0,
+      row.stale ?? 0,
     );
     return db
       .prepare("SELECT * FROM research_source WHERE scenario_id = ? AND step = ? AND url_key = ?")

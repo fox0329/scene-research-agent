@@ -104,6 +104,43 @@ describe("createDb", () => {
   });
 });
 
+describe("历史模型知识来源回填（#260）", () => {
+  it("打开老库时把「行业通例/模型知识」来源改成「未知（未检索到公开来源）」，且幂等", () => {
+    const dir = mkdtempSync(join(tmpdir(), "scene-mig-"));
+    const file = join(dir, "scene.db");
+    try {
+      const first = createDb(file);
+      const scenario = first.scenarioRepo.insert({ name: "回填测试", status: "进行中", current_stage: 1 });
+      first.db
+        .prepare(
+          "INSERT INTO stage_data (id, scenario_id, stage, table_code, row, created_at, updated_at) VALUES (?,?,?,?,?,?,?)",
+        )
+        .run(
+          "sd_mig_1",
+          scenario.id,
+          1,
+          "表1-2",
+          JSON.stringify({ name: "旧行", source: "行业通例（模型知识）" }),
+          new Date().toISOString(),
+          new Date().toISOString(),
+        );
+      first.db.close();
+
+      const second = createDb(file);
+      const raw = second.db.prepare("SELECT row FROM stage_data WHERE id = ?").get("sd_mig_1") as { row: string };
+      expect(JSON.parse(raw.row).source).toBe("未知（未检索到公开来源）");
+      second.db.close();
+
+      const third = createDb(file);
+      const again = third.db.prepare("SELECT row FROM stage_data WHERE id = ?").get("sd_mig_1") as { row: string };
+      expect(JSON.parse(again.row).source).toBe("未知（未检索到公开来源）");
+      third.db.close();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
 describe("productLineRepo CRUD", () => {
   let instance: DbInstance;
 

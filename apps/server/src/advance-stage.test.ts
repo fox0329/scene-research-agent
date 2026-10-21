@@ -30,6 +30,7 @@ import type {
   ScenarioStepRepo,
   QualityGateRepo,
   MessageRepo,
+  ResearchSource,
 } from "@scene/infra";
 
 import {
@@ -40,6 +41,7 @@ import {
 } from "./advance-stage.js";
 import { extractRowsBestEffort } from "./json-extract.js";
 import type { AdvanceStageDeps } from "./advance-stage.js";
+import type { StepResearchResult } from "./step-research.js";
 
 // ─── Mock 工厂 ─────────────────────────────────────────────
 
@@ -1433,5 +1435,150 @@ describe("现状类表缺客户材料：不生成占位，改提示需要先补�
     expect(events.at(-1)!.type).toBe("done");
     const progress = events.filter((e) => e.type === "progress").map((e) => String(e.message));
     expect(progress.some((m) => m.includes("需要先补客户材料"))).toBe(true);
+  });
+});
+
+
+// ─── 先调研、再分析（2026-10-21 用户定调） ──────────────────
+
+/** 捕捉每次模型调用的完整提示词（system + user） */
+function capturingClient(output: { rows: Array<Record<string, unknown>> }): {
+  client: DshClient;
+  prompts: string[];
+} {
+  const prompts: string[] = [];
+  const client = {
+    createSession: vi.fn(async () => ({ sessionId: "mock-research" })),
+    prompt: vi.fn(async function* (
+      _h: unknown,
+      input: { system: string; user: string; outputContract: Record<string, unknown> },
+    ): AsyncGenerator<FollowEvent> {
+      prompts.push(`${input.system}\n${input.user}`);
+      const allowed = allowedTablesOf(input.outputContract);
+      const rows = output.rows.filter((r) => allowed.includes(String(r["table_code"])));
+      yield { type: "text", text: JSON.stringify({ rows }) };
+      yield { type: "done" };
+    }),
+    cancel: vi.fn(async () => {}),
+  } as unknown as DshClient;
+  return { client, prompts };
+}
+
+function researchSource(over: Partial<ResearchSource> = {}): ResearchSource {
+  return {
+    id: "rs_t1",
+    scenario_id: "sc-1",
+    step: 2,
+    query: "智慧水务 标准",
+    title: "智慧水务行业标准",
+    url: "https://www.gov.cn/zhengce/water-standard",
+    url_key: "k1",
+    snippet: "",
+    engine: "baidu-html",
+    fetched_at: "2026-10-21T00:00:00.000Z",
+    status: "有效",
+    error: "",
+    publisher: "住建部",
+    domain: "gov.cn",
+    published_at: "2024-06-01",
+    authority: "T1",
+    verified: 1,
+    stale: 0,
+    ...over,
+  };
+}
+
+function researchResult(over: Partial<StepResearchResult> = {}): StepResearchResult {
+  return {
+    saved: 0,
+    queries: 4,
+    skipped: 0,
+    engine: "baidu-html",
+    errors: [],
+    fetched: 0,
+    verified: 0,
+    authorityCounts: { T1: 0, T2: 0, T3: 0, T4: 0 },
+    sources: [],
+    ...over,
+  };
+}
+
+describe("advance-stage — 先调研、再分析", () => {
+  it("调研有结果：提示词含来源清单（URL/发布方/日期）与禁用模型知识的硬指令", async () => {
+    const mockDb = createMockDb({ scenario: { current_stage: 1 } });
+    const { client, prompts } = capturingClient(makeStage1DshOutput());
+    let receivedKeywords: string[] | undefined;
+    const runner = vi.fn(
+      async (
+        _db: unknown,
+        _scenario: unknown,
+        _step: number,
+        opts?: { keywords?: string[] },
+      ) => {
+        receivedKeywords = opts?.keywords;
+        return researchResult({
+          saved: 1,
+          verified: 1,
+          fetched: 1,
+          authorityCounts: { T1: 1, T2: 0, T3: 0, T4: 0 },
+          sources: [researchSource()],
+        });
+      },
+    );
+    const events = await collectEvents(
+      createAdvanceStageCommand({ db: mockDb, dshClient: client, research: runner }).execute({
+        scenarioId: "sc-1",
+        stage: 1,
+        tables: ["表1-3"],
+      }),
+    );
+
+    expect(runner).toHaveBeenCalled();
+    // 调研的 keywords 参数传给了执行器（实体 query）
+    expect(receivedKeywords).toBeDefined();
+    const tablePrompts = prompts.filter(
+      (p) => p.includes("你是场景落地分析助手") && p.includes("表1-3"),
+    );
+    expect(tablePrompts.length).toBeGreaterThan(0);
+    const prompt = tablePrompts[0]!;
+    expect(prompt).toContain("https://www.gov.cn/zhengce/water-standard");
+    expect(prompt).toContain("住建部");
+    expect(prompt).toContain("2024-06");
+    expect(prompt).toContain("T1");
+    expect(prompt).toContain("模型知识");
+    expect(prompt).toContain("禁止");
+    expect(prompt).not.toContain("本步没有任何联网来源");
+    expect(events.at(-1)!.type).toBe("done");
+  });
+
+  it("saved=0：提示词强制「来源只能写未知」，并 emit 未取得来源的进度；分析照常完成", async () => {
+    const mockDb = createMockDb({ scenario: { current_stage: 1 } });
+    const { client, prompts } = capturingClient(makeStage1DshOutput());
+    const runner = vi.fn(async () =>
+      researchResult({ saved: 0, errors: ["引擎不可用：缺少 Key"] }),
+    );
+    const events = await collectEvents(
+      createAdvanceStageCommand({ db: mockDb, dshClient: client, research: runner }).execute({
+        scenarioId: "sc-1",
+        stage: 1,
+        tables: ["表1-3"],
+      }),
+    );
+
+    const tablePrompts = prompts.filter(
+      (p) => p.includes("你是场景落地分析助手") && p.includes("表1-3"),
+    );
+    expect(tablePrompts.length).toBeGreaterThan(0);
+    expect(tablePrompts[0]).toContain("本步没有任何联网来源");
+    expect(tablePrompts[0]).toContain("只能写");
+    expect(tablePrompts[0]).toContain("未知");
+    const progress = events
+      .filter((e) => e.type === "progress")
+      .map((e) => String((e as { message?: string }).message ?? ""));
+    expect(progress.some((m) => m.includes("联网调研未取得来源"))).toBe(true);
+    // 不阻断：照常产出并收尾
+    expect(events.at(-1)!.type).toBe("done");
+    const done = events.at(-1) as { rowsWritten?: number };
+    expect(done.rowsWritten).toBeGreaterThan(0);
   });
 });

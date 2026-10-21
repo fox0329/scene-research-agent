@@ -215,7 +215,7 @@ export const StageRightPanel: React.FC<StageRightPanelProps> = ({ snapshot, live
           </ul>
         ) : (
           <p className="summary-empty">
-            本步还没有联网调研结果（可能检索不可用），来源见下表各行的「来源」列
+            本步没有取得可打开的来源（联网调研未完成或无可信结果），相关结论按「未知」处理
           </p>
         )}
 

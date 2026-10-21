@@ -138,11 +138,12 @@ describe("stage-prompts — 信息版口径（不给决策建议 + 每条信息�
    * 商业理解之后主要就是要了解市场信息，你全都不填，要用户自己填吗？」。
    * 这里把口径钉住：行情必须写满并标 C/T4（待验证由 authority 列表达），具体事实才可留「未提供」。
    */
-  it("阶段 2 的市场行情口径：必须写满 + 行业通例 C/T4（不许退回给用户）", () => {
+  it("阶段 2 的市场行情口径：必须写满，但来源只能是本步调研（模型知识不能当来源）", () => {
     const market = buildStagePrompt(2, {}, scenario);
     expect(market.system).toContain("市场行情必须由你写出来");
     expect(market.system).toContain("不许整列留「未提供」");
-    expect(market.system).toContain("行业通例（模型知识）");
+    expect(market.system).toContain("来源只能是本步联网调研来源列表");
+    expect(market.system).toContain("模型知识不能当来源");
     expect(market.system).toContain("毛利率");
     expect(market.system).toContain("主要玩家");
     expect(market.system).toContain("时间窗口");

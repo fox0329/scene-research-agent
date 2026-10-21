@@ -5,6 +5,9 @@ import {
   runDeterministicPostcheck,
   enforceTruthfulDowngrade,
   enforceMidCleanliness,
+  enforceSourceDiscipline,
+  UNKNOWN_SOURCE_MATERIAL,
+  UNKNOWN_SOURCE_UNVERIFIED,
   splitMidCitations,
   hasCustomerFacts,
   hasMidCitation,
@@ -101,7 +104,7 @@ describe("postcheck — 来源真实性", () => {
     expect(f.find((x) => x.kind === "结论与证据矛盾")?.severity).toBe("硬伤");
   });
 
-  it("行情行（行业通例 + 模型知识出处）不报来源硬伤", () => {
+  it("行情行也不许写「行业通例（模型知识）」当来源 → 硬伤（用户定调 2026-10-21）", () => {
     const f = runDeterministicPostcheck({
       rows: [
         row({
@@ -112,7 +115,7 @@ describe("postcheck — 来源真实性", () => {
       ],
       lookup: fakeLookup({}),
     });
-    expect(f.filter((x) => x.severity === "硬伤")).toEqual([]);
+    expect(f.find((x) => x.kind === "模型知识当来源")?.severity).toBe("硬伤");
   });
 });
 
@@ -661,5 +664,69 @@ describe("口径分档 — 阶段 1–2 不许把行业问题答成客户问题�
       stage: 1,
     });
     expect(f.map((x) => x.kind)).not.toContain("客户侧口径混入场景分析");
+  });
+});
+
+
+describe("postcheck — 来源门禁：模型知识不是来源、URL 必须在本步调研里（2026-10-21）", () => {
+  it("source 命中「模型知识」→ 硬伤，并确定性改写为「未知（未检索到公开来源）」", () => {
+    const r = row({ source: "行业通例（模型知识）", sourceType: "AI推断" });
+    const f = runDeterministicPostcheck({ rows: [r], lookup: fakeLookup({}) });
+    expect(f.find((x) => x.kind === "模型知识当来源")?.severity).toBe("硬伤");
+
+    const fixed = enforceSourceDiscipline([r]);
+    expect(fixed).toHaveLength(1);
+    expect(fixed[0]!.source).toBe(UNKNOWN_SOURCE_MATERIAL);
+    expect(fixed[0]!.reasons.join("；")).toContain("未知");
+  });
+
+  it("proof 命中「推测 / 常识 / 经验判断」同样改写（不只查 source 列）", () => {
+    const r = row({
+      source: "ingest-1.pdf:10",
+      row: { capability: "x", proof: "按常识推测，行业内普遍这么做" },
+    });
+    const f = runDeterministicPostcheck({ rows: [r], lookup: fakeLookup({ "ingest-1.pdf:10": ["x"] }) });
+    expect(f.some((x) => x.kind === "模型知识当来源")).toBe(true);
+    const fixed = enforceSourceDiscipline([r]);
+    expect(fixed[0]!.row["proof"]).toBe(UNKNOWN_SOURCE_MATERIAL);
+  });
+
+  it("来源 URL 的 host 不在本步调研结果里 → 硬伤，并改写为「未知（来源未在本步调研中核实）」", () => {
+    const r = row({
+      source: "https://made-up.example/a?utm_source=x",
+      sourceType: "AI推断",
+      row: { capability: "x", verification_verdict: "单一来源" },
+    });
+    const f = runDeterministicPostcheck({
+      rows: [r],
+      lookup: fakeLookup({}),
+      researchHosts: ["www.gov.cn"],
+    });
+    expect(f.find((x) => x.kind === "来源未在本步调研中核实")?.severity).toBe("硬伤");
+
+    const fixed = enforceSourceDiscipline([r], ["www.gov.cn"]);
+    expect(fixed[0]!.source).toBe(UNKNOWN_SOURCE_UNVERIFIED);
+  });
+
+  it("来源 URL 的 host（含 www 差异）在本步调研里 → 不改写", () => {
+    const r = row({
+      source: "https://www.gov.cn/zhengce/water?from=search",
+      sourceType: "AI推断",
+      row: { capability: "x", verification_verdict: "单一来源" },
+    });
+    const f = runDeterministicPostcheck({
+      rows: [r],
+      lookup: fakeLookup({}),
+      researchHosts: ["gov.cn"],
+    });
+    expect(f.some((x) => x.kind === "来源未在本步调研中核实")).toBe(false);
+    expect(enforceSourceDiscipline([r], ["gov.cn"])).toEqual([]);
+  });
+
+  it("不传 researchHosts 就不做 host 判定（老调用不误伤）", () => {
+    const r = row({ source: "https://any.example/x", sourceType: "AI推断" });
+    const f = runDeterministicPostcheck({ rows: [r], lookup: fakeLookup({}) });
+    expect(f.some((x) => x.kind === "来源未在本步调研中核实")).toBe(false);
+    expect(enforceSourceDiscipline([r])).toEqual([]);
   });
 });

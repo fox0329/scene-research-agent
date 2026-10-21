@@ -1,6 +1,6 @@
 {
   "name": "@scene/desktop",
-  "version": "0.6.5",
+  "version": "0.6.6",
   "private": true,
   "description": "场景通 桌面版（Electron 壳 + 内嵌本地服务端）",
   "main": "dist/main.cjs"

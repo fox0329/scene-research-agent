@@ -225,7 +225,11 @@ export {
   runDeterministicPostcheck,
   enforceTruthfulDowngrade,
   enforceMidCleanliness,
+  enforceSourceDiscipline,
   summarizePostcheck,
+  MODEL_KNOWLEDGE_SOURCE_RE,
+  UNKNOWN_SOURCE_MATERIAL,
+  UNKNOWN_SOURCE_UNVERIFIED,
   parseCitations,
   keyPhrases,
   splitMidCitations,
@@ -239,6 +243,7 @@ export { judgeConstraint, findWeakConstraints, type ConstraintVerdict } from "./
 export { judgeRowValue, type ValueVerdict } from "./value-check.js";
 export type {
   MidSweepResult,
+  SourceDisciplineResult,
   PostcheckFinding,
   PostcheckInput,
   PostcheckKind,

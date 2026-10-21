@@ -185,7 +185,7 @@ describe("stage-summary-service — 右栏要点（brief）", () => {
     const sc = db.scenarioRepo.getById(scenarioId)!;
     const r = getStageBrief(db, sc, 3, 4);
     expect(r.brief.advice).toEqual([
-      "本步还没有可下结论的判据（缺表1-3 / 表4-3 / 表4-4 的有效数据）",
+      "本步还没有可下结论的判据：门槛、赢面与能力匹配表尚未产出，风险提醒随这些表出现",
     ]);
     expect(r.brief.sources).toEqual([]);
   });
@@ -249,6 +249,72 @@ describe("stage-summary-service — 右栏要点（brief）", () => {
       "https://example.com/research-1",
       "https://example.com/standard",
     ]);
+  });
+});
+
+describe("stage-summary-service — 右栏来源排序与标签（2026-10-21）", () => {
+  const mk = (
+    scenarioId: string,
+    n: number,
+    over: Partial<Parameters<DbInstance["researchRepo"]["upsert"]>[0]> = {},
+  ): Parameters<DbInstance["researchRepo"]["upsert"]>[0] => ({
+    id: `rs_sort_${n}`,
+    scenario_id: scenarioId,
+    step: 2,
+    query: "智慧水务 标准",
+    title: `来源${n}`,
+    url: `https://example.com/s${n}`,
+    url_key: `sort${n}`,
+    snippet: "",
+    engine: "baidu-html",
+    fetched_at: "2026-10-21T00:00:00.000Z",
+    status: "有效",
+    error: "",
+    ...over,
+  });
+
+  it("T1 排最前、同权威下 verified=1 优先、stale 标注、label 带发布方与日期", () => {
+    const { db, scenarioId } = seed();
+    db.researchRepo.upsert(
+      mk(scenarioId, 1, { title: "媒体解读", url: "https://example.com/media", authority: "T3", verified: 1, published_at: "2025-01-01" }),
+    );
+    db.researchRepo.upsert(
+      mk(scenarioId, 2, {
+        title: "国家标准全文",
+        url: "https://www.gov.cn/standard",
+        authority: "T1",
+        verified: 1,
+        publisher: "住建部",
+        published_at: "2024-06-01",
+      }),
+    );
+    db.researchRepo.upsert(
+      mk(scenarioId, 3, { title: "未验真政府页", url: "https://www.gov.cn/raw", authority: "T1", verified: 0 }),
+    );
+    db.researchRepo.upsert(
+      mk(scenarioId, 4, {
+        title: "旧规范",
+        url: "https://example.com/old",
+        authority: "T2",
+        verified: 1,
+        publisher: "某协会",
+        published_at: "2015-03-01",
+        stale: 1,
+      }),
+    );
+
+    const sc = db.scenarioRepo.getById(scenarioId)!;
+    const r = getStageBrief(db, sc, 1, 2);
+    const research = r.brief.sources.filter((x) => x.url.includes("example.com") || x.url.includes("gov.cn"));
+    expect(research.map((x) => x.url)).toEqual([
+      "https://www.gov.cn/standard", // T1 + verified
+      "https://www.gov.cn/raw", // T1 未验真
+      "https://example.com/old", // T2
+      "https://example.com/media", // T3
+    ]);
+    expect(research[0]!.label).toBe("国家标准全文 · 住建部 · 2024-06");
+    expect(research[2]!.label).toContain("（较早）");
+    expect(research[2]!.label).toContain("2015-03");
   });
 });
 
