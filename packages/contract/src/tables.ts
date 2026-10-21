@@ -503,11 +503,9 @@ const TABLES_STAGE_0: readonly TableDef[] = [
         sup("evidence_level", "证据等级", { enum: "evidence_level" }),
       ],
       O3价格与授权: [
-        mid("item", "产品/服务", { required: true }),
-        mid("pricing_model", "计价方式", { required: true }),
-        mid("price", "价格或区间", { required: true }),
-        sup("license_model", "授权模式"),
-        sup("maintenance", "维保政策"),
+        // 2026-10-21 起：价格明细统一进 M6 硬件报价（一行一个口径、可溯源），
+        // O3 只保留「报价单/价格表文件」引用，避免同一价格在两处出现（用户质问「为什么重复了」）
+        sup("file", "报价单/价格表文件", { required: true }),
         sup("note", "口径备注"),
       ],
       O4开发资料: [

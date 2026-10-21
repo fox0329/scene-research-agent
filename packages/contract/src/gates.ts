@@ -132,7 +132,7 @@ export const TABLE_GATES: Readonly<Record<string, readonly ScopedGate[]>> = {
     { kind: "enum-of-column", column: "category", text: "材料类别取该列枚举" },
     { kind: "non-empty", columns: ["cert_no", "valid_until", "issuer"], text: "认证类材料须给证书号、有效期与发证机构（无证书号视为未取得）", when: { column: "category", equals: "O1认证" } },
     { kind: "non-empty", columns: ["delivered_at", "acceptance"], text: "案例类材料须给交付时间与可验收指标（「效果良好」不算）", when: { column: "category", equals: "O2案例" } },
-    { kind: "has-number", columns: ["price"], text: "价格须给金额与计价单位（含税口径写右栏）", when: { column: "category", equals: "O3价格" } }
+    { kind: "non-empty", columns: ["file"], text: "价格材料只存报价单/价格表文件引用；具体单价与口径请录到「M6 硬件报价」", when: { column: "category", equals: "O3价格" } }
   ],
 
   "表1-1": [

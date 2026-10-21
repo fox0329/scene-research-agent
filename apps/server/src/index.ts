@@ -30,6 +30,15 @@ async function main() {
   const webDist = resolveWebDist();
   const app = createApp({ db, dshClient, webDist });
 
+  /* 价格去重的一次性迁移：把结果写进启动日志（用户/排障都要能看到迁了几条、跳过几条） */
+  if (db.o3PriceMigration) {
+    const { migrated, skipped } = db.o3PriceMigration;
+    app.log.info(
+      `O3 价格 → M6 报价迁移：已归位 ${migrated} 条、跳过 ${skipped} 条` +
+        (skipped > 0 ? "（跳过项因型号不在 M1/缺金额而保留在 O3）" : ""),
+    );
+  }
+
   try {
     await app.listen({ port: PORT, host: HOST });
     app.log.info(`server listening on http://${HOST}:${PORT}`);

@@ -1,5 +1,4 @@
 import React, { useState } from "react";
-import { QualityPanel } from "./QualityPanel";
 import { ProductListPanel } from "./ProductListPanel";
 import { RealLibraryView } from "./RealLibraryView";
 import type { RowDetail } from "../components/RowDetailPanel";
@@ -19,20 +18,19 @@ interface TabDef {
 }
 
 const tabs: TabDef[] = [
-  { key: "quality",  label: "质量总评" },
   { key: "m1",       label: "M1 产品清单" },
   { key: "m2",       label: "M2 规格书" },
   { key: "m3",       label: "M3 能力清单" },
   { key: "m4",       label: "M4 边界与限制" },
   { key: "m6",       label: "M6 硬件报价" },
   { key: "optional", label: "O 可选材料" },
-  { key: "reminder", label: "补充提醒" },
 ];
 
 /**
  * 产品资料库视图
- * - 联真模式（live）：RealLibraryView——产品线切换/六维质量/5 张核心表 + 可选材料编辑/上传入库 SSE 进度
+ * - 联真模式（live）：RealLibraryView——产品线切换/5 张核心表 + 可选材料编辑/上传入库 SSE 进度
  * - 演示模式：mock 面板（E2E 依赖），页头徽标提示
+ * - 质量总评 / 补充提醒已下线（用户定调 2026-10-21），演示态与联真态页签保持一致
  */
 interface LibraryViewProps {
   live: boolean;
@@ -50,7 +48,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
   onChanged,
   onRowSelect,
 }) => {
-  const [activeTab, setActiveTab] = useState("quality");
+  const [activeTab, setActiveTab] = useState("m1");
 
   if (live) {
     return (
@@ -60,8 +58,6 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
 
   const renderPanel = () => {
     switch (activeTab) {
-      case "quality":
-        return <QualityPanel />;
       case "m1":
         return <ProductListPanel />;
       case "m2":
@@ -74,10 +70,8 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
         return <QuotePanel />;
       case "optional":
         return <OptionalPanel />;
-      case "reminder":
-        return <QualityPanel />;
       default:
-        return <QualityPanel />;
+        return <ProductListPanel />;
     }
   };
 

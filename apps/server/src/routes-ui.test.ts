@@ -1219,6 +1219,33 @@ describe("资料库路由", () => {
     expect(patched.json().unit_price).toBe("11800");
   });
 
+  it("O3 手工新增只收报价单文件引用，价格明细拒绝（统一走 M6）", async () => {
+    const priceOnly = await h.app.inject({
+      method: "POST",
+      url: "/api/v1/library/rows/O3",
+      payload: {
+        product_line_id: plId,
+        values: { model: "X1", price: "3800", channel: "含税参考价" },
+      },
+    });
+    expect(priceOnly.statusCode).toBe(400);
+    expect(priceOnly.json().error).toContain("M6");
+
+    const fileRef = await h.app.inject({
+      method: "POST",
+      url: "/api/v1/library/rows/O3",
+      payload: {
+        product_line_id: plId,
+        values: { file: "报价单-2026Q1.pdf", note: "明细见 M6", price: "3800" },
+      },
+    });
+    expect(fileRef.statusCode).toBe(200);
+    expect(fileRef.json().payload).toEqual({
+      file: "报价单-2026Q1.pdf",
+      note: "明细见 M6",
+    });
+  });
+
   it("M6 报价型号必须能在 M1 找到（凭空建型号 400）", async () => {
     const res = await h.app.inject({
       method: "POST",
@@ -1274,9 +1301,83 @@ describe("资料库路由", () => {
     const no = rows.find((r) => r.type === "不做")!;
     expect(no.target).toBe("公司/业务");
     expect(no.response).toBe("转生态伙伴");
+    // 「依据」= boundary.reason，用户据此看"凭什么判不做"
+    expect(no.reason).toBe("不做定制");
     const limit = rows.find((r) => r.type === "限制")!;
     expect(limit.target).toBe("X1");
     expect(limit.impact).toBe("中");
+    // 限制类没有 reason 这一列，给「—」
+    expect(limit.reason).toBe("—");
+  });
+
+  it("M4 门禁：缺可定位出处 / 缺依据的「不做」不入库，返回 400 与原因", async () => {
+    const noSource = await h.app.inject({
+      method: "POST",
+      url: "/api/v1/library/rows/M4",
+      payload: {
+        product_line_id: plId,
+        values: {
+          type: "不做",
+          description: "不做自建平台二次开发",
+          reason: "安全功能须由独立的安全 PLC 承载",
+          response: "转生态伙伴",
+          source: "边界.docx", // 无页码，不可定位
+        },
+      },
+    });
+    expect(noSource.statusCode).toBe(400);
+    expect(noSource.json().error).toContain("文件名:页码");
+
+    const noReason = await h.app.inject({
+      method: "POST",
+      url: "/api/v1/library/rows/M4",
+      payload: {
+        product_line_id: plId,
+        values: {
+          type: "不做",
+          description: "不做自建平台二次开发",
+          reason: "   ",
+          response: "转生态伙伴",
+          source: "白皮书.pdf:12",
+        },
+      },
+    });
+    expect(noReason.statusCode).toBe(400);
+    expect(noReason.json().error).toContain("依据");
+
+    expect(
+      h.db.boundaryRepo.list({ where: "product_line_id = ?", params: [plId] }),
+    ).toHaveLength(0);
+  });
+
+  it("M4 门禁：没有可定位出处的存量边界行不进合并读取", async () => {
+    h.db.boundaryRepo.insert({
+      product_line_id: plId,
+      description: "有出处的边界",
+      reason: "有依据",
+      has_plan: "无",
+      response: "—",
+      owner: "售前",
+      source: "白皮书.pdf:12",
+    } as never);
+    h.db.boundaryRepo.insert({
+      product_line_id: plId,
+      description: "没出处的边界",
+      reason: "有依据",
+      has_plan: "无",
+      response: "—",
+      owner: "售前",
+      source: "边界:未知",
+    } as never);
+
+    const res = await h.app.inject({
+      method: "GET",
+      url: `/api/v1/library/tables/M4?product_line_id=${plId}`,
+    });
+    expect(res.statusCode).toBe(200);
+    const rows = res.json() as Record<string, string>[];
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.description).toBe("有出处的边界");
   });
 
   it("M4 新增「限制」行落到 limitation 表，读取仍是合并行", async () => {

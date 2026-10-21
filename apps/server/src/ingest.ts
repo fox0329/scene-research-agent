@@ -23,6 +23,7 @@ import type { ParseResult } from "@scene/infra";
 import { createSourceLookup, upsertSourcePages } from "@scene/infra";
 import type { DbInstance } from "@scene/infra";
 import { resolveProductForModel, upsertSpecParam } from "./library-service.js";
+import { boundaryEvidenceError, o3FileRefPayload } from "./library-gate.js";
 import { evaluateGates, normalizeModel } from "@scene/domain";
 import type {
   QualityAssessment,
@@ -80,6 +81,13 @@ export interface IngestResult {
    * 这几张表走入库路径，阶段推进时才跑的门限管不到它们（专家审阅 2026-10-20 指出的通路缺口）。
    */
   gateFindings: { tableCode: string; label: string; gate: string; detail: string }[];
+  /**
+   * 被门禁挡下的行（未入库，逐条给出原因）
+   *
+   * 现在只有一种：M4「不做」缺可定位出处或缺「依据」。宁可少一行，也不让
+   * 没有材料出处的硬结论混进资料库；原因随结果返回，上传回执/日志能说清"少了什么"。
+   */
+  skippedRows: { table_code: string; source: string; reason: string }[];
 }
 
 // ─── DSH 产出 JSON 结构 ────────────────────────────────────
@@ -148,8 +156,9 @@ const SYSTEM_PROMPT = `你是产品资料解析专家。你的任务是将输入
 必填：domain, name, description, maturity
 
 ## M4 边界声明（不做什么）
-字段：description(不做的事), reason(原因), has_plan(有/无/未定), response(客户要求时怎么办), owner(负责人)
-必填：description, reason, has_plan, response, owner
+字段：description(不做的事), reason(依据：凭什么判"不做"，要能对上材料里的原话/限制条件), has_plan(有/无/未定), response(客户要求时怎么办), owner(负责人)
+必填：description, reason, has_plan, response, owner, source
+注意：「不做」是硬结论，必须同时给**可定位出处**（source 形如 文件名:页码）与**依据**（reason）；缺任一条就不要输出这一行，不许用"行业通例/通常"编理由。
 
 ## M5 已知限制
 字段：product_name(产品名称), description(限制描述), impact(高/中/低), fix_status(已修复/修复中/无计划/硬件限制), external_visible(可提/内部可提/不可提), owner(负责人)
@@ -158,16 +167,16 @@ const SYSTEM_PROMPT = `你是产品资料解析专家。你的任务是将输入
 ## M6 硬件报价
 字段：model(所属产品型号，必须能在 M1 找到), config(配置/构成), unit_price(含税单价，元，可写区间如 12000–15000 或「面议」), price_scope(纯设备/含安装/含三年维保/年费), valid_until(报价有效期，日期或「长期」)
 必填：model, config, unit_price, price_scope, source
-注意：一行只写一个报价口径；没有报价单/销售确认/历史项目出处就不要写，禁止编价格。
+注意：**任何价格/报价信息一律写 M6**（单价、区间、含税参考价、年费都算）；一行只写一个报价口径；没有报价单/销售确认/历史项目出处就不要写，禁止编价格。
 
 ## O1-O6 可选材料（fields 的键名必须逐字用下面这些，否则入不了表）
 - O1认证：model(型号), cert_type(证书类型), cert_no(证书号), valid_until(有效期至), issuer(发证机构), covered_models(覆盖型号)
 - O2案例：name(案例名), scene(场景), delivered_at(交付时间), acceptance(验收指标与结果)
-- O3价格：item(产品/服务), pricing_model(计价方式), price(价格或区间)
+- O3报价单引用：file(报价单文件名或编号), note(说明)——**只存文件级引用，不存单价/金额/计价方式**；价格一律进 M6，O3 没有报价单文件就不要输出
 - O4SDK：product(产品), doc_name(资料名称) 及其余开发资料字段（见表格定义）
 - O5路线图：feature(功能), expected_release(预计时间), priority(优先级)
 - O6生态：partner_name(伙伴名称), integration_type(集成方式), maturity(成熟度)
-注意：证书号、有效期、发证机构、交付时间、验收指标都是必填，材料里没有就写「未提及」，不要换键名。
+注意：证书号、有效期、发证机构、交付时间、验收指标都是必填，材料里没有就写「未提及」，不要换键名；O3 只收报价单文件引用（file/note），价格明细写 M6。
 
 ## 来源标注规则
 每条记录的 source 字段必须包含"文件名:页码"（如 whitepaper.pdf:12）。
@@ -227,7 +236,7 @@ async function executeIngest(
   const dshOutput = await consumeDshPrompt(dshClient, session, userPrompt);
 
   // 4. 验证产出（来源校验 + 丢弃无效行）
-  const validRows = validateRows(dshOutput, fileName);
+  const { valid: validRows, skipped: skippedRows } = validateRows(dshOutput, fileName);
 
   // 5. 写入数据库
   const { inserted, tableCounts, mergedProducts } = writeRows(db, validRows, productLineId, fileName);
@@ -244,6 +253,7 @@ async function executeIngest(
     qualityAssessment,
     completenessReport,
     gateFindings,
+    skippedRows,
   };
 }
 
@@ -358,7 +368,11 @@ function buildUserPrompt(fileName: string, parseResult: ParseResult): string {
   }
 
   parts.push("");
-  parts.push("请将上述内容按 M1-M6、O1-O6 表格分类，输出 JSON。每条记录的 source 字段必须包含「文件名:页码」；M6 报价没有出处就不要输出。");
+  parts.push(
+    "请将上述内容按 M1-M6、O1-O6 表格分类，输出 JSON。每条记录的 source 字段必须包含「文件名:页码」；" +
+      "M4「不做」必须同时给可定位出处与依据（reason），缺一条就不要输出；M6 报价没有出处就不要输出；" +
+      "价格一律写 M6，O3 只写报价单文件引用。",
+  );
 
   return parts.join("\n");
 }
@@ -447,23 +461,47 @@ function isDshOutput(val: unknown): val is DshOutput {
 
 // ─── 子函数：来源校验 ──────────────────────────────────────
 
-/** 校验规则：table_code 和 source 必须合法，缺则丢弃 */
-function validateRows(output: DshOutput, fileName: string): ClassifiedRow[] {
+/**
+ * 校验规则：table_code 和 source 必须合法，缺则丢弃；M4 还要过「出处+依据」门禁。
+ *
+ * 返回被丢弃的 M4 行原因：门禁不能静默——用户要知道"材料里明明写了不做，为什么没进来"。
+ */
+function validateRows(
+  output: DshOutput,
+  fileName: string,
+): {
+  valid: ClassifiedRow[];
+  skipped: { table_code: string; source: string; reason: string }[];
+} {
   const validTables = new Set([
     "M1", "M2", "M3", "M4", "M5", "M6",
     "O1", "O2", "O3", "O4", "O5", "O6",
   ]);
   const valid: ClassifiedRow[] = [];
+  const skipped: { table_code: string; source: string; reason: string }[] = [];
 
   for (const row of output.rows) {
     // table_code 必须是合法的表编号
     if (!row.table_code || !validTables.has(row.table_code)) continue;
+    /* M4 门禁先于通用来源校验：它要给出"缺出处/缺依据"的具体原因，而不是静默丢弃 */
+    if (row.table_code === "M4") {
+      const fields = (row.fields ?? {}) as Record<string, unknown>;
+      const gate = boundaryEvidenceError(row.source, fields["reason"]);
+      if (gate) {
+        skipped.push({
+          table_code: "M4",
+          source: String(row.source ?? ""),
+          reason: gate,
+        });
+        continue;
+      }
+    }
     // source 必须含文件名 + 页码
     if (!isValidSource(row.source, fileName)) continue;
     valid.push(row);
   }
 
-  return valid;
+  return { valid, skipped };
 }
 
 /**
@@ -771,11 +809,16 @@ function insertOptionalMaterial(
   const category = categoryMap[row.table_code];
   if (!category) return false;
 
+  /* 价格只有一个家：O3 只留报价单文件引用，单价/计价方式一律不落这里（结构化报价走 M6） */
+  const payload =
+    category === "O3价格" ? o3FileRefPayload(row.fields) : row.fields;
+  if (!payload) return false;
+
   try {
     db.optionalMaterialRepo.insert({
       product_line_id: productLineId,
       category,
-      payload: row.fields,
+      payload,
       source_type: "AI提取",
       source: row.source,
       source_authority: authorityOf(row.source, fileName),

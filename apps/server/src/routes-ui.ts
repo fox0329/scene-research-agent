@@ -106,6 +106,11 @@ import {
   reopenFlowStep,
 } from "./flow-service.js";
 import { createIngestCommand } from "./ingest.js";
+import {
+  boundaryEvidenceError,
+  isLocatableSource,
+  o3FileRefPayload,
+} from "./library-gate.js";
 import { parseStage, streamEvents } from "./sse-stream.js";
 import {
   assessQuality,
@@ -626,12 +631,21 @@ async function* runIngestJob(
     // filename 是真名（file.filename），filePath 是临时落盘路径——两个都传：
     // 落库的 source 必须写"材料叫什么"，不能写临时名（变更表 #156）
     const result = await ingestCmd.execute({ filePath, productLineId, fileName: filename });
+    // 门禁挡下的行要当面说清（复用上传进度区，不新增 UI）：用户看不到"消失的那一行"会以为丢了
+    for (const skipped of result.skippedRows) {
+      yield {
+        type: "progress",
+        text: `未入库 ${skipped.table_code}：${skipped.reason}（来源：${skipped.source || "空"}）`,
+      };
+    }
     yield {
       type: "done",
       rows_inserted: result.rowsInserted,
       table_counts: result.tableCounts,
       quality: result.qualityAssessment,
       completeness: result.completenessReport,
+      // 被门禁挡下的行也要报：否则用户只看到"少了 1 行"，不知道是 M4 缺依据/缺出处
+      skipped_rows: result.skippedRows,
     };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
@@ -1437,6 +1451,13 @@ interface MergedBoundaryRow {
   type: MergedBoundaryType;
   target: string;
   description: string;
+  /**
+   * 「依据」：为什么下这个结论（boundary.reason）
+   *
+   * 用户质问「来源是哪、凭什么下结论不做」——只有 source（出处）而没有 reason（依据），
+   * 等于让用户自己猜"为什么"。限制类没有这一列，给「—」。
+   */
+  reason: string;
   impact: string;
   response: string;
   source: string;
@@ -1452,6 +1473,7 @@ function boundaryToMerged(row: Boundary): MergedBoundaryRow {
     // 边界是公司/业务层面的承诺，不挂具体型号；对象栏仍要给一个可读主体
     target: "公司/业务",
     description: row.description,
+    reason: row.reason ?? "",
     impact: "—",
     response: row.response,
     source: row.source ?? "",
@@ -1467,6 +1489,7 @@ function limitationToMerged(row: Limitation): MergedBoundaryRow {
     type: "限制",
     target: row.product_name,
     description: row.description,
+    reason: "—",
     impact: row.impact,
     response: "—",
     source: row.source ?? "",
@@ -1485,8 +1508,15 @@ function mergedBoundaryRows(
   const filter = where ? { where, params } : {};
   const boundaries = db.boundaryRepo.list({ ...filter, orderBy: "created_at ASC" });
   const limitations = db.limitationRepo.list({ ...filter, orderBy: "created_at ASC" });
+  /**
+   * 「没有出处的边界行不能进 M4」（用户定调 2026-10-21）
+   *
+   * 只过滤 boundary（「不做」是硬结论，必须能指到材料哪一页）；limitation 是自己的
+   * 产品短板，出处缺失不改变"限制存在"这一事实，照常展示。
+   * 被过滤的行**没有删**，只是不进这张合并表——历史数据兼容风险见交付说明。
+   */
   return [
-    ...boundaries.map(boundaryToMerged),
+    ...boundaries.filter((b) => isLocatableSource(b.source)).map(boundaryToMerged),
     ...limitations.map(limitationToMerged),
   ];
 }
@@ -1514,6 +1544,7 @@ function updateMergedBoundary(
   if (found.type === "不做") {
     const allowed = new Set([
       "description",
+      "reason",
       "response",
       "source",
       "source_type",
@@ -1547,7 +1578,8 @@ function createMergedBoundary(
   productLineId: string,
   values: Record<string, unknown>,
 ): MergedBoundaryRow {
-  if (String(values["type"] ?? "") === "限制") {
+  const type = String(values["type"] ?? "");
+  if (type === "限制") {
     return limitationToMerged(db.limitationRepo.insert({
       product_line_id: productLineId,
       product_name: String(values["target"] ?? values["product_name"] ?? ""),
@@ -1561,6 +1593,9 @@ function createMergedBoundary(
       source: String(values["source"] ?? ""),
     } as never));
   }
+  // 手工新增路径（B）与 ingest（A）同一门禁：出处可定位 + 依据非空，缺一不入库
+  const gate = boundaryEvidenceError(values["source"], values["reason"]);
+  if (gate) throw new Error(gate);
   return boundaryToMerged(db.boundaryRepo.insert({
     product_line_id: productLineId,
     description: String(values["description"] ?? ""),
@@ -1717,6 +1752,14 @@ function registerLibraryRoutes(app: FastifyInstance, deps: UiRoutesDeps) {
         return notFound(reply, `M4 表行 ${rowId} 不存在`);
       }
       try {
+        /* 编辑也算一次"下结论"：把 source/reason 改空同样要拦，否则门禁能被绕过 */
+        if (found.type === "不做" && (cell === "source" || cell === "reason")) {
+          const current = found.row as Boundary;
+          const nextSource = cell === "source" ? body.value : current.source;
+          const nextReason = cell === "reason" ? body.value : current.reason;
+          const gate = boundaryEvidenceError(nextSource, nextReason);
+          if (gate) return badRequest(reply, gate);
+        }
         const updated = updateMergedBoundary(db, rowId, cell, body.value);
         markDependentStale(db, code, rowId);
         if (!updated) return notFound(reply, `M4 表行 ${rowId} 不存在`);
@@ -1744,6 +1787,15 @@ function registerLibraryRoutes(app: FastifyInstance, deps: UiRoutesDeps) {
       if (!updated) return notFound(reply, `${code} 表行 ${rowId} 不存在`);
       markDependentStale(db, code, rowId);
       return updated;
+    }
+
+    /* 手工编辑也不许把价格写回 O3：只保留文件级引用（价格只有一个家 = M6） */
+    if (code === "O3" && cell === "payload") {
+      const payload = o3FileRefPayload((body.value ?? {}) as Record<string, unknown>);
+      if (!payload) {
+        return badRequest(reply, "O3 只存报价单文件级引用（file/note）；单价请录入 M6 硬件报价");
+      }
+      body.value = payload;
     }
 
     const repo = spec.repo(db);
@@ -1786,7 +1838,11 @@ function registerLibraryRoutes(app: FastifyInstance, deps: UiRoutesDeps) {
       if (!String(values["description"] ?? "").trim()) {
         return badRequest(reply, "M4 表必填列缺内容：description");
       }
-      return createMergedBoundary(db, productLineId, values);
+      try {
+        return createMergedBoundary(db, productLineId, values);
+      } catch (err: unknown) {
+        return badRequest(reply, err instanceof Error ? err.message : String(err));
+      }
     }
     if (code === "M6") {
       const model = String(values["model"] ?? "").trim();
@@ -1806,6 +1862,18 @@ function registerLibraryRoutes(app: FastifyInstance, deps: UiRoutesDeps) {
         price_scope: scope as never,
         valid_until: String(values["valid_until"] ?? ""),
         source: String(values["source"] ?? ""),
+        source_type: "用户补充",
+      } as never);
+    }
+    if (code === "O3") {
+      const payload = o3FileRefPayload(values);
+      if (!payload) {
+        return badRequest(reply, "O3 只存报价单文件级引用（file/note）；单价请录入 M6 硬件报价");
+      }
+      return db.optionalMaterialRepo.insert({
+        product_line_id: productLineId,
+        category: "O3价格",
+        payload,
         source_type: "用户补充",
       } as never);
     }

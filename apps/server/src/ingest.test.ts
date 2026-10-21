@@ -41,7 +41,12 @@ function makeParseResult(overrides: Partial<ParseResult> = {}): ParseResult {
   };
 }
 
-function makeDshOutput() {
+/** 测试用 DSH 产出：宽松字段类型，便于按用例追加 M6/O3 等行 */
+interface TestDshOutput {
+  rows: { table_code: string; fields: Record<string, unknown>; source: string }[];
+}
+
+function makeDshOutput(): TestDshOutput {
   return {
     rows: [
       {
@@ -184,8 +189,8 @@ function createMockDb(): DbInstance {
     qualityGateRepo: {} as DbInstance["qualityGateRepo"],
     scenarioLinkedLineRepo: { list: () => [], insert: vi.fn(), getById: vi.fn(), update: vi.fn(), deleteById: vi.fn() },
     scenarioMaterialRepo: createMockRepo(),
-    // ingest 流程不使用报价与步骤调研：占位即可
-    quoteRepo: {} as never,
+    // ingests 的价格一律走 M6：报价仓库必须是可断言的 mock，不能占位
+    quoteRepo: createMockRepo(),
     researchRepo: {} as never,
   };
 }
@@ -294,6 +299,117 @@ describe("createIngestCommand", () => {
       expect(result.completenessReport).toBeDefined();
       expect(result.completenessReport.items.length).toBeGreaterThanOrEqual(7);
       expect(Array.isArray(result.completenessReport.reminders)).toBe(true);
+    });
+  });
+
+  describe("M4 门禁：不做必须有可定位出处与依据", () => {
+    it("缺 reason 的「不做」不入库，并在 skippedRows 里给原因", async () => {
+      const output = makeDshOutput();
+      output.rows[3]!.fields.reason = "";
+      dshClient = createMockDshClient(JSON.stringify(output));
+      deps = { db, dshClient, docParser };
+
+      const cmd = createIngestCommand(deps);
+      const result = await cmd.execute({
+        filePath: "/tmp/whitepaper.pdf",
+        productLineId: "pl1",
+      });
+
+      expect(db.boundaryRepo.insert).not.toHaveBeenCalled();
+      expect(result.rowsInserted).toBe(5);
+      expect(result.skippedRows).toHaveLength(1);
+      expect(result.skippedRows[0]!.table_code).toBe("M4");
+      expect(result.skippedRows[0]!.reason).toContain("依据");
+    });
+
+    it("出处不可定位（文件名无扩展名且页码非数字）的「不做」不入库", async () => {
+      const output = makeDshOutput();
+      output.rows[3]!.source = "边界:未知";
+      dshClient = createMockDshClient(JSON.stringify(output));
+      deps = { db, dshClient, docParser };
+
+      const cmd = createIngestCommand(deps);
+      const result = await cmd.execute({
+        filePath: "/tmp/whitepaper.pdf",
+        productLineId: "pl1",
+      });
+
+      expect(db.boundaryRepo.insert).not.toHaveBeenCalled();
+      expect(result.rowsInserted).toBe(5);
+      expect(result.skippedRows[0]!.reason).toContain("文件名:页码");
+    });
+  });
+
+  describe("价格只有一个家：M6 落报价，O3 不存明细", () => {
+    it("价格类信息写入 M6（price_quote），不再写 O3价格", async () => {
+      const output = makeDshOutput();
+      output.rows.push({
+        table_code: "O3",
+        fields: { item: "IPC-3000", pricing_model: "按台", price: "约 3800 元/台" },
+        source: "whitepaper.pdf:14",
+      });
+      output.rows.push({
+        table_code: "M6",
+        fields: {
+          model: "IPC-3000",
+          config: "8G+128G",
+          unit_price: "约 3800 元/台",
+          price_scope: "含安装",
+          valid_until: "2025-11",
+        },
+        source: "whitepaper.pdf:14",
+      });
+      dshClient = createMockDshClient(JSON.stringify(output));
+      deps = { db, dshClient, docParser };
+
+      const cmd = createIngestCommand(deps);
+      const result = await cmd.execute({
+        filePath: "/tmp/whitepaper.pdf",
+        productLineId: "pl1",
+      });
+
+      // M6 落库；O3 的价格明细行没有文件引用 → 不落 O3
+      expect(db.quoteRepo.insert).toHaveBeenCalledTimes(1);
+      const quote = (db.quoteRepo.insert as ReturnType<typeof vi.fn>).mock.calls[0]![0];
+      expect(quote.model).toBe("IPC-3000");
+      expect(quote.unit_price).toBe("约 3800 元/台");
+      expect(quote.price_scope).toBe("含安装");
+      expect(quote.source).toBe("whitepaper.pdf:14");
+
+      const optionalCategories = (
+        db.optionalMaterialRepo.insert as ReturnType<typeof vi.fn>
+      ).mock.calls.map((c) => c[0].category);
+      expect(optionalCategories).toEqual(["O2案例"]);
+      expect(result.tableCounts["M6"]).toBe(1);
+      expect(result.tableCounts["O3"]).toBeUndefined();
+    });
+
+    it("O3 只存文件级引用 {file, note}，价格字段被丢弃", async () => {
+      const output = makeDshOutput();
+      output.rows.push({
+        table_code: "O3",
+        fields: {
+          file: "报价单-2026Q1.pdf",
+          note: "含税参考价，单价明细见 M6",
+          price: "3800",
+          currency: "CNY",
+        },
+        source: "报价单-2026Q1.pdf:1",
+      });
+      dshClient = createMockDshClient(JSON.stringify(output));
+      deps = { db, dshClient, docParser };
+
+      const cmd = createIngestCommand(deps);
+      await cmd.execute({ filePath: "/tmp/whitepaper.pdf", productLineId: "pl1" });
+
+      const o3 = (
+        db.optionalMaterialRepo.insert as ReturnType<typeof vi.fn>
+      ).mock.calls.map((c) => c[0]).find((row) => row.category === "O3价格");
+      expect(o3).toBeDefined();
+      expect(o3.payload).toEqual({
+        file: "报价单-2026Q1.pdf",
+        note: "含税参考价，单价明细见 M6",
+      });
     });
   });
 

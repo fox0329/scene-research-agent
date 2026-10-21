@@ -6,7 +6,7 @@
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import Database from "better-sqlite3";
-import { createDb, sourceSearch, type DbInstance } from "./sqlite-repo.js";
+import { createDb, mapO3PricePayload, sourceSearch, type DbInstance } from "./sqlite-repo.js";
 import { mkdtempSync, rmSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -535,5 +535,125 @@ describe("存量库升级：scenario 去掉 product_line_id（v3.0，变更表 #
     expect(again.scenarioRepo.getById("sc-1")!.name).toBe("老场景");
     expect(again.db.pragma("foreign_key_check")).toHaveLength(0);
     again.db.close();
+  });
+});
+
+// ─── O3 价格 → M6 报价（一次性迁移，用户定调 2026-10-21） ───
+//
+// 一个价格事实只能有一个家：存量 O3 价格明细迁进 price_quote 后删掉 O3 行；
+// 型号在 M1 里找不到就不迁（不编产品），O3 行保留等用户补 M1。
+
+describe("O3 价格 → M6 报价迁移", () => {
+  let dir: string;
+  let dbPath: string;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "scene-o3-migrate-"));
+    dbPath = join(dir, "scene.db");
+  });
+
+  afterEach(() => rmSync(dir, { recursive: true, force: true }));
+
+  it("迁成功：映射字段、删 O3 行、第二次打开不重复", () => {
+    const first = createDb(dbPath);
+    const line = first.productLineRepo.insert({ name: "产品线" });
+    const product = first.productRepo.insert({
+      product_line_id: line.id,
+      model: "YS-EC3200",
+      name: "边缘控制器",
+      status: "在售",
+      launch_date: "",
+      position_desc: "",
+    });
+    first.optionalMaterialRepo.insert({
+      product_line_id: line.id,
+      category: "O3价格",
+      payload: {
+        model: "YS-EC3200",
+        price: "约 3800 元/台",
+        currency: "CNY",
+        channel: "含税参考价",
+        date: "2025-11",
+      },
+      source: "云枢智控-产品与能力白皮书.docx:A.3",
+      source_type: "AI提取",
+    });
+    // 非 O3 的可选材料不参与迁移，必须原样留下
+    first.optionalMaterialRepo.insert({
+      product_line_id: line.id,
+      category: "O1认证",
+      payload: { model: "YS-EC3200", cert_no: "C-1" },
+      source: "认证证书.pdf:1",
+    });
+    first.db.close();
+
+    const second = createDb(dbPath);
+    expect(second.o3PriceMigration).toEqual({ migrated: 1, skipped: 0 });
+    const quotes = second.quoteRepo.list();
+    expect(quotes).toHaveLength(1);
+    expect(quotes[0]).toMatchObject({
+      product_id: product.id,
+      model: "YS-EC3200",
+      // 渠道「含税参考价」映射不到四个口径 → 按纯设备，原文留在 config
+      config: "未注明；渠道原文：含税参考价",
+      unit_price: "约 3800 元/台",
+      price_scope: "纯设备",
+      valid_until: "2025-11",
+      source: "云枢智控-产品与能力白皮书.docx:A.3",
+    });
+    expect(
+      second.optionalMaterialRepo.list({ where: "category = ?", params: ["O3价格"] }),
+    ).toHaveLength(0);
+    expect(
+      second.optionalMaterialRepo.list({ where: "category = ?", params: ["O1认证"] }),
+    ).toHaveLength(1);
+    second.db.close();
+
+    // 再打开：没有 O3 行可迁，不重复插报价
+    const third = createDb(dbPath);
+    expect(third.quoteRepo.list()).toHaveLength(1);
+    expect(third.o3PriceMigration).toBeUndefined();
+    third.db.close();
+  });
+
+  it("型号不在 M1：跳过不迁，O3 行保留", () => {
+    const first = createDb(dbPath);
+    const line = first.productLineRepo.insert({ name: "产品线" });
+    first.productRepo.insert({
+      product_line_id: line.id,
+      model: "YS-EC3200",
+      name: "边缘控制器",
+      status: "在售",
+      launch_date: "",
+      position_desc: "",
+    });
+    first.optionalMaterialRepo.insert({
+      product_line_id: line.id,
+      category: "O3价格",
+      payload: { model: "NOT-IN-M1", price: "100", date: "2025-11" },
+      source: "报价单.pdf:1",
+    });
+    first.db.close();
+
+    const second = createDb(dbPath);
+    expect(second.o3PriceMigration).toEqual({ migrated: 0, skipped: 1 });
+    expect(second.quoteRepo.list()).toHaveLength(0);
+    expect(
+      second.optionalMaterialRepo.list({ where: "category = ?", params: ["O3价格"] }),
+    ).toHaveLength(1);
+    second.db.close();
+  });
+
+  it("渠道关键词映射口径；映射不上按纯设备并保留原文", () => {
+    expect(mapO3PricePayload({ model: "A", price: "1", channel: "含三年维保" }, "s.pdf:1")!.price_scope).toBe("含三年维保");
+    expect(mapO3PricePayload({ model: "A", price: "1", channel: "含安装调试" }, "s.pdf:1")!.price_scope).toBe("含安装");
+    expect(mapO3PricePayload({ model: "A", price: "1", channel: "年费" }, "s.pdf:1")!.price_scope).toBe("年费");
+    expect(mapO3PricePayload({ model: "A", price: "1", channel: "纯设备" }, "s.pdf:1")!.price_scope).toBe("纯设备");
+    const fallback = mapO3PricePayload({ model: "A", price: "1", channel: "含税参考价" }, "s.pdf:1")!;
+    expect(fallback.price_scope).toBe("纯设备");
+    expect(fallback.config).toContain("含税参考价");
+    // 缺型号/单价：不是可迁移的价格事实
+    expect(mapO3PricePayload({ model: "", price: "1" }, "s.pdf:1")).toBeNull();
+    expect(mapO3PricePayload({ model: "A", price: "" }, "s.pdf:1")).toBeNull();
   });
 });

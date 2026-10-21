@@ -106,8 +106,191 @@ function uuid(): string {
   return randomUUID();
 }
 
+// ─── O3 价格 → M6 报价（一次性迁移） ────────────────────────
+
+/** 迁移一条 O3 价格后要写进 price_quote 的字段（纯映射结果） */
+export interface O3PriceQuoteMapping {
+  model: string;
+  config: string;
+  unit_price: string;
+  price_scope: PriceQuote["price_scope"];
+  valid_until: string;
+  source: string;
+}
+
+/**
+ * 价格口径关键词 → 契约枚举
+ *
+ * 顺序有讲究：先长后短（「含三年维保」不能被「含安装」抢走）；「年费」放在「含安装」之后，
+ * 因为「含安装，年费另计」这种写法主口径是含安装。一个都映射不上时按「纯设备」，
+ * 并把渠道原文留在 config 里——宁可口径保守，也不能把原文丢掉。
+ */
+const O3_SCOPE_RULES: { keyword: string; scope: PriceQuote["price_scope"] }[] = [
+  { keyword: "含三年维保", scope: "含三年维保" },
+  { keyword: "含安装", scope: "含安装" },
+  { keyword: "年费", scope: "年费" },
+  { keyword: "纯设备", scope: "纯设备" },
+];
+
+/** 型号归一：只做大小写与首尾空白（迁移不猜同义词） */
+function normalizeQuoteModel(model: string): string {
+  return model.trim().toLowerCase();
+}
+
+/**
+ * O3 价格 payload → M6 报价映射（纯函数，迁移与单测共用）
+ *
+ * 映射规则（用户定调 2026-10-21）：
+ *   model → model；config 缺失填「未注明」；price → unit_price；
+ *   channel → price_scope（关键词映射，映射不上按「纯设备」并保留渠道原文到 config）；
+ *   date → valid_until（原文照抄，如 `2025-11`）；source 沿用 O3 行原文。
+ *
+ * 缺型号或单价的 payload 返回 null（没有型号挂不到 M1，没有金额就不是报价事实）。
+ */
+export function mapO3PricePayload(
+  payload: Record<string, unknown>,
+  source: unknown,
+): O3PriceQuoteMapping | null {
+  const model = String(payload["model"] ?? "").trim();
+  const unitPrice = String(payload["price"] ?? "").trim();
+  if (!model || !unitPrice) return null;
+
+  const channel = String(payload["channel"] ?? "").trim();
+  const matched = O3_SCOPE_RULES.find((rule) => channel.includes(rule.keyword));
+  const baseConfig = String(payload["config"] ?? "").trim() || "未注明";
+  const config =
+    channel && !matched ? `${baseConfig}；渠道原文：${channel}` : baseConfig;
+  const validUntil = String(payload["date"] ?? payload["valid_until"] ?? "").trim();
+  const sourceText = String(source ?? payload["source"] ?? "").trim();
+
+  return {
+    model,
+    config,
+    unit_price: unitPrice,
+    price_scope: matched?.scope ?? "纯设备",
+    valid_until: validUntil,
+    source: sourceText,
+  };
+}
+
+/**
+ * 把存量 `optional_material.category='O3价格'` 迁到 `price_quote`（M6）
+ *
+ * 幂等：迁成功的 O3 行**当场删除**，第二次打开库没有可迁行；迁不动的行（型号不在 M1、
+ * 缺金额/坏 JSON）原样保留，不编产品、不编价格。
+ *
+ * 返回迁移/跳过条数，供调用方记日志或测试核对。
+ */
+function migrateO3PricesToQuotes(db: Database.Database): {
+  migrated: number;
+  skipped: number;
+} {
+  let rows: {
+    id: string;
+    product_line_id: string;
+    payload: string;
+    source: string | null;
+    source_type: string | null;
+    source_authority: string | null;
+    evidence_level: string | null;
+  }[];
+  try {
+    rows = db
+      .prepare(
+        `SELECT id, product_line_id, payload, source, source_type, source_authority, evidence_level
+           FROM optional_material WHERE category = 'O3价格'`,
+      )
+      .all() as typeof rows;
+  } catch {
+    // 极老库没有这张表：无需迁移，不阻断启动
+    return { migrated: 0, skipped: 0 };
+  }
+  if (rows.length === 0) return { migrated: 0, skipped: 0 };
+
+  const productsOfLine = db.prepare(
+    "SELECT id, model FROM product WHERE product_line_id = ?",
+  );
+  const existingQuote = db.prepare(
+    `SELECT id FROM price_quote
+      WHERE product_id = ? AND model = ? AND unit_price = ? AND price_scope = ?
+      LIMIT 1`,
+  );
+  const insertQuote = db.prepare(
+    `INSERT INTO price_quote
+       (id, product_id, model, config, unit_price, price_scope, valid_until, source,
+        source_type, source_authority, evidence_level, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  );
+  const deleteO3 = db.prepare(
+    "DELETE FROM optional_material WHERE id = ? AND category = 'O3价格'",
+  );
+
+  const run = db.transaction(() => {
+    let migrated = 0;
+    let skipped = 0;
+    for (const row of rows) {
+      let payload: unknown;
+      try {
+        payload = JSON.parse(row.payload ?? "{}");
+      } catch {
+        skipped += 1;
+        continue;
+      }
+      if (typeof payload !== "object" || payload === null) {
+        skipped += 1;
+        continue;
+      }
+      const mapped = mapO3PricePayload(payload as Record<string, unknown>, row.source);
+      if (!mapped) {
+        skipped += 1;
+        continue;
+      }
+      const product = (
+        productsOfLine.all(row.product_line_id) as { id: string; model: string }[]
+      ).find((p) => normalizeQuoteModel(p.model) === normalizeQuoteModel(mapped.model));
+      // 型号不在 M1：跳过、不编产品，O3 行保留（等用户补 M1 后再迁）
+      if (!product) {
+        skipped += 1;
+        continue;
+      }
+      const duplicate = existingQuote.get(
+        product.id,
+        mapped.model,
+        mapped.unit_price,
+        mapped.price_scope,
+      );
+      if (!duplicate) {
+        const stamp = now();
+        insertQuote.run(
+          uuid(),
+          product.id,
+          mapped.model,
+          mapped.config,
+          mapped.unit_price,
+          mapped.price_scope,
+          mapped.valid_until,
+          mapped.source,
+          row.source_type,
+          row.source_authority,
+          row.evidence_level,
+          stamp,
+          stamp,
+        );
+      }
+      // 已有等价报价也算"已归位"：O3 这份重复明细必须删掉，否则还是两个家
+      deleteO3.run(row.id);
+      migrated += 1;
+    }
+    return { migrated, skipped };
+  });
+  return run();
+}
+
 /** 运行迁移 SQL（支持多语句） */
-function runMigrations(db: Database.Database): void {
+function runMigrations(db: Database.Database): {
+  /** O3→M6 价格迁移结果；没有 O3 行时缺省 */
+  o3PriceMigration?: { migrated: number; skipped: number };
+} {
   // better-sqlite3 的 ESM 导入在 Node 中需要特殊处理 __dirname
   const __dirname = dirname(fileURLToPath(import.meta.url));
   const sqlPath = resolve(__dirname, "sql", "001_init.sql");
@@ -241,6 +424,17 @@ function runMigrations(db: Database.Database): void {
   addResearchCol("authority", "authority TEXT NOT NULL DEFAULT ''");
   addResearchCol("verified", "verified INTEGER NOT NULL DEFAULT 0");
   addResearchCol("stale", "stale INTEGER NOT NULL DEFAULT 0");
+
+  /**
+   * 价格去重（用户定调 2026-10-21「一个价格事实只能有一个家」）
+   *
+   * 放在最后：product / price_quote 表与全部补列都已就绪。存量 O3 价格明细一次性归位到
+   * M6，迁成功的 O3 行删除；迁移条数经 `createDb` 的返回值带出，便于启动日志/测试核对。
+   */
+  const o3PriceMigration = migrateO3PricesToQuotes(db);
+  return o3PriceMigration.migrated + o3PriceMigration.skipped > 0
+    ? { o3PriceMigration }
+    : {};
 }
 
 /**
@@ -968,6 +1162,13 @@ export interface DbInstance {
   scenarioLinkedLineRepo: Repo<ScenarioLinkedLine>;
   /** 每一步的联网调研来源（调研先于分析） */
   researchRepo: ResearchRepo;
+  /**
+   * 最近一次打开库时 O3→M6 价格迁移的结果
+   *
+   * 只在确有 O3 行时出现：`migrated` 已归位并删除的条数，`skipped` 因型号不在 M1 /
+   * 缺金额 / 坏 payload 而原样保留的条数。启动日志据此报迁移条数。
+   */
+  o3PriceMigration?: { migrated: number; skipped: number };
 }
 
 /**
@@ -985,7 +1186,7 @@ export function createDb(dbPath?: string): DbInstance {
   db.pragma("foreign_keys = ON");
 
   // 运行迁移
-  runMigrations(db);
+  const migration = runMigrations(db);
 
   return {
     db,
@@ -1008,6 +1209,9 @@ export function createDb(dbPath?: string): DbInstance {
     scenarioMaterialRepo: createRepo<ScenarioMaterial>(db, "scenario_material"),
     scenarioLinkedLineRepo: createRepo<ScenarioLinkedLine>(db, "scenario_linked_line"),
     researchRepo: createResearchRepo(db),
+    ...(migration.o3PriceMigration
+      ? { o3PriceMigration: migration.o3PriceMigration }
+      : {}),
   };
 }
 

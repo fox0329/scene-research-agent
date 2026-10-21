@@ -1,10 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  api,
-  type ApiMaterialFile,
-  type ApiProductLine,
-  type ApiQualitySummary,
-} from "../api";
+import { api, type ApiMaterialFile, type ApiProductLine } from "../api";
 import { useAsync } from "../hooks/useAsync";
 import { SceneTable, type ColumnDef } from "../components/SceneTable";
 import { MaterialUpload } from "../components/MaterialUpload";
@@ -15,7 +10,9 @@ import { TABLES_BY_CODE } from "@scene/contract";
 
 /**
  * 联真资料库视图（M5-T5.4）
- * - 产品线切换 / 质量总评（六维+完成度，领域层计算）/ M1、M2、M3、M4（边界+限制）、M6、O 可选材料 / 补充提醒
+ * - 产品线切换 / 已导入资料 / M1、M2、M3、M4（边界+限制）、M6、O 可选材料
+ * - 质量总评与补充提醒两个 Tab 已下线（用户定调 2026-10-21）：接口与领域函数保留，
+ *   只是本页不再请求 `qualitySummary`——结论看 M4 的「依据/来源」，不另开一页评分。
  * - 单元格编辑 → PATCH library rows（source_type 置"用户确认"，F3 失效由服务端内联处理）
  * - 上传材料 → multipart ingest + SSE 进度流（解析→落库→done 行数）
  * - §4.3 三态：加载 / 空态（无产品线、无行）/ 降级（错误+重试）
@@ -42,11 +39,12 @@ const DETAIL_ONLY_KEYS: Record<string, string[]> = {
 /**
  * 固定列集与顺序（M4/M6）
  *
- * M4 是 boundary + limitation 的合并视图，必须固定六列，不能按行数据"见什么列显什么"；
- * M6 同理。M1/M3 的已删列由 DETAIL_ONLY_KEYS 收进右栏，不再渲染。
+ * M4 是 boundary + limitation 的合并视图，必须固定七列，不能按行数据"见什么列显什么"；
+ * 「依据」（reason）必须在「影响程度」之前——先看凭什么判，再看影响多大，最后看客户
+ * 要求时怎么办与出处。M6 同理。M1/M3 的已删列由 DETAIL_ONLY_KEYS 收进右栏，不再渲染。
  */
 const FIXED_COLUMNS: Record<string, string[]> = {
-  M4: ["type", "target", "description", "impact", "response", "source"],
+  M4: ["type", "target", "description", "reason", "impact", "response", "source"],
   M6: ["model", "config", "unit_price", "price_scope", "valid_until", "source"],
 };
 
@@ -109,6 +107,7 @@ const FIELD_LABELS: Record<string, Record<string, string>> = {
     type: "类型",
     target: "对象（产品/能力）",
     description: "说明",
+    reason: "依据",
     impact: "影响程度",
     response: "客户要求时怎么办",
     source: "来源",
@@ -131,7 +130,16 @@ const FIELD_LABELS: Record<string, Record<string, string>> = {
   },
   O1: { cert_name: "认证名称", cert_body: "认证机构", cert_date: "认证日期", scope: "认证范围" },
   O2: { project_name: "项目名称", client: "客户", year: "年份", scale: "规模", summary: "摘要" },
-  O3: { model: "型号", price: "价格", currency: "币种", channel: "渠道", date: "日期" },
+  // O3 已不存价格明细（统一到 M6）；保留旧键名只为兼容未迁移的历史行展示
+  O3: {
+    file: "报价单文件",
+    note: "说明",
+    model: "型号（历史）",
+    price: "价格（历史）",
+    currency: "币种（历史）",
+    channel: "渠道（历史）",
+    date: "日期（历史）",
+  },
   O4: { name: "名称", version: "版本", language: "语言", url: "链接", maturity: "成熟度" },
   O5: { feature: "特性", expected_release: "预计发布", priority: "优先级" },
   O6: { partner_name: "伙伴名称", integration_type: "集成类型", maturity: "成熟度" },
@@ -311,7 +319,8 @@ const TablePanel: React.FC<TablePanelProps> = ({
         const kind = String(row.type ?? "");
         const inapplicable =
           (kind === "不做" && (key === "target" || key === "impact")) ||
-          (kind === "限制" && key === "response");
+          // 限制类没有「依据」（reason）与「客户要求时怎么办」（response）
+          (kind === "限制" && (key === "reason" || key === "response"));
         if (key === "type" || inapplicable) {
           showToast("该字段不适用于这类记录（底层「不做」与「限制」字段不同）");
           return;
@@ -355,9 +364,11 @@ const TablePanel: React.FC<TablePanelProps> = ({
     const input = await promptText({
       title: optional ? "新增行字段（选填字段组，整体存入 payload）" : "新增行字段",
       message: optional
-        ? 'JSON 格式，例：{"cert_name":"CE","scope":"欧盟"}'
+        ? code === "O3"
+          ? 'JSON 格式，只存报价单文件级引用（价格明细请到 M6 新增）：{"file":"报价单-2026Q1.pdf","note":"含税参考价，明细见 M6"}'
+          : 'JSON 格式，例：{"cert_name":"CE","scope":"欧盟"}'
         : code === "M4"
-          ? 'JSON 格式，例：{"type":"限制","target":"CT21B","description":"无 5G","impact":"中","source":"报价单.pdf:1"}'
+          ? 'JSON 格式，例：{"type":"不做","description":"不做自建平台二次开发","reason":"安全功能须由独立的安全 PLC 承载","response":"转生态伙伴","source":"白皮书.pdf:12"}；限制类例：{"type":"限制","target":"CT21B","description":"无 5G","impact":"中","source":"报价单.pdf:1"}'
           : code === "M6"
             ? 'JSON 格式，例：{"model":"CT21B","config":"8G+128G","unit_price":"12000–15000","price_scope":"含安装","valid_until":"2026-12-31","source":"报价单.pdf:1"}'
             : 'JSON 格式，例：{"name":"型号A"}',
@@ -474,6 +485,11 @@ const TablePanel: React.FC<TablePanelProps> = ({
         <button className="btn" type="button" onClick={() => void handleAdd()}>新增行</button>
       </div>
       <div className="pnl-b flush">
+        {code === "M4" && (
+          <p className="provider-item-meta" style={{ margin: "0 0 var(--s2)" }}>
+            「不做」结论必须能指到材料哪一页：依据与来源两列都要有值；来源不可定位的历史行不在此表显示（数据未删除，补来源后可重现）。
+          </p>
+        )}
         {code === "M2" && (productRows.data?.length ?? 0) > 0 && (
           <div className="model-discover-row" style={{ marginBottom: "var(--s2)" }}>
             <span className="provider-item-meta">按产品出表：</span>
@@ -497,8 +513,12 @@ const TablePanel: React.FC<TablePanelProps> = ({
         )}
         {rows.length === 0 ? (
           <div className="empty-state">
-            <div className="empty-state-title">本表暂无资料</div>
-            <div className="empty-state-desc">上传材料解析入库，或点击"新增行"手工补录</div>
+            <div className="empty-state-title">{code === "O3" ? "O3 暂无资料" : "本表暂无资料"}</div>
+            <div className="empty-state-desc">
+              {code === "O3"
+                ? "报价已统一到「M6 硬件报价」；O3 只保留报价单文件级引用（文件 + 说明）"
+                : '上传材料解析入库，或点击"新增行"手工补录'}
+            </div>
           </div>
         ) : (
           <SceneTable
@@ -652,82 +672,14 @@ const LibraryMaterialsPanel: React.FC<{
   );
 };
 
-/* ═══ 质量总评面板 ═══ */
-
-const RATING_BADGE: Record<string, string> = { pass: "success", warn: "warning", fail: "error" };
-const RATING_ICON: Record<string, string> = { pass: "✅", warn: "⚠️", fail: "❌" };
-
-const QualityRealPanel: React.FC<{ summary: ApiQualitySummary }> = ({ summary }) => {
-  const { quality, completeness } = summary;
-  return (
-    <>
-      <div className="pnl">
-        <div className="pnl-h">
-          <div>
-            <h2>质量总评</h2>
-            <p>材料整体质量六维评估（领域层计算，落库可审计）</p>
-          </div>
-          <span className={`badge ${quality.failCount === 0 ? "success" : "warning"}`}>
-            {quality.passCount}/{quality.dimensions.length} 达标
-          </span>
-        </div>
-        <div className="pnl-b flush">
-          <table>
-            <thead>
-              <tr><th>维度</th><th>评级</th><th>说明</th></tr>
-            </thead>
-            <tbody>
-              {quality.dimensions.map((d) => (
-                <tr key={d.dimension}>
-                  <td>{d.dimension}</td>
-                  <td><span className={`badge ${RATING_BADGE[d.status]}`}>{RATING_ICON[d.status]}</span></td>
-                  <td>{d.description}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <div className="pnl">
-        <div className="pnl-h">
-          <div>
-            <h2>完成度检查</h2>
-            <p>8 项检查（不阻断，仅提示缺失风险）</p>
-          </div>
-        </div>
-        <div className="pnl-b flush">
-          <table>
-            <thead>
-              <tr><th>#</th><th>检查项</th><th>状态</th><th>缺失风险</th></tr>
-            </thead>
-            <tbody>
-              {completeness.items.map((it) => (
-                <tr key={it.id}>
-                  <td>{it.id}</td>
-                  <td>{it.name}</td>
-                  <td>{it.status}</td>
-                  <td>{it.risk}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </>
-  );
-};
-
 /* ═══ 视图主体 ═══ */
 
-type TabKey = "quality" | "materials" | "M1" | "M2" | "M3" | "M4" | "M6" | "O" | "reminder";
+type TabKey = "materials" | "M1" | "M2" | "M3" | "M4" | "M6" | "O";
 
 const TABS: { key: TabKey; label: string }[] = [
-  { key: "quality", label: "质量总评" },
   { key: "materials", label: "已导入资料" },
   ...M_TABS.map((t) => ({ key: t.code as TabKey, label: t.label })),
   { key: "O", label: "O 可选材料" },
-  { key: "reminder", label: "补充提醒" },
 ];
 
 export const RealLibraryView: React.FC<{
@@ -739,7 +691,7 @@ export const RealLibraryView: React.FC<{
 }> = ({ lines, onChanged, onRowSelect }) => {
   const { showToast } = useToast();
   const [lineId, setLineId] = useState(lines[0]?.id ?? "");
-  const [tab, setTab] = useState<TabKey>("quality");
+  const [tab, setTab] = useState<TabKey>("M1");
   const [reloadTick, setReloadTick] = useState(0);
 
   /* 产品线列表变化时保证选中有效 */
@@ -752,11 +704,6 @@ export const RealLibraryView: React.FC<{
     onRowSelect?.(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, lineId]);
-
-  const summary = useAsync<ApiQualitySummary | null>(
-    () => (lineId ? api.qualitySummary(lineId) : Promise.resolve(null)),
-    [lineId],
-  );
 
   const handleNewLine = useCallback(async () => {
     const name = await promptText({ title: "新建产品线", message: "请输入名称", placeholder: "例如：鸿蒙生态产品线", okText: "创建" });
@@ -841,26 +788,6 @@ export const RealLibraryView: React.FC<{
       );
     }
     switch (tab) {
-      case "quality":
-        if (summary.status === "loading") {
-          return (
-            <div className="pnl">
-              <div className="pnl-b"><div className="loading-strip" role="status" aria-label="加载中" /></div>
-            </div>
-          );
-        }
-        if (summary.status === "error" || !summary.data) {
-          return (
-            <div className="pnl">
-              <div className="pnl-h">
-                <div><h2>质量总评</h2><p>评估加载失败</p></div>
-                <button className="btn" type="button" onClick={summary.reload}>重试</button>
-              </div>
-              <div className="pnl-b"><div className="empty-state"><div className="empty-state-title">{summary.error ?? "暂无数据"}</div></div></div>
-            </div>
-          );
-        }
-        return <QualityRealPanel summary={summary.data} />;
       case "materials":
         return (
           <LibraryMaterialsPanel
@@ -868,7 +795,6 @@ export const RealLibraryView: React.FC<{
             reloadTick={reloadTick}
             onChanged={() => {
               setReloadTick((t) => t + 1);
-              summary.reload();
               onChanged?.();
             }}
           />
@@ -903,43 +829,6 @@ export const RealLibraryView: React.FC<{
             }
           />
         );
-      case "reminder": {
-        const reminders = summary.data?.completeness.reminders ?? [];
-        return (
-          <div className="pnl">
-            <div className="pnl-h">
-              <div>
-                <h2>材料补充提醒</h2>
-                <p>不阻断流程，仅提示缺失影响</p>
-              </div>
-            </div>
-            <div className="pnl-b flush">
-              {reminders.length === 0 ? (
-                <div className="empty-state">
-                  <div className="empty-state-title">暂无缺失提醒</div>
-                  <div className="empty-state-desc">核心材料齐备，或完成度评估尚未加载</div>
-                </div>
-              ) : (
-                <table>
-                  <thead>
-                    <tr><th>对应表</th><th>缺失项</th><th>缺失影响</th><th>建议操作</th></tr>
-                  </thead>
-                  <tbody>
-                    {reminders.map((r, i) => (
-                      <tr key={i}>
-                        <td>{r.table}</td>
-                        <td>{r.missing}</td>
-                        <td>{r.impact}</td>
-                        <td>{r.suggestion ?? "—"}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-            </div>
-          </div>
-        );
-      }
       default:
         return (
           <TablePanel
@@ -951,7 +840,6 @@ export const RealLibraryView: React.FC<{
             onRowSelect={onRowSelect}
             onChanged={() => {
               setReloadTick((t) => t + 1);
-              summary.reload();
               onChanged?.();
             }}
           />
@@ -1029,7 +917,6 @@ export const RealLibraryView: React.FC<{
             statusSlotId={LIB_UPLOAD_STATUS_ID}
             onDone={() => {
               setReloadTick((t) => t + 1);
-              summary.reload();
               onChanged?.();
             }}
           />
