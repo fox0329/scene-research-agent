@@ -23,7 +23,7 @@ export default defineConfig({
       // 必须显式绑 127.0.0.1：vite preview 默认绑 [::1]（仅 IPv6），
       // 而本配置的探活 URL 是 127.0.0.1 → 会一直等不到就绪而 30s 超时。
       command:
-        "pnpm --filter @scene/web exec vite preview --host 127.0.0.1 --port 46174 --strictPort",
+        "npx pnpm@9.15.4 --filter @scene/web exec vite preview --host 127.0.0.1 --port 46174 --strictPort",
       url: "http://127.0.0.1:46174",
       reuseExistingServer: true,
       timeout: 30_000,
@@ -31,7 +31,7 @@ export default defineConfig({
     {
       command:
         // 先同步 SQL：tsc -b 不会拷贝 .sql，而运行时从 dist/sql/ 读迁移文件
-        "node scripts/copy-infra-sql.mjs && APP_PORT=46175 DB_PATH=/tmp/scene-e2e-$(date +%s).db DELIVERABLE_DIR=/tmp/scene-e2e-deliverables-$(date +%s) SCENE_PROVIDERS_FILE=data/providers.local.json node apps/server/dist/index.js",
+        "node scripts/copy-infra-sql.mjs && APP_HOST=127.0.0.1 APP_PORT=46175 DB_PATH=/tmp/scene-e2e-$(date +%s).db DELIVERABLE_DIR=/tmp/scene-e2e-deliverables-$(date +%s) SCENE_PROVIDERS_FILE=data/providers.local.json node apps/server/dist/index.js",
       url: "http://127.0.0.1:46175/api/v1/health",
       reuseExistingServer: false,
       timeout: 30_000,

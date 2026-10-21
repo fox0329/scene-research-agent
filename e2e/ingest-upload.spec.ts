@@ -147,6 +147,7 @@ test.describe("上传入库（联真）", () => {
     expect(labels).toContain("曾用名");
     expect(labels).toContain("来源标注");
   });
+});
 
 
 /* ─── 场景定义（第一输入）对话式 → 整理成表1-1 → 对照确认 ─────────── */
