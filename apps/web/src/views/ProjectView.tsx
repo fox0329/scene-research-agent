@@ -542,7 +542,7 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
           ) : (
             <span className="badge warning">演示数据</span>
           )}
-          {flowBadge ? <span className="badge primary">{flowBadge}</span> : null}
+          {flowBadge ? <span className="badge primary step-badge">{flowBadge}</span> : null}
         </div>
         <div className="pga">
           <button

@@ -234,6 +234,8 @@ body {
   color: var(--ct2);
 }
 
+.step-badge { font-size: var(--txs); font-variant-numeric: tabular-nums; }
+
 .pga {
   display: flex;
   gap: var(--s2);
@@ -556,6 +558,9 @@ td.ed {
   background: var(--cp-s);
   color: var(--cp);
 }
+
+/* 步骤/阶段徽标是导航信息，比普通徽标大一档（普通徽标 12，这里 13） */
+.badge.step-badge { font-size: var(--txs); padding: var(--s05) var(--s2); }
 
 .badge.success {
   background: var(--cs-s);
@@ -1755,7 +1760,7 @@ td.ed {
 
 .schema-table-title {
   display: flex; align-items: baseline; gap: var(--s2);
-  font-size: var(--ts); color: var(--ct);
+  font-size: var(--tmd); font-weight: var(--fm2); color: var(--ct);
 }
 .schema-table-title .tier-badge {
   font-size: var(--txs); padding: 0 var(--s05, 2px) 0 var(--s1);
@@ -1850,13 +1855,13 @@ td.ed {
 .summary-advice {
   margin: 0; padding-left: var(--s4);
   display: flex; flex-direction: column; gap: var(--s1);
-  font-size: var(--ts); color: var(--ct); line-height: 1.6;
+  font-size: var(--txs); color: var(--ct); line-height: 1.65;
 }
 .summary-sources li,
 .summary-advice li { overflow-wrap: anywhere; }
 .summary-sources a { color: var(--cp); text-decoration: none; }
 .summary-sources a:hover { text-decoration: underline; }
-.summary-empty { margin: 0; font-size: var(--ts); color: var(--ct3); line-height: 1.6; }
+.summary-empty { margin: 0; font-size: var(--txs); color: var(--ct3); line-height: 1.65; }
 
 .md-body { font-size: var(--ts); color: var(--ct); line-height: 1.7; }
 .md-body h2 { margin: var(--s3) 0 var(--s2); font-size: var(--tb); }
