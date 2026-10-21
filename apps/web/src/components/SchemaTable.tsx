@@ -42,15 +42,14 @@ export interface SchemaTableProps {
   /** 单元格编辑（行 id + 列字段 + 新值） */
   onCellChange?: (rowId: string, cell: string, value: string) => void;
   /**
-   * 当前行（rowId，变更表 #150）：中栏这一行与右栏 Tab① 的对应条目同源高亮
+   * 当前行（rowId）：中栏这一行的高亮
    *
    * 受控——由阶段面板持有；换表/换块时面板清空，上一张表的高亮不会带过来。
+   * （右栏补充说明条目已删，原先"中栏 ↔ 右栏同源高亮"只剩中栏这一半。）
    */
   activeRowId?: string | null;
-  /** 行被点击或行内单元格获得焦点时上报（父级据此把右栏条目高亮并滚进可视） */
+  /** 行被点击或行内单元格获得焦点时上报（父级据此更新当前行） */
   onRowFocus?: (rowId: string) => void;
-  /** 把当前行滚进可视：只在联动由右栏发起时为 true（发起方自己不动，避免两边互滚） */
-  revealActiveRow?: boolean;
   readOnly?: boolean;
 }
 
@@ -203,7 +202,6 @@ export function SchemaTable(props: SchemaTableProps): React.ReactElement | null 
     onCellChange,
     activeRowId,
     onRowFocus,
-    revealActiveRow,
     readOnly,
   } = props;
   const def = useMemo(() => tableDef(tableCode), [tableCode]);
@@ -241,7 +239,6 @@ export function SchemaTable(props: SchemaTableProps): React.ReactElement | null 
         rowIdOf={(_row, index) => rows[index]?.id ?? null}
         activeRowId={activeRowId}
         onRowFocus={onRowFocus}
-        revealActiveRow={revealActiveRow}
         onCellChange={
           readOnly || !onCellChange
             ? undefined

@@ -29,9 +29,9 @@ test("栏头统一 48px 且底边线水平对齐（右栏页头已删，变更�
   expect(Math.max(...bottoms) - Math.min(...bottoms)).toBeLessThanOrEqual(1);
 
   // 变更表 #149：右栏「第 n/7 步 · 步骤名」整块删除（与流程轴节点、中栏表头重复）
-  // ——右栏不再有 48px 页头，直接从 Tab 开始
+  // ——右栏不再有 48px 页头，直接从「阶段总结」标题开始（v2.10 也没有 Tab 条了）
   await expect(page.locator(".det .det-h")).toHaveCount(0);
-  await expect(page.locator(".det .det-tabs")).toBeVisible();
+  await expect(page.locator(".det .summary-head h4")).toHaveText("阶段总结");
 });
 
 /* ───────────────────── §4.2 会话管理 ───────────────────── */
@@ -69,11 +69,11 @@ test("项目与会话均有 ⋯ 菜单（重命名/归档/删除）", async ({ p
   await expect(menu).toContainText("重命名");
 });
 
-/* ────────────── §4.2 信息版：完整度提示 + 双 Tab（替代旧建议卡） ────────────── */
+/* ────────────── §4.2 信息版：右栏只有阶段总结（替代旧建议卡） ────────────── */
 
 test("右栏不再有完整度裸数字条：进度只在中栏表与流程轴说一次（变更表 #149）", async ({ page }) => {
   await gotoStep2(page);
-  // 变更表 #149：与 Tab② 头部的同一组数字重复，且演示态第 1 步用的是全流程口径
+  // 变更表 #149：与阶段总结头部的同一组数字重复，且演示态第 1 步用的是全流程口径
   // ——右栏这一条整块删除
   await expect(page.locator(".det .completeness-bar")).toHaveCount(0);
   // 产品不产出判断：整页不应出现建议档位或"通过/不通过"
@@ -82,31 +82,37 @@ test("右栏不再有完整度裸数字条：进度只在中栏表与流程轴�
   expect(body).not.toContain("质量关");
 });
 
-test("右栏双 Tab：补充说明 / 阶段总结（确认清单与缺口清单已整块删除）", async ({ page }) => {
+test("右栏只有「阶段总结」：调研信息来源 + 结论提醒，不再有 Tab 与确认/缺口清单", async ({ page }) => {
   await gotoStep2(page);
-  const tabs = page.locator(".det .det-tab");
-  await expect(tabs).toHaveCount(2);
-  await expect(tabs.nth(0)).toContainText("补充说明");
-  await expect(tabs.nth(1)).toContainText("阶段总结");
+  const det = page.locator(".det");
 
-  // Tab ①：只剩中栏表格的补充说明；**没有**确认清单，也没有缺口清单
-  await tabs.nth(0).click();
-  await expect(page.locator(".det .confirm-list")).toHaveCount(0);
-  await expect(page.locator(".det .gap-list")).toHaveCount(0);
-  await expect(page.locator(".det")).not.toContainText("待确认");
-  await expect(page.locator(".det")).not.toContainText("缺口");
+  // 标题 + 两个小节；来源为空时给空态文案，不装成可点链接
+  await expect(det.locator(".summary-head h4")).toHaveText("阶段总结");
+  const subTitles = (await det.locator(".summary-sub").allInnerTexts()).map((t) => t.trim());
+  expect(subTitles).toEqual(["调研信息来源", "结论提醒"]);
+  const sources = det.locator(".summary-sources li a");
+  const emptySources = det.locator(".summary-empty", { hasText: "本步暂无可以打开的来源地址" });
+  expect((await sources.count()) > 0 || (await emptySources.count()) > 0).toBe(true);
+  // 结论提醒是纯文字列表（不再有可编辑条目）
+  await expect(det.locator(".summary-advice li").first()).not.toBeEmpty();
+  await expect(det.locator(".summary-advice input, .summary-advice textarea")).toHaveCount(0);
 
-  // Tab ②：本步总结默认折叠（首段 + 一句），点「展开全文」才渲染五段骨架
-  await tabs.nth(1).click();
-  await expect(page.locator(".det .md-body")).toHaveCount(0);
-  // 按钮文案随状态变（展开全文⇄收起），所以按类名定位而不是按文案
-  const foldToggle = page.locator(".det .fold-toggle");
+  // **没有**确认清单，也没有缺口清单
+  await expect(det.locator(".confirm-list")).toHaveCount(0);
+  await expect(det.locator(".gap-list")).toHaveCount(0);
+  await expect(det).not.toContainText("待确认");
+  await expect(det).not.toContainText("缺口");
+
+  // 全文默认折叠；点「展开全文」才渲染 Markdown
+  await expect(det.locator(".md-body")).toHaveCount(0);
+  // 按钮文案随状态变（展开全文⇄收起全文），所以按类名定位而不是按文案
+  const foldToggle = det.locator(".fold-toggle");
   await expect(foldToggle).toContainText("展开全文");
   await expect(foldToggle).toHaveAttribute("aria-expanded", "false");
-  await expect(page.locator(".det .fold-summary")).toContainText("本步要获得的信息是");
+  await expect(det.locator(".fold-summary")).toContainText("点开查看完整总结");
   await foldToggle.click();
   await expect(foldToggle).toHaveAttribute("aria-expanded", "true");
-  const md = page.locator(".det .md-body");
+  const md = det.locator(".md-body");
   await expect(md).toBeVisible();
   await expect(md).toContainText("信息摘要");
   await expect(md).toContainText("待补齐信息");
@@ -115,77 +121,37 @@ test("右栏双 Tab：补充说明 / 阶段总结（确认清单与缺口清单�
   await expect(md).not.toContainText("上下游衔接");
 });
 
-test("右栏补充说明：一律条目形式，不用表格；字段一个不丢、值可编辑（变更表 #149）", async ({ page }) => {
+test("右栏不再有补充说明条目与表格：只剩来源链接与结论提醒（v2.10）", async ({ page }) => {
   await gotoStep2(page);
   const det = page.locator(".det");
-  const tabs = det.locator(".det-tab");
-  await expect(tabs.nth(0)).toContainText("补充说明");
-  await tabs.nth(0).click();
 
-  // ① 右栏**不再有任何表格**（用户定调：右栏宽度有限，表格根本看不清内容）
+  // ① 右栏**不再有任何表格**；补充说明的条目 / 字段已随它一起删除
   await expect(det.locator("table")).toHaveCount(0);
-  await expect(det.locator(".supplement-table")).toHaveCount(0);
 
-  // ② 一条信息一条目：条目标签 = 该行在中栏的主标识（表1-2 的「业务环节」）
-  const list = det.locator(".supp-list");
-  await expect(list).toBeVisible();
-  const items = list.locator(".supp-item");
-  await expect(items).toHaveCount(3);
-  await expect(items.first().locator(".supp-label")).toHaveText("制水");
+  // ② 正文只剩两块：调研信息来源（可点链接列表）+ 结论提醒（文字列表）
+  await expect(det.locator(".summary-head h4")).toHaveText("阶段总结");
+  await expect(det.locator(".summary-sub").nth(0)).toHaveText("调研信息来源");
+  await expect(det.locator(".summary-sub").nth(1)).toHaveText("结论提醒");
 
-  // ③ 每个「字段名 → 值」一行，一个字段都不丢（表1-2 的右栏补充列全在）
-  const names = await items.first().locator(".supp-field-name").allInnerTexts();
-  expect(names).toEqual([
-    "环节说明",
-    "责任归属",
-    "依据",
-    "来源",
-    "证据等级",
-    "来源权威性",
-  ]);
-  // 值可编辑（就地改）且全文可见：长文本走可增高的多行编辑器，不再只在 title 里
-  const desc = items
-    .first()
-    .locator(".supp-field", { hasText: "环节说明" })
-    .locator("textarea.supp-value");
-  await expect(desc).toBeVisible();
-  await expect(desc).toHaveValue("加药与过滤环节");
-  await desc.fill("加药与过滤环节：加药泵按流量比例投加，过滤池反冲洗按压差触发");
-  await expect(desc).toHaveValue(/反冲洗按压差触发/);
-
-  // ④ 值的宽度不超过右栏、长串不溢出（overflow-wrap: anywhere 生效）
-  const itemBox = (await items.first().boundingBox())!;
-  const descBox = (await desc.boundingBox())!;
-  expect(descBox.width).toBeLessThanOrEqual(itemBox.width + 1);
-  expect(await desc.evaluate((el) => getComputedStyle(el).overflowWrap)).toBe("anywhere");
+  // ③ 有来源时是能新窗口打开的 http(s) 链接；没有来源时给空态文案，二者都接受
+  const links = det.locator(".summary-sources li a");
+  const empty = det.locator(".summary-empty", { hasText: "本步暂无可以打开的来源地址" });
+  if ((await links.count()) > 0) {
+    await expect(links.first()).toHaveAttribute("href", /^https?:\/\//);
+    await expect(links.first()).toHaveAttribute("target", "_blank");
+  } else {
+    await expect(empty).toBeVisible();
+  }
 });
 
-test("右栏核实段：每条信息给出核实结论与「准确·客观·为什么」，不挤进补充说明", async ({ page }) => {
+test("右栏不再有核实段：结论提醒是纯文字，不提供逐条核实编辑（v2.10）", async ({ page }) => {
   await gotoStep2(page);
   const det = page.locator(".det");
-  // 补充说明只有出处类列，核实两列**不并排**进去（否则右栏挤成几十像素一列）
-  const names = await det.locator(".supp-list .supp-field-name").allInnerTexts();
-  expect(names.filter((n) => n.includes("核实"))).toHaveLength(0);
 
-  // 核实单独一段：结论可选（六档 + 未核）、说明是可编辑长文本
-  const verify = det.locator(".verify-list");
-  await expect(verify).toBeVisible();
-  const first = verify.locator(".verify-item").first();
-  await expect(first.locator(".verify-label")).not.toBeEmpty();
-  const sel = first.locator("select.verify-verdict");
-  await expect(sel).toHaveValue("已核实");
-  await expect(sel.locator("option")).toHaveCount(7); // 未核 + 六档
-  const text = first.locator("textarea.verify-text");
-  await expect(text).toHaveValue(/准确：/);
-  await expect(text).toHaveValue(/客观：/);
-  await expect(text).toHaveValue(/为什么：/);
-
-  // 无法核实会标黄（提示"不能当结论用"），但仍然是可编辑的输入
-  const third = verify.locator(".verify-item").nth(2);
-  await expect(third.locator("select.verify-verdict")).toHaveValue("无法核实");
-  await expect(third.locator("select.verify-verdict")).toHaveClass(/warn/);
-  await third.locator("select.verify-verdict").selectOption("已核实");
-  await expect(third.locator("select.verify-verdict")).not.toHaveClass(/warn/);
+  // 核实行 / 下拉 / 长文本编辑器已随补充说明一起删除：右栏不再有逐条核实编辑
+  // 结论提醒按条目给出文字，右栏内没有任何可编辑控件
+  await expect(det.locator(".summary-advice li").first()).not.toBeEmpty();
+  await expect(det.locator("textarea, select, [contenteditable='true']")).toHaveCount(0);
 });
 
 test("中栏表格：拖分格线只与右邻列互换宽度，表宽恒等于中栏宽、无横向滚动条", async ({ page }) => {
@@ -463,7 +429,7 @@ test("锁步推进：没有「解锁全部步骤」，未解锁节点点不动",
   await expect(rail.locator(".flow-node--locked")).toHaveCount(5); // 第 3-7 步
   await expect(rail.getByRole("button", { name: /解锁/ })).toHaveCount(0);
 
-  // 回看第 1 步：点阶段名称即可来回，轴上不留导航按钮；不出现完整度条（完整度只在右栏）
+  // 回看第 1 步：点阶段名称即可来回，轴上不留导航按钮；不出现完整度条（完整度只在流程轴/中栏说一次）
   await rail.getByRole("tab", { name: /^第 1 步 · 场景定义与边界（/ }).click();
   await expect(page.locator(".ws .schema-table--anchor")).toBeVisible(); // 中栏回到表1-1
   await expect(page.locator(".ws .completeness-bar")).toHaveCount(0);
@@ -508,12 +474,12 @@ test("第 1 步：中栏只有表1-1；步标题/引导语/状态行/完整度/�
   await expect(anchor.locator("textarea.cell-input")).toHaveCount(6);
   await expect(anchor.locator(".owner-tag")).toHaveCount(1);
 
-  // 右栏（变更表 #149）：第 1 步没有补充说明列 → 不显示成可点但空白的 Tab①，
-  // 直接落在「阶段总结」上；右栏也不再有任何表格
+  // 右栏（变更表 #149 / v2.10）：只剩「阶段总结」，正文是调研信息来源 + 结论提醒；
+  // 右栏不再有 Tab 条，也不再有任何表格
   const det = page.locator(".det");
-  await expect(det.locator(".det-tab")).toHaveCount(1);
-  await expect(det.locator(".det-tab").first()).toHaveText("阶段总结");
-  await expect(det.locator(".det-tab").first()).toHaveClass(/active/);
+  await expect(det.locator(".summary-head h4")).toHaveText("阶段总结");
+  await expect(det.locator(".summary-sub").nth(0)).toHaveText("调研信息来源");
+  await expect(det.locator(".summary-sub").nth(1)).toHaveText("结论提醒");
   await expect(det.locator("table")).toHaveCount(0);
   await expect(det.locator(".completeness-bar")).toHaveCount(0);
   await expect(det.locator(".det-h")).toHaveCount(0);
@@ -840,12 +806,13 @@ test("表格列宽自动适配：生成即是最紧凑布局，未手动拖就�
 
 test("右栏不再有确认清单/缺口清单（智能体的待办不进用户界面）", async ({ page }) => {
   await gotoStep2(page);
-  await page.locator(".det .det-tab").nth(0).click();
+  const det = page.locator(".det");
+  await expect(det.locator(".summary-head h4")).toHaveText("阶段总结");
 
-  await expect(page.locator(".det .confirm-list")).toHaveCount(0);
-  await expect(page.locator(".det .gap-list")).toHaveCount(0);
-  await expect(page.locator(".det .det-foot")).toHaveCount(0);
-  const text = await page.locator(".det").innerText();
+  await expect(det.locator(".confirm-list")).toHaveCount(0);
+  await expect(det.locator(".gap-list")).toHaveCount(0);
+  await expect(det.locator(".det-foot")).toHaveCount(0);
+  const text = await det.innerText();
   expect(text).not.toContain("待确认");
   expect(text).not.toContain("缺口");
   expect(text).not.toContain("表态");

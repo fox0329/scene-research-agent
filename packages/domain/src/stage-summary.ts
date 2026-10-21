@@ -1,8 +1,15 @@
 /**
  * stage-summary — 阶段总结文档生成（对应 04 §五）
  *
- * 每份总结**围绕一个范围**展开**不给决策建议**（是否该进由用户自己定），
- * 但**每条信息都必须带核实判定**（准确吗·客观吗·为什么——v1.27 用户定调）：
+ * 两种口径：
+ *  - `buildStageSummary`：整篇六段骨架 Markdown（交付物装配仍用它，输出不变）
+ *  - `buildStageBrief`：右栏「阶段总结」要点视图（v2.10 用户定调）——只给两块：
+ *    ① 调研信息来源的**可打开源地址** ② 由表内真实字段确定性推导的**结论提醒**
+ *
+ * 整篇总结**围绕一个范围**展开，**不给无依据的决策建议**（是否该进由用户自己定），
+ * 但**每条信息都必须带核实判定**（准确吗·客观吗·为什么——v1.27 用户定调）；
+ * 要点视图（brief）里的「结论提醒」只由**表里的真实字段 + 固定规则**推导，
+ * 不调模型、不编造（用户定调 2026-10-21：「关于这个阶段的几个重点的结论性的提醒或建议」）：
  *  - `scope: "step"`（右栏默认，v2.9）：**只讲本步**——表集限本步、不含用户诉求全文、
  *    不含上下游衔接（用户定调："右栏的补充说明和阶段总结只针对当前阶段做说明和总结，
  *    不要整理整个过程"）
@@ -24,6 +31,7 @@ import {
   type TableDef,
 } from "@scene/contract";
 import { gapsToSummaryLines, isEmptyValue, type InfoRow, type StageCompleteness } from "./completeness.js";
+import { isHttpUrl, normalizeUrl } from "./web-url.js";
 
 export interface StageSummaryInput {
   stage: InfoStageId;
@@ -145,6 +153,283 @@ function tablesFor(input: StageSummaryInput): TableDef[] {
 function labelOf(entry: RowEntry): string {
   const keys = middleColumns(tableDef(entry.code)).map((c) => c.key);
   return firstValue(entry.row, keys) || "(未命名条目)";
+}
+
+// ─── 右栏「阶段总结」要点视图（brief） ────────────────────────
+
+/** 一条信息来源：`url` 能点开就点开；没有网址的（`文件名:页码`）给 `file` 原文，前端按文本显示 */
+export interface StageBriefSource {
+  label: string;
+  url: string;
+  file?: string;
+}
+
+/** 右栏要点：来源地址 + 结论提醒 */
+export interface StageBrief {
+  sources: StageBriefSource[];
+  advice: string[];
+}
+
+/** 来源列表上限（右栏窄，超过这个数量用户也读不完） */
+const BRIEF_SOURCES_MAX = 20;
+/** 来源标签截断长度（~24 字） */
+const BRIEF_LABEL_MAX = 24;
+/** 单条提醒截断长度（~60 字） */
+const BRIEF_ADVICE_MAX = 60;
+/** 提醒条数上限 */
+const BRIEF_ADVICE_LIMIT = 4;
+/** 认证差距为这些值时等于"没有差距" */
+const NO_CERT_GAP = new Set(["无", "不适用", "不涉及", "暂无"]);
+
+const URL_RE = /https?:\/\/[^\s<>"'`，。；：、）】》\]}]+/giu;
+const URL_TRAILING_RE = /[.,;:!?，。；：、）】》\]}]+$/u;
+
+/** 去掉 URL 尾部的句读；成对的英文括号属于 URL 本身（`.../A_(b)`），不成对的才剥 */
+function trimUrl(raw: string): string {
+  let url = raw;
+  for (;;) {
+    const stripped = url.replace(URL_TRAILING_RE, "");
+    if (stripped !== url) {
+      url = stripped;
+      continue;
+    }
+    const open = (url.match(/\(/gu) ?? []).length;
+    const close = (url.match(/\)/gu) ?? []).length;
+    if (close > open) {
+      url = url.slice(0, url.lastIndexOf(")"));
+      continue;
+    }
+    return url;
+  }
+}
+
+/** 取单元格文本（多值列按「、」连接，与中栏同一口径） */
+function cellTextOf(v: unknown): string {
+  if (Array.isArray(v)) {
+    return v
+      .map((x) => String(x ?? "").trim())
+      .filter((s) => s !== "")
+      .join("、");
+  }
+  return String(v ?? "").trim();
+}
+
+/** 按字符数截断（中文按字算，不按 UTF-16 码元） */
+function clipChars(text: string, max: number): string {
+  const chars = Array.from(text);
+  return chars.length > max ? `${chars.slice(0, max).join("")}…` : text;
+}
+
+/** 行标签：优先用这一行最像主键的字段，取不到就用表名 */
+function briefLabelOf(row: InfoRow, table: TableDef): string {
+  let raw = firstValue(row, [
+    "barrier_name",
+    "gap_ref",
+    "sub_scene",
+    "model",
+    "name",
+    "item",
+  ]);
+  if (raw === "") {
+    // 没有这些字段的表：退回它自己的中栏主列（最后一档才是表名）
+    for (const c of middleColumns(table)) {
+      const text = cellTextOf(row[c.key]);
+      if (text !== "") {
+        raw = text;
+        break;
+      }
+    }
+  }
+  return clipChars((raw || table.name).replace(/\s+/gu, " "), BRIEF_LABEL_MAX);
+}
+
+/** 从一行里抽出全部 http(s) 源地址（去重后按出现顺序） */
+function urlsOfRow(row: InfoRow, seen: Set<string>): string[] {
+  const out: string[] = [];
+  for (const v of Object.values(row)) {
+    const text = cellTextOf(v);
+    if (text === "") continue;
+    for (const m of text.matchAll(URL_RE)) {
+      const raw = trimUrl(m[0]);
+      if (!isHttpUrl(raw)) continue;
+      const key = normalizeUrl(raw);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(key);
+    }
+  }
+  return out;
+}
+
+/** 文件名 / 文件名:页码 / 报告名带扩展名——这类来源点不开，但必须让用户知道去资料库看哪份 */
+const FILE_SOURCE_RE = /\.(?:pdf|docx?|xlsx?|pptx?|md|txt)\b|^[^。；\n]{2,50}[:：]\s*\d/iu;
+
+/** 没有网址时的兜底：列出本步引用的文件来源（按原文去重） */
+function fileSourcesOf(input: StageSummaryInput, tables: readonly TableDef[]): StageBriefSource[] {
+  const out: StageBriefSource[] = [];
+  const seen = new Set<string>();
+  const push = (text: string, source: string) => {
+    if (seen.has(text)) return true;
+    seen.add(text);
+    out.push({ label: text, url: "", file: source });
+    return out.length < BRIEF_SOURCES_MAX;
+  };
+  // 先挑「像文件」的（文件名/带扩展名/文件名:页码），它们指得回资料库
+  for (const t of tables) {
+    for (const row of input.rowsByTable[t.code] ?? []) {
+      for (const key of ["source", "proof", "ability_basis"] as const) {
+        const text = cellTextOf(row[key]).replace(/\s+/gu, " ");
+        if (text === "" || !FILE_SOURCE_RE.test(text)) continue;
+        if (!push(clipChars(text, BRIEF_LABEL_MAX), text)) return out;
+      }
+    }
+  }
+  if (out.length > 0) return out;
+  // 连文件名都没有（实跑常见：来源写「行业通例（模型知识）」）：
+  // 列出**来源原文**并给出条数——点不开，但用户至少知道这一步的底是行业通例还是用户确认
+  const counts = new Map<string, number>();
+  for (const t of tables) {
+    for (const row of input.rowsByTable[t.code] ?? []) {
+      const text = cellTextOf(row["source"]).replace(/\s+/gu, " ") || cellTextOf(row["source_type"]);
+      if (text === "" || text === "—" || text === "待补") continue;
+      counts.set(text, (counts.get(text) ?? 0) + 1);
+    }
+  }
+  for (const [text, n] of counts) {
+    const label = `${clipChars(text, BRIEF_LABEL_MAX)}（${n} 条）`;
+    if (!push(label, text)) return out;
+  }
+  return out;
+}
+
+/**
+ * 从**本步表集的真实行**里抽可打开的来源地址
+ *
+ * 只收 `http(s)://`：`文件名:页码` 这类来源无法点开，不属于本块的职责
+ * （它们仍写在总结全文的「核实结论」里）。
+ */
+function briefSourcesOf(input: StageSummaryInput, tables: readonly TableDef[]): StageBriefSource[] {
+  const out: StageBriefSource[] = [];
+  const seen = new Set<string>();
+  for (const t of tables) {
+    for (const row of input.rowsByTable[t.code] ?? []) {
+      const urls = urlsOfRow(row, seen);
+      if (urls.length === 0) continue;
+      const label = briefLabelOf(row, t);
+      for (const url of urls) {
+        out.push({ label, url });
+        if (out.length >= BRIEF_SOURCES_MAX) return out;
+      }
+    }
+  }
+  // 一条网址都没有（大多数实跑数据是「文件名:页码」）：退回文件来源，
+  // 否则用户看不到"这句话从哪来"，溯源就断在右栏
+  return out.length > 0 ? out : fileSourcesOf(input, tables);
+}
+
+/** 认证差距常写成一整句（"认证类要求：需取得…；若…"），右栏只留得下前半句（截断不带省略号，交给外层统一加） */
+function shortGap(gap: string): string {
+  const cut = gap.replace(/^[^：:]{0,6}[：:]\s*/u, "");
+  const head = cut.split(/[；;。]/u)[0] ?? cut;
+  return Array.from(head.trim()).slice(0, 26).join("");
+}
+
+/** 规则 1：认证差距非空且不是「无」类 → 不建议贸然进入 */
+function certAdvice(row: InfoRow): string | null {
+  const gap = cellTextOf(row["cert_gap"]);
+  if (gap === "" || NO_CERT_GAP.has(gap)) return null;
+  const barrier = cellTextOf(row["barrier_name"]) || "该门槛";
+  return `门槛「${barrier}」：拿不出 ${shortGap(gap)}——不建议贸然进入`;
+}
+
+/** 规则 2：对某对手胜负为「弱」→ 不建议正面竞争 */
+function weakAdvice(row: InfoRow): string | null {
+  if (cellTextOf(row["win_loss"]) !== "弱") return null;
+  const opponent = cellTextOf(row["opponent"]) || "该对手";
+  const weakness = cellTextOf(row["weakness"]);
+  return `对 ${opponent} 处弱势${weakness === "" ? "" : `：${weakness}`}——不建议正面竞争`;
+}
+
+/** 规则 3：匹配判定为「不能做」→ 建议分包或放弃这一段 */
+function cannotDoAdvice(row: InfoRow): string | null {
+  if (cellTextOf(row["match"]) !== "不能做") return null;
+  const gap = cellTextOf(row["gap_ref"]) || "该缺口";
+  const action = cellTextOf(row["action"]);
+  return `「${gap}」做不了${action === "" ? "" : `，${action}`}——建议分包或放弃这一段`;
+}
+
+/** 规则 4：C 级假设 / AI 推断的行 ≥3 条 → 进场前须核实 */
+function assumptionAdvice(entries: readonly RowEntry[]): string | null {
+  let n = 0;
+  for (const e of entries) {
+    if (cellTextOf(e.row["evidence_level"]) === "C" || cellTextOf(e.row["source_type"]) === "AI推断") {
+      n += 1;
+    }
+  }
+  return n >= 3 ? `本步有 ${n} 条结论属推断/C 级假设，进场前须核实` : null;
+}
+
+/** 截断时优先断在句读上（"…环保产…"这种半截词用户读不下去） */
+function clipAdvice(text: string): string {
+  if (text.length <= BRIEF_ADVICE_MAX) return text;
+  const head = text.replace(/…$/u, "").slice(0, BRIEF_ADVICE_MAX);
+  const cut = Math.max(head.lastIndexOf("——"), head.lastIndexOf("；"), head.lastIndexOf("，"), head.lastIndexOf("、"));
+  return cut > 12 ? `${head.slice(0, cut)}…` : `${head}…`;
+}
+
+/** 一条都判不出时的兜底（不凑数） */
+const BRIEF_FALLBACK = "本步还没有可下结论的判据（缺表1-3 / 表4-3 / 表4-4 的有效数据）";
+
+/**
+ * 右栏要点视图（确定性推导，不需要 LLM）
+ *
+ * 只读 `rowsByTable`（本步表集已由调用方按 `tableCodes` 限定）：
+ *  - **来源**：行内出现的 http(s) 地址，去重、最多 20 条，标签取行的主标识
+ *  - **提醒**：表1-3 认证差距 / 表4-4 胜负为弱 / 表4-3 不能做 / C 级与推断行统计；
+ *    去重、每条 ≤60 字、最多 4 条；一条都判不出时只给一句兜底
+ *
+ * 不改 `buildStageSummary` 的任何输出——交付物装配仍走那一份六段骨架。
+ */
+export function buildStageBrief(input: StageSummaryInput): StageBrief {
+  const tables = tablesFor(input);
+  const entries = allEntries(input, tables);
+
+  const candidates: string[] = [];
+  // 门槛最多留 2 条：一个场景常有好几道认证门槛，全列会把其他三类提醒挤掉
+  const barriers = new Set<string>();
+  for (const row of input.rowsByTable["表1-3"] ?? []) {
+    const a = certAdvice(row);
+    if (!a) continue;
+    const name = cellTextOf(row["barrier_name"]) || a;
+    if (barriers.has(name) || barriers.size >= 2) continue;
+    barriers.add(name);
+    candidates.push(a);
+  }
+  for (const row of input.rowsByTable["表4-4"] ?? []) {
+    const a = weakAdvice(row);
+    if (a) candidates.push(a);
+  }
+  for (const row of input.rowsByTable["表4-3"] ?? []) {
+    const a = cannotDoAdvice(row);
+    if (a) candidates.push(a);
+  }
+  const inferred = assumptionAdvice(entries);
+  if (inferred) candidates.push(inferred);
+
+  const advice: string[] = [];
+  const seenAdvice = new Set<string>();
+  for (const raw of candidates) {
+    const text = clipAdvice(raw.replace(/\s+/gu, " ").trim());
+    if (text === "" || seenAdvice.has(text)) continue;
+    seenAdvice.add(text);
+    advice.push(text);
+    if (advice.length >= BRIEF_ADVICE_LIMIT) break;
+  }
+
+  return {
+    sources: briefSourcesOf(input, tables),
+    advice: advice.length > 0 ? advice : [BRIEF_FALLBACK],
+  };
 }
 
 /**

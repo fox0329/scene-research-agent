@@ -18,10 +18,12 @@ import {
 } from "@scene/contract";
 import {
   buildFlowStatus,
+  buildStageBrief,
   buildStageSummary,
   checkStageCompleteness,
   type FlowReadiness,
   type InfoRow,
+  type StageBrief,
 } from "@scene/domain";
 import {
   definitionRowKey,
@@ -354,7 +356,7 @@ export function buildDemoFlowStatus(input: {
   };
 }
 
-/** 演示态阶段总结（六段骨架；右栏 Tab ② 与联真同结构） */
+/** 演示态阶段总结（六段骨架；交付物装配与「查看全文」入口用） */
 /**
  * 演示态总结（与联真同口径）
  *
@@ -382,6 +384,32 @@ export function demoStageSummary(stage: InfoStageId, step?: number): string {
     }),
     ...(stepDef ? {} : { briefRawText: "场景名称：智慧水务\n想搞清楚什么：这个场景值不值得进" }),
     generatedAt: "2026-09-25",
+  });
+}
+
+/**
+ * 演示态右栏要点（来源地址 + 结论提醒）
+ *
+ * 与联真同口径：同一套 `buildStageBrief` 规则、同一套本步表集；不编造额外结论。
+ */
+export function demoStageBrief(stage: InfoStageId, step?: number): StageBrief {
+  const stepDef = step === undefined ? undefined : flowStep(step);
+  const codes = stepDef ? stepDef.tables : tablesOfStage(stage).map((t) => t.code);
+  const rowsByTable: Record<string, InfoRow[]> = {};
+  for (const code of codes) rowsByTable[code] = DEMO_ROWS[code] ?? [];
+  if (codes.includes("表1-1")) {
+    rowsByTable["表1-1"] = DEMO_ANCHOR.map((a) => ({ item: a.item, content: a.content }));
+  }
+  return buildStageBrief({
+    stage,
+    ...(stepDef ? { step, tableCodes: codes, scope: "step" as const } : {}),
+    scenarioName: "智慧水务",
+    rowsByTable,
+    completeness: checkStageCompleteness({
+      stage,
+      rowsByTable,
+      ...(stepDef ? { tableCodes: codes } : {}),
+    }),
   });
 }
 

@@ -21,9 +21,11 @@ import {
 import type { DbInstance } from "@scene/infra";
 import {
   anchorFixedRows,
+  buildStageBrief,
   buildStageSummary,
   checkStageCompleteness,
   type InfoRow,
+  type StageBrief,
   type StageCompleteness,
 } from "@scene/domain";
 import { readAnchorRows, readBrief } from "./scenario-anchor.js";
@@ -95,6 +97,21 @@ export interface StageSummaryResult {
 /** 生成选项：传 `step` 即按**当前步骤**出总结（右栏用） */
 export interface StageSummaryOptions {
   step?: number;
+  /**
+   * `brief`：右栏要点视图（只给来源地址 + 结论提醒），不生成整篇 Markdown
+   *
+   * 路由据此分流到 `getStageBrief`；`generateStageSummary` 本身仍只产整篇文档。
+   */
+  view?: "brief";
+}
+
+/** 要点视图结果（右栏「阶段总结」） */
+export interface StageBriefResult {
+  brief: StageBrief;
+  completeness: StageCompleteness;
+  stage: InfoStageId;
+  /** 覆盖范围：`step` = 只讲这一步（右栏）；`stage` = 阶段级 */
+  scope: "step" | "stage";
 }
 
 /**
@@ -136,6 +153,34 @@ export function generateStageSummary(
   // 交付物装配要用它，两者混在一张表里会互相覆盖
   if (step === undefined) db.stageSummaryRepo.upsert(scenario.id, id, markdown);
   return { markdown, completeness, stage: id, scope: step === undefined ? "stage" : "step" };
+}
+
+/**
+ * 右栏要点视图（来源地址 + 结论提醒）
+ *
+ * 与整篇总结同一套表集口径（传 `step` 就只讲这一步），但**不写库、不产 Markdown**：
+ * 内容全部由 `buildStageBrief` 从真实行确定性推导，毫秒级，可随每次进入面板重算。
+ */
+export function getStageBrief(
+  db: DbInstance,
+  scenario: Scenario,
+  stage: StageId,
+  step?: number,
+): StageBriefResult {
+  const id = normalizeStage(stage);
+  const tableCodes = step === undefined ? undefined : stepScope(step).tableCodes;
+  const rowsByTable = readStageRowsByTable(db, scenario.id, id, tableCodes);
+  const completeness = stageCompletenessOf(db, scenario.id, stage, step);
+  const brief = buildStageBrief({
+    stage: id,
+    scenarioName: scenario.name,
+    rowsByTable,
+    completeness,
+    ...(tableCodes ? { tableCodes } : {}),
+    ...(step === undefined ? {} : { step }),
+    scope: step === undefined ? "stage" : "step",
+  });
+  return { brief, completeness, stage: id, scope: step === undefined ? "stage" : "step" };
 }
 
 /** 读已落库的总结；没有则即时生成（保证右栏永远有内容） */

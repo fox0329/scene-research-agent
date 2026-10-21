@@ -255,6 +255,31 @@ export interface ApiStageSummary {
   completeness: ApiCompleteness;
 }
 
+/** 右栏要点视图的一条来源（可点开） */
+export interface ApiStageBriefSource {
+  label: string;
+  /** 能点开的网址；空串表示文件来源（看 `file`） */
+  url: string;
+  /** 文件名:页码（没有网址时给原文，供用户回资料库核对） */
+  file?: string;
+}
+
+/**
+ * 阶段总结要点（右栏）：调研来源地址 + 结论提醒
+ *
+ * 服务端 `?view=brief` 确定性推导（不调模型、不产 Markdown、不写库）。
+ */
+export interface ApiStageBrief {
+  stage: number;
+  brief: {
+    sources: ApiStageBriefSource[];
+    advice: string[];
+  };
+  completeness: ApiCompleteness;
+  /** 视图回显（固定 `brief`），客户端据此区分响应形状 */
+  action: string;
+}
+
 export interface ApiStaleInfo {
   stages: number[];
   /** 受影响的**流程步号**（用户可见的那套编号；文案按它组织） */
@@ -402,92 +427,6 @@ export class ApiError extends Error {
     super(message);
     this.name = "ApiError";
   }
-}
-
-// ─── 联网补证（变更表 #216 / #219）────────────────────────────
-
-/** 检索引擎状态：能不能联网、为什么不能 */
-export interface ApiWebEngine {
-  engine: string;
-  canSearch: boolean;
-  detail: string;
-  hasTavilyKey: boolean;
-  sourceCount: number;
-}
-
-/** 一条补证结果 */
-export interface ApiWebEnrichItem {
-  url: string;
-  ok: boolean;
-  snapshotName?: string;
-  blockCount?: number;
-  authority?: string;
-  category?: string;
-  citation?: string;
-  blocked?: boolean;
-  reasons?: string[];
-  error?: string;
-}
-
-/** 一次补证的结果 */
-export interface ApiWebEnrichReport {
-  performed: boolean;
-  skipReason?: string;
-  searches: number;
-  fetches: number;
-  items: ApiWebEnrichItem[];
-  usable: number;
-  filtered: number;
-  engine?: string;
-  engineDetail?: string;
-}
-
-/** 已入库的可用网页来源 */
-export interface ApiWebSource {
-  id: string;
-  url: string;
-  domain: string;
-  title: string;
-  authority: string;
-  category: string;
-  blockCount: number;
-  fetchedAt: string;
-  status: string;
-}
-
-/** 查引擎状态（不联网，只读配置） */
-export function getWebEngine(): Promise<ApiWebEngine> {
-  return req<ApiWebEngine>("/web/engine");
-}
-
-/** 保存引擎配置（Tavily Key 等） */
-export function saveWebEngine(patch: { engine?: string; tavilyKey?: string }): Promise<ApiWebEngine> {
-  return req<ApiWebEngine>("/web/engine", { method: "POST", body: patch });
-}
-
-/** 联网补证：按主题检索 → 抓取 → 入库 */
-export function enrichWeb(input: {
-  topics?: string[];
-  preferSites?: string[];
-  explicitUrls?: string[];
-  perTopic?: number;
-}): Promise<ApiWebEnrichReport> {
-  return req<ApiWebEnrichReport>("/web/enrich", { method: "POST", body: input });
-}
-
-/** 已入库的可用网页来源 */
-export function listWebSources(limit = 50): Promise<{ sources: ApiWebSource[] }> {
-  return req<{ sources: ApiWebSource[] }>(`/web/sources?limit=${limit}`);
-}
-
-/** 按引用串取网页原文（右栏「看原文」） */
-export function webPassages(
-  citation: string,
-  limit = 3,
-): Promise<{ passages: Array<{ blockNo: number; heading: string; text: string }> }> {
-  return req<{ passages: Array<{ blockNo: number; heading: string; text: string }> }>(
-    `/web/passages?citation=${encodeURIComponent(citation)}&limit=${limit}`,
-  );
 }
 
 /** 来源原文段落（`/sources/passages`，变更表 #179） */
@@ -658,9 +597,21 @@ export const api = {
       `/projects/${encodeURIComponent(id)}/stages/${stage}/summary${qs ? `?${qs}` : ""}`,
     );
   },
-  /** 阶段总结 Markdown 下载地址（直接给 <a download> 用） */
-  stageSummaryDownloadUrl: (id: string, stage: number) =>
-    `${BASE}/projects/${encodeURIComponent(id)}/stages/${stage}/summary?format=md`,
+  /**
+   * 阶段总结要点（右栏「阶段总结」正文）：只给来源地址 + 结论提醒
+   *
+   * `step` 传了就是"只讲这一步"，与整篇总结同一套表集口径。
+   */
+  stageBrief: (id: string, stage: number, step?: number) => {
+    const q = new URLSearchParams({ view: "brief" });
+    if (step) q.set("step", String(step));
+    return req<ApiStageBrief>(
+      `/projects/${encodeURIComponent(id)}/stages/${stage}/summary?${q.toString()}`,
+    );
+  },
+  /** 阶段总结 Markdown 下载地址（直接给 <a download> 用；传 step 则只导出本步） */
+  stageSummaryDownloadUrl: (id: string, stage: number, step?: number) =>
+    `${BASE}/projects/${encodeURIComponent(id)}/stages/${stage}/summary?format=md${step ? `&step=${step}` : ""}`,
   patchStageCell: (id: string, rowId: string, cell: string, value: unknown) =>
     req<ApiStageRow>(
       `/projects/${encodeURIComponent(id)}/stage-data/${encodeURIComponent(rowId)}`,

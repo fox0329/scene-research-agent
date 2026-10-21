@@ -238,16 +238,13 @@ test("交付物这一步：两份交付物与动作都在流程轴第二行（�
   // e2e 不真跑（慢，且依赖模型与本机技能），只拦掉 POST 断言**请求发对了**：URL、method、body。
   // （进度走另一条 SSE：`…/export-pptx/events?run=`，拦不到也不影响导出结果。）
 
-  // 装配原料清单按 G-R9 归右栏「阶段总结」（变更表 #149：交付物步没有补充说明，
-  // 右栏只有「阶段总结」一个 Tab，落在它上面就能直接看到，不必先点 Tab① 空态）
-  const detTabs = page.locator(".det-tabs .det-tab");
-  await expect(detTabs).toHaveCount(1);
-  await expect(detTabs.first()).toHaveText("阶段总结");
-  await expect(detTabs.first()).toHaveClass(/active/);
-  const detBody = page.locator(".det-body");
-  await expect(detBody).toContainText("装配原料");
+  // 装配原料清单按 G-R9 归右栏「阶段总结」（v2.10：右栏已无 Tab 条，只有这个标题；
+  // 交付物步的正文全在折叠区里，先展开再断言）
+  await expect(page.locator(".det .summary-head h4")).toHaveText("阶段总结");
   // 展开全文：统计、缺口与导出事实都在正文里
   await page.locator(".det .fold-toggle").click();
+  const detBody = page.locator(".det-body");
+  await expect(detBody).toContainText("装配原料");
   await expect(detBody).toContainText("没有产出的步骤会在交付物里标「无信息」");
   await expect(detBody).toContainText(/已产出：\d+\/\d+ 步 · \d+\/\d+ 张表 · \d+ 行/);
   // 删掉的三块（变更表 #149）：两份交付物名+说明（流程轴 chip 的 label/title 已说）、

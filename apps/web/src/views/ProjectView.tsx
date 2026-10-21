@@ -26,7 +26,7 @@ interface ProjectViewProps {
   onProjectsChanged?: () => void;
   /** 空项目引导新建（联真模式） */
   onNewProject?: () => void;
-  /** 右栏阶段快照：补充说明 + 确认清单 + 阶段总结 */
+  /** 右栏阶段快照：阶段总结（来源地址 + 结论提醒） */
   onStageSnapshot?: (snap: StageSnapshot | null) => void;
   /** 对话入口：流程轴第 1 步的运行按钮打开「场景定义」独立弹窗（变更表 #58 / #180） */
   /**

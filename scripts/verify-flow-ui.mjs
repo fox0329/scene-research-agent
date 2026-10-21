@@ -102,10 +102,17 @@ ok(
   `title=${(await primary.getAttribute("title"))?.slice(0, 24)}…`,
 );
 
-// 5. 右栏双 Tab（补充说明 / 阶段总结）
-await page.locator(".det .det-tab").first().waitFor({ timeout: 8000 });
-const tabs = await page.locator(".det .det-tab").count();
-ok("5 右栏双 Tab", tabs === 2);
+// 5. 右栏只有「阶段总结」：调研信息来源 + 结论提醒（补充说明 Tab 已删除）
+const detTitle = page.locator(".det .summary-head h4");
+await detTitle.waitFor({ timeout: 8000 });
+const detSubTitles = (await page.locator(".det .summary-sub").allInnerTexts()).map((t) => t.trim());
+ok(
+  "5 右栏只有「阶段总结」（调研信息来源 + 结论提醒，无 Tab 条）",
+  (await detTitle.innerText()).trim() === "阶段总结" &&
+    detSubTitles.includes("调研信息来源") &&
+    detSubTitles.includes("结论提醒"),
+  detSubTitles.join(" / "),
+);
 
 // 6. 产品不产出判断：整页不得出现建议档位/质量关
 const shellText = await page.locator(".shell").innerText();

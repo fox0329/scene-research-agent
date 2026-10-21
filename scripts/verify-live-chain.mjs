@@ -206,19 +206,32 @@ ok(
   readyHint.slice(0, 60),
 );
 
-/* 5. 右栏双 Tab：补充说明 / 阶段总结（**只讲本步**的五段骨架）
+/* 5. 右栏只有「阶段总结」：调研信息来源 + 结论提醒（v2.10 删除补充说明 Tab）
       —— 确认清单与缺口清单已整块删除（用户定调「不用显示待确认」）；
          右栏只针对当前步骤（用户定调「不要整理整个过程」）：
          不含用户诉求全文、不含上下游衔接、不提别的步骤的表 */
-const detTabs = page.locator(".det .det-tab");
-await detTabs.first().waitFor({ state: "visible", timeout: 15_000 });
-const tabCount = await detTabs.count();
-await detTabs.nth(0).click();
+const detTitle = page.locator(".det .summary-head h4");
+await detTitle.waitFor({ state: "visible", timeout: 15_000 });
+const detTitleText = (await detTitle.innerText()).trim();
+const detSubTitles = (await page.locator(".det .summary-sub").allInnerTexts()).map((t) => t.trim());
+const hasSections =
+  detSubTitles.includes("调研信息来源") && detSubTitles.includes("结论提醒");
 const junkCount =
   (await page.locator(".det .confirm-list").count()) +
   (await page.locator(".det .gap-list").count()) +
   (await page.locator(".det .layer-L1").count());
-await detTabs.nth(1).click();
+// 来源：有可点链接就给链接，没有就给空态文案；结论提醒至少一条（判不出也有兜底句）
+await page
+  .locator(".det .summary-advice li")
+  .first()
+  .waitFor({ state: "visible", timeout: 15_000 })
+  .catch(() => undefined);
+const sourceLinks = await page.locator(".det .summary-sources li a").count();
+const sourceEmpty = await page
+  .locator(".det .summary-empty", { hasText: "本步暂无可以打开的来源地址" })
+  .count();
+const adviceCount = await page.locator(".det .summary-advice li").count();
+const hasBrief = (sourceLinks > 0 || sourceEmpty > 0) && adviceCount > 0;
 // 本步总结默认**折叠**（页面瘦身）：先展开全文再断言五段骨架
 const expandBtn = page.locator(".det button.fold-toggle", { hasText: /展开全文/ });
 if (await expandBtn.count()) {
@@ -236,9 +249,14 @@ const stepOnly =
   !/^阶段/.test((mdText.trim().split("\n")[0] ?? "").trim());
 /* 产品不产出判断：整页不得出现建议档位措辞 */
 const noAdvice = !/建议(通过|有条件通过|不通过|进)/.test(await page.locator(".shell").innerText());
-ok("5 右栏双 Tab（补充说明 + 阶段总结）且不产出判断、不出现确认/缺口清单",
-  tabCount === 2 && junkCount === 0 && hasFive && noAdvice,
-  `Tab ${tabCount} 个 · 清单残留 ${junkCount} 处 · 五段 ${hasFive} · 无建议措辞 ${noAdvice}`);
+ok("5 右栏只有「阶段总结」（调研信息来源 + 结论提醒）且不产出判断、不出现确认/缺口清单",
+  detTitleText === "阶段总结" &&
+    hasSections &&
+    junkCount === 0 &&
+    hasBrief &&
+    hasFive &&
+    noAdvice,
+  `标题「${detTitleText}」· 小节 ${detSubTitles.join(" / ")} · 来源 ${sourceLinks} 条${sourceEmpty > 0 ? "（空态）" : ""} · 提醒 ${adviceCount} 条 · 清单残留 ${junkCount} 处 · 五段 ${hasFive} · 无建议措辞 ${noAdvice}`);
 ok("5d 右栏只讲本步：抬头写「第 1 步」而不是阶段名，且没有用户诉求全文、没有上下游衔接",
   stepOnly,
   `诉求 ${!/用户诉求/.test(mdText)} · 上下游 ${!/上下游衔接/.test(mdText)} · 抬头「${(mdText.trim().split("\n")[0] ?? "").slice(0, 24)}」`);

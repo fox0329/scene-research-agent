@@ -17,21 +17,8 @@ import { AnchorFoldPanel } from "../components/AnchorFoldPanel";
 import { anchorSummary } from "../components/definition-progress";
 import { ScenarioDefinitionDialog } from "../components/ScenarioDefinitionDialog";
 import type { StageSnapshot } from "../components/stage-snapshot";
-import type { ApiAnchorRow, ApiCompleteness, ApiFlowStatus } from "../api";
-import { demoStageSummary } from "../mock/demo-flow";
-
-/** 全流程底账 → 右栏完整度口径（与联真同形状） */
-function overallCompleteness(flow: ApiFlowStatus, stage: number): ApiCompleteness {
-  const expectedTables = flow.steps.reduce((n, s) => n + s.progress.expectedTables, 0);
-  const tablesWithData = flow.steps.reduce((n, s) => n + s.progress.tablesWithData, 0);
-  return {
-    stage,
-    expectedTables,
-    tablesWithData,
-    gaps: [],
-    percent: expectedTables > 0 ? Math.round((tablesWithData / expectedTables) * 100) : 0,
-  };
-}
+import type { ApiAnchorRow, ApiFlowStatus } from "../api";
+import { demoStageBrief, demoStageSummary } from "../mock/demo-flow";
 
 export interface DemoFirstStepProps {
   flow: ApiFlowStatus;
@@ -53,7 +40,6 @@ export interface DemoFirstStepProps {
  * 与联真**同结构同文案**：中栏只有表1-1；对话入口在**流程轴**上（八步同形）。
  */
 export const DemoFirstStep: React.FC<DemoFirstStepProps> = ({
-  flow,
   anchor,
   scenarioName,
   onConsolidated,
@@ -75,20 +61,13 @@ export const DemoFirstStep: React.FC<DemoFirstStepProps> = ({
 
   const snapshot = useMemo<StageSnapshot>(
     () => ({
-      rows: [],
-      completeness: overallCompleteness(flow, 1),
       summary: demoStageSummary(1, 1),
       summaryLoading: false,
-      activeTable: "表1-1",
-      // 第 1 步没有对应的右栏条目（没有补充说明列）→ 不参与行联动
-      activeRowId: null,
-      activeRowOrigin: null,
-      supplements: [],
+      brief: demoStageBrief(1, 1),
+      summaryDownloadUrl: null,
       onRefreshSummary: () => undefined,
-      onSupplementChange: () => undefined,
-      onRowFocus: () => undefined,
     }),
-    [flow],
+    [],
   );
 
   useEffect(() => {

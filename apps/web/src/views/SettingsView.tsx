@@ -270,7 +270,34 @@ const SettingsViewLive: React.FC = () => {
           </div>
         </section>
 
-        {/* 面板 1：模型配置 */}
+        {/* 面板 1：产品立场（2026-10-21 用户定调）——目的不是"证明产品万能"，
+            而是客观调研场景；结论可以有立场，但决定权在用户，门禁兜底不许编事实 */}
+        <section className="pnl">
+          <div className="pnl-h">
+            <div>
+              <h2>产品立场</h2>
+              <p>这个工具为什么存在：客观调研场景，把产品放到能赢的位置</p>
+            </div>
+          </div>
+          <div className="pnl-b">
+            <ul className="stance-list">
+              <li>
+                <strong>不是证明"什么场景都能用"</strong>：先摸清场景的门槛、玩家、采购与利润池，再判断我方在哪一段有真实赢面——把产品价值放到最大，不用话术掩盖短板。
+              </li>
+              <li>
+                <strong>结论可以有立场</strong>：门槛过不去、没有相关资质、价格无成本优势、能力有缺口，阶段总结会直说「不建议贸然进入 / 不建议正面竞争」，并注明依据（哪张表哪一行）。
+              </li>
+              <li>
+                <strong>建议权归智能体，决定权归用户</strong>：进不进、投不投由你拍板；工具只给有依据的提醒，不阻断推进。
+              </li>
+              <li>
+                <strong>门禁兜底</strong>：30 条确定性门禁在导出前逐条校验数字可溯源、来源权威性、证据等级；查不到一律写「未知」，不许编事实。
+              </li>
+            </ul>
+          </div>
+        </section>
+
+        {/* 面板 2：模型配置 */}
         <section className="pnl">
           <div className="pnl-h">
             <div>

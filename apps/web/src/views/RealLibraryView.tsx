@@ -8,7 +8,6 @@ import {
 import { useAsync } from "../hooks/useAsync";
 import { SceneTable, type ColumnDef } from "../components/SceneTable";
 import { MaterialUpload } from "../components/MaterialUpload";
-import { WebEnrichDialog } from "../components/WebEnrichDialog";
 import type { RowDetail } from "../components/RowDetailPanel";
 import { useToast } from "../components/Toast";
 import { promptText } from "../components/prompt-text";
@@ -704,7 +703,6 @@ export const RealLibraryView: React.FC<{
   const [lineId, setLineId] = useState(lines[0]?.id ?? "");
   const [tab, setTab] = useState<TabKey>("quality");
   const [reloadTick, setReloadTick] = useState(0);
-  const [webOpen, setWebOpen] = useState(false);
 
   /* 产品线列表变化时保证选中有效 */
   useEffect(() => {
@@ -945,17 +943,6 @@ export const RealLibraryView: React.FC<{
 
   return (
     <>
-      {webOpen ? (
-        <WebEnrichDialog
-          onClose={() => setWebOpen(false)}
-          onStored={() => {
-            setReloadTick((t) => t + 1);
-            summary.reload();
-            onChanged?.();
-          }}
-        />
-      ) : null}
-
       <div className="pgh">
         <div className="pgh-left">
           <div className="pgt">产品资料库</div>
@@ -990,10 +977,6 @@ export const RealLibraryView: React.FC<{
                 onClick={() => void handleDeleteLine()}
               >
                 删除资料库
-              </button>
-              {/* 联网补证（变更表 #219）：没配搜索 Key 也能用免注册通道 */}
-              <button className="btn btn-sm" type="button" onClick={() => setWebOpen(true)}>
-                联网补证
               </button>
             </>
           ) : (

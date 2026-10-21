@@ -3,25 +3,19 @@ import {
   tablesOfStage,
   tableDef,
   rowBelongsToBlock,
-  detailColumns,
   type InfoStageId,
 } from "@scene/contract";
-import { buildStageSummary, checkStageCompleteness, type InfoRow } from "@scene/domain";
+import type { InfoRow } from "@scene/domain";
 import { SchemaTable, tableBlocks, tableCategories } from "../components/SchemaTable";
-import type {
-  RowLinkOrigin,
-  StageSnapshot,
-  SupplementTable,
-} from "../components/stage-snapshot";
-import type { ApiCompleteness } from "../api";
-import { DEMO_ROWS, demoStageSummary } from "../mock/demo-flow";
+import type { StageSnapshot } from "../components/stage-snapshot";
+import { DEMO_ROWS, demoStageBrief, demoStageSummary } from "../mock/demo-flow";
 
 /**
  * 演示模式阶段面板（无后端）
  *
  * 与联真面板**共用同一套 schema 与领域逻辑**：
  *  - 列/固定行/枚举来自 `packages/contract/src/tables.ts`
- *  - 完整度与阶段总结来自 `packages/domain`（`checkStageCompleteness` / `buildStageSummary`）
+ *  - 阶段总结来自 `packages/domain`（`buildStageSummary` / `buildStageBrief`）
  * 因此演示态与联真态的结构一致，E2E 断言的交互规范同样成立——这也是删除
  * 9 个手写 mock 面板（约 1.7k 行）后仍能验收的原因。
  *
@@ -80,16 +74,11 @@ export const DemoStagePanel: React.FC<DemoStagePanelProps> = ({
     onTableChange?.(activeTable, block);
   }, [activeTable, block, onTableChange]);
 
-  /* 中栏 ↔ 右栏的行联动（变更表 #150）：与联真同口径（同一个 rowId 双向高亮 + 发起方防抖） */
+  /* 中栏当前行（只服务中栏自己的高亮；右栏补充说明条目已删，联动随之下线） */
   const [activeRowId, setActiveRowId] = useState<string | null>(null);
-  const [activeRowOrigin, setActiveRowOrigin] = useState<RowLinkOrigin | null>(null);
-  const focusRow = useCallback((rowId: string, origin: RowLinkOrigin) => {
-    setActiveRowId(rowId);
-    setActiveRowOrigin(origin);
-  }, []);
+  const focusRow = useCallback((rowId: string) => setActiveRowId(rowId), []);
   useEffect(() => {
     setActiveRowId(null);
-    setActiveRowOrigin(null);
   }, [stage, stepId, activeTable, block, category]);
 
   const categories = useMemo(
@@ -122,66 +111,19 @@ export const DemoStagePanel: React.FC<DemoStagePanelProps> = ({
     [id, stepId],
   );
 
-  /** 右栏只针对当前步骤：完整度与总结都按**本步表集**算 */
-  const stepCodes = tables && tables.length > 0 ? tables : undefined;
-  const completeness = useMemo<ApiCompleteness>(
-    () =>
-      checkStageCompleteness({
-        stage: id,
-        rowsByTable,
-        ...(stepCodes ? { tableCodes: stepCodes } : {}),
-      }) as unknown as ApiCompleteness,
-    [id, rowsByTable, stepCodes],
-  );
+  /** 右栏只针对当前步骤：要点按**本步表集**推导（与联真同一套规则） */
+  const brief = useMemo(() => demoStageBrief(id, stepId), [id, stepId]);
 
-  const snapshot = useMemo<StageSnapshot>(() => {
-    const supplements: SupplementTable[] = [];
-    if (activeTable) {
-      const t = tableDef(activeTable);
-      const cols = t ? detailColumns(t, category ?? undefined) : [];
-      const rows = (rowsByTable[activeTable] ?? []).map((r, i) => ({
-        id: `${activeTable}-${i}`,
-        row: r,
-      }));
-      if (t && cols.length > 0 && rows.length > 0) {
-        supplements.push({
-          tableCode: t.code,
-          tableName: t.name,
-          columns: cols.map((c) => ({ key: c.key, label: c.label })),
-          rows,
-        });
-      }
-    }
-    return {
-      // 右栏「核实」段读这里的行（v1.27）：演示态也要能看到每条信息的核实结论
-      rows: activeTable
-        ? (rowsByTable[activeTable] ?? []).map((r, i) => ({
-            id: `${activeTable}-${i}`,
-            scenario_id: "demo",
-            stage,
-            table_code: activeTable,
-            row: r as Record<string, unknown>,
-            is_stale: false,
-          }))
-        : [],
-      completeness,
+  const snapshot = useMemo<StageSnapshot>(
+    () => ({
       summary,
       summaryLoading: false,
-      activeTable,
-      activeRowId,
-      activeRowOrigin,
-      supplements,
+      brief,
+      summaryDownloadUrl: null,
       onRefreshSummary: () => undefined,
-      // 演示态的补充说明/核实同样可编辑（与联真同口径：逐格可编辑，只改本地内存）
-      onSupplementChange: (rowId, cell, value) => {
-        if (!activeTable) return;
-        const idx = Number(String(rowId).slice(`${activeTable}-`.length));
-        if (Number.isNaN(idx)) return;
-        handleDemoEdit(activeTable, idx, cell, value);
-      },
-      onRowFocus: focusRow,
-    };
-  }, [stage, stepId, completeness, summary, activeTable, activeRowId, activeRowOrigin, focusRow, supplementsKey(activeTable, category), rowsByTable, id]);
+    }),
+    [summary, brief],
+  );
 
   useEffect(() => {
     onStageSnapshot?.(snapshot);
@@ -228,8 +170,7 @@ export const DemoStagePanel: React.FC<DemoStagePanelProps> = ({
                   if (Number.isFinite(index)) handleDemoEdit(activeTable, index, cell, value);
                 }}
                 activeRowId={activeRowId}
-                revealActiveRow={activeRowOrigin === "right"}
-                onRowFocus={(rowId) => focusRow(rowId, "mid")}
+                onRowFocus={(rowId) => focusRow(rowId)}
               />
             ) : null}
             {/* 完整度规则是生成时的内部约束，界面不显示（用户定调 2026-10-20） */}
@@ -239,8 +180,3 @@ export const DemoStagePanel: React.FC<DemoStagePanelProps> = ({
     </>
   );
 };
-
-/** 依赖键（避免把 category 塞进 memo 依赖时每渲染都变） */
-function supplementsKey(table: string | null, category: string | null): string {
-  return `${table ?? ""}#${category ?? ""}`;
-}

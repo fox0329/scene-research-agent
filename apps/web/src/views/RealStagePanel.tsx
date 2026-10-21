@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   rowBelongsToBlock,
-  detailColumns,
   tableDef,
   tablesOfStage,
   type InfoStageId,
@@ -9,11 +8,7 @@ import {
 import { api, type ApiStagePanel, type ApiStageRow } from "../api";
 import { useAsync } from "../hooks/useAsync";
 import { SchemaTable, tableBlocks, tableCategories } from "../components/SchemaTable";
-import type {
-  RowLinkOrigin,
-  StageSnapshot,
-  SupplementTable,
-} from "../components/stage-snapshot";
+import type { StageBriefView, StageSnapshot } from "../components/stage-snapshot";
 import { useToast } from "../components/Toast";
 
 /**
@@ -27,7 +22,7 @@ import { useToast } from "../components/Toast";
  *
  *  不在中栏：表1-1 场景锚（上一步的事，要回看自己回去看）、步标题、完整度、推进按钮
  *
- * 右栏（由 App 渲染 StageRightPanel）——补充说明 + 确认清单 + 阶段总结：
+ * 右栏（由 App 渲染 StageRightPanel）——只有「阶段总结」（来源地址 + 结论提醒）：
  *  本组件把 `StageSnapshot` 冒泡给父级，右栏不重复计算。
  */
 
@@ -71,7 +66,7 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
   pick,
   onTableChange,
 }) => {
-  // 右栏（完整度 / 补充说明 / 阶段总结）一律带上本步：**只针对当前步骤**
+  // 右栏（阶段总结要点）一律带上本步：**只针对当前步骤**
   const { status, data, error, reload } = useAsync<ApiStagePanel>(
     () => api.stagePanel(projectId, stage, stepId),
     [projectId, stage, stepId],
@@ -129,23 +124,16 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
   }, [activeTable, block, onTableChange]);
 
   /**
-   * 中栏 ↔ 右栏的行联动（变更表 #150）
+   * 中栏当前行（只服务中栏自己的高亮）
    *
-   * 只有一个 `activeRowId`：中栏表格行与右栏 Tab① 的条目按**同一个 rowId** 高亮，所以
-   * 两边不会各说各话。`origin` 是防抖用的发起方标记——**只滚发起方的对面**：
-   * 中栏点的行才去滚右栏，右栏点的字段才去滚中栏；发起方自己纹丝不动，
-   * 于是 A→B→A 的互相滚动不成立（右栏自己滚动也不会反过来改中栏的选中行）。
+   * v2.10 起右栏不再有同 rowId 的补充说明条目，联动随之删除——这里只保留
+   * "点了哪一行就高亮哪一行"的中栏自身行为（变更表 #150 的右栏一半已下线）。
    */
   const [activeRowId, setActiveRowId] = useState<string | null>(null);
-  const [activeRowOrigin, setActiveRowOrigin] = useState<RowLinkOrigin | null>(null);
-  const focusRow = useCallback((rowId: string, origin: RowLinkOrigin) => {
-    setActiveRowId(rowId);
-    setActiveRowOrigin(origin);
-  }, []);
+  const focusRow = useCallback((rowId: string) => setActiveRowId(rowId), []);
   /* 换表/换块/换类别/换步骤：上一张表的当前行不许带到新表上（新表里没有这个 rowId） */
   useEffect(() => {
     setActiveRowId(null);
-    setActiveRowOrigin(null);
   }, [stage, stepId, activeTable, block, category]);
 
   /** 本表本块的行：多子块表按块过滤（否则接口块视图会带出一排架构块的空行） */
@@ -156,17 +144,21 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
     return mine.filter((r) => rowBelongsToBlock(def, block, r.row));
   }, [rows, activeTable, block]);
 
-  /* 阶段总结 */
+  /* 阶段总结：整篇 Markdown（折叠看全文）+ 要点（来源地址 + 结论提醒） */
   const [summary, setSummary] = useState<string | null>(null);
   const [summaryLoading, setSummaryLoading] = useState(false);
+  const [brief, setBrief] = useState<StageBriefView | null>(null);
   const loadSummary = useCallback(
     async (refresh = false) => {
       setSummaryLoading(true);
       try {
-        const r = await api.stageSummary(projectId, stage, refresh, stepId);
-        setSummary(r.markdown);
-      } catch {
-        setSummary(null);
+        // 两个请求各管各的：要点取不到不该把整篇也打掉（反之亦然）
+        const [s, b] = await Promise.allSettled([
+          api.stageSummary(projectId, stage, refresh, stepId),
+          api.stageBrief(projectId, stage, stepId),
+        ]);
+        setSummary(s.status === "fulfilled" ? s.value.markdown : null);
+        setBrief(b.status === "fulfilled" ? b.value.brief : null);
       } finally {
         setSummaryLoading(false);
       }
@@ -214,52 +206,17 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
     [projectId, rows, onChanged, showToast],
   );
 
-  /* 右栏数据面：补充列（当前表的右栏补充列） */
+  /* 右栏数据面：阶段总结（全文 + 要点） */
   const snapshot = useMemo<StageSnapshot | null>(() => {
     if (!data) return null;
-
-    const supplements: SupplementTable[] = [];
-    if (activeTable) {
-      const def = tableDef(activeTable);
-      const cols = def ? detailColumns(def, category ?? undefined) : [];
-      const tRows = rows.filter((r) => r.table_code === activeTable);
-      if (def && cols.length > 0 && tRows.length > 0) {
-        supplements.push({
-          tableCode: def.code,
-          tableName: def.name,
-          columns: cols.map((c) => ({ key: c.key, label: c.label })),
-          rows: tRows.map((r) => ({ id: r.id, row: r.row })),
-        });
-      }
-    }
-
     return {
-      rows,
-      completeness: data.completeness ?? null,
       summary,
       summaryLoading,
-      activeTable,
-      activeRowId,
-      activeRowOrigin,
-      supplements,
+      brief,
+      summaryDownloadUrl: api.stageSummaryDownloadUrl(projectId, stage, stepId),
       onRefreshSummary: () => void loadSummary(true),
-      onSupplementChange: (rowId, cell, value) => void handleCellChange(rowId, cell, value),
-      onRowFocus: focusRow,
     };
-  }, [
-    data,
-    rows,
-    summary,
-    summaryLoading,
-    stage,
-    activeTable,
-    activeRowId,
-    activeRowOrigin,
-    category,
-    loadSummary,
-    handleCellChange,
-    focusRow,
-  ]);
+  }, [data, summary, summaryLoading, brief, projectId, stage, stepId, loadSummary]);
 
   useEffect(() => {
     onStageSnapshot?.(snapshot);
@@ -332,9 +289,7 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
                 category={category ?? undefined}
                 onCellChange={(rowId, cell, value) => void handleCellChange(rowId, cell, value)}
                 activeRowId={activeRowId}
-                /* 中栏发起的联动：右栏去滚；右栏发起的：由中栏把这一行滚进可视 */
-                revealActiveRow={activeRowOrigin === "right"}
-                onRowFocus={(rowId) => focusRow(rowId, "mid")}
+                onRowFocus={(rowId) => focusRow(rowId)}
               />
             ) : null}
 

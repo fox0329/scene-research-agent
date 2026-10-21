@@ -16,6 +16,7 @@ import {
   readStageRowsByTable,
   generateStageSummary,
   getOrGenerateStageSummary,
+  getStageBrief,
   stageCompletenessOf,
 } from "./stage-summary-service.js";
 import { writeAnchorRows } from "./scenario-anchor.js";
@@ -149,6 +150,47 @@ describe("stage-summary-service — 生成与落库", () => {
   });
 });
 
+describe("stage-summary-service — 右栏要点（brief）", () => {
+  it("从真实行推导来源地址与结论提醒，不产 Markdown、不写库", () => {
+    const { db, scenarioId } = seed();
+    db.stageDataRepo.insert({
+      scenario_id: scenarioId,
+      stage: 1,
+      table_code: "表1-3",
+      row: {
+        barrier_type: "行业准入",
+        barrier_name: "等保三级",
+        criteria: "GB/T 22239",
+        cert_gap: "等保三级认证",
+        source: "https://example.com/standard",
+      },
+      is_stale: false,
+      source: "https://example.com/standard",
+    });
+    const sc = db.scenarioRepo.getById(scenarioId)!;
+    const r = getStageBrief(db, sc, 1, 2);
+    expect(r.stage).toBe(1);
+    expect(r.scope).toBe("step");
+    expect(r.brief.sources).toEqual([
+      { label: "等保三级", url: "https://example.com/standard" },
+    ]);
+    expect(r.brief.advice).toContain(
+      "门槛「等保三级」：拿不出 等保三级认证——不建议贸然进入",
+    );
+    expect(db.stageSummaryRepo.get(scenarioId, 1)).toBeUndefined();
+  });
+
+  it("没有判据时给兜底，不凑数", () => {
+    const { db, scenarioId } = seed();
+    const sc = db.scenarioRepo.getById(scenarioId)!;
+    const r = getStageBrief(db, sc, 3, 4);
+    expect(r.brief.advice).toEqual([
+      "本步还没有可下结论的判据（缺表1-3 / 表4-3 / 表4-4 的有效数据）",
+    ]);
+    expect(r.brief.sources).toEqual([]);
+  });
+});
+
 describe("stage-summary-service — 路由", () => {
   let db: DbInstance;
   let app: ReturnType<typeof createApp>;
@@ -188,6 +230,44 @@ describe("stage-summary-service — 路由", () => {
     expect(body.stage).toBe(1);
     expect(body.markdown).toContain("## 六、上下游衔接");
     expect(body.completeness.percent).toBe(33);
+  });
+
+  it("GET /stages/:n/summary?view=brief 返回来源 + 提醒（不含 markdown）", async () => {
+    db.stageDataRepo.insert({
+      scenario_id: scenarioId,
+      stage: 3,
+      table_code: "表4-3",
+      row: {
+        gap_ref: "边缘 AI 推理",
+        match: "不能做",
+        our_product: "AI Box",
+        action: "转分包给算法厂商",
+        source: "https://example.com/ai",
+      },
+      is_stale: false,
+      source: "https://example.com/ai",
+    });
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/v1/projects/${scenarioId}/stages/3/summary?view=brief&step=4`,
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as {
+      stage: number;
+      action: string;
+      brief: { sources: { label: string; url: string }[]; advice: string[] };
+      completeness: { expectedTables: number };
+    };
+    expect(body.stage).toBe(3);
+    expect(body.action).toBe("brief");
+    expect(body.brief.sources).toEqual([
+      { label: "边缘 AI 推理", url: "https://example.com/ai" },
+    ]);
+    expect(body.brief.advice).toContain(
+      "「边缘 AI 推理」做不了，转分包给算法厂商——建议分包或放弃这一段",
+    );
+    expect(body.completeness.expectedTables).toBeGreaterThan(0);
+    expect((body as unknown as { markdown?: string }).markdown).toBeUndefined();
   });
 
   it("GET /stages/:n/summary?format=md 直接下载 Markdown", async () => {

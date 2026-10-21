@@ -202,8 +202,8 @@ export { validateIncomingRows, violationsBrief, mustDowngrade } from "./row-vali
 export type { IncomingRow, RowViolation, ViolationKind } from "./row-validation.js";
 
 // ─── 阶段总结文档（见 04 §五；确定性生成，不需要 LLM） ──────────
-export { buildStageSummary } from "./stage-summary.js";
-export type { StageSummaryInput } from "./stage-summary.js";
+export { buildStageSummary, buildStageBrief } from "./stage-summary.js";
+export type { StageSummaryInput, StageBrief, StageBriefSource } from "./stage-summary.js";
 
 // ─── 业务流程推进状态机（v1.5 逐页推进） ──────────────────────
 export {

@@ -20,7 +20,7 @@ import { api, type ApiAnchorRow } from "../api";
 import { AnchorFoldPanel } from "../components/AnchorFoldPanel";
 import { anchorSummary } from "../components/definition-progress";
 import { ScenarioDefinitionDialog } from "../components/ScenarioDefinitionDialog";
-import type { StageSnapshot } from "../components/stage-snapshot";
+import type { StageBriefView, StageSnapshot } from "../components/stage-snapshot";
 import { useToast } from "../components/Toast";
 import { useAsync } from "../hooks/useAsync";
 
@@ -142,17 +142,21 @@ export const AnchorStepPanel: React.FC<AnchorStepPanelProps> = ({
     onFlowChanged?.();
   }, [onChanged, onFlowChanged]);
 
-  /* 右栏 Tab ② 的总结：**只讲本步**（第 1 步 = 表1-1；用户定调"只针对当前阶段，不要整理整个过程"） */
+  /* 右栏阶段总结：**只讲本步**（第 1 步 = 表1-1；用户定调"只针对当前阶段，不要整理整个过程"） */
   const [summary, setSummary] = useState<string | null>(null);
   const [summaryLoading, setSummaryLoading] = useState(false);
+  const [brief, setBrief] = useState<StageBriefView | null>(null);
   const loadSummary = useCallback(
     async (refresh = false) => {
       setSummaryLoading(true);
       try {
-        const r = await api.stageSummary(projectId, 1, refresh, 1);
-        setSummary(r.markdown);
-      } catch {
-        setSummary(null);
+        // 整篇与要点各管各的：一个失败不把另一个打掉
+        const [s, b] = await Promise.allSettled([
+          api.stageSummary(projectId, 1, refresh, 1),
+          api.stageBrief(projectId, 1, 1),
+        ]);
+        setSummary(s.status === "fulfilled" ? s.value.markdown : null);
+        setBrief(b.status === "fulfilled" ? b.value.brief : null);
       } finally {
         setSummaryLoading(false);
       }
@@ -165,20 +169,13 @@ export const AnchorStepPanel: React.FC<AnchorStepPanelProps> = ({
 
   const snapshot = useMemo<StageSnapshot | null>(() => {
     return {
-      rows: [],
-      completeness: null,
       summary,
       summaryLoading,
-      activeTable: "表1-1",
-      // 第 1 步（表1-1）没有对应的右栏条目 → 不参与行联动
-      activeRowId: null,
-      activeRowOrigin: null,
-      supplements: [],
+      brief,
+      summaryDownloadUrl: api.stageSummaryDownloadUrl(projectId, 1, 1),
       onRefreshSummary: () => void loadSummary(true),
-      onSupplementChange: () => undefined,
-      onRowFocus: () => undefined,
     };
-  }, [summary, summaryLoading, loadSummary]);
+  }, [projectId, summary, summaryLoading, brief, loadSummary]);
 
   useEffect(() => {
     onStageSnapshot?.(snapshot);

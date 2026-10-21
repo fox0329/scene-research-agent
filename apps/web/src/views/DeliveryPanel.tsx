@@ -27,6 +27,7 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { FLOW_TOTAL } from "@scene/contract";
+import { buildStageBrief } from "@scene/domain";
 import {
   api,
   exportPptProgressStream,
@@ -408,22 +409,34 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
     void (dirPurpose === "ppt" ? exportPptInto(dir) : dirPurpose === "word" ? exportWordInto(dir) : exportMdInto(dir));
   }, [manualDir, dirPurpose, exportPptInto, exportWordInto, exportMdInto]);
 
+  /** 交付物步没有信息表：要点由领域层对空表集推导（只给兜底句，不编来源/结论） */
+  const brief = useMemo(
+    () =>
+      buildStageBrief({
+        stage: 5,
+        scenarioName: "",
+        rowsByTable: {},
+        completeness: {
+          stage: 5,
+          expectedTables: 0,
+          tablesWithData: 0,
+          missingTables: [],
+          gaps: [],
+          percent: 0,
+        },
+      }),
+    [],
+  );
+
   const snapshot = useMemo<StageSnapshot>(
     () => ({
-      rows: [],
-      completeness: null,
       summary: deliveryNote(flow, mdPaths, docxPaths, pptPaths),
       summaryLoading: false,
-      activeTable: null,
-      // 交付物步没有信息表，也就没有可联动的行（右栏只有阶段总结一个 Tab）
-      activeRowId: null,
-      activeRowOrigin: null,
-      supplements: [],
+      brief,
+      summaryDownloadUrl: null,
       onRefreshSummary: () => void loadReports(),
-      onSupplementChange: () => undefined,
-      onRowFocus: () => undefined,
     }),
-    [flow, mdPaths, docxPaths, pptPaths, loadReports],
+    [flow, mdPaths, docxPaths, pptPaths, brief, loadReports],
   );
 
   useEffect(() => {
