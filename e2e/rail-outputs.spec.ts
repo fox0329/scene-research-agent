@@ -67,6 +67,27 @@ function seedTallStage(dbPath: string, scenarioId: string): void {
   db.close();
 }
 
+/** 给某一步的表种一行，让该步 ready（交付物自动生成用例用） */
+function seedStageRow(dbPath: string, scenarioId: string, stage: number, code: string): void {
+  const Database = require_("better-sqlite3") as new (path: string) => Db;
+  const db = new Database(dbPath);
+  const now = new Date().toISOString();
+  db.prepare(
+    `INSERT INTO stage_data
+       (id, scenario_id, stage, table_code, row, is_stale, source_type, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, 0, 'AI提取', ?, ?)`,
+  ).run(
+    `e2e-auto-delivery-${code}-${Date.now()}`,
+    scenarioId,
+    stage,
+    code,
+    JSON.stringify({ item: "自动生成验证", content: "占位内容" }),
+    now,
+    now,
+  );
+  db.close();
+}
+
 /** 把前 n 步标完成（不跑模型，纯造状态） */
 async function completeSteps(page: import("@playwright/test").Page, projectId: string, n: number) {
   for (const step of Array.from({ length: n }, (_, i) => i + 1)) {
@@ -328,4 +349,33 @@ test("交付物这一步：一份交付物与动作都在流程轴第二行（�
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test("从第 5 步点下一步：自动进入交付物并写报告（联真）", async ({ page }) => {
+  test.setTimeout(60_000);
+  const name = `E2E 自动交付物 ${Date.now()}`;
+  const projectId = await newProject(page, name);
+  await completeSteps(page, projectId, 4); // 当前步 = 第 5 步（方案与实现）
+  seedStageRow(newestDb(), projectId, 4, "表5-1"); // 让第 5 步有产出、出现「下一步」
+
+  await page.addInitScript(() => localStorage.setItem("scene.onboarding.v1.done", "1"));
+  await page.goto(`${LIVE}/`);
+  await expect(page.locator(".shell")).toBeVisible();
+  await page.locator(".proj-hd", { hasText: name }).click();
+
+  const rail = page.locator(".flow-rail");
+  await expect(rail.locator(".flow-node--current")).toContainText("方案实现", { timeout: 20_000 });
+  const next = rail.getByRole("button", { name: "下一步" });
+  await expect(next).toBeEnabled({ timeout: 20_000 });
+
+  // 不点「生成报告」：点「下一步」后应自动进入交付物并发出报告生成请求。
+  // 这里把长跑请求中止，只验证"自动发起"这一交互，不消耗真实模型时间。
+  await page.route("**/deliverables/generate", (route) => route.abort());
+  const autoReport = page.waitForRequest(
+    (req) => req.method() === "POST" && /\/deliverables\/generate/.test(req.url()),
+    { timeout: 20_000 },
+  );
+  await next.click();
+  await autoReport;
+  await expect(rail.locator(".flow-node--current")).toContainText("交付物", { timeout: 20_000 });
 });

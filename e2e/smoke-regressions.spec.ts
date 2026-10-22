@@ -20,6 +20,8 @@ test("六步推进冒烟：新建场景 → 完成第 1 步 → 第 2 步解锁�
   page.on("pageerror", (err) => pageErrors.push(err.message));
 
   const name = `E2E 六步冒烟 ${Date.now()}`;
+  // 首次引导只在空库首启弹；本用例第一件事是点「新建」，先标记已看过（与 library-tables 同口径）
+  await page.addInitScript(() => localStorage.setItem("scene.onboarding.v1.done", "1"));
   await page.goto(`${LIVE}/`);
   await expect(page.locator(".shell")).toBeVisible();
 
@@ -68,8 +70,14 @@ test("六步推进冒烟：新建场景 → 完成第 1 步 → 第 2 步解锁�
   await expect(next).toBeEnabled({ timeout: 20_000 });
   await expect(page.locator(".proj-hd.active .proj-step")).toContainText("第 1/6 步");
 
-  // 4) 完成第 1 步 → 第 2 步解锁并进入
+  // 4) 完成第 1 步 → 第 2 步解锁并进入；同时**自动发起**第 2 步分析，
+  //    不再要求用户在新一步再点一次「开始本步分析」（用户定调 2026-10-22）
+  const autoAdvance = page.waitForRequest(
+    (req) => req.method() === "POST" && /\/stages\/1\/advance/.test(req.url()),
+    { timeout: 15_000 },
+  );
   await next.click();
+  await autoAdvance;
   await expect(rail.locator(".flow-node--done")).toContainText("场景定义");
   await expect(rail.locator(".flow-node--current")).toContainText("认识场景", { timeout: 20_000 });
   await expect(page.locator(".proj-hd.active .proj-step")).toContainText("第 2/6 步");

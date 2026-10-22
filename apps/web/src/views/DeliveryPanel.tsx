@@ -24,7 +24,7 @@
  * 「装配原料清单」与导出路径按 G-R9 归右栏。
  */
 
-import React, { useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { FLOW_TOTAL } from "@scene/contract";
 import { buildStageBrief } from "@scene/domain";
@@ -53,6 +53,14 @@ export interface DeliveryPanelProps {
   onStageSnapshot?: (snap: StageSnapshot | null) => void;
   /** 导出完成（刷新项目列表：场景可能已标记完成） */
   onExported?: () => void;
+  /**
+   * 从第 5 步点「下一步」进入交付物时自动写报告（用户定调 2026-10-22）
+   *
+   * 只触发一次；已有报告、用户已手动开始、或报告还没加载完时不抢跑。
+   */
+  autoGenerate?: boolean;
+  /** 自动生成已发起（父级据此清掉一次性标记，回看时不重复跑） */
+  onAutoGenerateStarted?: () => void;
   /** 外部一次性选择某个交付物 chip：`id` 变化时切到 `code` 那一份 */
   pick?: { id: number; code: string | null };
   /** 回报此刻看的是哪一份（中栏顶部高亮；`shownOutput` 也据此更新） */
@@ -130,6 +138,8 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
   projectId,
   onStageSnapshot,
   onExported,
+  autoGenerate,
+  onAutoGenerateStarted,
   pick,
   onReportChange,
 }) => {
@@ -251,6 +261,16 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
     );
     gen.start();
   }, [live, projectId, showToast, gen]);
+
+  /** 一次性自动生成哨兵：失败也不自动重试，避免用户切回交付物就再次消耗一次模型 */
+  const autoStartedRef = useRef(false);
+  useEffect(() => {
+    if (!autoGenerate || autoStartedRef.current || loading || reports === null) return;
+    autoStartedRef.current = true;
+    if (!live || !projectId || generated || gen.running) return;
+    onAutoGenerateStarted?.();
+    handleGenerate();
+  }, [autoGenerate, loading, reports, live, projectId, generated, gen.running, onAutoGenerateStarted, handleGenerate]);
 
   const exportMdInto = useCallback(
     async (dir?: string) => {
