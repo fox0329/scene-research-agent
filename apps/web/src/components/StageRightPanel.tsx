@@ -222,6 +222,7 @@ export const StageRightPanel: React.FC<StageRightPanelProps> = ({ snapshot, live
   const { brief } = snapshot;
   const sources = brief?.sources ?? [];
   const advice = brief?.advice ?? [];
+  const researchFailure = brief?.researchFailure;
 
   const handleResearch = () => {
     if (!onResearch || researching) return;
@@ -274,7 +275,12 @@ export const StageRightPanel: React.FC<StageRightPanelProps> = ({ snapshot, live
           ) : (
             <div className="summary-empty">
               <p>
-                本步没有取得可打开的来源（这一步在调研功能上线前生成，或检索不可用），相关结论按「未知」处理。
+                本步没有取得可打开的来源，相关结论按「未知」处理。
+              </p>
+              <p className="summary-empty-reason">
+                {researchFailure
+                  ? `上次联网调研失败：${researchFailure}`
+                  : "这一步在调研功能上线前生成，或检索不可用。"}
               </p>
               {onResearch ? (
                 <button type="button" className="btn-mini" onClick={handleResearch}>

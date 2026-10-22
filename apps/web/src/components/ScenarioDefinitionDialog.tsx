@@ -29,6 +29,7 @@ import {
   type ApiDefinitionMessage,
 } from "../api";
 import { AlignmentTable } from "./AlignmentTable";
+import { InlineText } from "./InlineText";
 import {
   DEMO_DEFINITION_MESSAGES,
   DEMO_DEFINITION_REPLY,
@@ -269,7 +270,9 @@ export const ScenarioDefinitionDialog: React.FC<ScenarioDefinitionDialogProps> =
     const isGuide = m.role === "用户" && m.content === GUIDE_MESSAGE;
     return (
       <div key={m.id} className={`msg ${m.role === "用户" ? "u" : "ai"}`}>
-        <div className="bub">{isGuide ? `（系统引导）${m.content}` : m.content}</div>
+        <div className="bub">
+          <InlineText text={isGuide ? `（系统引导）${m.content}` : m.content} />
+        </div>
         <div className="msg-meta">{isGuide ? "系统自动发出 · " : ""}{fmtTime(m.created_at)}</div>
       </div>
     );

@@ -9,6 +9,7 @@
  */
 
 import React from "react";
+import { InlineText } from "./InlineText";
 
 /**
  * 四态徽标文案（单一来源，勿在别处重写）
@@ -68,8 +69,12 @@ export const AlignmentTable: React.FC<AlignmentTableProps> = ({
         ) : null}
         {items.map((a) => (
           <tr key={a.rowKey}>
-            <td>{a.label}</td>
-            <td title={a.content}>{a.content || "（未提供）"}</td>
+            <td>
+              <InlineText text={a.label} />
+            </td>
+            <td title={a.content}>
+              <InlineText text={a.content || "（未提供）"} />
+            </td>
             <td>
               <span className={`align-badge align-${a.alignment}`}>
                 {ALIGN_LABEL[a.alignment]?.text ?? a.alignment}
@@ -87,7 +92,9 @@ export const AlignmentTable: React.FC<AlignmentTableProps> = ({
         <h4>{questionsTitle}</h4>
         <ul>
           {questions.map((q, i) => (
-            <li key={i}>{q}</li>
+            <li key={i}>
+              <InlineText text={q} />
+            </li>
           ))}
         </ul>
       </div>

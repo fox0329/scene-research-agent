@@ -276,6 +276,8 @@ export interface ApiStageBrief {
     advice: string[];
     /** 提醒范围说明（如含前序步骤未消解提醒）；没有就不显示 */
     note?: string;
+    /** 本步没有来源时，最近一次联网调研的失败原因 */
+    researchFailure?: string;
   };
   completeness: ApiCompleteness;
   /** 视图回显（固定 `brief`），客户端据此区分响应形状 */

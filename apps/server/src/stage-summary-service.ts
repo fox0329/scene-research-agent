@@ -287,6 +287,28 @@ function mergeResearchSources(
 }
 
 /**
+ * 最近一次联网调研失败的原因
+ *
+ * 「检索失败」记录不是来源，不能混进可点列表；但用户看到右栏空白时，
+ * 必须知道是检索被拦/不可用，而不是产品忘了显示来源。
+ */
+function researchFailureOf(
+  db: DbInstance,
+  scenarioId: string,
+  step: number | undefined,
+): string | undefined {
+  if (step === undefined || typeof db.researchRepo?.listByStep !== "function") return undefined;
+  try {
+    const rows = db.researchRepo.listByStep(scenarioId, step);
+    const failed = [...rows].reverse().find((r) => r.status === "检索失败");
+    const text = String(failed?.error || failed?.title || "").trim();
+    return text === "" ? undefined : text;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * 右栏要点视图（来源地址 + 结论提醒）
  *
  * 与整篇总结同一套表集口径（传 `step` 就只讲这一步），但**不写库、不产 Markdown**：
@@ -336,12 +358,15 @@ export function getStageBrief(
   const priorAdviceChanged =
     priorAdvicePresent && brief.advice.some((a) => !baseBrief.advice.includes(a));
   // 调研来源排最前（先调研、后分析；行内来源是分析结论自带的引用）
+  const sources = mergeResearchSources(db, scenario.id, step, brief.sources, delivery);
+  const researchFailure = sources.length === 0 ? researchFailureOf(db, scenario.id, step) : undefined;
   const merged: StageBrief = {
     ...brief,
-    sources: mergeResearchSources(db, scenario.id, step, brief.sources, delivery),
+    sources,
     ...(priorAdviceChanged
       ? { note: "含前序步骤未消解的门槛 / 胜负提醒（本步没有重复列出）" }
       : {}),
+    ...(researchFailure ? { researchFailure } : {}),
   };
   return { brief: merged, completeness, stage: id, scope: step === undefined ? "stage" : "step" };
 }

@@ -1263,12 +1263,47 @@ export function rowBelongsToBlock(
 ): boolean {
   const cols = middleColumnsByBlock(t)[block] ?? [];
   if (cols.length === 0) return true;
-  return cols.some((c) => {
-    const v = row[c.key];
+
+  /*
+   * 「未提供 / 不适用」不是这一块的数据：模型生成表5-1 时，经常把架构行的
+   * interface_name/type/protocol 全填「未提供」，旧逻辑按「非空」判断，于是接口块
+   * 里会挂上一排架构行，满屏都是「未提供」。这些占位词按空值处理。
+   */
+  const hasValue = (v: unknown): boolean => {
     if (Array.isArray(v)) return v.length > 0;
-    return v !== undefined && v !== null && String(v).trim() !== "";
-  });
+    if (v === undefined || v === null) return false;
+    const text = String(v).trim();
+    return text !== "" && !BLOCK_PLACEHOLDERS.has(text);
+  };
+
+  /*
+   * 接口块的行常用 layer=接口块 当块标记；它本身不是「架构层」，
+   * 否则接口行会被架构块再收一遍（架构列全被模型填满时更明显）。
+   */
+  const layer = String(row["layer"] ?? "").trim();
+  const interfaceMarker = block === "接口" && /^(?:接口块|接口清单|接口)$/u.test(layer);
+  if (block === "架构" && /^(?:接口块|接口清单|接口)$/u.test(layer)) return false;
+  if (interfaceMarker) return true;
+
+  return cols.some((c) => hasValue(row[c.key]));
 }
+
+/** 子块过滤时按空值处理的占位词（不是真实内容，不参与归属判断） */
+const BLOCK_PLACEHOLDERS = new Set([
+  "未提供",
+  "未给出",
+  "未说明",
+  "未获取",
+  "未查到",
+  "暂无",
+  "不详",
+  "未知",
+  "不适用",
+  "不涉及",
+  "无",
+  "—",
+  "-",
+]);
 
 /**
  * 子块的显示名：优先用注册表的 `blockLabels`，缺省 `${block}块`

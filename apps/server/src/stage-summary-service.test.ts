@@ -274,6 +274,28 @@ describe("stage-summary-service — 右栏要点（brief）", () => {
     ]);
   });
 
+  it("本步没有来源但调研失败时，把失败原因带进 brief", () => {
+    const { db, scenarioId } = seed();
+    db.researchRepo.upsert({
+      id: "rs_failed_1",
+      scenario_id: scenarioId,
+      step: 2,
+      query: "管网阀室 门槛与合规",
+      title: "检索失败",
+      url: "",
+      url_key: "",
+      snippet: "",
+      engine: "baidu-html",
+      fetched_at: "2026-10-22T00:00:00.000Z",
+      status: "检索失败",
+      error: "「管网阀室 门槛与合规」百度返回安全验证页（可能需要降低频率或稍后再试）",
+    });
+    const sc = db.scenarioRepo.getById(scenarioId)!;
+    const r = getStageBrief(db, sc, 1, 2);
+    expect(r.brief.sources).toEqual([]);
+    expect(r.brief.researchFailure).toContain("百度返回安全验证页");
+  });
+
   it("交付物步没有自己的表：右栏汇总前面所有判据与调研来源（不报「本步没有判据」）", () => {
     const { db, scenarioId } = seed();
     db.stageDataRepo.insert({

@@ -391,6 +391,20 @@ describe("stage-summary — 要点视图（brief）", () => {
     for (const a of brief.advice) expect(Array.from(a).length).toBeLessThanOrEqual(61);
   });
 
+  it("「未知（未检索到公开来源）」不能伪装成文件来源", () => {
+    const brief = briefOf(
+      1,
+      {
+        "表1-3": [
+          row({ barrier_name: "等保三级", criteria: "GB/T 22239", source: "未知（未检索到公开来源）" }),
+        ],
+      },
+      2,
+      step2Tables,
+    );
+    expect(brief.sources).toEqual([]);
+  });
+
   it("本步一条网址都没有时，退回文件来源（文件名:页码）", () => {
     const brief = briefOf(
       1,

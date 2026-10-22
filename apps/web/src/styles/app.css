@@ -2783,3 +2783,12 @@ td.ed {
     display: none;
   }
 }
+
+/* 右栏「没有来源」时把调研失败原因说清：用户要知道是检索被拦，不是忘显示 */
+.summary-empty-reason {
+  margin: 0 0 var(--s2);
+  color: var(--ct2);
+  font-size: var(--tx);
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}

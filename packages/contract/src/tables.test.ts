@@ -155,6 +155,33 @@ describe("表定义注册表 — 列预算（中栏 ≤6 列）", () => {
     expect(rowBelongsToBlock(tableDef("表5-3"), "任意", {})).toBe(true); // 非块表不参与过滤
   });
 
+  it("块过滤忽略未提供占位词，接口块不再收架构行", () => {
+    const t = tableDef("表5-1");
+    // 真实库里模型把架构行的接口列全填了「未提供」（智慧厨房）
+    const archWithPlaceholders = {
+      layer: "设备接入层（厨房设备与传感执行）",
+      components: "CT32 网关 + CT15 IO 控制器",
+      interface: "RS-485 / ZigBee",
+      integration: "经网关协议转换后上行",
+      boundary: "不做厨电整机本体",
+      interface_name: "未提供",
+      type: "未提供",
+      protocol: "未提供",
+    };
+    expect(rowBelongsToBlock(t, "架构", archWithPlaceholders)).toBe(true);
+    expect(rowBelongsToBlock(t, "接口", archWithPlaceholders)).toBe(false);
+
+    // 接口行用 layer=接口块 作块标记，不应再被架构块收进去
+    const iface = {
+      layer: "接口块",
+      interface_name: "设备南向接入接口",
+      type: "新增",
+      protocol: "RS-485 / CAN",
+    };
+    expect(rowBelongsToBlock(t, "接口", iface)).toBe(true);
+    expect(rowBelongsToBlock(t, "架构", iface)).toBe(false);
+  });
+
   it("可选材料：1 张表 5 种 payload，每种 payload 的中栏列（含类别列）≤ 上限", () => {
     const t = tableDef("可选材料");
     expect(Object.keys(t.payloads ?? {})).toHaveLength(5);

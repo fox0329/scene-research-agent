@@ -195,6 +195,12 @@ export interface StageBrief {
    * 可选：只有服务端知道哪些表来自前序步骤，领域层不猜。
    */
   note?: string;
+  /**
+   * 本步最近一次联网调研的失败原因（没有可显示来源时给用户看）
+   *
+   * 可选：只有服务端能从 `research_source` 读到失败记录；领域层不猜。
+   */
+  researchFailure?: string;
 }
 
 /** 来源列表上限（右栏窄，超过这个数量用户也读不完） */
@@ -291,6 +297,16 @@ function urlsOfRow(row: InfoRow, seen: Set<string>): string[] {
 /** 文件名 / 文件名:页码 / 报告名带扩展名——这类来源点不开，但必须让用户知道去资料库看哪份 */
 const FILE_SOURCE_RE = /\.(?:pdf|docx?|xlsx?|pptx?|md|txt)\b|^[^。；\n]{2,50}[:：]\s*\d/iu;
 
+/**
+ * 「未知（未检索到公开来源）」这类占位词不是来源
+ *
+ * 实跑里模型会把整表来源写成这个；旧逻辑把它当文件来源列进右栏，
+ * 用户看到的是一条点不开的「未知（未检索到公开来源）（52 条）」，
+ * 既不能核对，又把真正的「调研失败」说明挤掉了。宁可来源列表为空，
+ * 由服务端把失败原因单独说清。
+ */
+const UNKNOWN_SOURCE_RE = /^(?:未知|不详|未提供|未检索到.*|暂无|无|—|-|待补)(?:（.*）)?$/u;
+
 /** 没有网址时的兜底：列出本步引用的文件来源（按原文去重） */
 function fileSourcesOf(input: StageSummaryInput, tables: readonly TableDef[]): StageBriefSource[] {
   const out: StageBriefSource[] = [];
@@ -306,7 +322,7 @@ function fileSourcesOf(input: StageSummaryInput, tables: readonly TableDef[]): S
     for (const row of input.rowsByTable[t.code] ?? []) {
       for (const key of ["source", "proof", "ability_basis"] as const) {
         const text = cellTextOf(row[key]).replace(/\s+/gu, " ");
-        if (text === "" || !FILE_SOURCE_RE.test(text)) continue;
+        if (text === "" || UNKNOWN_SOURCE_RE.test(text) || !FILE_SOURCE_RE.test(text)) continue;
         if (!push(clipChars(text, BRIEF_LABEL_MAX), text)) return out;
       }
     }
@@ -318,7 +334,7 @@ function fileSourcesOf(input: StageSummaryInput, tables: readonly TableDef[]): S
   for (const t of tables) {
     for (const row of input.rowsByTable[t.code] ?? []) {
       const text = cellTextOf(row["source"]).replace(/\s+/gu, " ") || cellTextOf(row["source_type"]);
-      if (text === "" || text === "—" || text === "待补") continue;
+      if (text === "" || UNKNOWN_SOURCE_RE.test(text)) continue;
       counts.set(text, (counts.get(text) ?? 0) + 1);
     }
   }
