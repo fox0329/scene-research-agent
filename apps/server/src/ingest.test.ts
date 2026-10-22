@@ -807,6 +807,23 @@ describe("createIngestCommand", () => {
       expect(result.rowsInserted).toBe(0);
     });
 
+    it("模型输出被截断时，保留最后一个完整行之前的数据并提示", async () => {
+      const full = JSON.stringify(makeDshOutput());
+      // 去掉最后一段：最后一行 O2 残缺，前面 5 行完整
+      dshClient = createMockDshClient(full.slice(0, -30));
+      deps = { db, dshClient, docParser };
+
+      const cmd = createIngestCommand(deps);
+      const result = await cmd.execute({
+        filePath: "/tmp/whitepaper.pdf",
+        productLineId: "pl1",
+      });
+
+      expect(result.rowsInserted).toBe(5);
+      expect(result.modelIssue).toContain("截断");
+      expect(result.modelIssue).toContain("已保留前 5 行");
+    });
+
     it("DSH 返回的 JSON 中 rows 缺少 table_code 的条目应被过滤", async () => {
       const output = {
         rows: [
@@ -956,6 +973,7 @@ describe("consumeDshPrompt", () => {
     };
 
     const result = await consumeDshPrompt(client, { sessionId: "s4" }, "test");
+    expect(client.prompt).toHaveBeenCalledTimes(2);
     expect(result.rows).toHaveLength(0);
     expect(result.issue).toContain("timeout");
   });

@@ -261,6 +261,7 @@ const SYSTEM_PROMPT = `你是产品资料解析专家。你的任务是将输入
 - 章节号：8.2、A.1（标准/文档章节）
 禁止写「未知」「?」「-」或只写文件名——来源不可定位的记录不会入库。
 如果材料确实没有页码，用能定位到原文的章节号；连章节号都没有就不要输出该行。
+Word（.docx）没有稳定页码：没有章节号时，定位符统一写 1（整篇按第 1 页存储，如 产品说明书.docx:1），不要用「文档信息」「核心单元」这类标题代替定位符。
 
 ## 输出格式
 输出 JSON 对象，包含 rows 数组。每条记录包含 table_code、fields、source 三个字段。
@@ -462,7 +463,7 @@ function buildUserPrompt(fileName: string, parseResult: ParseResult): string {
   parts.push(
     "请将上述内容按给定表格分类，输出 JSON。每条记录的 source 字段必须是「文件名:具体页码/章节号」" +
       "（如 白皮书.pdf:12、白皮书.pdf:12-14、标准.pdf:8.2、标准.pdf:A.1）；" +
-      "写「未知」「?」「-」的行不会入库；" +
+      "写「未知」「?」「-」的行不会入库；.docx 没有章节号时定位符写 1（整篇按第 1 页），不要用标题代替页码；" +
       "边界与限制里的「不做」必须同时给可定位出处与依据（reason），缺一条就不要输出；" +
       "价格一律写报价表（可选材料没有价格类别）。",
   );
@@ -490,6 +491,7 @@ export async function consumeDshPrompt(
    */
   for (let attempt = 0; attempt < 2; attempt++) {
     let fullText = "";
+    let streamError = "";
     for await (const event of dshClient.prompt(session, {
       system: SYSTEM_PROMPT,
       user: userPrompt,
@@ -499,12 +501,24 @@ export async function consumeDshPrompt(
         fullText += (event as { type: "text"; text: string }).text;
       }
       if (event.type === "error") {
-        // 模型/网络错误要如实上报，不能伪装成「材料没有可入库信息」
-        const message = String(
+        // 模型/网络错误也要重试一次：供应商 504/网关超时是偶发的，
+        // 但第二次仍失败要如实上报，不能伪装成「材料没有可入库信息」。
+        streamError = String(
           (event as { message?: unknown }).message ?? "未知错误",
         );
-        return { rows: [], issue: `模型调用失败：${message}（可直接重试）` };
+        break;
       }
+    }
+
+    if (streamError !== "") {
+      if (attempt === 0) {
+        console.warn(`[ingest] 模型调用失败（${streamError}），重试一次`);
+        continue;
+      }
+      return {
+        rows: [],
+        issue: `模型调用失败：${streamError}（已自动重试一次，可直接再试）`,
+      };
     }
 
     if (fullText.trim() !== "") {
@@ -566,8 +580,82 @@ function parseDshOutput(text: string): DshOutput | null {
     }
   }
 
+  /**
+   * 4. 模型输出被截断：尽量保住**最后一个完整行之前**的行。
+   *    实测 3 MB 的安装指导一次输出 1.1 万字后被供应商截断；重试仍可能截断。
+   *    完整行本身已过 JSON 结构，丢整批太浪费；丢掉残缺的尾行、补上数组/对象闭合即可。
+   *    必须把截断原因带出去，不能让用户以为材料只导出了一部分。
+   */
+  const candidates = [
+    trimmed.slice(jsonStart >= 0 ? jsonStart : 0),
+    codeBlockMatch?.[1]?.trim() ?? "",
+  ].filter((v) => v !== "");
+  for (const candidate of candidates) {
+    const repaired = repairTruncatedRows(candidate);
+    if (repaired !== null) return repaired;
+  }
+
   // 解析失败 → null，由调用方决定「重试」还是如实报错；不要伪装成合法的空结果
   return null;
+}
+
+/**
+ * 从被截断的 `{"rows":[{...},{...}` 里收集完整的行对象，补成合法 JSON。
+ *
+ * 只在最后一个完整行处截断：最后一个 `}` 之后即使还有半行也丢掉。
+ * 最多保留数组里的顶层对象；字段里的嵌套对象/数组由 depth 处理。
+ */
+function repairTruncatedRows(text: string): DshOutput | null {
+  const rowsKey = text.indexOf('"rows"');
+  if (rowsKey < 0) return null;
+  const arrayStart = text.indexOf("[", rowsKey);
+  if (arrayStart < 0) return null;
+
+  const rowTexts: string[] = [];
+  let depth = 1; // 从 rows 数组的 [ 之后开始算
+  let rowStart = -1;
+  let inString = false;
+  let escaped = false;
+
+  for (let i = arrayStart + 1; i < text.length; i++) {
+    const ch = text[i]!;
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (ch === "\\") escaped = true;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') {
+      inString = true;
+      continue;
+    }
+    if (ch === "{") {
+      if (depth === 1) rowStart = i;
+      depth += 1;
+      continue;
+    }
+    if (ch === "}") {
+      depth -= 1;
+      if (depth === 1 && rowStart >= 0) {
+        rowTexts.push(text.slice(rowStart, i + 1));
+        rowStart = -1;
+      }
+      continue;
+    }
+    if (ch === "]" && depth === 1) break;
+  }
+
+  if (rowTexts.length === 0) return null;
+  try {
+    const parsed = JSON.parse(`{"rows":[${rowTexts.join(",")}]}`) as unknown;
+    if (!isDshOutput(parsed)) return null;
+    return {
+      ...parsed,
+      issue: `模型输出被截断，已保留前 ${parsed.rows.length} 行；建议拆分材料后重新上传以补齐`,
+    };
+  } catch {
+    return null;
+  }
 }
 
 /** 类型守卫：是否为合法的 DshOutput（只检查顶层结构，行级校验在 validateRows） */

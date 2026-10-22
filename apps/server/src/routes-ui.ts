@@ -632,6 +632,11 @@ async function* runIngestJob(
     // filename 是真名（file.filename），filePath 是临时落盘路径——两个都传：
     // 落库的 source 必须写"材料叫什么"，不能写临时名（变更表 #156）
     const result = await ingestCmd.execute({ filePath, productLineId, fileName: filename });
+    // 模型空返回/截断等非致命问题也要当面说清（有行时同样要说，不能只报总数）
+    if (result.modelIssue) {
+      console.warn(`[ingest] ${filename}：${result.modelIssue}`);
+      yield { type: "progress", text: `提示：${result.modelIssue}` };
+    }
     // 门禁挡下的行要当面说清（复用上传进度区，不新增 UI）：用户看不到"消失的那一行"会以为丢了
     for (const skipped of result.skippedRows) {
       yield {
