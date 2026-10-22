@@ -194,7 +194,6 @@ function createMockDb(): DbInstance {
     // ingests 的价格一律走 M6：报价仓库必须是可断言的 mock，不能占位
     quoteRepo: createMockRepo(),
     researchRepo: {} as never,
-    verificationRepo: {} as never,
   };
 }
 

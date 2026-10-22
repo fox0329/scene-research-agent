@@ -230,35 +230,6 @@ export interface OptionalMaterial extends TraceableFields {
   updated_at: string;
 }
 
-// ─── 联网核验记录（library_verification） ──────────────────
-
-/** 核验结论（三态，确定性判定） */
-export type VerificationStatus = "已核实" | "未核实" | "有冲突";
-
-/**
- * 一行资料的一次联网核验记录（`UNIQUE(table_code, row_id)`）
- *
- * 用户定调 2026-10-21：「导入的资料可以通过检索的方式进行核实或者提高等级」——
- * 核验记录与资料行分开存，**不覆盖原始证据**：只有 T1/T2 独立来源命中才把
- * `evidence_level` 升为 A；其余结论只写在这里，供人回查。
- */
-export interface LibraryVerification {
-  id: string;
-  /** 被核验的表号：M1 / M3 / M6 / O1 */
-  table_code: string;
-  row_id: string;
-  status: VerificationStatus;
-  /** 本次命中的最高权威级；没有可用来源时为空串 */
-  authority: Authority | "";
-  /** 最多 3 条 {title,url,publisher,published_at} 的 JSON 文本 */
-  sources_json: string;
-  /** 该行的关键标识（型号/能力名/证书号），核验时实际使用的判定依据 */
-  key_text: string;
-  /** 核验说明：为什么是这个结论、检索失败原因、冲突数字等（用户可见） */
-  note: string;
-  checked_at: string;
-}
-
 // ─── 第二层 · 场景分析项目（6 表） ─────────────────────────
 
 /** 场景分析项目 */

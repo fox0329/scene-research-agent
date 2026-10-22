@@ -2544,63 +2544,6 @@ td.ed {
   line-height: 1.6;
 }
 
-/* 存量资料体检（按新标准）：摘要一行 + 可展开的「表 / 行摘要 / 来源 / 问题」清单 */
-.mat-audit {
-  padding-bottom: var(--s3);
-  margin-bottom: var(--s3);
-  border-bottom: 1px solid var(--cb);
-}
-
-.mat-audit-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--s3);
-  flex-wrap: wrap;
-}
-
-.mat-audit-summary {
-  font-size: var(--ts);
-  color: var(--ct);
-  line-height: 1.6;
-}
-
-.mat-audit-actions {
-  display: flex;
-  align-items: center;
-  gap: var(--s2);
-  flex-wrap: wrap;
-  margin-top: var(--s2);
-}
-
-.mat-audit-table-wrap {
-  margin-top: var(--s2);
-  overflow-x: auto;
-}
-
-.mat-audit-table {
-  width: 100%;
-  table-layout: fixed;
-  border-collapse: collapse;
-  font-size: var(--txs);
-}
-
-.mat-audit-table th,
-.mat-audit-table td {
-  padding: var(--s2) var(--s3);
-  text-align: left;
-  vertical-align: top;
-  border-bottom: 1px solid var(--cb);
-  overflow-wrap: anywhere;
-}
-
-.mat-audit-table th {
-  color: var(--ct2);
-  font-weight: var(--fm2);
-  background: var(--cis);
-}
-
-
 /* 产品立场（设置页）：只列立场，不做营销文案；用既有色阶与网格间距，不加边框 */
 .stance-list {
   margin: 0;

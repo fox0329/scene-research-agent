@@ -23,8 +23,6 @@ export type {
   ScenarioStepRepo,
   ResearchSource,
   ResearchRepo,
-  VerificationRepo,
-  CreateVerificationInput,
 } from "./sqlite-repo.js";
 
 export { parseDocument } from "./doc-parser.js";

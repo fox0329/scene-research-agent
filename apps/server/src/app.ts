@@ -23,7 +23,6 @@ import { createSseHub } from "./sse-hub.js";
 import type { SseHub } from "./sse-hub.js";
 import { parseStage, streamEvents, LAST_STAGE_ID } from "./sse-stream.js";
 import { registerUiRoutes } from "./routes-ui.js";
-import type { LibraryVerifyDeps } from "./library-verify.js";
 
 // ─── 依赖与常量 ────────────────────────────────────────────
 
@@ -40,12 +39,6 @@ export interface AppDeps {
    * 不然每条用例都要造一个 300 MB 的 body。生产入口（index.ts）不传，口径仍由契约说了算。
    */
   uploadLimitMb?: number;
-  /**
-   * 联网核验的可注入检索/抓取（只给测试用）
-   *
-   * 生产入口（index.ts）不传：核验走 `web-engine`（官方 DeepSeek / Tavily / 免注册通道）。
-   */
-  libraryVerifyDeps?: LibraryVerifyDeps;
 }
 
 // ─── 应用工厂 ──────────────────────────────────────────────
@@ -186,7 +179,6 @@ export function createApp(deps: AppDeps): FastifyInstance {
     dshClient,
     hub,
     uploadLimitMb,
-    ...(deps.libraryVerifyDeps ? { verifyDeps: deps.libraryVerifyDeps } : {}),
     /**
      * 这一步此刻是否还有分析在跑：刷新后的页面靠它继续显示"分析中"、
      * 并在跑完自动对账——不再出现"服务端早就跑完了、界面非要按 F5 才更新"（故障清单 #47）

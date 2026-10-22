@@ -284,7 +284,6 @@ function createMockDb(opts: {
     // 调研仓储故意留空：advance-stage 对没有 researchRepo 的库跳过联网（单测不联网）
     quoteRepo: createMockRepo() as never,
     researchRepo: {} as never,
-    verificationRepo: {} as never,
   };
 }
 

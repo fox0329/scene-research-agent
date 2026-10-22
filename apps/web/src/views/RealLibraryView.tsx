@@ -6,14 +6,7 @@ import { MaterialUpload } from "../components/MaterialUpload";
 import type { RowDetail } from "../components/RowDetailPanel";
 import { useToast } from "../components/Toast";
 import { promptText } from "../components/prompt-text";
-import {
-  dedupePreviewText,
-  sourceLabel,
-  verificationRows,
-  verificationSummaryText,
-  verifyDoneText,
-  type VerifyDisplayRow,
-} from "../components/library-verify";
+import { dedupePreviewText } from "../components/library-dedupe";
 import { TABLES_BY_CODE } from "@scene/contract";
 import {
   draftPayload,
@@ -797,55 +790,6 @@ const LEGACY_TEMP_NAME_RE = /^ingest-\d+-\d+\.[A-Za-z0-9]+$/;
 /** 上传状态区（进度 / 跳过清单）的容器 id：头部固定高，状态不能待在头部（变更表 #157） */
 const LIB_UPLOAD_STATUS_ID = "lib-upload-status-slot";
 
-/**
- * 联网核验明细表格（表 / 行摘要 / 状态 / 权威 / 来源 / 说明）
- *
- * 来源是可点开的真实链接（title 显示完整 URL）；没有来源时给占位符，
- * 不把"未核实"写成"无问题"。
- */
-const VerificationTable: React.FC<{ rows: VerifyDisplayRow[] }> = ({ rows }) => {
-  if (rows.length === 0) return <div className="mat-note">还没有核验记录。</div>;
-  return (
-    <div className="mat-audit-table-wrap">
-      <table className="mat-audit-table">
-        <thead>
-          <tr>
-            <th>表</th>
-            <th>行摘要</th>
-            <th>状态</th>
-            <th>权威</th>
-            <th>来源</th>
-            <th>说明</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row, index) => (
-            <tr key={`${row.table}-${index}`}>
-              <td>{row.table}</td>
-              <td>{row.summary}</td>
-              <td>{row.status}</td>
-              <td>{row.authority}</td>
-              <td>
-                {row.sources.length === 0
-                  ? "—"
-                  : row.sources.map((source, index) => (
-                      <span key={source.url}>
-                        {index > 0 ? "、" : ""}
-                        <a href={source.url} target="_blank" rel="noreferrer" title={source.url}>
-                          {sourceLabel(source)}
-                        </a>
-                      </span>
-                    ))}
-              </td>
-              <td>{row.note || "—"}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-};
-
 const LibraryMaterialsPanel: React.FC<{
   lineId: string;
   /** 行数据变化（入库/编辑/删行）后由父级 +1，触发本面板重取 */
@@ -858,54 +802,9 @@ const LibraryMaterialsPanel: React.FC<{
     [lineId, reloadTick],
   );
 
-  /**
-   * 联网核验：GET 只读统计 → POST 分批核验（每次 ≤20 行）直到 remaining = 0
-   *
-   * 单批可能有 T1/T2 命中，也可能全是"未核实"；所有批次结果累加后一次 toast，
-   * 避免每 20 行弹一条把用户别的提示冲掉。
-   */
-  const verification = useAsync(() => api.libraryVerification(lineId), [lineId, reloadTick]);
-  const [verifying, setVerifying] = useState(false);
-  const [verifyOpen, setVerifyOpen] = useState(false);
-  const [verifyProgress, setVerifyProgress] = useState("");
   const dedupePreview = useAsync(() => api.libraryDedupePreview(lineId), [lineId, reloadTick]);
 
-  const handleVerify = useCallback(async () => {
-    setVerifying(true);
-    const totals = { checked: 0, upgraded: 0, conflict: 0, unverified: 0 };
-    try {
-      let batch = 0;
-      for (;;) {
-        const report = await api.libraryVerify({ productLineId: lineId, limit: 20 });
-        batch += 1;
-        totals.checked += report.checked;
-        totals.upgraded += report.upgraded;
-        totals.conflict += report.conflict;
-        totals.unverified += report.unverified;
-        const finished = report.checked === 0 || report.remaining <= 0;
-        setVerifyProgress(
-          finished
-            ? ""
-            : `已核验 ${totals.checked} 行，剩余 ${report.remaining} 行（第 ${batch} 批）`,
-        );
-        if (finished) break;
-        showToast(`联网核验第 ${batch} 批：已核验 ${totals.checked} 行，剩余 ${report.remaining} 行`);
-        // 防御：服务端 remaining 异常时最多连续 20 批，剩下的再点一次继续
-        if (batch >= 20) {
-          showToast("已连续核验 20 批，先停一下；可再次点击「联网核验」继续");
-          break;
-        }
-      }
-      showToast(verifyDoneText(totals));
-      verification.reload();
-      onChanged();
-    } catch (err: unknown) {
-      showToast(`核验失败：${err instanceof Error ? err.message : String(err)}`);
-    } finally {
-      setVerifying(false);
-      setVerifyProgress("");
-    }
-  }, [lineId, verification, onChanged, showToast]);
+
 
   const items = data ?? [];
   const totalRows = items.reduce((sum, g) => sum + g.rows, 0);
@@ -965,49 +864,9 @@ const LibraryMaterialsPanel: React.FC<{
         <span className="badge success">{items.length} 个文件 · {totalRows} 行</span>
       </div>
       <div className="pnl-b">
-        <div className="mat-audit">
-          <div className="mat-audit-head">
-            <span className="mat-audit-summary">
-              {verification.data
-                ? verificationSummaryText(verification.data)
-                : verification.status === "error"
-                  ? `联网核验：读取失败（${verification.error ?? "未知原因"}）`
-                  : "联网核验：加载中…"}
-            </span>
-            <button
-              className="btn btn-sm"
-              type="button"
-              disabled={verifying}
-              title="联网检索核验关键事实；T1/T2 独立来源命中才把证据级升为 A"
-              onClick={() => void handleVerify()}
-            >
-              {verifying ? "核验中…" : "联网核验"}
-            </button>
-          </div>
-          <div className="mat-note">
-            可选：联网核对已导入资料里的型号、能力、报价、证书号。只有 T1/T2
-            独立来源命中才把证据升为 A；T3/T4 或检索失败只记「未核实」，不降级；单价对不上记「有冲突」。
-          </div>
-          {verifying && verifyProgress && <div className="mat-note">{verifyProgress}</div>}
-          {verification.data && verification.data.total > 0 && (
-            <>
-              <div className="mat-audit-actions">
-                <button
-                  className="btn btn-sm"
-                  type="button"
-                  aria-pressed={verifyOpen}
-                  onClick={() => setVerifyOpen((cur) => !cur)}
-                >
-                  {verifyOpen ? "收起明细" : `看明细（${verification.data.total}）`}
-                </button>
-              </div>
-              {verifyOpen && <VerificationTable rows={verificationRows(verification.data.details)} />}
-            </>
-          )}
-          {dedupePreview.data && dedupePreview.data.merged.length > 0 && (
-            <div className="mat-note">{dedupePreviewText(dedupePreview.data)}</div>
-          )}
-        </div>
+        {dedupePreview.data && dedupePreview.data.merged.length > 0 && (
+          <div className="mat-note">{dedupePreviewText(dedupePreview.data)}</div>
+        )}
         {items.length === 0 ? (
           <div className="empty-state">
             <div className="empty-state-title">本库还没有导入资料</div>
