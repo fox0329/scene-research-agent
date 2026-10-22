@@ -417,13 +417,18 @@ export function registerUiRoutes(app: FastifyInstance, deps: UiRoutesDeps): void
    * 每份各自：正式版（模型撰写的方案）已生成就返回正式版，否则返回确定性要点版并标
    * `generated: false`——界面据此提示"当前是要点版，点生成报告出正式版"。
    */
+  const isDeliverableRunning = (id: string): boolean => {
+    const runId = reportRuns.get(id);
+    return runId !== undefined && hub.has(runId) && !hub.isDone(runId);
+  };
+
   app.get("/api/v1/projects/:id/deliverables", async (request, reply) => {
     const { id } = request.params as { id: string };
     const scenario = db.scenarioRepo.getById(id);
     if (!scenario) return notFound(reply, `场景 ${id} 不存在`);
     // 变更表 #246：只有一份「<场景>解决方案」，按它的章节装配导出；
     // markdown / chars / generated / generated_at
-    return { reports: getReports(db, scenario) };
+    return { reports: getReports(db, scenario), generating: isDeliverableRunning(id) };
   });
 
   /**
@@ -454,7 +459,9 @@ export function registerUiRoutes(app: FastifyInstance, deps: UiRoutesDeps): void
     const { id } = request.params as { id: string };
     const runId = reportRuns.get(id);
     if (!runId || !hub.has(runId)) return notFound(reply, "没有正在进行的报告生成任务");
-    const lastEventId = (request.headers["last-event-id"] as string | undefined) ?? null;
+    const query = request.query as { lastEventId?: string };
+    const lastEventId =
+      (request.headers["last-event-id"] as string | undefined) ?? query.lastEventId ?? null;
     await streamEvents(hub, runId, request, reply, lastEventId);
   });
 

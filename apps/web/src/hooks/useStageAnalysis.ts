@@ -23,6 +23,8 @@ export interface StageAnalysisState {
   /** 进度行（最多保留 8 条） */
   streamLines: readonly string[];
   start: () => void;
+  /** 服务端已有生成在跑（刷新/切页后回来）时，从事件缓存接上，而不是再 POST 一单 */
+  startResume: () => void;
 }
 
 /** 进度行上限：再多也看不清，反而把中栏撑长 */
@@ -66,7 +68,11 @@ export function useStageAnalysis(opts: {
    * 交付物这一步（第 7 步）不跑阶段分析，而是**生成报告**：它同样长跑、同样要进度、
    * 同样要按 Last-Event-ID 续连，所以复用这套运行态，只换开流方式。
    */
-  openStream?: (lastEventId: string | null, signal: AbortSignal) => AsyncIterable<FollowEvent>;
+  openStream?: (
+    lastEventId: string | null,
+    signal: AbortSignal,
+    resume?: boolean,
+  ) => AsyncIterable<FollowEvent>;
 }): StageAnalysisState {
   const { projectId, stage, stepId, onDone, onSettled, onError, onWarn, openStream } = opts;
   const [running, setRunning] = useState(false);
@@ -85,13 +91,14 @@ export function useStageAnalysis(opts: {
     setStreamLines((prev) => [...prev, line].slice(-MAX_LINES));
   }, []);
 
-  const start = useCallback(() => {
+  const start = useCallback((resume = false) => {
     if (runningRef.current) return;
     runningRef.current = true;
     setRunning(true);
-    setStreamLines(["已发起本步分析…"]);
+    setStreamLines([resume ? "正在接回已开始的生成…" : "已发起本步分析…"]);
     void (async () => {
       let terminal = false;
+      let firstAttach = resume;
       /**
        * 本地运行态的硬兜底
        *
@@ -111,11 +118,13 @@ export function useStageAnalysis(opts: {
         const result = await consumeAnalysisStream({
           open: (lastEventId) => {
             /* 第一条连接是 POST /advance（真正跑分析）；续连走 GET /events（按 id 重放） */
+            const attach = firstAttach;
+            firstAttach = false;
             const sink = { lastId: lastEventId };
             const controller = new AbortController();
             const events =
               openStream !== undefined
-                ? openStream(lastEventId, controller.signal)
+                ? openStream(lastEventId, controller.signal, attach)
                 : lastEventId === null
                   ? advanceStageStream(projectId, stage, stepId, sink, controller.signal)
                   : reconnectStageStream(projectId, stage, lastEventId, sink, controller.signal);
@@ -215,6 +224,7 @@ export function useStageAnalysis(opts: {
     })();
   }, [projectId, stage, stepId, push, onDone, onSettled, onError, onWarn, openStream]);
 
+  const startResume = useCallback(() => start(true), [start]);
   const elapsedLabel = `${Math.floor(elapsedSec / 60)}:${String(elapsedSec % 60).padStart(2, "0")}`;
-  return { running, elapsedLabel, streamLines, start };
+  return { running, elapsedLabel, streamLines, start, startResume };
 }

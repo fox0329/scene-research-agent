@@ -435,6 +435,8 @@ export interface ApiDeliverableReport {
 /** 交付物：只有一份（变更表 #246） */
 export interface ApiDeliverables {
   reports: Record<DeliverableKind, ApiDeliverableReport>;
+  /** 服务端是否还有报告生成在跑（刷新/切页后据此接回进度） */
+  generating?: boolean;
 }
 
 // ─── 请求基座 ──────────────────────────────────────────────

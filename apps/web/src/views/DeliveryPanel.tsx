@@ -37,7 +37,7 @@ import {
   type ApiFlowStatus,
   type DeliverableKind,
 } from "../api";
-import { useStageAnalysis } from "../hooks/useStageAnalysis";
+import { useStageAnalysis, type StageAnalysisState } from "../hooks/useStageAnalysis";
 import { renderMarkdown } from "../components/StageRightPanel";
 import { forgetExportDir, loadExportDir, saveExportDir } from "../components/export-dir-memory";
 import { DELIVERY_OUTPUTS, DELIVERY_OUTPUT_HINT } from "../components/step-outputs";
@@ -65,6 +65,15 @@ export interface DeliveryPanelProps {
   pick?: { id: number; code: string | null };
   /** 回报此刻看的是哪一份（中栏顶部高亮；`shownOutput` 也据此更新） */
   onReportChange?: (key: string) => void;
+  /**
+   * 报告生成运行态（由 ProjectView 持有）
+   *
+   * 交付物面板会随步骤切换被卸载；运行态留在父级，切走再回来才知道「还在写/写到哪」。
+   * 演示模式不传，面板内部自建一份空跑状态兜底。
+   */
+  generation?: StageAnalysisState;
+  /** 生成收尾信号：父级自增，面板据此重取正文 */
+  refreshToken?: number;
 }
 
 /** 默认打开的那一份 */
@@ -142,12 +151,16 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
   onAutoGenerateStarted,
   pick,
   onReportChange,
+  generation,
+  refreshToken = 0,
 }) => {
   const { showToast } = useToast();
   /** 当前在看哪一份（变更表 #137）：两份都是正式交付物，中栏一次只显示一份 */
   const [tab, setTab] = useState<DeliverableKind>(DEFAULT_TAB);
   /** 两份一起取回：切份只换显示，不再发请求 */
   const [reports, setReports] = useState<ApiDeliverables["reports"] | null>(null);
+  /** 服务端是否还有报告生成在跑：刷新/切页回来接回进度，不再重复发起 */
+  const [serverGenerating, setServerGenerating] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -187,6 +200,7 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
     try {
       const r = await api.getDeliverables(projectId);
       setReports(r.reports);
+      setServerGenerating(Boolean(r.generating));
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -196,7 +210,7 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
 
   useEffect(() => {
     void loadReports();
-  }, [loadReports]);
+  }, [loadReports, refreshToken]);
 
   const current = reports?.[tab] ?? null;
   /** true = 模型撰写的正式版；false = 确定性要点版（提示引导生成） */
@@ -235,21 +249,38 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
   /**
    * 报告生成 = 一次长跑（几分钟），复用「本步分析」的运行态：
    * 进度行、时长、断线续连、收尾对账全都一样，只把开流方式换成报告生成。
-   * 一趟生成**两份**，所以不分当前看的是哪份。
+   * 现在只有一份「解决方案」；运行态仍统一，不按当前看哪份区分。
    */
-  const gen = useStageAnalysis({
+  /*
+   * 演示/测试没有父级运行态时，保留一份面板内的空跑状态；联真必须用父级传入的
+   * `generation`，否则切换步骤后进度会随面板卸载丢失（本次修复的核心）。
+   */
+  const internalGen = useStageAnalysis({
     projectId: projectId ?? "",
     stage: 5,
     stepId: FLOW_TOTAL,
-    openStream: (lastEventId, signal) => {
+    openStream: (lastEventId, signal, resume) => {
       const sink = { lastId: lastEventId };
-      return lastEventId === null
-        ? generateDeliverablesStream(projectId ?? "", sink, signal)
-        : reconnectDeliverablesStream(projectId ?? "", lastEventId, sink, signal);
+      return lastEventId !== null || resume
+        ? reconnectDeliverablesStream(projectId ?? "", lastEventId ?? "", sink, signal)
+        : generateDeliverablesStream(projectId ?? "", sink, signal);
     },
     onSettled: () => void loadReports(),
     onError: (message) => showToast(`生成报告失败：${message}`),
   });
+  const gen = generation ?? internalGen;
+  /** 只接一次：接流失败后等下一次 loadReports/用户动作，不在渲染循环里反复打 */
+  const resumeTriedRef = useRef(false);
+  useEffect(() => {
+    if (!live || !projectId) return;
+    if (!serverGenerating) {
+      resumeTriedRef.current = false;
+      return;
+    }
+    if (gen.running || resumeTriedRef.current) return;
+    resumeTriedRef.current = true;
+    gen.startResume();
+  }, [live, projectId, serverGenerating, gen.running, gen.startResume]);
 
   const handleGenerate = useCallback(() => {
     if (!live || !projectId) {
@@ -267,7 +298,11 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
   useEffect(() => {
     if (!autoGenerate || autoStartedRef.current || loading || reports === null) return;
     autoStartedRef.current = true;
-    if (!live || !projectId || generated || gen.running) return;
+    // 已有报告/本次已经在跑都不抢跑；一次性标记先清掉，避免跑完后又被旧标记触发一次
+    if (!live || !projectId || generated || gen.running) {
+      onAutoGenerateStarted?.();
+      return;
+    }
     onAutoGenerateStarted?.();
     handleGenerate();
   }, [autoGenerate, loading, reports, live, projectId, generated, gen.running, onAutoGenerateStarted, handleGenerate]);

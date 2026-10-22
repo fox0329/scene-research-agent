@@ -47,9 +47,13 @@ interface Harness {
   exportDir: string;
 }
 
-function makeHarness(promptEvents?: FollowEvent[], uploadLimitMb?: number): Harness {
+function makeHarness(
+  promptEvents?: FollowEvent[],
+  uploadLimitMb?: number,
+  dshOverride?: DshClient,
+): Harness {
   const db = createDb(":memory:");
-  const dsh = mockDshClient(promptEvents);
+  const dsh = dshOverride ?? mockDshClient(promptEvents);
   const exportDir = mkdtempSync(join(tmpdir(), "scene-export-"));
   process.env.EXPORT_DIR = exportDir;
   // 每个 harness 用独立临时登记表：默认"未配置"态，不碰项目 data/
@@ -2245,6 +2249,62 @@ describe("交付物导出", () => {
     expect(noRun.statusCode).toBe(400);
     expect(noRun.json().error).toContain("缺少进度通道 run");
   });
+
+  it("GET deliverables 标出后台生成中；跑完归零（切页/刷新接回的依据）", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const slowDsh = {
+      ...mockDshClient(),
+      prompt: vi.fn(() => (async function* () {
+        yield { type: "text", text: "## 现状\n\n正在写。\n" };
+        await gate;
+        yield { type: "done" };
+      })()),
+    } as unknown as DshClient;
+    const h = makeHarness(undefined, undefined, slowDsh);
+    const { scenarioId } = seedScenario(h.db, "后台生成场景");
+    // 有任意表数据即可进入生成流程；这里给一张真表，避免命令在入口直接报"没数据"
+    h.db.stageDataRepo.insert({
+      scenario_id: scenarioId,
+      stage: 0 as StageId,
+      table_code: "表1-1",
+      row: { 场景名称: "后台生成场景" },
+      is_stale: false,
+    });
+    const dir = mkdtempSync(join(tmpdir(), "scene-deliverable-running-"));
+    process.env.DELIVERABLE_DIR = dir;
+    try {
+      const pending = h.app.inject({
+        method: "POST",
+        url: `/api/v1/projects/${scenarioId}/deliverables/generate`,
+      });
+      // 等命令真正进到模型调用（POST 的 SSE 还没结束）
+      await new Promise((resolve) => setTimeout(resolve, 80));
+
+      const mid = await h.app.inject({
+        method: "GET",
+        url: `/api/v1/projects/${scenarioId}/deliverables`,
+      });
+      expect(mid.statusCode).toBe(200);
+      expect(mid.json().generating).toBe(true);
+
+      release();
+      const done = await pending;
+      expect(done.statusCode).toBe(200);
+
+      const after = await h.app.inject({
+        method: "GET",
+        url: `/api/v1/projects/${scenarioId}/deliverables`,
+      });
+      expect(after.json().generating).toBe(false);
+    } finally {
+      release();
+      delete process.env.DELIVERABLE_DIR;
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 15_000);
 
   it("PUT deliverables/solution 保存中栏改过的正文（变更表 #135）", async () => {
     const h = makeHarness();
