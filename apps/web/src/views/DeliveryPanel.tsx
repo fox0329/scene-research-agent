@@ -409,8 +409,12 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
     void (dirPurpose === "ppt" ? exportPptInto(dir) : dirPurpose === "word" ? exportWordInto(dir) : exportMdInto(dir));
   }, [manualDir, dirPurpose, exportPptInto, exportWordInto, exportMdInto]);
 
-  /** 交付物步没有信息表：要点由领域层对空表集推导（只给兜底句，不编来源/结论） */
-  const brief = useMemo(
+  /**
+   * 交付物步没有信息表，但右栏要点**不能**用空表集本地推导：
+   * 那样只会得到兜底句「本步还没有可下结论的判据」，把前面已产出的门槛/赢面/能力匹配全丢掉。
+   * 服务端对交付物步做的是「全链汇总」（step=6），这里必须走接口取真实要点。
+   */
+  const fallbackBrief = useMemo(
     () =>
       buildStageBrief({
         stage: 5,
@@ -424,17 +428,44 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
           gaps: [],
           percent: 0,
         },
+        fallbackAdvice:
+          "前面还没有可下结论的判据：门槛、赢面与能力匹配表尚未产出，风险提醒随这些表出现",
       }),
     [],
   );
+  const [apiBrief, setApiBrief] = useState<StageSnapshot["brief"]>(null);
+  const [briefLoading, setBriefLoading] = useState(false);
+  const loadBrief = useCallback(async () => {
+    if (!live || !projectId) {
+      setApiBrief(null);
+      return;
+    }
+    setBriefLoading(true);
+    try {
+      const r = await api.stageBrief(projectId, 5, 6);
+      setApiBrief(r.brief);
+    } catch {
+      // 取不到就退回本地兜底（右栏不能空着），失败原因不打扰交付物主流程
+      setApiBrief(null);
+    } finally {
+      setBriefLoading(false);
+    }
+  }, [live, projectId]);
+
+  useEffect(() => {
+    void loadBrief();
+  }, [loadBrief]);
 
   const snapshot = useMemo<StageSnapshot>(
     () => ({
-      summaryLoading: false,
-      brief,
-      onRefreshSummary: () => void loadReports(),
+      summaryLoading: briefLoading,
+      brief: apiBrief ?? fallbackBrief,
+      onRefreshSummary: () => {
+        void loadBrief();
+        void loadReports();
+      },
     }),
-    [flow, mdPaths, docxPaths, pptPaths, brief, loadReports],
+    [apiBrief, fallbackBrief, briefLoading, loadBrief, loadReports],
   );
 
   useEffect(() => {
