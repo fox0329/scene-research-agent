@@ -213,6 +213,7 @@ const SYSTEM_PROMPT = `你是产品资料解析专家。你的任务是将输入
 ## 产品清单（table_code=M1）
 字段：model(型号), name(产品名称), status(在售/停售/在研/规划/待确认)
 必填：model, name, status
+注意：材料只写规格、没写产品状态时，status 填「待确认」，不要因此丢弃 M1 行，也不要因此漏掉 M2 规格行。
 
 ## 规格书（table_code=M2）
 字段：param_class(参数类别), param_name(参数名称), value(参数值), measured(实测/宣称/未提及)
@@ -543,6 +544,14 @@ function isDshOutput(val: unknown): val is DshOutput {
 
 // ─── 子函数：来源 + 必填列 + 门禁校验 ──────────────────────
 
+/** 材料没写状态时补一个合法且诚实的默认值，不让整行（及依赖它的规格）被丢掉。 */
+function fillIngestDefaults(row: ClassifiedRow): ClassifiedRow {
+  if (row.table_code !== "M1") return row;
+  const fields = (row.fields ?? {}) as Record<string, unknown>;
+  if (!isEmptyValue(fields["status"])) return row;
+  return { ...row, fields: { ...fields, status: "待确认" } };
+}
+
 /**
  * 校验规则（顺序有意义，先报最根本的缺失）：
  *  ① table_code 必须合法；
@@ -567,7 +576,10 @@ function validateRows(
   const valid: ClassifiedRow[] = [];
   const skipped: { table_code: string; source: string; reason: string }[] = [];
 
-  for (const row of output.rows) {
+  for (const raw of output.rows) {
+    // 规格书/技术参数表常常只写参数、不写状态。M1 状态缺失时按「待确认」入库，
+    // 与手工新增的默认值一致（library-service）；整行丢掉会连 M2 的关联产品一起丢。
+    const row = fillIngestDefaults(raw);
     // table_code 必须是合法的表编号
     if (!row.table_code || !validTables.has(row.table_code)) continue;
     // 来源必须可定位（2026-10-21 收紧：页码/章节号必须是具体值）
@@ -625,8 +637,18 @@ function missingRequiredLabels(row: ClassifiedRow): string[] {
   const verification = new Set<string>(VERIFICATION_KEYS);
   return [...def.columns, ...payload]
     .filter((c) => c.required === true && !verification.has(c.key))
-    .filter((c) => isEmptyValue(requiredValue(row, c.key)))
+    .filter((c) => !hasRequiredValue(row, c.key))
     .map((c) => c.label);
+}
+
+/**
+ * 必填值是否存在：`待确认` 是 M1 的合法枚举值，但通用 `isEmptyValue` 把它当占位符
+ * （用于完整度判定）。材料没写状态时我们补的正是这个值；这里按枚举放行，否则补了也会被拒。
+ */
+function hasRequiredValue(row: ClassifiedRow, key: string): boolean {
+  const value = requiredValue(row, key);
+  if (!isEmptyValue(value)) return true;
+  return row.table_code === "M1" && key === "status" && String(value ?? "").trim() === "待确认";
 }
 
 /** 必填列的取值：字段优先，其次行级（source 在行上）；处理两个数据形态别名 */

@@ -7,16 +7,9 @@
 
 import Database from "better-sqlite3";
 import { readFileSync, mkdirSync } from "node:fs";
-import { join, resolve, dirname } from "node:path";
+import { resolve, dirname } from "node:path";
 import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
-import {
-  BACKUP_DIR_NAME,
-  applyPendingRestore,
-  createStartupBackup,
-  type DbBackupStatus,
-} from "./db-backup.js";
-
 import type {
   ProductLine,
   Product,
@@ -1244,10 +1237,8 @@ function createVerificationRepo(db: Database.Database): VerificationRepo {
 
 export interface DbInstance {
   db: Database.Database;
-  /** 数据库实际文件路径（`:memory:` 原样保留）；备份/恢复路由据此定位同目录文件 */
+  /** 数据库实际文件路径（`:memory:` 原样保留） */
   dbPath: string;
-  /** 启动备份/恢复实况：备份失败不阻断启动，只在这里留痕 */
-  dbBackup: DbBackupStatus;
   productLineRepo: Repo<ProductLine>;
   productRepo: Repo<Product>;
   specParamRepo: Repo<SpecParam>;
@@ -1281,69 +1272,16 @@ export interface DbInstance {
 }
 
 /**
- * 创建数据库的可选行为（只给启动入口与测试用）
- */
-export interface CreateDbOptions {
-  /**
-   * 备份目录：显式传目录时**即使在测试环境也会备份**；
-   * 传 false 关闭启动备份与待恢复（例如 `:memory:` 之外的临时库）。
-   */
-  backupDir?: string | false;
-  /** 是否执行 `restore-on-boot.db`（默认 true） */
-  restorePending?: boolean;
-  /** 注入时钟（测试固定备份文件名） */
-  now?: Date;
-}
-
-/**
  * 创建或打开 SQLite 数据库，运行迁移，返回 db 实例和全部 repo。
- *
- * 打开之前先完成两件数据安全动作（都发生在 `new Database()` 与迁移之前）：
- * 1. 若有 `restore-on-boot.db`：先把当前库备份为 `pre-restore-*`，再原子替换；
- * 2. 对已有文件库自动快照到同目录 `backups/scene-YYYYMMDD-HHMMSS.db`，保留 3 份。
- *
- * 备份失败只写 `console.warn` 并记进 `dbBackup.warnings`，**绝不阻断启动**。
- * `:memory:` 不备份；测试环境的临时库默认也不备份（显式传 `backupDir` 才启用）。
  *
  * @param dbPath 数据库文件路径，默认读 DB_PATH 环境变量或 `data/scene-master.db`
  */
-export function createDb(dbPath?: string, options: CreateDbOptions = {}): DbInstance {
+export function createDb(dbPath?: string): DbInstance {
   const resolved = dbPath ?? process.env.DB_PATH ?? "data/scene-master.db";
   const isMemory = resolved === ":memory:";
   const absPath = isMemory ? resolved : resolve(resolved);
   // 一条命令冷启动（npm start）时默认目录可能不存在：落库前自动建父目录；:memory: 跳过
   if (!isMemory) mkdirSync(dirname(absPath), { recursive: true });
-
-  const explicitDir =
-    options.backupDir === undefined
-      ? undefined
-      : options.backupDir === false
-        ? null
-        : resolve(options.backupDir);
-  const backupDir = isMemory
-    ? null
-    : (explicitDir ?? join(dirname(absPath), BACKUP_DIR_NAME));
-  /* 测试环境的临时库默认不产生备份文件；显式给了目录才照做。 */
-  const isTest = process.env.VITEST === "true" || process.env.NODE_ENV === "test";
-  const autoBackup =
-    !isMemory && backupDir !== null && (!isTest || explicitDir !== undefined);
-  const dbBackup: DbBackupStatus = { dir: backupDir, warnings: [] };
-
-  if (autoBackup && backupDir && options.restorePending !== false) {
-    const restored = applyPendingRestore(absPath, { backupDir, now: options.now });
-    if (restored.restoredFrom) dbBackup.restoredFrom = restored.restoredFrom;
-    if (restored.preRestoreBackup) dbBackup.preRestoreBackup = restored.preRestoreBackup;
-    if (restored.warning) {
-      dbBackup.warnings.push(restored.warning);
-      console.warn(`[db-backup] ${restored.warning}`);
-    }
-  }
-
-  if (autoBackup && backupDir) {
-    const outcome = createStartupBackup(absPath, { backupDir, now: options.now });
-    if (outcome.backup) dbBackup.startupBackup = outcome.backup.name;
-    if (!outcome.ok && outcome.error) dbBackup.warnings.push(outcome.error);
-  }
 
   const db = new Database(resolved);
 
@@ -1356,7 +1294,6 @@ export function createDb(dbPath?: string, options: CreateDbOptions = {}): DbInst
   return {
     db,
     dbPath: absPath,
-    dbBackup,
     productLineRepo: createRepo<ProductLine>(db, "product_line"),
     productRepo: createRepo<Product>(db, "product"),
     specParamRepo: createRepo<SpecParam>(db, "spec_param"),

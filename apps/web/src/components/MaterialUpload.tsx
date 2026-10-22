@@ -180,6 +180,12 @@ export const MaterialUpload: React.FC<{
     }
   };
 
+  /* 失败行不能再被「只看最后两条」截掉：多文件上传时错误往往排在 done/quality 之前，
+     用户最后只能看到「失败 1 个」却看不到失败原因（变更表 #279）。 */
+  const errorLines = progress.filter((line) => line.startsWith("【错误】"));
+  const nonErrorTail = progress.filter((line) => !errorLines.includes(line)).slice(-2);
+  const resultLines = [...errorLines, ...nonErrorTail];
+
   /* 状态区（跳过清单 + 入库进度）——挂到指定容器就挂过去，否则就地显示 */
   const status = (
     <>
@@ -193,11 +199,14 @@ export const MaterialUpload: React.FC<{
         </div>
       )}
       {progress.length > 0 && (
-        <div className="stale-banner" role="status">
+        <div
+          className="stale-banner"
+          role={!uploading && errorLines.length > 0 ? "alert" : "status"}
+        >
           <span className="badge primary">{uploading ? "入库进度" : "入库结果"}</span>
-          {/* 收尾时同时保留【完成】总账与质量行（各占一行），进度中仍只显示最后一条 */}
+          {/* 进度中只显示最后一条；收尾时保留全部错误 + 最后两条正常结果，错误不被截掉 */}
           <div>
-            {(uploading ? progress.slice(-1) : progress.slice(-2)).map((line, i) => (
+            {(uploading ? progress.slice(-1) : resultLines).map((line, i) => (
               <div key={`${progress.length}-${i}`}>{line}</div>
             ))}
           </div>

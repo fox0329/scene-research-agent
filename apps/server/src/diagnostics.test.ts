@@ -8,7 +8,6 @@ import type { DbInstance } from "@scene/infra";
 function fakeDb(dbPath: string): DbInstance {
   return {
     dbPath,
-    dbBackup: { dir: null, warnings: [] },
     db: { prepare: () => ({ get: () => ({ c: 7 }) }) },
   } as unknown as DbInstance;
 }

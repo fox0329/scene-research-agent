@@ -259,7 +259,6 @@ function createMockDb(opts: {
   return {
     db: {} as never,
     dbPath: ":memory:",
-    dbBackup: { dir: null, warnings: [] },
     productLineRepo: createMockRepo(),
     productRepo,
     specParamRepo: createMockRepo<SpecParam>(),

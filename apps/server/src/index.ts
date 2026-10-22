@@ -31,25 +31,6 @@ async function main() {
   const webDist = resolveWebDist();
   const app = createApp({ db, dshClient, webDist });
 
-  /* 数据安全：启动备份/待恢复的实况必须进日志（备份失败不阻断启动，但要能排障） */
-  if (db.dbBackup.dir) {
-    app.log.info(`数据备份目录：${db.dbBackup.dir}`);
-  }
-  if (db.dbBackup.startupBackup) {
-    app.log.info(`启动前已自动备份数据库：${db.dbBackup.startupBackup}`);
-  }
-  if (db.dbBackup.restoredFrom) {
-    app.log.info(
-      `已应用待恢复备份 ${db.dbBackup.restoredFrom}` +
-        (db.dbBackup.preRestoreBackup
-          ? `（恢复前旧库已备份为 ${db.dbBackup.preRestoreBackup}）`
-          : ""),
-    );
-  }
-  for (const warning of db.dbBackup.warnings) {
-    app.log.warn(`数据备份/恢复告警：${warning}`);
-  }
-
   /* 价格去重的一次性迁移：把结果写进启动日志（用户/排障都要能看到迁了几条、跳过几条） */
   if (db.o3PriceMigration) {
     const { migrated, skipped } = db.o3PriceMigration;

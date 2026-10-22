@@ -168,7 +168,6 @@ function createMockDb(): DbInstance {
   return {
     db: {} as never,
     dbPath: ":memory:",
-    dbBackup: { dir: null, warnings: [] },
     productLineRepo: createMockRepo(),
     productRepo: createMockRepo<Product>(),
     specParamRepo: createMockRepo<SpecParam>(),
@@ -611,6 +610,21 @@ describe("createIngestCommand", () => {
       expect(result.skippedRows[0]!.table_code).toBe("M3");
       expect(result.skippedRows[0]!.reason).toContain("缺必填列");
       expect(result.skippedRows[0]!.reason).toContain("一句话描述");
+    });
+
+    it("M1 缺状态 → 补「待确认」入库，不丢整行", async () => {
+      const output = makeDshOutput();
+      delete output.rows[0]!.fields["status"];
+      dshClient = createMockDshClient(JSON.stringify(output));
+      deps = { db, dshClient, docParser };
+
+      const cmd = createIngestCommand(deps);
+      const result = await cmd.execute({ filePath: "/tmp/whitepaper.pdf", productLineId: "pl1" });
+
+      expect(result.skippedRows).toHaveLength(0);
+      expect(result.rowsInserted).toBe(6);
+      const call = (db.productRepo.insert as ReturnType<typeof vi.fn>).mock.calls[0]![0];
+      expect(call.status).toBe("待确认");
     });
 
     it("可选材料按类目校验 payload 必填列（O1 缺证书号）", async () => {

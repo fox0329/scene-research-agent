@@ -400,11 +400,6 @@ function registerIpc(): void {
     /** 密钥是否由系统钥匙串保护（排障时先看这一项；默认关闭时不探测 Keychain） */
     keychain: keychainStatus(electron.safeStorage),
   }));
-  /* 数据恢复：重启应用以应用 restore-on-boot.db（preload 暴露 relaunchApp） */
-  ipcMain.handle("relaunch-app", () => {
-    app.relaunch();
-    app.exit(0);
-  });
 }
 
 /* 单实例：第二次启动只是把已有窗口抬起来，不再起第二个服务端 */
