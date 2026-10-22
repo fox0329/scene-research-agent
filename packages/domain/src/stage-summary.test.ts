@@ -445,6 +445,22 @@ describe("stage-summary — 要点视图（brief）", () => {
     expect(Array.from(brief.sources[0]!.label).length).toBe(25); // 24 字 + 省略号
   });
 
+  it("同一标签只留一条（不同 URL 重复收录也不刷屏）", () => {
+    const brief = briefOf(
+      1,
+      {
+        "表1-3": [
+          row({ barrier_name: "等保三级", criteria: "x", source: "https://example.com/a" }),
+          row({ barrier_name: "等保三级", criteria: "x", source: "https://example.com/b" }),
+        ],
+      },
+      2,
+      step2Tables,
+    );
+    expect(brief.sources).toHaveLength(1);
+    expect(brief.sources[0]?.url).toBe("https://example.com/a");
+  });
+
   it("来源最多 20 条", () => {
     const rows: InfoRow[] = [];
     for (let i = 1; i <= 25; i += 1) {

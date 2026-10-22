@@ -222,6 +222,18 @@ export const FlowRail: React.FC<FlowRailProps> = ({
       </div>
       </div>
 
+      {/* 运行中的可见进度：进度与耗时以前只放在按钮 title 里，用户不悬停看不到，
+          140 秒的长跑就只剩一个「分析中」——这里给出最后一条进度与本地计时。 */}
+      {run?.running ? (
+        <div className="flow-run-bar" role="status" aria-live="polite">
+          <span className="flow-run-dot" aria-hidden="true" />
+          <span className="flow-run-text">{run.progress ?? "分析进行中…"}</span>
+          {run.elapsedLabel ? (
+            <span className="flow-run-elapsed">已用 {run.elapsedLabel}</span>
+          ) : null}
+        </div>
+      ) : null}
+
       {/* 第二行：当前正在看的那一步的输出物。流程轴在滚动容器 .ws 外面 →
           用户上下滚表格时这一行始终可见（这正是用户要的"表格的名称能始终显示"）。
           没有输出物的步不占这一行；**交付物这一步例外**（变更表 #148）：它没有表，

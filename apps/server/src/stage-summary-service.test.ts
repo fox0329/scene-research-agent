@@ -190,6 +190,29 @@ describe("stage-summary-service — 右栏要点（brief）", () => {
     expect(r.brief.sources).toEqual([]);
   });
 
+  it("第 3 步仍带出第 2 步未消解的门槛提醒（不再说「门槛尚未产出」）", () => {
+    const { db, scenarioId } = seed();
+    // 第 2 步的门槛：认证类缺口，规则应给出「不建议贸然进入」
+    db.stageDataRepo.insert({
+      scenario_id: scenarioId,
+      stage: 1,
+      table_code: "表1-3",
+      row: {
+        barrier_type: "认证",
+        barrier_name: "等保三级",
+        criteria: "GB/T 22239",
+        cert_gap: "等保三级认证",
+      },
+      is_stale: false,
+      source: "《招标》p.2",
+    });
+    const sc = db.scenarioRepo.getById(scenarioId)!;
+    const r = getStageBrief(db, sc, 1, 3);
+    expect(r.brief.advice.join("；")).toContain("门槛");
+    expect(r.brief.advice.join("；")).not.toContain("本步还没有可下结论的判据");
+    expect(r.brief.note).toContain("前序");
+  });
+
   it("本步有联网调研结果时前置在来源最前，并与行内 URL 去重", () => {
     const { db, scenarioId } = seed();
     // 行内来源：表1-3 引用了其中一条链接（同 URL 不能出现两次）

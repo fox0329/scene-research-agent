@@ -647,6 +647,21 @@ describe("口径分档 — 阶段 1–2 不许把行业问题答成客户问题�
     expect(f.map((x) => x.kind)).not.toContain("客户侧口径混入场景分析");
   });
 
+  it("表1-1 场景锚不报：用户亲口给的「本客户」事实不是行情写错", () => {
+    const f = runDeterministicPostcheck({
+      rows: [
+        row({
+          tableCode: "表1-1",
+          label: "场景边界",
+          row: { item: "场景边界", content: "本客户 12 栋楼、约 8000 名员工，日均访客 300 人" },
+        }),
+      ],
+      lookup: fakeLookup({}),
+      stage: 1,
+    });
+    expect(f.map((x) => x.kind)).not.toContain("客户侧口径混入场景分析");
+  });
+
   it("按行业口径给的量级不报（正例：这是我们要的写法）", () => {
     const f = runDeterministicPostcheck({
       rows: [

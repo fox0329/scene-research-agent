@@ -86,6 +86,15 @@ function stepScope(step: number): { tableCodes: readonly string[] } {
   return { tableCodes: own.length > 0 ? own : TABLES.map((t) => t.code) };
 }
 
+/**
+ * 前序提醒表：本步没有这些表，但它们的结论不该随步骤翻页消失
+ *
+ * 用户实测：第 2 步已经给出两条门槛提醒，到第 3 步右栏却写「门槛…尚未产出」——
+ * 不是数据没了，是右栏只读本步表集。这里把"门槛/胜负/能力缺口"三张判定表补进来，
+ * 只参与**结论提醒**推导；来源仍只列本步（超集会把前几步的来源灌进右栏）。
+ */
+const PRIOR_ADVICE_CODES = ["表1-3", "表4-4", "表4-3"] as const;
+
 /** 交付物步：没有自己的表，右栏口径是"全链汇总" */
 function isDeliveryStep(step: number | undefined): boolean {
   return step !== undefined && flowStep(step).tables.length === 0;
@@ -251,11 +260,18 @@ function mergeResearchSources(
 
   const out: StageBriefSource[] = [];
   const seen = new Set<string>();
+  /* 同一篇内容常被不同 URL 重复收录；只按 URL 去重时，右栏会出现两条一模一样的标签。
+     标题相同即视为同一来源（保留排序更靠前、权威度更高的那条）。 */
+  const seenTitles = new Set<string>();
   // 权威 T1→T4、已验真优先、发布时间倒序（与提示词摘要同一顺序）
   for (const row of sortResearchSources(rows)) {
     const url = String(row.url ?? "").trim();
     if (row.status !== "有效" || url === "" || !/^https?:\/\//iu.test(url)) continue;
     if (seen.has(url)) continue;
+    const title = String(row.title ?? "").trim() || url;
+    const titleKey = title.replace(/[\s·,，。:：;；|/\\-]+/gu, "").toLowerCase();
+    if (titleKey !== "" && seenTitles.has(titleKey)) continue;
+    if (titleKey !== "") seenTitles.add(titleKey);
     seen.add(url);
     out.push({ label: researchLabel(row), url });
     if (out.length >= BRIEF_SOURCES_MAX) return out;
@@ -287,25 +303,45 @@ export function getStageBrief(
   const rowsByTable = readStageRowsByTable(db, scenario.id, id, tableCodes);
   const completeness = stageCompletenessOf(db, scenario.id, stage, step);
   const delivery = isDeliveryStep(step);
-  const brief = buildStageBrief({
+  const briefInput = {
     stage: id,
     scenarioName: scenario.name,
     rowsByTable,
     completeness,
     ...(tableCodes ? { tableCodes } : {}),
     ...(step === undefined ? {} : { step }),
-    scope: step === undefined ? "stage" : "step",
+    scope: (step === undefined ? "stage" : "step") as "stage" | "step",
     ...(delivery
       ? {
           fallbackAdvice:
             "前面还没有可下结论的判据：门槛、赢面与能力匹配表尚未产出，风险提醒随这些表出现",
         }
       : {}),
-  });
+  };
+  const baseBrief = buildStageBrief(briefInput);
+  /* 前序判定表只为"提醒"补读：本步已经包含的不重复读，交付物本来就是全链汇总 */
+  let priorAdvicePresent = false;
+  if (step !== undefined && !delivery) {
+    const own = new Set(tableCodes ?? []);
+    const priorCodes = PRIOR_ADVICE_CODES.filter((code) => !own.has(code));
+    const priorRows = readStageRowsByTable(db, scenario.id, id, priorCodes);
+    for (const code of priorCodes) {
+      const rows = priorRows[code] ?? [];
+      if (rows.length === 0) continue;
+      rowsByTable[code] = rows;
+      priorAdvicePresent = true;
+    }
+  }
+  const brief = priorAdvicePresent ? buildStageBrief(briefInput) : baseBrief;
+  const priorAdviceChanged =
+    priorAdvicePresent && brief.advice.some((a) => !baseBrief.advice.includes(a));
   // 调研来源排最前（先调研、后分析；行内来源是分析结论自带的引用）
   const merged: StageBrief = {
     ...brief,
     sources: mergeResearchSources(db, scenario.id, step, brief.sources, delivery),
+    ...(priorAdviceChanged
+      ? { note: "含前序步骤未消解的门槛 / 胜负提醒（本步没有重复列出）" }
+      : {}),
   };
   return { brief: merged, completeness, stage: id, scope: step === undefined ? "stage" : "step" };
 }

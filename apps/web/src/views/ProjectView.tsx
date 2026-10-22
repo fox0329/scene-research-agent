@@ -410,15 +410,27 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
             : stepStale
               ? { title: `本步资料因上游改动失效：${stepDef.readyHint}` }
               : {}),
-          progress: stepServerRunning
-            ? analysis.running
-              ? analysis.streamLines.at(-1)
-              : "服务端仍在分析，跑完会自动更新"
-            : undefined,
+          /* 本地在跑时也要给进度：stepServerRunning 来自轮询对账，刚点下按钮时还是 false，
+             以前只认服务端状态，于是进度条一直停在「分析进行中…」（实测 125 秒）。 */
+          progress: analysis.running
+            ? analysis.streamLines.at(-1)
+            : stepServerRunning
+              ? "服务端仍在分析，跑完会自动更新"
+              : undefined,
           onStart: () => {
             setAnalysisNotice(null);
             if (stepDef.kind === "确认") {
               setDefinitionDialogOpen(true);
+              return;
+            }
+            /* 重算会覆盖本步已生成的表：不能一个误点就重来（旧版只在 title 里写了这句）。
+               首次「开始本步分析」不拦，避免每次跑都多一步确认。 */
+            if (
+              stepDef.ready &&
+              !window.confirm(
+                `重算第 ${step} 步「${stepDef.title}」会用新结果覆盖本步 ${flowStep(step).tables.length} 张表，旧内容不可恢复（生成失败的表会保留原内容）。继续？`,
+              )
+            ) {
               return;
             }
             analysis.start();

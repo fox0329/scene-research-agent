@@ -16,7 +16,7 @@
  * 必须回答的问题清单，并负责最后一轮的确定性收口。
  */
 
-import { CURRENT_STATE_TABLES, TABLES_BY_CODE, middleColumns } from "@scene/contract";
+import { ANCHOR_TABLE_CODE, CURRENT_STATE_TABLES, TABLES_BY_CODE, middleColumns } from "@scene/contract";
 import { judgeGate } from "./gate-check.js";
 import { judgeConstraint } from "./constraint-check.js";
 import { judgeRowValue } from "./value-check.js";
@@ -627,6 +627,9 @@ const CUSTOMER_SCOPE_WORDS = /本客户|该客户|本场景客户|客户方|我�
 
 function customerScopeLeak(r: PostcheckRow, stage?: number): PostcheckFinding | null {
   if (stage === undefined || stage > 2) return null;
+  /* 表1-1 是用户亲口提供的场景锚：里面的"客户/我方"是用户事实，不是把行情写成客户事实。
+     用户实测：给的楼栋/人数/访客量被自检退回行业口径，整张画像失真。 */
+  if (r.tableCode === ANCHOR_TABLE_CODE) return null;
   const hits: string[] = [];
   for (const key of midKeysOf(r.tableCode)) {
     const v = r.row[key];

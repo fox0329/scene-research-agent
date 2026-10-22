@@ -274,6 +274,8 @@ export interface ApiStageBrief {
   brief: {
     sources: ApiStageBriefSource[];
     advice: string[];
+    /** 提醒范围说明（如含前序步骤未消解提醒）；没有就不显示 */
+    note?: string;
   };
   completeness: ApiCompleteness;
   /** 视图回显（固定 `brief`），客户端据此区分响应形状 */

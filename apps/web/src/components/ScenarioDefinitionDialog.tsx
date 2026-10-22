@@ -263,12 +263,17 @@ export const ScenarioDefinitionDialog: React.FC<ScenarioDefinitionDialogProps> =
   const busy = sending || consolidating;
   const hasDefinition = (result?.rows.length ?? 0) > 0;
 
-  const renderMessage = (m: ApiDefinitionMessage): React.ReactNode => (
-    <div key={m.id} className={`msg ${m.role === "用户" ? "u" : "ai"}`}>
-      <div className="bub">{m.content}</div>
-      <div className="msg-meta">{fmtTime(m.created_at)}</div>
-    </div>
-  );
+  const renderMessage = (m: ApiDefinitionMessage): React.ReactNode => {
+    /* 自动开场白是系统替用户发的（落库仍是用户角色，模型上下文才接得上）：
+       界面上必须标出来，不能让用户以为"我没打过这句话"。 */
+    const isGuide = m.role === "用户" && m.content === GUIDE_MESSAGE;
+    return (
+      <div key={m.id} className={`msg ${m.role === "用户" ? "u" : "ai"}`}>
+        <div className="bub">{isGuide ? `（系统引导）${m.content}` : m.content}</div>
+        <div className="msg-meta">{isGuide ? "系统自动发出 · " : ""}{fmtTime(m.created_at)}</div>
+      </div>
+    );
+  };
 
   return (
     <div className="modal-backdrop" role="presentation">
@@ -340,6 +345,11 @@ export const ScenarioDefinitionDialog: React.FC<ScenarioDefinitionDialogProps> =
                   {result.postcheck.downgraded > 0
                     ? `，${result.postcheck.downgraded} 项因出处无法定位按实降为「无法核实」`
                     : ""}
+                </p>
+              ) : null}
+              {(result?.open_questions?.length ?? 0) > 0 ? (
+                <p className="definition-open-warning" role="status">
+                  还有 {result?.open_questions?.length} 个关键问题没回答：现在关闭也能继续，但后续调研只能按行业通例展开，结论可能偏泛。建议先补一句再整理。
                 </p>
               ) : null}
               <AlignmentTable

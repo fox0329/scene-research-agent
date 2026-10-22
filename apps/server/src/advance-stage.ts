@@ -875,6 +875,13 @@ async function* executeAdvanceStage(
             }
             // 不管成没成都要标记完成：失败的依赖不能让下游干等
             finished.add(code);
+            /* 进度要能让用户算得出来还有多久：只说"开始生成"等于没说。
+               一条消息同时给已完成/总数与表名，UI 直接显示即可（不另做进度协议）。 */
+            push({
+              type: "progress",
+              stage,
+              message: `已完成 ${finished.size}/${coveredCodes.length} 张表（${labelOf(code)}）`,
+            });
             // 单张表失败必须当场说出来（只在收尾汇总里提一句，用户看不到是哪张表卡住的）
             if (effective.error) {
               push({ type: "progress", stage, message: `⚠️ ${effective.error}` });

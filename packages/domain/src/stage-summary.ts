@@ -189,6 +189,12 @@ export interface StageBriefSource {
 export interface StageBrief {
   sources: StageBriefSource[];
   advice: string[];
+  /**
+   * 提醒范围的补充说明（如「含前序步骤未消解的门槛/胜负提醒」）
+   *
+   * 可选：只有服务端知道哪些表来自前序步骤，领域层不猜。
+   */
+  note?: string;
 }
 
 /** 来源列表上限（右栏窄，超过这个数量用户也读不完） */
@@ -332,11 +338,16 @@ function fileSourcesOf(input: StageSummaryInput, tables: readonly TableDef[]): S
 function briefSourcesOf(input: StageSummaryInput, tables: readonly TableDef[]): StageBriefSource[] {
   const out: StageBriefSource[] = [];
   const seen = new Set<string>();
+  /* 同一标题在两张表里各引一次很常见；右栏只有 20 条，重复标签会让用户以为来源很多 */
+  const seenLabels = new Set<string>();
   for (const t of tables) {
     for (const row of input.rowsByTable[t.code] ?? []) {
       const urls = urlsOfRow(row, seen);
       if (urls.length === 0) continue;
       const label = briefLabelOf(row, t);
+      const labelKey = label.replace(/\s+/gu, "").toLowerCase();
+      if (labelKey !== "" && seenLabels.has(labelKey)) continue;
+      if (labelKey !== "") seenLabels.add(labelKey);
       for (const url of urls) {
         out.push({ label, url });
         if (out.length >= BRIEF_SOURCES_MAX) return out;

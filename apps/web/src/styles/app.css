@@ -1868,7 +1868,9 @@ td.ed {
 .summary-advice li { overflow-wrap: anywhere; }
 .summary-sources a { color: var(--cp); text-decoration: none; }
 .summary-sources a:hover { text-decoration: underline; }
+.summary-src-host { display: block; margin-top: var(--s05); font-size: var(--tx); color: var(--ct3); }
 .summary-empty { margin: 0; font-size: var(--txs); color: var(--ct3); line-height: 1.65; }
+.summary-note { margin: 0 0 var(--s1); font-size: var(--txs); color: var(--ct3); line-height: 1.55; }
 
 .md-body { font-size: var(--ts); color: var(--ct); line-height: 1.7; }
 .md-body h2 { margin: var(--s3) 0 var(--s2); font-size: var(--tb); }
@@ -2041,6 +2043,17 @@ td.ed {
 .definition-status-line { margin: 0; font-size: var(--txs); color: var(--ct2); }
 .definition-result { display: flex; flex-direction: column; gap: var(--s3); }
 .definition-summary { margin: 0; font-size: var(--ts); color: var(--ct); }
+.definition-open-warning {
+  margin: 0 0 var(--s2);
+  padding: var(--s2) var(--s3);
+  border: 1px solid var(--cw);
+  border-radius: var(--r8);
+  background: var(--cw-s);
+  color: var(--cw-h);
+  font-size: var(--txs);
+  line-height: 1.6;
+}
+
 .definition-postcheck{ margin: 0; font-size: var(--ts); color: var(--ct); }
 .definition-f {
   display: flex;
@@ -2258,6 +2271,41 @@ td.ed {
 }
 
 /* 行末动作：按钮钉在最右，不随节点条滚动 */
+.flow-run-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  margin-top: var(--s2);
+  padding: var(--s1) var(--s2);
+  border: 1px solid var(--cb);
+  border-radius: var(--r8);
+  background: var(--cs-s);
+  font-size: var(--txs);
+  color: var(--ct2);
+}
+
+.flow-run-dot {
+  width: var(--s1);
+  height: var(--s1);
+  border-radius: 50%;
+  background: var(--cp);
+  flex-shrink: 0;
+}
+
+.flow-run-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.flow-run-elapsed {
+  margin-left: auto;
+  flex-shrink: 0;
+  color: var(--ct3);
+  font-variant-numeric: tabular-nums;
+}
+
 .flow-actions {
   display: flex;
   align-items: center;

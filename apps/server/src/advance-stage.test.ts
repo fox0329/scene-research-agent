@@ -665,6 +665,15 @@ describe("createAdvanceStageCommand", () => {
       expect(doneIdx).toBeGreaterThan(summaryIdx);
     });
 
+    it("进度里报告已完成表数与总表数（用户不用再猜还有多久）", async () => {
+      const cmd = createAdvanceStageCommand(deps);
+      const events = await collectEvents(cmd.execute({ scenarioId: "sc-1", stage: 1 }));
+      const progress = events
+        .filter((e) => e.type === "progress")
+        .map((e) => String((e as { message?: string }).message ?? ""));
+      expect(progress.some((m) => /已完成 \d+\/\d+ 张表（表/.test(m))).toBe(true);
+    });
+
     it("应将 DSH 输出的行写入 stageDataRepo", async () => {
       const cmd = createAdvanceStageCommand(deps);
       await collectEvents(cmd.execute({ scenarioId: "sc-1", stage: 1 }));

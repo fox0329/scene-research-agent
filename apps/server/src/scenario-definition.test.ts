@@ -87,6 +87,19 @@ describe("scenario-definition — 系统提示词与上下文", () => {
     expect(DEFINITION_SYSTEM).toContain("输出任何 JSON");
     // 参考写法要点名"燃气场站"，这是验收标准
     expect(DEFINITION_SYSTEM).toContain("燃气场站");
+    // 用户实测：亲口给的楼栋/人数/访客量/预算被模型改写成"行业口径"，这是编造的反面
+    expect(DEFINITION_SYSTEM).toContain("用户亲口给出的数字与范围不是编造");
+  });
+
+  it("整理提示词：用户给出的事实优先，不许改写成行业口径", async () => {
+    const { db, scenarioId } = setup();
+    const dsh = mockDsh(consolidation);
+    const convId = await ensureDefinitionConversation(db, dsh, db.scenarioRepo.getById(scenarioId)!);
+    await consolidateDefinition(db, dsh, db.scenarioRepo.getById(scenarioId)!, convId);
+    const calls = vi.mocked(dsh.prompt).mock.calls;
+    const last = calls[calls.length - 1]?.[1] as { user?: string } | undefined;
+    expect(last?.user).toContain("用户说过的事实优先级最高");
+    expect(last?.user).toContain("行业口径/量级待确认");
   });
 
   it("上下文列出表1-1 全部固定项与属主/状态标记（不再有「待确认」）", () => {

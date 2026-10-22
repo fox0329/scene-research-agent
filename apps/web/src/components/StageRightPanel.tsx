@@ -162,6 +162,15 @@ export function renderMarkdown(
   return out;
 }
 
+/** 来源域名：同名标题靠它区分（只用于显示，解析失败就不显示） */
+function hostOf(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./u, "");
+  } catch {
+    return "";
+  }
+}
+
 export const StageRightPanel: React.FC<StageRightPanelProps> = ({ snapshot, live }) => {
   /**
    * 本步没有来源时自动补查一次（每挂载一次只自动跑一次，失败/空结果不再自动重试）
@@ -244,9 +253,12 @@ export const StageRightPanel: React.FC<StageRightPanelProps> = ({ snapshot, live
               {sources.map((s, i) => (
                 <li key={`${s.url || s.file}-${i}`}>
                   {s.url !== "" ? (
-                    <a href={s.url} target="_blank" rel="noreferrer" title={s.url}>
-                      {s.label}
-                    </a>
+                    <>
+                      <a href={s.url} target="_blank" rel="noreferrer" title={s.url}>
+                        {s.label}
+                      </a>
+                      <span className="summary-src-host">{hostOf(s.url)}</span>
+                    </>
                   ) : (
                     <span className="summary-source-file" title={s.file}>
                       {s.label}
@@ -279,6 +291,7 @@ export const StageRightPanel: React.FC<StageRightPanelProps> = ({ snapshot, live
 
           {/* ② 结论提醒：领域层确定性规则推导，判不出时只有一句兜底 */}
           <h5 className="summary-sub">结论提醒</h5>
+          {brief?.note ? <p className="summary-note">{brief.note}</p> : null}
           {brief === null ? (
             <p className="summary-empty">要点加载中…</p>
           ) : (
