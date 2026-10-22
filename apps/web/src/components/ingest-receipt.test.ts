@@ -133,6 +133,26 @@ describe("buildIngestReceipt — 质量行（证据分布与冲突）", () => {
   });
 });
 
+describe("buildIngestReceipt — 0 行的具体原因", () => {
+  it("模型空返回/坏 JSON 要带原因，不能再写成「材料没有信息」", () => {
+    const receipt = buildIngestReceipt(
+      [
+        {
+          name: "CT34.docx",
+          rows: 0,
+          failed: false,
+          note: "模型没有返回内容（可能临时不可用，请重试）",
+        },
+      ],
+      {},
+    );
+    expect(receipt.emptyLine).toContain("CT34.docx");
+    expect(receipt.emptyLine).toContain("模型没有返回内容");
+    expect(receipt.emptyLine).toContain("可直接重新上传重试");
+    expect(receipt.emptyLine).not.toContain("没有可归入资料库表格的信息");
+  });
+});
+
 describe("fileResultLine — 单文件进度行", () => {
   it("有行数就报行数", () => {
     expect(fileResultLine(ok("a.docx", 145))).toBe("　→ 入库 145 行");

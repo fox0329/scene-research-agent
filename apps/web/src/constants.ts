@@ -26,7 +26,7 @@ export function describeSkipped(skippedNames: string[]): string {
   if (skippedNames.length === 0) return "";
   const shown = skippedNames.slice(0, 5).join("、");
   const more = skippedNames.length > 5 ? ` 等 ${skippedNames.length} 个` : "";
-  return `已跳过 ${skippedNames.length} 个不支持的文件（仅支持 PDF/Word/Excel/PPT）：${shown}${more}`;
+  return `已跳过 ${skippedNames.length} 个不支持的文件（仅支持 PDF/.docx/.xlsx/.pptx；旧版 .doc 请先另存为 .docx）：${shown}${more}`;
 }
 
 /**

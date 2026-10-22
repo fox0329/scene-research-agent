@@ -24,6 +24,8 @@ export interface FileIngestResult {
   rows: number;
   /** 该文件是否报过错（error 事件或抛异常） */
   failed: boolean;
+  /** 0 行时的具体原因（模型空返回/坏 JSON），没有则为空 */
+  note?: string;
 }
 
 /** 证据等级分布（与服务端 IngestResult.evidenceSummary 同构） */
@@ -181,7 +183,13 @@ export function buildIngestReceipt(
   const totalRows = results.reduce((sum, r) => sum + r.rows, 0);
   const failedCount = results.filter((r) => r.failed).length;
   // 失败的文件不进 0 行名单：它的问题已经用「【错误】」报过了
-  const emptyFiles = results.filter((r) => !r.failed && r.rows === 0).map((r) => r.name);
+  const emptyResults = results.filter((r) => !r.failed && r.rows === 0);
+  const emptyFiles = emptyResults.map((r) => r.name);
+  const emptyParts = emptyResults.map((r) =>
+    (r.note ?? "").trim() !== "" ? `${r.name}（${r.note}）` : r.name,
+  );
+  /** 有具体原因的 0 行文件：回执不能只说「没有信息」，否则用户不知道是模型临时失败 */
+  const emptyWithNotes = emptyResults.filter((r) => (r.note ?? "").trim() !== "");
   const counts = tableCountsText(tableCounts);
   const countsPart = counts ? `（${counts}）` : "";
   const failedPart = failedCount > 0 ? ` · 失败 ${failedCount} 个` : "";
@@ -191,8 +199,10 @@ export function buildIngestReceipt(
     emptyLine:
       emptyFiles.length === 0
         ? null
-        : `【注意】${emptyFiles.length} 个文件未产出可校验记录：${emptyFiles.join("、")}。` +
-          "文件已解析，但没有可归入资料库表格的信息。",
+        : `【注意】${emptyFiles.length} 个文件未产出可校验记录：${emptyParts.join("、")}。` +
+          (emptyWithNotes.length > 0
+            ? "这不是材料格式问题，可直接重新上传重试。"
+            : "文件已解析，但没有可归入资料库表格的信息。"),
     qualityLine: qualityText(quality),
     toast:
       `解析完成：入库 ${totalRows} 行${countsPart}` +

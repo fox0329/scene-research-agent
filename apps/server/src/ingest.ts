@@ -133,6 +133,13 @@ export interface IngestResult {
   flaggedRows: IngestFlaggedRow[];
   /** 同键不同值的冲突（未覆盖、未新增，保留原值） */
   conflicts: IngestConflict[];
+  /**
+   * 模型没有返回可解析结果时的一句话原因（可重试）
+   *
+   * 与「材料里确实没有可归入表格的信息」分开：后者是正常 0 行，前者是模型调用/格式
+   * 临时失败。上传回执必须让用户知道是哪一种，不能让两种都显示成「没有可归入的信息」。
+   */
+  modelIssue?: string;
 }
 
 // ─── DSH 产出 JSON 结构 ────────────────────────────────────
@@ -150,6 +157,8 @@ interface ClassifiedRow {
 /** DSH 返回的完整 JSON */
 interface DshOutput {
   rows: ClassifiedRow[];
+  /** 模型没有产出可解析结果时的原因（不是「材料无信息」） */
+  issue?: string;
 }
 
 /** 单行的确定性质量判定结果 */
@@ -336,6 +345,7 @@ async function executeIngest(
     evidenceSummary,
     flaggedRows,
     conflicts,
+    ...(dshOutput.issue ? { modelIssue: dshOutput.issue } : {}),
   };
 }
 
@@ -473,32 +483,57 @@ export async function consumeDshPrompt(
   session: SessionHandle,
   userPrompt: string,
 ): Promise<DshOutput> {
-  const stream = dshClient.prompt(session, {
-    system: SYSTEM_PROMPT,
-    user: userPrompt,
-    outputContract: OUTPUT_CONTRACT,
-  });
-
-  let fullText = "";
-
-  for await (const event of stream) {
-    if (event.type === "text") {
-      fullText += (event as { type: "text"; text: string }).text;
+  /**
+   * 模型偶尔会返回空内容或截断的 JSON（实测同一份 Word 第一次 0 行、重传即成功）。
+   * 这种失败还**没写任何行**，重试一次是安全的；只重试一次，避免模型持续异常时
+   * 把一次上传拖成多次长调用。
+   */
+  for (let attempt = 0; attempt < 2; attempt++) {
+    let fullText = "";
+    for await (const event of dshClient.prompt(session, {
+      system: SYSTEM_PROMPT,
+      user: userPrompt,
+      outputContract: OUTPUT_CONTRACT,
+    })) {
+      if (event.type === "text") {
+        fullText += (event as { type: "text"; text: string }).text;
+      }
+      if (event.type === "error") {
+        // 模型/网络错误要如实上报，不能伪装成「材料没有可入库信息」
+        const message = String(
+          (event as { message?: unknown }).message ?? "未知错误",
+        );
+        return { rows: [], issue: `模型调用失败：${message}（可直接重试）` };
+      }
     }
-    if (event.type === "error") {
-      // DSH 错误 → 返回空结果（降级）
-      return { rows: [] };
+
+    if (fullText.trim() !== "") {
+      const parsed = parseDshOutput(fullText);
+      if (parsed !== null) return parsed;
     }
+
+    if (attempt === 0) {
+      console.warn(
+        `[ingest] 模型未返回可解析结果（收到 ${fullText.length} 字，开头 ${JSON.stringify(fullText.slice(0, 120))}），重试一次`,
+      );
+      continue;
+    }
+    return {
+      rows: [],
+      issue: fullText.trim() === ""
+        ? "模型没有返回内容（可能临时不可用，请重试）"
+        : "模型返回的内容不是可解析的 JSON（可能被截断，请重试）",
+    };
   }
-
-  return parseDshOutput(fullText);
+  // 循环最多两轮，这里只是类型收口
+  return { rows: [], issue: "模型没有返回可解析结果（请重试）" };
 }
 
 /**
  * 从 DSH 输出文本中提取 JSON。
  * 优先找 Function Calling 参数（JSON 对象），其次找 ```json 代码块，最后尝试整体 parse。
  */
-function parseDshOutput(text: string): DshOutput {
+function parseDshOutput(text: string): DshOutput | null {
   const trimmed = text.trim();
 
   // 1. 尝试直接 parse 整体
@@ -531,8 +566,8 @@ function parseDshOutput(text: string): DshOutput {
     }
   }
 
-  // 解析失败 → 返回空（标记为待人工）
-  return { rows: [] };
+  // 解析失败 → null，由调用方决定「重试」还是如实报错；不要伪装成合法的空结果
+  return null;
 }
 
 /** 类型守卫：是否为合法的 DshOutput（只检查顶层结构，行级校验在 validateRows） */

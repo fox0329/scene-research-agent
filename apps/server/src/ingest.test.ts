@@ -767,6 +767,7 @@ describe("createIngestCommand", () => {
       });
 
       expect(result.rowsInserted).toBe(0);
+      expect(result.modelIssue).toContain("不是可解析的 JSON");
       // 评估仍应返回（空数据的评估）
       expect(result.qualityAssessment).toBeDefined();
       expect(result.completenessReport).toBeDefined();
@@ -790,6 +791,7 @@ describe("createIngestCommand", () => {
       });
 
       expect(result.rowsInserted).toBe(0);
+      expect(result.modelIssue).toContain("模型调用失败");
     });
 
     it("DSH 返回不含 rows 字段的 JSON 时，应降级为空", async () => {
@@ -941,7 +943,7 @@ describe("consumeDshPrompt", () => {
     expect(result.rows).toHaveLength(6);
   });
 
-  it("流中出现 error 事件应返回空 rows", async () => {
+  it("流中出现 error 事件应返回空 rows，并给出可读原因", async () => {
     const client: DshClient = {
       createSession: vi.fn(async () => ({ sessionId: "s4" })),
       prompt: vi.fn(async function* (): AsyncGenerator<FollowEvent> {
@@ -953,5 +955,29 @@ describe("consumeDshPrompt", () => {
 
     const result = await consumeDshPrompt(client, { sessionId: "s4" }, "test");
     expect(result.rows).toHaveLength(0);
+    expect(result.issue).toContain("timeout");
+  });
+
+  it("模型第一次返回空、第二次返回有效 JSON：自动重试一次并成功", async () => {
+    const output = makeDshOutput();
+    let calls = 0;
+    const client: DshClient = {
+      createSession: vi.fn(async () => ({ sessionId: "s5" })),
+      prompt: vi.fn(async function* (): AsyncGenerator<FollowEvent> {
+        calls += 1;
+        if (calls === 1) {
+          yield { type: "done" };
+          return;
+        }
+        yield { type: "text", text: JSON.stringify(output) };
+        yield { type: "done" };
+      }),
+      cancel: vi.fn(async () => {}),
+    };
+
+    const result = await consumeDshPrompt(client, { sessionId: "s5" }, "test");
+    expect(calls).toBe(2);
+    expect(result.issue).toBeUndefined();
+    expect(result.rows).toHaveLength(6);
   });
 });

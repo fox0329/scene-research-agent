@@ -69,6 +69,11 @@ export async function parseDocument(filePath: string): Promise<ParseResult> {
 
   const ext = extname(filePath).toLowerCase();
 
+  if (ext === ".doc") {
+    // 旧版 Word（OLE 二进制）mammoth 读不了；提示可执行的动作，别让用户以为是文件坏了
+    throw new Error("不支持旧版 Word .doc：请在 Word 中另存为 .docx 后重新上传");
+  }
+
   if (!SUPPORTED_EXTENSIONS.has(ext)) {
     throw new Error(
       `不支持的文件格式 "${ext}"。支持的格式：${[...SUPPORTED_EXTENSIONS].join(", ")}`,
@@ -188,21 +193,40 @@ function ocrScannedPdf(filePath: string): string {
 async function parseDocx(buffer: Buffer): Promise<ParseResult> {
   const mammoth = await import("mammoth");
 
-  // 提取纯文本
-  const textResult = await mammoth.extractRawText({ buffer });
+  try {
+    // 提取纯文本
+    const textResult = await mammoth.extractRawText({ buffer });
 
-  // 提取 HTML（保留表格结构）
-  const htmlResult = await mammoth.convertToHtml({ buffer });
+    // 提取 HTML（保留表格结构）
+    const htmlResult = await mammoth.convertToHtml({ buffer });
 
-  const tables = extractTablesFromHtml(htmlResult.value);
+    const tables = extractTablesFromHtml(htmlResult.value);
+    const hasText = textResult.value.trim() !== "";
+    const hasTableText = tables.some(
+      (t) => t.headers.some((h) => h.trim() !== "") || t.rows.some((r) => r.some((c) => c.trim() !== "")),
+    );
 
-  return {
-    text: textResult.value,
-    tables,
-    metadata: {},
-    // docx 无稳定分页：整篇作第 1 页（引用 `文件.docx:1` 与现状一致）
-    pages: [{ page: 1, text: textResult.value }],
-  };
+    // 图片型/纯文本框 Word 常被误当成"上传失败"：这里直接说清是文件里没有可读文字
+    if (!hasText && !hasTableText) {
+      throw new Error(
+        "Word 文档没有可读取的文字：可能是扫描图片、纯截图或文字放在文本框中。请提供可选文本的 .docx/.pdf",
+      );
+    }
+
+    return {
+      text: textResult.value,
+      tables,
+      metadata: {},
+      // docx 无稳定分页：整篇作第 1 页（引用 `文件.docx:1` 与现状一致）
+      pages: [{ page: 1, text: textResult.value }],
+    };
+  } catch (err) {
+    if (err instanceof Error && err.message.startsWith("Word 文档没有可读取的文字")) throw err;
+    const detail = err instanceof Error ? err.message : String(err);
+    throw new Error(
+      `Word 文档解析失败（可能已加密、文件损坏，或只是把 .doc 改了扩展名）：${detail.slice(0, 200)}`,
+    );
+  }
 }
 
 /**

@@ -93,6 +93,7 @@ export const MaterialUpload: React.FC<{
           const file = files[i]!;
           let fileRows = 0;
           let fileFailed = false;
+          let fileNote = "";
           setProgress((prev) => [...prev, `（${i + 1}/${files.length}）${file.name}`].slice(-8));
           try {
             for await (const ev of ingestStream(file, lineId)) {
@@ -113,6 +114,9 @@ export const MaterialUpload: React.FC<{
                 flaggedRows.push(...((ev.flaggedRows as IngestFlaggedRow[] | undefined) ?? []));
                 conflicts.push(...((ev.conflicts as IngestConflict[] | undefined) ?? []));
                 skippedRows.push(...((ev.skipped_rows as IngestSkippedRow[] | undefined) ?? []));
+                if (rows === 0) {
+                  fileNote = String(ev.model_issue ?? "").trim();
+                }
               } else if (ev.type === "error") {
                 failed++;
                 fileFailed = true;
@@ -131,7 +135,12 @@ export const MaterialUpload: React.FC<{
               ].slice(-8),
             );
           }
-          const result: FileIngestResult = { name: file.name, rows: fileRows, failed: fileFailed };
+          const result: FileIngestResult = {
+            name: file.name,
+            rows: fileRows,
+            failed: fileFailed,
+            ...(fileNote !== "" ? { note: fileNote } : {}),
+          };
           perFile.push(result);
           const line = fileResultLine(result);
           if (line !== null) setProgress((prev) => [...prev, line].slice(-8));

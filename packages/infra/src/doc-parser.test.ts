@@ -247,6 +247,18 @@ describe("parseDocument — 错误处理", () => {
     );
   });
 
+  it("旧版 .doc 应提示另存为 .docx，而不是笼统的格式错误", async () => {
+    await expect(parseDocument("/tmp/legacy-word.doc")).rejects.toThrow(
+      "另存为 .docx",
+    );
+  });
+
+  it("损坏/加密的 .docx 应给出可理解的解析失败原因", async () => {
+    const file = join(tmpdir(), `broken-${randomUUID()}.docx`);
+    writeFileSync(file, Buffer.from("not a real docx"));
+    await expect(parseDocument(file)).rejects.toThrow("Word 文档解析失败");
+  });
+
   it("不存在的文件应抛出错误", async () => {
     await expect(
       parseDocument("/nonexistent/path/file.pdf"),

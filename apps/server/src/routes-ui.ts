@@ -642,7 +642,7 @@ async function* runIngestJob(
     if (result.rowsInserted === 0) {
       const reasons = result.skippedRows
         .map((r) => `${r.table_code}:${r.reason}`)
-        .join("；") || "模型未产出可入库行";
+        .join("；") || result.modelIssue || "模型未产出可入库行";
       console.warn(`[ingest] ${filename} 解析完成但入库 0 行：${reasons}`);
     }
     yield {
@@ -658,6 +658,8 @@ async function* runIngestJob(
       evidenceSummary: result.evidenceSummary,
       flaggedRows: result.flaggedRows,
       conflicts: result.conflicts,
+      // 模型空返回/坏 JSON 与「材料确实没有可归入信息」分开报，前端据此说清原因
+      model_issue: result.modelIssue,
     };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
