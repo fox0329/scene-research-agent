@@ -2581,3 +2581,214 @@ td.ed {
   background: var(--cp-s);
   color: var(--ct);
 }
+
+/* ── 首次启动引导（变更表 #276） ───────────────────────────── */
+.onboard-mask {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--s5);
+  background: rgb(24 24 27 / 0.4);
+}
+.onboard {
+  width: min(940px, 100%);
+  max-height: calc(100vh - var(--s6));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: #fff;
+  border-radius: var(--r8);
+  box-shadow: var(--sh);
+}
+.onboard-hd {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--s4);
+  padding: var(--s5) var(--s5) var(--s4);
+  border-bottom: 1px solid var(--cb);
+}
+.onboard-kicker {
+  display: block;
+  font-size: var(--t2x);
+  font-weight: var(--fm2);
+  letter-spacing: 0.08em;
+  color: var(--ct3);
+  margin-bottom: var(--s1);
+}
+.onboard-hd h2 {
+  margin: 0 0 var(--s1);
+  font-family: var(--fh);
+  font-size: var(--tl);
+  font-weight: var(--fb);
+  color: var(--ct);
+}
+.onboard-hd p {
+  margin: 0;
+  font-size: var(--txs);
+  line-height: 1.6;
+  color: var(--ct2);
+}
+.onboard-x {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: var(--r4);
+  background: transparent;
+  color: var(--ct3);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+}
+.onboard-x:hover {
+  background: var(--cpg);
+  color: var(--ct);
+}
+.onboard-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1.02fr) minmax(0, 0.98fr);
+  gap: var(--s5);
+  padding: var(--s4) var(--s5);
+}
+.onboard-body h3 {
+  margin: 0 0 var(--s2);
+  font-size: var(--txs);
+  font-weight: var(--fm2);
+  color: var(--ct2);
+}
+.onboard-steps {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.onboard-step {
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr) auto;
+  align-items: start;
+  gap: var(--s3);
+  padding: var(--s3) 0;
+  border-bottom: 1px solid var(--cb);
+}
+.onboard-step:last-child {
+  border-bottom: none;
+}
+.onboard-num {
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--cb);
+  border-radius: 50%;
+  background: var(--cpg);
+  color: var(--ct2);
+  font-size: var(--txs);
+  font-weight: var(--fm2);
+}
+.onboard-step.done .onboard-num {
+  border-color: var(--cs);
+  background: var(--cs-s);
+  color: var(--cs);
+}
+.onboard-step-main h4 {
+  margin: 0 0 var(--s05);
+  font-size: var(--ts);
+  font-weight: var(--fm2);
+  color: var(--ct);
+}
+.onboard-step-main p {
+  margin: 0 0 var(--s1);
+  font-size: var(--txs);
+  line-height: 1.55;
+  color: var(--ct2);
+}
+.onboard-status {
+  display: inline-block;
+  font-size: var(--t2x);
+  color: var(--cw);
+}
+.onboard-status.ok {
+  color: var(--cs);
+}
+.onboard-act {
+  align-self: center;
+}
+.onboard-flow ol {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.onboard-flow li {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  gap: var(--s2);
+  padding: var(--s2) 0;
+  border-bottom: 1px dashed var(--cb);
+}
+.onboard-flow li:last-child {
+  border-bottom: none;
+}
+.onboard-flow-num {
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--r4);
+  background: var(--cp-s);
+  color: var(--cp);
+  font-size: var(--t2x);
+  font-weight: var(--fm2);
+}
+.onboard-flow b {
+  display: block;
+  font-size: var(--ts);
+  font-weight: var(--fm2);
+  color: var(--ct);
+}
+.onboard-flow p {
+  margin: var(--s05) 0 0;
+  font-size: var(--t2x);
+  line-height: 1.55;
+  color: var(--ct3);
+}
+.onboard-tip {
+  margin: var(--s3) 0 0;
+  padding: var(--s2) var(--s3);
+  border-radius: var(--r4);
+  background: var(--cp-s);
+  color: var(--ct2);
+  font-size: var(--txs);
+  line-height: 1.6;
+}
+.onboard-ft {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  padding: var(--s3) var(--s5);
+  border-top: 1px solid var(--cb);
+  background: var(--cpg);
+}
+.onboard-note {
+  margin-left: auto;
+  font-size: var(--t2x);
+  color: var(--ct3);
+}
+@media (max-width: 820px) {
+  .onboard-body {
+    grid-template-columns: 1fr;
+  }
+  .onboard-note {
+    display: none;
+  }
+}

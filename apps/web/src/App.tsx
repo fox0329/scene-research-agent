@@ -3,6 +3,7 @@ import { Sidebar } from "./components/Sidebar";
 import { StageRightPanel } from "./components/StageRightPanel";
 import { ScenarioDefinitionDialog } from "./components/ScenarioDefinitionDialog";
 import { NewScenarioDialog } from "./components/NewScenarioDialog";
+import { OnboardingGuide } from "./components/OnboardingGuide";
 import { RowDetailPanel, type RowDetail } from "./components/RowDetailPanel";
 import type { StageSnapshot } from "./components/stage-snapshot";
 import { ToastProvider, useToast } from "./components/Toast";
@@ -11,7 +12,13 @@ import { promptText } from "./components/prompt-text";
 import { ProjectView } from "./views/ProjectView";
 import { SettingsView } from "./views/SettingsView";
 import { useColumnLayout } from "./hooks/useColumnLayout";
-import { api, type ApiConversation, type ApiProductLine, type ApiProject } from "./api";
+import {
+  api,
+  type ApiConversation,
+  type ApiDefaultModelRef,
+  type ApiProductLine,
+  type ApiProject,
+} from "./api";
 import { projects, type Project } from "./mock/project-data";
 
 /** 主视图：project 项目工作台（默认）/ library 资料库 / settings 设置 */
@@ -19,6 +26,16 @@ type ViewName = "project" | "library" | "settings";
 
 /** 后端探测超时：超过即按演示模式渲染，避免首屏空等 */
 const PROBE_TIMEOUT_MS = 1500;
+
+/** 首次启动引导是否已看过（本地标记；删掉应用数据会重新出现） */
+const ONBOARD_KEY = "scene.onboarding.v1.done";
+function readOnboarded(): boolean {
+  try {
+    return localStorage.getItem(ONBOARD_KEY) === "1";
+  } catch {
+    return true;
+  }
+}
 
 function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   return Promise.race([
@@ -185,12 +202,39 @@ const AppShell: React.FC = () => {
    * 这里在进入工作台时就把话说在前面。切回项目页会重新检查（设置页配完即消失）。
    */
   const [modelReady, setModelReady] = useState<boolean | null>(null);
+  const [defaultModel, setDefaultModel] = useState<ApiDefaultModelRef | null>(null);
+
+  /**
+   * 首次启动引导：只在「从没看过 + 还没有任何场景」时自动弹出。
+   * 已有项目的用户不再被拦一次；跳过或点过任一入口后写本地标记。
+   */
+  const [onboardOpen, setOnboardOpen] = useState(false);
+  const [onboarded, setOnboarded] = useState(readOnboarded);
+  useEffect(() => {
+    if (!live || onboarded || shownProjects.length > 0) return;
+    setOnboardOpen(true);
+  }, [live, onboarded, shownProjects.length]);
+
+  const dismissOnboarding = useCallback(() => {
+    try {
+      localStorage.setItem(ONBOARD_KEY, "1");
+    } catch {
+      /* 隐私模式等写不进去：本次关掉即可，下次再提示也不影响使用 */
+    }
+    setOnboarded(true);
+    setOnboardOpen(false);
+  }, []);
+  const openOnboarding = useCallback(() => setOnboardOpen(true), []);
+
   useEffect(() => {
     let alive = true;
     void api
       .systemStatus()
       .then((s) => {
-        if (alive) setModelReady(s.model_configured);
+        if (alive) {
+          setModelReady(s.model_configured);
+          setDefaultModel(s.default_model);
+        }
       })
       .catch(() => {
         if (alive) setModelReady(null);
@@ -225,6 +269,20 @@ const AppShell: React.FC = () => {
   const handleNewProjectForView = useCallback(() => {
     void handleNewProject();
   }, [handleNewProject]);
+
+  /** 引导里的三个入口：先收起引导（记为看过），再切到对应位置 */
+  const handleGuideSettings = useCallback(() => {
+    dismissOnboarding();
+    setView("settings");
+  }, [dismissOnboarding]);
+  const handleGuideLibrary = useCallback(() => {
+    dismissOnboarding();
+    setView("library");
+  }, [dismissOnboarding]);
+  const handleGuideNewScenario = useCallback(() => {
+    dismissOnboarding();
+    void handleNewProject();
+  }, [dismissOnboarding, handleNewProject]);
 
   /**
    * 提交名称 → 建项目 → 直接打开独立的「场景定义」对话页
@@ -348,6 +406,7 @@ const AppShell: React.FC = () => {
           (p, cid, cname, a) => void handleConversationAction(p, cid, cname, a)
         }
         libraryCount={lineCount}
+        onOpenGuide={openOnboarding}
       />
 
       {/* 中栏：内容区 + 常驻输入栏 */}
@@ -396,6 +455,18 @@ const AppShell: React.FC = () => {
           <RowDetailPanel detail={rowDetail} onClose={() => setRowDetail(null)} />
         ) : null}
       </aside>
+
+      <OnboardingGuide
+        open={onboardOpen}
+        modelReady={modelReady}
+        defaultModel={defaultModel}
+        lineCount={lineCount}
+        projectCount={shownProjects.length}
+        onClose={dismissOnboarding}
+        onGoSettings={handleGuideSettings}
+        onGoLibrary={handleGuideLibrary}
+        onNewScenario={handleGuideNewScenario}
+      />
 
       <NewScenarioDialog
         open={newScenarioOpen}

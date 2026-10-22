@@ -26,6 +26,8 @@ interface SidebarProps {
   ) => void;
   /** 真实计数（联真模式）；缺省显示演示占位 */
   libraryCount?: number | null;
+  /** 重新打开首次使用引导（用户可随时回看怎么用） */
+  onOpenGuide?: () => void;
 }
 
 /**
@@ -47,6 +49,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onProjectAction,
   onConversationAction,
   libraryCount,
+  onOpenGuide,
 }) => {
   return (
     <nav className="side">
@@ -91,6 +94,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
         />
       </div>
       <div className="side-foot">
+        {onOpenGuide ? (
+          <button className="nav-item" type="button" onClick={onOpenGuide}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="12" cy="12" r="10" />
+              <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
+              <line x1="12" y1="17" x2="12.01" y2="17" />
+            </svg>
+            <span>使用引导</span>
+          </button>
+        ) : null}
         <button
           className={`nav-item${activeView === "settings" ? " active" : ""}`}
           onClick={() => onViewChange("settings")}
