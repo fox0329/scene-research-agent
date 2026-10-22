@@ -5,7 +5,8 @@ import { AutoGrowTextarea } from "./AutoGrowTextarea";
 export interface ColumnDef<T> {
   key: keyof T & string;
   label: string;
-  editable?: boolean;
+  /** 可编辑：true/false 为整列；函数按行判定（新增行草稿与已落库行可不同） */
+  editable?: boolean | ((row: T) => boolean);
   /**
    * 多行编辑（内容可能很长）：单元格用 textarea 就地编辑——
    * **内容换行显示、行高随内容长**（用户定调 2026-09-26）
@@ -551,8 +552,10 @@ export function SceneTable<T extends Record<string, unknown>>({
 
                 /* 是否可编辑只看列定义与行（与旧行为一致）；
                    多行编辑在**测量阶段**先渲染纯文本，否则 textarea 会把自然宽量歪 */
+                const editable =
+                  typeof col.editable === "function" ? col.editable(row) : col.editable;
                 const canEdit =
-                  Boolean(col.editable) &&
+                  Boolean(editable) &&
                   !(col.multiline && (isMeasure || measuring)) &&
                   (rowEditable ? rowEditable(row) : true);
 

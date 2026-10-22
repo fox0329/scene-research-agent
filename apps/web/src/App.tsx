@@ -29,12 +29,33 @@ const PROBE_TIMEOUT_MS = 1500;
 
 /** 首次启动引导是否已看过（本地标记；删掉应用数据会重新出现） */
 const ONBOARD_KEY = "scene.onboarding.v1.done";
+
+/**
+ * 首次启动引导是否已看过。
+ *
+ * 桌面壳每次启动会**随机换本地端口**，而 localStorage 的 origin 含端口——只存
+ * localStorage 的话，每次打开都是"新站点"，引导就次次弹（用户 2026-10-22 反馈）。
+ * 因此同时写 cookie（按域名、不按端口区分）作为跨启动标记；cookie 不可用时退回
+ * localStorage。看过一次后，只有清掉应用数据才会重新出现。
+ */
 function readOnboarded(): boolean {
   try {
-    return localStorage.getItem(ONBOARD_KEY) === "1";
+    if (localStorage.getItem(ONBOARD_KEY) === "1") return true;
   } catch {
-    return true;
+    /* 隐私模式等读不到 localStorage：继续看 cookie */
   }
+  return document.cookie
+    .split(";")
+    .some((part) => part.trim() === `${ONBOARD_KEY}=1`);
+}
+
+function writeOnboarded(): void {
+  try {
+    localStorage.setItem(ONBOARD_KEY, "1");
+  } catch {
+    /* 写不进去不影响 cookie */
+  }
+  document.cookie = `${ONBOARD_KEY}=1; path=/; max-age=31536000; SameSite=Lax`;
 }
 
 function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
@@ -205,22 +226,24 @@ const AppShell: React.FC = () => {
   const [defaultModel, setDefaultModel] = useState<ApiDefaultModelRef | null>(null);
 
   /**
-   * 首次启动引导：只在「从没看过 + 还没有任何场景」时自动弹出。
-   * 已有项目的用户不再被拦一次；跳过或点过任一入口后写本地标记。
+   * 首次启动引导：只在「从没看过 + 还没有任何场景/产品资料」时自动弹出。
+   * 看过一次后 cookie + localStorage 双写，跨桌面壳随机端口也不会重复弹。
    */
   const [onboardOpen, setOnboardOpen] = useState(false);
   const [onboarded, setOnboarded] = useState(readOnboarded);
   useEffect(() => {
+    // 已有场景或已有产品资料的用户不是"第一次打开"，不再拿引导拦一次
     if (!live || onboarded || shownProjects.length > 0) return;
+    // 产品线数还没取回来时先不判，避免老用户升级后被闪一下
+    if (lineCount === null || lineCount > 0) return;
+    // 引导只弹一次：自动打开时就记下，用户直接关掉应用也不会下次再弹
+    writeOnboarded();
+    setOnboarded(true);
     setOnboardOpen(true);
-  }, [live, onboarded, shownProjects.length]);
+  }, [live, onboarded, shownProjects.length, lineCount]);
 
   const dismissOnboarding = useCallback(() => {
-    try {
-      localStorage.setItem(ONBOARD_KEY, "1");
-    } catch {
-      /* 隐私模式等写不进去：本次关掉即可，下次再提示也不影响使用 */
-    }
+    writeOnboarded();
     setOnboarded(true);
     setOnboardOpen(false);
   }, []);

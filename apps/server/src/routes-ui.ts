@@ -185,7 +185,8 @@ const LIBRARY_TABLES: Record<
   M3: {
     repo: (db) => db.capabilityRepo as unknown as AnyRepo,
     require: ["name"],
-    defaults: { domain: "未分类", description: "", maturity: "在研" },
+    // dependency 是历史 NOT NULL 列，表里已不显示；新增行必须给空串，否则 500
+    defaults: { domain: "未分类", description: "", maturity: "在研", dependency: "" },
   },
   M4: {
     repo: (db) => db.boundaryRepo as unknown as AnyRepo,

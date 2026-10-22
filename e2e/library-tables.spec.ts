@@ -42,6 +42,8 @@ async function addRow(
 
 /** 打开资料库并切到指定产品线（必须等产品线列表到位，否则 body 停在"还没有产品线"空态） */
 async function openLibrary(page: import("@playwright/test").Page, lineName: string) {
+  // 首次启动引导会盖住整页；资料库用例不测引导，直接标记已看过
+  await page.addInitScript(() => localStorage.setItem("scene.onboarding.v1.done", "1"));
   await page.goto(LIVE);
   await expect(page.locator(".shell")).toBeVisible();
   await page.getByRole("button", { name: "产品资料库" }).click();
@@ -112,8 +114,50 @@ test("可选材料：五类共用一个面板（类别选择器切换），不�
   await picker.selectOption("O2");
   await expect(page.locator(".pnl-h h2", { hasText: "案例" })).toHaveCount(1);
   await expect(page.locator(".pnl-h h2", { hasText: "认证" })).toHaveCount(0);
-  // 这条线没有案例数据 → 面板体只有一张表的空态（而不是 5 张表叠着）
-  await expect(page.locator(".ws .empty-state-title")).toHaveText(["本表暂无资料"]);
+  // 这条线没有案例数据：不再只显示一句空态，而是表头 + 一行可直接填写的空行
+  await expect(page.locator(".ws .empty-state-title")).toHaveCount(0);
+  await expect(page.locator(".ws table thead th").last()).toHaveText("操作");
+  await expect(page.locator(".ws table tbody tr")).toHaveCount(1);
+  // 点「新增行」在表尾多一行，不弹 JSON 输入框
+  await page.getByRole("button", { name: "新增行" }).click();
+  await expect(page.locator(".ws table tbody tr")).toHaveCount(2);
+});
+
+test("空的能力清单：直接显示表头与空行，填完必填列自动保存", async ({ page }) => {
+  const line = await newLine(page, "M3空表");
+  await openLibrary(page, line.name);
+  await page.getByRole("button", { name: "能力清单" }).click();
+
+  await expect(page.locator(".ws .empty-state-title")).toHaveCount(0);
+  await expect(page.locator(".ws table thead th")).toHaveText([
+    "领域",
+    "能力名称",
+    "描述",
+    "成熟度",
+    "操作",
+  ]);
+  await expect(page.locator(".ws table tbody tr")).toHaveCount(1);
+
+  const row = page.locator(".ws table tbody tr").first();
+  await row.locator("td").nth(1).click();
+  await page.keyboard.type("E2E-空表能力");
+  await page.keyboard.press("Tab");
+
+  // 只填名称还不落库；补上描述（M3 的最小必填集）才自动保存
+  await page.locator(".ws table tbody tr").first().locator("td").nth(2).click();
+  await page.keyboard.type("空表也能直接填写");
+  await page.keyboard.press("Tab");
+  await expect
+    .poll(async () => {
+      const res = await page.request.get(`${LIVE}/api/v1/library/tables/M3?product_line_id=${line.id}`);
+      return ((await res.json()) as unknown[]).length;
+    })
+    .toBe(1);
+
+  // 保存成功后草稿行消失；再点新增行仍是在表尾追加一行，不出现弹窗
+  await expect(page.locator(".ws table tbody tr")).toHaveCount(1);
+  await page.getByRole("button", { name: "新增行" }).click();
+  await expect(page.locator(".ws table tbody tr")).toHaveCount(2);
 });
 
 test("溯源不占列：主表只留业务列，来源信息在右栏行详情里", async ({ page }) => {
@@ -140,6 +184,7 @@ test("溯源不占列：主表只留业务列，来源信息在右栏行详情�
 test("新建产品线：走应用内对话框（Electron 不支持 window.prompt，故障清单 #70）", async ({ page }) => {
   /* 空库时选择器不渲染（"还没有产品线"空态），先 API 造一条让页面进入正常态 */
   await newLine(page, "前置线");
+  await page.addInitScript(() => localStorage.setItem("scene.onboarding.v1.done", "1"));
   await page.goto(LIVE);
   await expect(page.locator(".shell")).toBeVisible();
   await page.getByRole("button", { name: "产品资料库" }).click();
@@ -159,4 +204,30 @@ test("新建产品线：走应用内对话框（Electron 不支持 window.prompt
   /* 创建成功：右下弹 toast，产品线选择器里能选到新库 */
   await expect(page.locator(".toast-item").filter({ hasText: "已创建" }).last()).toBeVisible({ timeout: 10_000 });
   await expect(picker.locator(`option:has-text("${name}")`)).toHaveCount(1);
+});
+
+test("空资料库：每张表都给表头 + 一行可直接填写的空行", async ({ page }) => {
+  const line = await newLine(page, "全空表");
+  await openLibrary(page, line.name);
+
+  for (const tab of ["产品清单", "规格书", "能力清单", "边界与限制", "报价"]) {
+    await page.getByRole("button", { name: tab }).click();
+    await expect(page.locator(".ws table thead th").last()).toHaveText("操作");
+    await expect(page.locator(".ws table tbody tr")).toHaveCount(1);
+  }
+
+  await page.getByRole("button", { name: "可选材料" }).click();
+  const picker = page.locator('select[aria-label="选择可选材料类别"]');
+  const optionalHeads: Record<string, string[]> = {
+    O1: ["型号", "证书类型", "证书号", "有效期至", "发证机构", "覆盖型号", "证书文件", "操作"],
+    O2: ["案例名", "场景", "交付时间", "验收指标与结果", "客户（脱敏）", "部署规模", "可否回访", "证据等级", "操作"],
+    O4: ["产品", "资料名称", "版本", "覆盖内容", "操作"],
+    O5: ["能力/产品", "当前状态", "计划可用时间", "置信度", "负责人", "操作"],
+    O6: ["项", "覆盖范围", "现状", "合作方", "合作深度", "操作"],
+  };
+  for (const [code, heads] of Object.entries(optionalHeads)) {
+    await picker.selectOption(code);
+    await expect(page.locator(".ws table thead th")).toHaveText(heads);
+    await expect(page.locator(".ws table tbody tr")).toHaveCount(1);
+  }
 });
