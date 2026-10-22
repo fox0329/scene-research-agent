@@ -615,8 +615,18 @@ function validateRows(
     // 规格书/技术参数表常常只写参数、不写状态。M1 状态缺失时按「待确认」入库，
     // 与手工新增的默认值一致（library-service）；整行丢掉会连 M2 的关联产品一起丢。
     const row = fillIngestDefaults(raw);
-    // table_code 必须是合法的表编号
-    if (!row.table_code || !validTables.has(row.table_code)) continue;
+    // table_code 必须是合法的表编号。不能静默 continue：模型偶尔会把表号写成
+    // 「M1产品清单」「表1」或干脆漏掉，旧实现直接丢行，前端只看到「0 行、没有信息」，
+    // 排不出是模型结构错还是文件没内容。挡下也要留下原因。
+    const tableCode = String(row.table_code ?? "").trim();
+    if (!tableCode || !validTables.has(tableCode)) {
+      skipped.push({
+        table_code: tableCode || "?",
+        source: String(row.source ?? ""),
+        reason: `表编号无效（${tableCode || "空"}）：必须是 M1–M6 / O1–O6`,
+      });
+      continue;
+    }
     // 来源必须可定位（2026-10-21 收紧：页码/章节号必须是具体值）
     if (!isValidSource(row.source)) {
       skipped.push({

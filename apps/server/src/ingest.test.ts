@@ -831,8 +831,10 @@ describe("createIngestCommand", () => {
         productLineId: "pl1",
       });
 
-      // 只有第一行合法
+      // 只有第一行合法；缺表号的行要留下原因，不能静默消失
       expect(result.rowsInserted).toBe(1);
+      expect(result.skippedRows).toHaveLength(1);
+      expect(result.skippedRows[0]!.reason).toContain("表编号无效");
     });
   });
 
