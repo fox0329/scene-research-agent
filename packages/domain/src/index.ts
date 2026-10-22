@@ -18,7 +18,7 @@ export {
 } from "./evidence.js";
 export type { SourceCategory } from "./evidence.js";
 
-// 资料库入库标准（新导入与存量体检共用）
+// 资料库入库标准（新导入共用）
 export {
   ABSOLUTE_TERMS,
   findAbsoluteTerms,

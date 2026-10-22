@@ -2,8 +2,8 @@
  * 资料库入库标准（确定性口径，纯函数）
  *
  * 为什么单独一层：`apps/server/src/ingest.ts`（新导入）与
- * `apps/server/src/library-audit.ts`（存量体检）必须用**同一把尺子**——
- * 否则同一份自媒体材料，新导入是 C，存量体检还留着 B，用户看到两套标准。
+ * 新导入的判定必须用**同一把尺子**——
+ * 否则同一份自媒体材料在不同批次里会出现 B/C 两套标准。
  *
  * 本模块只做三件事：
  *   ① 权威级：来源串 + 文件名 → 类目 → T1–T4（委托 evidence.ts 的既有规则）；
@@ -53,7 +53,7 @@ export function findAbsoluteTerms(value: unknown): string[] {
   return ABSOLUTE_TERMS.filter((term) => text.includes(term));
 }
 
-/** 权威级判定结果（入库与存量体检共用） */
+/** 权威级判定结果（入库共用） */
 export interface LibrarySourceClass {
   /** 权威级 T1–T4 */
   authority: Authority;

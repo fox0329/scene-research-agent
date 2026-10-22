@@ -10,7 +10,6 @@ import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { createDb, createDshClient } from "@scene/infra";
 import { createApp } from "./app.js";
-import { auditLibrary } from "./library-audit.js";
 
 const PORT = Number(process.env["APP_PORT"] ?? 46172);
 const HOST = process.env["APP_HOST"] ?? "0.0.0.0";
@@ -38,19 +37,6 @@ async function main() {
       `存量价格记录 → 报价迁移：已归位 ${migrated} 条、跳过 ${skipped} 条` +
         (skipped > 0 ? "（跳过项因型号不在产品清单/缺金额而保留在历史记录）" : ""),
     );
-  }
-
-  /* 存量资料按新标准体检：**只打只读预览日志，不改数据**（改数据必须用户点「按新标准体检」） */
-  try {
-    const preview = auditLibrary(db);
-    app.log.info(
-      `存量资料体检（只读）：扫描 ${preview.scanned} 行、C 级 ${preview.evidence.C}、` +
-        `缺页码 ${preview.unlocatable.length} 行、冲突 ${preview.conflicts.length} 组` +
-        "（不改数据；POST /api/v1/library/reaudit 才会降级）",
-    );
-  } catch (err) {
-    // 体检是排障增强，不是启动前置条件；坏库不该让服务起不来
-    app.log.warn(`存量资料体检预览失败：${err instanceof Error ? err.message : String(err)}`);
   }
 
   try {
