@@ -84,7 +84,7 @@ function isDefinitionConversationClosed(messages: readonly ApiDefinitionMessage[
   const lastAssistant = [...messages].reverse().find((m) => m.role !== "用户");
   return Boolean(
     lastAssistant &&
-      /(够了|可以整理|点[「“]?整理成定义|整理成定义就行)/u.test(lastAssistant.content),
+      /(够了|可以整理|整理成定义就行)/u.test(lastAssistant.content),
   );
 }
 

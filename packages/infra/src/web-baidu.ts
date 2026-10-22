@@ -70,6 +70,40 @@ export function parseBaiduHtml(html: string): SearchHit[] {
   return out;
 }
 
+/**
+ * 移动版百度结果页解析
+ *
+ * 桌面版 `www.baidu.com/s` 在实测网络下会被重定向到 `wappass` 安全验证页，
+ * 但移动版 `m.baidu.com/s` 仍能返回正常结果。移动版没有 `<h3><a href>`，
+ * 真实 URL 藏在 `data-log` 的 `mu` 字段里；标题在 `<h3>`，摘要在 `summary-text`。
+ */
+export function parseBaiduMobileHtml(html: string): SearchHit[] {
+  const src = String(html ?? "");
+  if (src.trim() === "") return [];
+  const out: SearchHit[] = [];
+  const seen = new Set<string>();
+  // 结果块：`<div class="c-result result" ...>`；**保留块头**，真实 URL 在块头的 data-log.mu 里
+  const starts = [...src.matchAll(/<div[^>]+class="[^"]*c-result result[^"]*"[^>]*>/gu)].map(
+    (m) => m.index ?? 0,
+  );
+  const parts = starts.map((start, i) => src.slice(start, starts[i + 1] ?? src.length));
+  for (const block of parts) {
+    if (AD_RE.test(block.slice(0, 1200))) continue;
+    const rawUrl = /"mu":"(https?:[^"]+)"/u.exec(block)?.[1] ?? "";
+    const url = stripTags(rawUrl).replace(/\\\//gu, "/").replace(/&amp;/giu, "&");
+    if (!/^https?:\/\//iu.test(url)) continue;
+    if (seen.has(url)) continue;
+    seen.add(url);
+    const titleHtml = /<h3[^>]*>([\s\S]*?)<\/h3>/iu.exec(block)?.[1] ?? "";
+    const title = stripTags(titleHtml);
+    if (title === "") continue;
+    const summaryHtml =
+      /<(span|div)[^>]+class="[^"]*summary-text[^"]*"[^>]*>([\s\S]*?)<\/\1>/iu.exec(block)?.[2] ?? "";
+    out.push({ url, title, snippet: stripTags(summaryHtml) });
+  }
+  return out;
+}
+
 /** 判断返回页是不是被拦（验证码/安全验证） */
 export function looksBlockedByBaidu(html: string): boolean {
   const s = String(html ?? "");
@@ -90,23 +124,50 @@ export async function searchBaidu(
 ): Promise<{ ok: boolean; hits: SearchHit[]; error?: string }> {
   const q = String(query ?? "").trim();
   if (q === "") return { ok: false, hits: [], error: "查询串为空" };
-  const url = `https://www.baidu.com/s?wd=${encodeURIComponent(q)}&rn=${Math.min(Math.max(limit, 1), 20)}`;
-  try {
-    const res = await fetch(url, {
-      method: "GET",
-      redirect: "follow",
-      headers: { "user-agent": UA, accept: "text/html", "accept-language": "zh-CN,zh;q=0.9" },
-      signal: AbortSignal.timeout(budget.pageTimeoutMs),
-    });
-    if (!res.ok) return { ok: false, hits: [], error: `百度返回 HTTP ${res.status}` };
-    const html = await res.text();
-    if (looksBlockedByBaidu(html)) {
-      return { ok: false, hits: [], error: "百度返回安全验证页（可能需要降低频率或稍后再试）" };
+
+  const fetchHtml = async (url: string): Promise<{ html?: string; error?: string }> => {
+    try {
+      const res = await fetch(url, {
+        method: "GET",
+        redirect: "follow",
+        headers: { "user-agent": UA, accept: "text/html", "accept-language": "zh-CN,zh;q=0.9" },
+        signal: AbortSignal.timeout(budget.pageTimeoutMs),
+      });
+      if (!res.ok) return { error: `百度返回 HTTP ${res.status}` };
+      return { html: await res.text() };
+    } catch (e) {
+      return { error: `百度检索异常：${e instanceof Error ? e.message : String(e)}` };
     }
-    const hits = parseBaiduHtml(html).slice(0, limit);
-    if (hits.length === 0) return { ok: false, hits: [], error: "百度结果页里解析不出结果（可能改版）" };
-    return { ok: true, hits };
-  } catch (e) {
-    return { ok: false, hits: [], error: `百度检索异常：${e instanceof Error ? e.message : String(e)}` };
+  };
+
+  const desktopUrl = `https://www.baidu.com/s?wd=${encodeURIComponent(q)}&rn=${Math.min(Math.max(limit, 1), 20)}`;
+  const desktop = await fetchHtml(desktopUrl);
+  let desktopError = desktop.error ?? "";
+  if (desktop.html) {
+    if (looksBlockedByBaidu(desktop.html)) {
+      desktopError = "百度桌面版返回安全验证页";
+    } else {
+      const hits = parseBaiduHtml(desktop.html).slice(0, limit);
+      if (hits.length > 0) return { ok: true, hits };
+      desktopError = "百度桌面版结果页里解析不出结果";
+    }
   }
+
+  /*
+   * 桌面版被拦时不要直接放弃：实测同一网络下 m.baidu.com 仍是正常结果页。
+   * 移动版给的是真实落地 URL（不是 /link?url= 跳转），抓正文反而更稳。
+   */
+  const mobileUrl = `https://m.baidu.com/s?word=${encodeURIComponent(q)}`;
+  const mobile = await fetchHtml(mobileUrl);
+  if (!mobile.html) {
+    return { ok: false, hits: [], error: `${desktopError || "百度检索失败"}；移动版：${mobile.error ?? "无响应"}` };
+  }
+  if (looksBlockedByBaidu(mobile.html)) {
+    return { ok: false, hits: [], error: `${desktopError || "百度检索失败"}；移动版也返回安全验证页` };
+  }
+  const hits = parseBaiduMobileHtml(mobile.html).slice(0, limit);
+  if (hits.length === 0) {
+    return { ok: false, hits: [], error: `${desktopError || "百度检索失败"}；移动版也解析不出结果` };
+  }
+  return { ok: true, hits };
 }

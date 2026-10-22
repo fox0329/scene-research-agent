@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import { parseBaiduHtml, looksBlockedByBaidu } from "./web-baidu.js";
+import { describe, it, expect, vi, afterEach } from "vitest";
+import { parseBaiduHtml, parseBaiduMobileHtml, looksBlockedByBaidu, searchBaidu } from "./web-baidu.js";
 
 const FIXTURE = `
 <div class="result c-container xpath-log new-pmd" id="1">
@@ -31,5 +31,54 @@ describe("parseBaiduHtml", () => {
   it("安全验证页识别为被拦", () => {
     expect(looksBlockedByBaidu("<html>百度安全验证</html>")).toBe(true);
     expect(looksBlockedByBaidu(FIXTURE)).toBe(false);
+  });
+});
+
+
+const MOBILE_FIXTURE = `
+<div  class="c-result result" data-log='{"mu":"https://www.mot.gov.cn/a.html"}'>
+  <div class="c-result-content"><h3 class="cosc-title"><span class="cosc-title-slot"><span><!--s-text-->官方《城市轨道交通供电系统运营技术规范》解读</span></span></h3>
+  <span class="summary-text_15QGa">适用于新建地铁、轻轨的供电系统，包含能源管理系统要求。</span></div>
+</div>
+<div  class="c-result result" data-log='{"mu":""}'>
+  <h3>无落地链接的图片卡片</h3>
+</div>
+<div  class="c-result result" data-log='{"mu":"https://example.com/ad"}'>
+  <h3>广告：某认证咨询</h3>
+</div>
+`;
+
+describe("parseBaiduMobileHtml", () => {
+  it("解析移动版结果：data-log.mu 真实 URL、h3 标题、summary-text 摘要", () => {
+    const hits = parseBaiduMobileHtml(MOBILE_FIXTURE);
+    expect(hits).toHaveLength(1);
+    expect(hits[0]).toEqual({
+      url: "https://www.mot.gov.cn/a.html",
+      title: "官方《城市轨道交通供电系统运营技术规范》解读",
+      snippet: "适用于新建地铁、轻轨的供电系统，包含能源管理系统要求。",
+    });
+  });
+
+  it("空页返回空数组", () => {
+    expect(parseBaiduMobileHtml("")).toEqual([]);
+  });
+});
+
+describe("searchBaidu — 桌面版被安全验证拦住", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("自动改走移动版，并返回真实落地链接", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response("<html>百度安全验证</html>", { status: 200 }))
+      .mockResolvedValueOnce(new Response(MOBILE_FIXTURE, { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const r = await searchBaidu("地铁能源管控", { pageTimeoutMs: 1000 } as never, 5);
+    expect(r.ok).toBe(true);
+    expect(r.hits[0]?.url).toBe("https://www.mot.gov.cn/a.html");
+    expect(String(fetchMock.mock.calls[1]?.[0])).toContain("m.baidu.com");
   });
 });

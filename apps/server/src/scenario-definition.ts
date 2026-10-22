@@ -433,7 +433,7 @@ function isClosedConversation(
   const lastAssistant = [...messages].reverse().find((m) => m.role !== "用户");
   if (
     lastAssistant &&
-    /(够了|可以整理|点[「“]?整理成定义|整理成定义就行)/u.test(lastAssistant.content)
+    /(够了|可以整理|整理成定义就行)/u.test(lastAssistant.content)
   ) {
     return true;
   }
