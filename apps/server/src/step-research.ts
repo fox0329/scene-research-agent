@@ -235,6 +235,68 @@ export function buildStepQueries(
   return out;
 }
 
+/**
+ * 从场景定义里抽 2–3 个“领域限定词”，供检索 query 使用
+ *
+ * 为什么不能只用场景名：`管网阀室` 这种短名在搜索引擎里歧义很大，容易召回
+ * “供热管网/管道井门槛”；定义表1-1 已经把行业、对象说清楚（长输/城际管道、
+ * 天然气、线路截断阀室），把这些词拼进 query 比事后过滤噪声更有效。
+ */
+const DEFINITION_HINT_LABELS = ["场景边界", "生产对象", "核心生产系统", "买方类型"];
+const DOMAIN_NOUN_RE =
+  /[\u4e00-\u9fa5A-Za-z0-9]{2,12}?(?:管道|管线|阀室|站场|站|井|系统|设备|介质|工程|公司|集团)/gu;
+
+/** 从一段定义文字里抽领域名词，去重、去场景名本身、最多 3 个 */
+export function keywordsFromDefinition(contents: readonly string[], scenarioName = ""): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  const name = String(scenarioName ?? "").trim();
+  if (name !== "") seen.add(name);
+  for (const content of contents) {
+    /*
+     * 先按顿号/逗号/分号/斜杠/加号，以及「的/及/与/和/或」切开，再抽名词短语。
+     * 不切会把「地铁车站用能监测通常覆盖站厅、站台…」当成一个 14 字关键词，
+     * 检索时反而把真正的领域词（地铁车站）挤掉。
+     */
+    const segments = String(content ?? "")
+      .split(/[、，,；;。\/|+]/u)
+      .flatMap((s) => s.split(/(?:的|及|与|和|或)/u))
+      .map((s) => s.trim())
+      .filter((s) => s !== "");
+    for (const segment of segments) {
+      // 每段只取第一个名词短语：段内后半截常是“用能监测通常覆盖站”这类动词描述
+      const k = (segment.match(DOMAIN_NOUN_RE)?.[0] ?? "").trim();
+      if (k.length < 2 || k.length > 14) continue;
+      if (seen.has(k)) continue;
+      if (/^(未知|未提供|其他|无|暂无)$/u.test(k)) continue;
+      // 「车站」只是「地铁车站」的子串：保留长的，避免关键词退化成泛词
+      if ([...seen].some((old) => old.length > k.length && old.includes(k))) continue;
+      seen.add(k);
+      out.push(k);
+      if (out.length >= 3) return out;
+    }
+  }
+  return out;
+}
+
+/** 读场景定义表1-1，抽检索限定词；没有定义行时返回空数组 */
+export function deriveScenarioKeywords(db: DbInstance, scenario: Scenario): string[] {
+  try {
+    const rows = db.stageDataRepo
+      .listByScenarioStage(scenario.id, 1 as never)
+      .filter((r) => r.table_code === "表1-1");
+    const contents: string[] = [];
+    for (const label of DEFINITION_HINT_LABELS) {
+      const row = rows.find((r) => String(r.row.item ?? "").trim() === label);
+      const content = String(row?.row.content ?? "").trim();
+      if (content !== "") contents.push(content);
+    }
+    return keywordsFromDefinition(contents, scenario.name);
+  } catch {
+    return [];
+  }
+}
+
 /** 当前默认模型供应商（拿不到就返回 undefined——引擎自动选会退回免注册通道） */
 function currentModelProvider(): { baseUrl: string; apiKey: string } | undefined {
   try {
@@ -258,8 +320,10 @@ function engineSearchFn(
   engine: ResolvedEngine,
   cfg: WebSearchConfig,
   counters: { searches: number; fetches: number; lastHit: Map<string, number> },
+  accept?: (query: string, hit: ResearchHit) => boolean,
 ): SearchFn {
-  return (query, limit) => searchByEngine(engine, cfg, query, counters, DEFAULT_BUDGET, limit);
+  return (query, limit) =>
+    searchByEngine(engine, cfg, query, counters, DEFAULT_BUDGET, limit, accept);
 }
 
 /** 把引擎包成 `FetchFn`（单页 8 秒、全局最多 12 页；预算与检索共享） */
@@ -369,12 +433,24 @@ function errorText(err: unknown): string {
 const AD_TITLE_RE = /(开通.{0,4}会员|登录|注册|下载\s*APP|广告|商机信息|立即咨询)/iu;
 
 /** 标题清洗：去标签、压空白；标题是 HTML 残渣或广告语时退回 URL */
+function normalizeCjkSpaces(input: string): string {
+  let text = String(input ?? "");
+  let prev = "";
+  while (prev !== text) {
+    prev = text;
+    text = text.replace(/([\u4e00-\u9fa5])\s+(?=[\u4e00-\u9fa5])/gu, "$1");
+  }
+  return text;
+}
+
 function cleanTitle(raw: string, url: string): string {
-  const text = raw
-    .replace(/<[^>]*>/gu, " ")
-    .replace(/&[a-z]+;/giu, " ")
-    .replace(/\s+/gu, " ")
-    .trim();
+  const text = normalizeCjkSpaces(
+    raw
+      .replace(/<[^>]*>/gu, " ")
+      .replace(/&[a-z]+;/giu, " ")
+      .replace(/\s+/gu, " ")
+      .trim(),
+  );
   if (text === "" || /^[<\s]/u.test(text) || AD_TITLE_RE.test(text)) return url;
   return clip(text, 200);
 }
@@ -406,13 +482,108 @@ function specificBigrams(text: string): Set<string> {
   return out;
 }
 
-/** 标题/摘要与本条 query 是否有实质重合（≥1 个具体二字组） */
-function isRelevant(query: string, title: string, snippet: string): boolean {
-  const wanted = specificBigrams(query);
-  if (wanted.size === 0) return true; // query 全是通用词：没有判据就不拦
-  const hay = `${title} ${snippet}`;
-  for (const bg of wanted) if (hay.includes(bg)) return true;
+/** 标题/摘要与本条 query 是否有实质重合 */
+export function isHitRelevant(
+  query: string,
+  title: string,
+  snippet: string,
+  scenarioName = "",
+  contextKeywords: readonly string[] = [],
+): boolean {
+  const hay = normalizeCjkSpaces(`${title} ${snippet}`).toLowerCase();
+  if (hay.trim() === "") return false;
+  const sceneName = normalizeCjkSpaces(scenarioName).trim().toLowerCase();
+  if (sceneName !== "" && hay.includes(sceneName)) return true;
+
+  /*
+   * 只看「任意一个二字组」太宽：搜「管网阀室 城际管道 标准」时，
+   * 「城镇供热管网设计标准」只共享「管网」也会被当成相关。
+   * 场景名是硬约束：至少命中 2 个场景二字组，或 1 个场景三字组；
+   * 只命中 1 个场景二字组时，必须有定义里的领域词（管道/阀室/天然气…）佐证。
+   */
+  const sceneTokens = specificTokens(scenarioName || query);
+  const sceneBigrams = bigramsOf(sceneTokens);
+  const sceneTrigrams = trigramsOf(sceneTokens);
+  if ([...sceneTrigrams].some((t) => hay.includes(t))) return true;
+  const coreHits = [...sceneBigrams].filter((t) => hay.includes(t)).length;
+  if (coreHits >= 2) return true;
+
+  /*
+   * 标题是用户最先看到的“这是不是本场景”判据。只在摘要里出现场景词、
+   * 标题却是“大型钢企 PE 燃气管…”这类广告的，不能因为摘要提到阀室就收。
+   * 场景名的末二字通常是中心词（管网阀室→阀室、智慧厨房→厨房），
+   * 标题命中它，或标题本身命中 2 个场景二字组，才继续看摘要。
+   */
+  const titleHay = normalizeCjkSpaces(title).toLowerCase();
+  const sceneChars = Array.from(sceneName.replace(/\s+/gu, ""));
+  const strongToken = sceneChars.slice(-2).join("");
+  const titleCoreHits = [...sceneBigrams].filter((t) => titleHay.includes(t)).length;
+  if (
+    strongToken.length === 2 &&
+    !titleHay.includes(strongToken) &&
+    ![...sceneTrigrams].some((t) => titleHay.includes(t)) &&
+    titleCoreHits < 2
+  ) {
+    return false;
+  }
+
+  const context = new Set<string>();
+  for (const kw of contextKeywords) {
+    const clean = String(kw ?? "").trim();
+    if (clean !== "") {
+      context.add(clean);
+      for (const t of bigramsOf(specificTokens(clean))) context.add(t);
+    }
+  }
+  if (coreHits >= 1 && [...context].some((t) => hay.includes(t))) return true;
+
+  // 场景名本身没有可判定的二字组（如单字场景名）：退回 query 的具体二字组
+  if (sceneBigrams.size === 0) {
+    return [...specificBigrams(query)].some((bg) => hay.includes(bg));
+  }
   return false;
+}
+
+/** 具体词（去通用词、去空白），用于场景/领域词 */
+function specificTokens(text: string): string[] {
+  let cleaned = String(text ?? "");
+  for (const g of GENERIC_TERMS) cleaned = cleaned.split(g).join(" ");
+  return cleaned
+    .split(/\s+/u)
+    .map((t) => t.trim())
+    .filter((t) => Array.from(t).length >= 2);
+}
+
+function bigramsOf(tokens: readonly string[]): Set<string> {
+  const out = new Set<string>();
+  for (const token of tokens) {
+    const chars = Array.from(token);
+    for (let i = 0; i + 1 < chars.length; i += 1) out.add(`${chars[i]}${chars[i + 1]}`);
+  }
+  return out;
+}
+
+function trigramsOf(tokens: readonly string[]): Set<string> {
+  const out = new Set<string>();
+  for (const token of tokens) {
+    const chars = Array.from(token);
+    for (let i = 0; i + 2 < chars.length; i += 1) out.add(`${chars[i]}${chars[i + 1]}${chars[i + 2]}`);
+  }
+  return out;
+}
+
+/** 图片/视频/聚合搜索页不是调研来源，别浪费抓取预算 */
+function isNoiseSearchUrl(url: string): boolean {
+  return (
+    /^https?:\/\/(?:image|img|tv|video|v|map|ranks)\./iu.test(url) ||
+    /^https?:\/\/wenku\.so\.com\/s\?/iu.test(url) ||
+    /\/(?:image|video)\//iu.test(url)
+  );
+}
+
+/** 标题本身就是“图片/视频/文库搜索页”的结果也不要 */
+function isNoiseSearchTitle(title: string): boolean {
+  return /(360图片|百度图片|360视频|短视频大全|图片大全|文库搜索页)/iu.test(title);
 }
 
 /** 取 host（去 www，统一小写） */
@@ -587,7 +758,11 @@ export async function runStepResearch(
   step: number,
   deps: StepResearchDeps = {},
 ): Promise<StepResearchResult> {
-  const queries = buildStepQueries(scenario.name, step, deps.keywords);
+  const keywords =
+    deps.keywords !== undefined && deps.keywords.length > 0
+      ? deps.keywords
+      : deriveScenarioKeywords(db, scenario);
+  const queries = buildStepQueries(scenario.name, step, keywords);
   const errors: string[] = [];
   const authorityCounts: StepResearchResult["authorityCounts"] = { T1: 0, T2: 0, T3: 0, T4: 0 };
   const emptyResult = (engine: string): StepResearchResult => ({
@@ -630,7 +805,17 @@ export async function runStepResearch(
         : cfg;
 
     const counters = { searches: 0, fetches: 0, lastHit: new Map<string, number>() };
-    const search = deps.search ?? engineSearchFn(engine, searchCfg, counters);
+    const acceptHit = (query: string, hit: ResearchHit): boolean =>
+      !isNoiseSearchUrl(String(hit.url ?? "")) &&
+      !isNoiseSearchTitle(String(hit.title ?? "")) &&
+      isHitRelevant(
+        query,
+        String(hit.title ?? ""),
+        String(hit.snippet ?? ""),
+        scenario.name,
+        keywords,
+      );
+    const search = deps.search ?? engineSearchFn(engine, searchCfg, counters, acceptHit);
     const fetch = deps.fetch ?? engineFetchFn(engine, searchCfg, counters);
     /** 整次调研的预算起点（检索 + 抓取共享 60 秒） */
     const startedAt = Date.now();
@@ -638,8 +823,32 @@ export async function runStepResearch(
     const seen = new Set<string>();
     const candidates: Candidate[] = [];
     let skipped = 0;
+    /**
+     * 某条 query 被所有引擎拒绝/全部不相关时，换一条更短、更靠近定义领域词的 query
+     * 再试一次；不能因为「门槛与合规」这一条被反爬拦住，就让整步没有来源。
+     * 只允许少量补搜，避免把 60 秒预算耗在同类 query 上。
+     */
+    const MAX_QUERY_TOTAL = 8;
+    const attempted = new Set(queries);
+    const queryQueue = [...queries];
+    const addRetryQueries = (query: string): void => {
+      if (queryQueue.length >= MAX_QUERY_TOTAL) return;
+      const tails = [
+        keywords[0] ? `${keywords[0]} 规范` : "技术规范",
+        keywords[1] ? `${keywords[1]} 标准` : "安全 规范",
+      ];
+      for (const tail of tails) {
+        if (queryQueue.length >= MAX_QUERY_TOTAL) break;
+        const next = withName(scenario.name, tail);
+        if (next === query || attempted.has(next)) continue;
+        attempted.add(next);
+        queryQueue.push(next);
+      }
+    };
 
-    for (const query of queries) {
+    for (let qi = 0; qi < queryQueue.length; qi += 1) {
+      const query = queryQueue[qi]!;
+      let acceptedForQuery = 0;
       try {
         const left = RESEARCH_BUDGET_MS - (Date.now() - startedAt);
         if (left <= 0) {
@@ -649,6 +858,7 @@ export async function runStepResearch(
         const res = await searchWithDeadline(search, query, RESULT_LIMIT, Math.min(DEFAULT_BUDGET.pageTimeoutMs, left));
         if (!res.ok) {
           errors.push(res.error ? `「${query}」${res.error}` : `「${query}」检索失败`);
+          addRetryQueries(query);
           continue;
         }
         for (const hit of res.hits) {
@@ -656,7 +866,7 @@ export async function runStepResearch(
           if (!/^https?:\/\//iu.test(url)) continue;
           // 检索服务对多词 query 会退化成首词结果（实测 Bing 全是「城镇」「污水」百科），
           // 不相关的一条都不落库——宁可右栏空着，也不能把噪声当调研来源给用户
-          if (!isRelevant(query, String(hit.title ?? ""), String(hit.snippet ?? ""))) {
+          if (!acceptHit(query, hit)) {
             skipped += 1;
             continue;
           }
@@ -670,7 +880,9 @@ export async function runStepResearch(
             snippet: clip(String(hit.snippet ?? ""), SNIPPET_MAX),
             query,
           });
+          acceptedForQuery += 1;
         }
+        if (acceptedForQuery === 0) addRetryQueries(query);
       } catch (err: unknown) {
         errors.push(`「${query}」检索异常：${errorText(err)}`);
       }
@@ -789,7 +1001,7 @@ export async function runStepResearch(
     }
     return {
       saved,
-      queries: queries.length,
+      queries: queryQueue.length,
       skipped,
       engine: engineKind,
       errors,

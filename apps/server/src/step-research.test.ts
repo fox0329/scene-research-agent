@@ -14,6 +14,8 @@ import { FLOW_LAST_STEP } from "@scene/contract";
 import { createDb, type DbInstance } from "@scene/infra";
 import {
   buildStepQueries,
+  keywordsFromDefinition,
+  isHitRelevant,
   runStepResearch,
   type FetchFn,
   type FetchOutcome,
@@ -71,6 +73,71 @@ describe("step-research — query 构造", () => {
     expect(joined).not.toContain("第四个会被丢掉");
     expect(queries.some((q) => q.includes("等保三级 标准") || q.includes("等保三级 资质"))).toBe(true);
     for (const q of queries) expect(Array.from(q).length).toBeLessThanOrEqual(40);
+  });
+
+  it("从定义里抽领域词：不把整句当关键词，也不只靠场景名", () => {
+    const keywords = keywordsFromDefinition(
+      [
+        "长输/城际管道的线路截断阀室、分输阀室、清管站阀室、阴极保护间、放空立管及附属井室",
+        "长输管网/管道公司、省级天然气管网公司",
+      ],
+      "管网阀室",
+    );
+    expect(keywords).toEqual(["城际管道", "线路截断阀室", "分输阀室"]);
+    const queries = buildStepQueries("管网阀室", 2, keywords);
+    expect(queries[0]).toContain("城际管道");
+    expect(queries.some((q) => q.includes("线路截断阀室"))).toBe(true);
+  });
+
+  it("相关性要求场景核心：只有「管网」的供热标准不能当阀室来源", () => {
+    const keywords = ["城际管道", "线路截断阀室", "分输阀室"];
+    expect(
+      isHitRelevant(
+        "管网阀室 城际管道 标准",
+        "城镇供热管网设计标准",
+        "供热管网设计压力与温度要求",
+        "管网阀室",
+        keywords,
+      ),
+    ).toBe(false);
+    expect(
+      isHitRelevant(
+        "管网阀室 城际管道 标准",
+        "天然气管网管线进入场站阀室安全管理规定",
+        "站场、阀室防静电工作服要求",
+        "管网阀室",
+        keywords,
+      ),
+    ).toBe(true);
+    expect(
+      isHitRelevant(
+        "管网阀室 线路截断阀室 资质",
+        "长输管道阀室设计规范",
+        "线路截断阀室、分输阀室的设计要求",
+        "管网阀室",
+        keywords,
+      ),
+    ).toBe(true);
+    // 标题是广告、只有摘要提到阀室：不能收
+    expect(
+      isHitRelevant(
+        "管网阀室 门槛与合规",
+        "大型钢企 PE 燃气管带压封堵合规公司推荐",
+        "涉及阀室、管道抢修与合规要求",
+        "管网阀室",
+        keywords,
+      ),
+    ).toBe(false);
+    // 标题只有泛泛的“燃气管网/管道”，没有阀室：不能收
+    expect(
+      isHitRelevant(
+        "管网阀室 分层架构",
+        "城市生命线安全专项应用系统 - 燃气管网安全监测系统",
+        "城镇燃气管道阀井在线监测",
+        "管网阀室",
+        keywords,
+      ),
+    ).toBe(false);
   });
 
   it("超长场景名按 40 字截断，不产生重复 query", () => {
@@ -176,6 +243,32 @@ describe("runStepResearch", () => {
     expect(rows[0]!.error).toContain("网络被拦");
     expect(rows[0]!.query).toContain("检索失败");
     expect(rows[0]!.url).toBe("");
+  });
+
+  it("某条 query 被反爬拦住时，会用领域词补搜，不让整步断粮", async () => {
+    const calls: string[] = [];
+    const search: SearchFn = async (q) => {
+      calls.push(q);
+      if (calls.length === 1) return { ok: false, hits: [], error: "安全验证页" };
+      return {
+        ok: true,
+        hits: [
+          {
+            url: `https://www.gov.cn/zhengce/water-${calls.length}`,
+            title: "智慧水务技术规范",
+            snippet: "智慧水务供水管网标准要求。",
+          },
+        ],
+      };
+    };
+    const result = await runStepResearch(db, scenario, 2, {
+      cfg: { engine: "bing-html" },
+      search,
+      fetch: page(),
+    });
+    expect(result.saved).toBeGreaterThan(0);
+    expect(calls.length).toBeGreaterThan(4);
+    expect(calls.some((q) => /技术规范|安全 规范/u.test(q))).toBe(true);
   });
 
   it("引擎不可用（canSearch = false）：saved=0、errors 说明原因，不假装有结果", async () => {

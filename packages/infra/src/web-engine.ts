@@ -22,8 +22,7 @@
 
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { resolve, dirname } from "node:path";
-import { searchBing } from "./web-bing.js";
-import { searchBaidu } from "./web-baidu.js";
+import { searchWithFallback } from "./web-fallback.js";
 import {
   fetchPage,
   searchWeb,
@@ -245,6 +244,7 @@ export async function searchByEngine(
   counters: { searches: number; fetches: number; lastHit: Map<string, number> },
   budget: WebBudget = DEFAULT_BUDGET,
   limit = 8,
+  accept?: (query: string, hit: SearchHit) => boolean,
 ): Promise<{ ok: boolean; hits: Array<SearchHit & { publishedAt?: string }>; error?: string }> {
   if (!engine.canSearch) return { ok: false, hits: [], error: engine.detail };
   if (engine.kind === "baidu-html") {
@@ -252,14 +252,14 @@ export async function searchByEngine(
       return { ok: false, hits: [], error: `已达检索次数上限（${budget.maxSearches}）` };
     }
     counters.searches += 1;
-    return searchBaidu(query, budget, limit);
+    return searchWithFallback("baidu", query, budget, limit, {}, (hit) => accept?.(query, hit) ?? true);
   }
   if (engine.kind === "bing-html") {
     if (counters.searches >= budget.maxSearches) {
       return { ok: false, hits: [], error: `已达检索次数上限（${budget.maxSearches}）` };
     }
     counters.searches += 1;
-    return searchBing(query, budget, limit);
+    return searchWithFallback("bing", query, budget, limit, {}, (hit) => accept?.(query, hit) ?? true);
   }
   if (engine.kind === "tavily") {
     if (!cfg.tavilyKey) return { ok: false, hits: [], error: "Tavily Key 未配置" };
