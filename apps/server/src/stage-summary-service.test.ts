@@ -250,6 +250,50 @@ describe("stage-summary-service — 右栏要点（brief）", () => {
       "https://example.com/standard",
     ]);
   });
+
+  it("交付物步没有自己的表：右栏汇总前面所有判据与调研来源（不报「本步没有判据」）", () => {
+    const { db, scenarioId } = seed();
+    db.stageDataRepo.insert({
+      scenario_id: scenarioId,
+      stage: 1,
+      table_code: "表1-3",
+      row: {
+        barrier_type: "行业准入",
+        barrier_name: "等保三级",
+        criteria: "GB/T 22239",
+        cert_gap: "等保三级认证",
+        source: "https://example.com/standard",
+      },
+      is_stale: false,
+      source: "https://example.com/standard",
+    });
+    db.researchRepo.upsert({
+      id: "rs_delivery_1",
+      scenario_id: scenarioId,
+      step: 2,
+      query: "智慧水务 进入门槛",
+      title: "城镇供水行业标准（2025 年版）",
+      url: "https://example.com/research-delivery",
+      url_key: "k-delivery",
+      snippet: "",
+      engine: "bing-html",
+      fetched_at: "2026-10-21T00:00:00.000Z",
+      status: "有效",
+      error: "",
+    });
+
+    const sc = db.scenarioRepo.getById(scenarioId)!;
+    const r = getStageBrief(db, sc, 5, 6);
+
+    expect(r.brief.advice).toContain(
+      "门槛「等保三级」：拿不出 等保三级认证——不建议贸然进入",
+    );
+    expect(r.brief.advice.join("")).not.toContain("本步还没有可下结论的判据");
+    expect(r.brief.sources.map((s) => s.url)).toEqual([
+      "https://example.com/research-delivery",
+      "https://example.com/standard",
+    ]);
+  });
 });
 
 describe("stage-summary-service — 右栏来源排序与标签（2026-10-21）", () => {

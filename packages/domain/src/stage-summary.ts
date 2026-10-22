@@ -68,6 +68,13 @@ export interface StageSummaryInput {
    * - `stage`（交付物装配）：阶段级归纳，含诉求基准与上下游衔接
    */
   scope?: "step" | "stage";
+  /**
+   * 一条提醒都推导不出时的兜底文案（可缺）
+   *
+   * 交付物步没有自己的表，它汇总的是前面所有产出；此时再说「本步还没有判据」
+   * 会让用户以为整条链都没产出，必须换成「前面还没有…」的口径。
+   */
+  fallbackAdvice?: string;
   scenarioName: string;
   /** 产品线名（可缺） */
   productLineName?: string;
@@ -372,6 +379,21 @@ function cannotDoAdvice(row: InfoRow): string | null {
   return `「${gap}」做不了${action === "" ? "" : `，${action}`}——建议分包或放弃这一段`;
 }
 
+/**
+ * 把数据里带出来的内部表号换成人类说法
+ *
+ * 界面从 v2.10 起不再显示表号，但模型写进「对手/缺口」字段的括号里仍可能带
+ * “（表3-2 所列厂商）”。右栏提醒直接引用了这些字段，必须在这里洗掉，
+ * 否则又会出现用户看不懂的「表3-2」。
+ */
+function humanizeTableRefs(text: string): string {
+  return text
+    .replace(/（表\d+-\d+\s*所列/gu, "（前述")
+    .replace(/表\d+-\d+\s*所列/gu, "前述")
+    .replace(/（表\d+-\d+）/gu, "")
+    .replace(/表\d+-\d+/gu, "相关表");
+}
+
 /** 截断时优先断在句读上（"…环保产…"这种半截词用户读不下去） */
 function clipAdvice(text: string): string {
   if (text.length <= BRIEF_ADVICE_MAX) return text;
@@ -430,7 +452,7 @@ export function buildStageBrief(input: StageSummaryInput): StageBrief {
   const advice: string[] = [];
   const seenAdvice = new Set<string>();
   for (const raw of candidates) {
-    const text = clipAdvice(raw.replace(/\s+/gu, " ").trim());
+    const text = clipAdvice(humanizeTableRefs(raw.replace(/\s+/gu, " ").trim()));
     if (text === "" || seenAdvice.has(text)) continue;
     seenAdvice.add(text);
     advice.push(text);
@@ -439,7 +461,7 @@ export function buildStageBrief(input: StageSummaryInput): StageBrief {
 
   return {
     sources: briefSourcesOf(input, tables),
-    advice: advice.length > 0 ? advice : [BRIEF_FALLBACK],
+    advice: advice.length > 0 ? advice : [input.fallbackAdvice ?? BRIEF_FALLBACK],
   };
 }
 

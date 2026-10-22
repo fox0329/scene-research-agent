@@ -309,6 +309,26 @@ describe("stage-summary — 要点视图（brief）", () => {
     expect(brief.advice).toContain("对 海康 处弱势：价格高约 20%——不建议正面竞争");
   });
 
+  it("数据里带出的内部表号在提醒里换成人类说法（界面不再显示表号）", () => {
+    const brief = briefOf(
+      3,
+      {
+        "表4-4": [
+          row({
+            sub_scene: "会议室",
+            opponent: "台电（表3-2 所列无纸化会议厂商）",
+            win_loss: "弱",
+            weakness: "无会议文件流转",
+          }),
+        ],
+      },
+      4,
+      step4Tables,
+    );
+    expect(brief.advice.join("")).not.toContain("表3-2");
+    expect(brief.advice.join("")).toContain("（前述无纸化会议厂商）");
+  });
+
   it("表4-3 match 不能做 → 建议分包或放弃这一段", () => {
     const brief = briefOf(
       3,

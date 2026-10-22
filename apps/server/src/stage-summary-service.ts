@@ -11,7 +11,9 @@
 
 import {
   ANCHOR_TABLE_CODE,
+  FLOW_TOTAL,
   STAGE_DEFS,
+  TABLES,
   flowStep,
   tablesOfStage,
   type InfoStageId,
@@ -73,9 +75,20 @@ export function readStageRowsByTable(
   return out;
 }
 
-/** 步骤级总结的覆盖范围（表集 + 范围标记） */
+/**
+ * 步骤级总结的覆盖范围（表集 + 范围标记）
+ *
+ * 交付物步（`tables: []`）不是"没有表"，而是**汇总前面所有产出**：
+ * 右栏若仍按空表集推导，就会出现"前面都做完了，这里却说没有可下结论的判据"。
+ */
 function stepScope(step: number): { tableCodes: readonly string[] } {
-  return { tableCodes: flowStep(step).tables };
+  const own = flowStep(step).tables;
+  return { tableCodes: own.length > 0 ? own : TABLES.map((t) => t.code) };
+}
+
+/** 交付物步：没有自己的表，右栏口径是"全链汇总" */
+function isDeliveryStep(step: number | undefined): boolean {
+  return step !== undefined && flowStep(step).tables.length === 0;
 }
 
 /**
@@ -221,11 +234,16 @@ function mergeResearchSources(
   scenarioId: string,
   step: number | undefined,
   sources: readonly StageBriefSource[],
+  allSteps = false,
 ): StageBriefSource[] {
   if (step === undefined || typeof db.researchRepo?.listByStep !== "function") return [...sources];
   let rows: ResearchSource[] = [];
   try {
-    rows = db.researchRepo.listByStep(scenarioId, step);
+    // 交付物步汇总全链：1..最后一步的调研来源都要带上，不能只看第 6 步
+    const steps = allSteps
+      ? Array.from({ length: Math.max(0, FLOW_TOTAL - 1) }, (_, i) => i + 1)
+      : [step];
+    rows = steps.flatMap((n) => db.researchRepo.listByStep(scenarioId, n));
   } catch {
     // 调研表不存在（极老库）等异常不能拖垮右栏
     return [...sources];
@@ -268,6 +286,7 @@ export function getStageBrief(
   const tableCodes = step === undefined ? undefined : stepScope(step).tableCodes;
   const rowsByTable = readStageRowsByTable(db, scenario.id, id, tableCodes);
   const completeness = stageCompletenessOf(db, scenario.id, stage, step);
+  const delivery = isDeliveryStep(step);
   const brief = buildStageBrief({
     stage: id,
     scenarioName: scenario.name,
@@ -276,11 +295,17 @@ export function getStageBrief(
     ...(tableCodes ? { tableCodes } : {}),
     ...(step === undefined ? {} : { step }),
     scope: step === undefined ? "stage" : "step",
+    ...(delivery
+      ? {
+          fallbackAdvice:
+            "前面还没有可下结论的判据：门槛、赢面与能力匹配表尚未产出，风险提醒随这些表出现",
+        }
+      : {}),
   });
   // 调研来源排最前（先调研、后分析；行内来源是分析结论自带的引用）
   const merged: StageBrief = {
     ...brief,
-    sources: mergeResearchSources(db, scenario.id, step, brief.sources),
+    sources: mergeResearchSources(db, scenario.id, step, brief.sources, delivery),
   };
   return { brief: merged, completeness, stage: id, scope: step === undefined ? "stage" : "step" };
 }
