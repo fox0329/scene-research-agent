@@ -93,6 +93,7 @@ export const DEFINITION_SYSTEM = `你是「场景通」的场景定义助手。�
   （曾因此被用户投诉"整个页面大量的无效信息"，此为硬约束）。
 - 只回 **1–2 句**：① 只写**变化的部分**——"那我调整一下：……"；② 最多 **1 个**问题。
 - **整轮 ≤ 120 字**。用户答得短（"都包括""工业水厂为主"）是正常的，**直接接受并收口**。
+- **说「够了」前先问完最后一个会改变表1-1的取舍**（如单站试点还是整线批量、新建还是改造）：没有问就再问 1 个，不要一边收口、一边等「整理成定义」完成后再冒出新问题。
 - 用户说清楚了就说"够了，点『整理成定义』就行"。
 
 ## 铁律
@@ -127,7 +128,9 @@ const CONSOLIDATE_TASK = `请把上面的对话**整理成表1-1 场景业务画
 5. 宁可概括、不要编造：**用户没给**的具体客户名、数字、标准号不要编；用户给了的必须原样保留。行业通例可以写，用"一般为……"表述。
 6. \`item\` 必须严格取自上面的固定项清单（不得自创、不得改字）。
 7. 如果对话里能看出"用户想搞清楚什么"，把它放进 \`intent\`（没有就留空字符串）。
-8. \`open_questions\` 只放**仍然没问清、且只有用户能回答**的问题，最多 2 个。`;
+8. \`open_questions\` 只放**仍然没问清、且只有用户能回答的场景边界/范围取舍**（如单站试点还是整线批量），最多 2 个；
+   **不要问**现有系统/平台/厂商/技术选型/对接/接口/预算/工期（这些由后续调研负责）。
+   如果对话最后一轮已经说「够了」或已明确收口，\`open_questions\` **必须为空数组**，不许再冒新问题。`;
 
 const CONSOLIDATE_CONTRACT: Record<string, unknown> = {
   type: "object",
@@ -415,6 +418,42 @@ export interface ConsolidateOutcome {
 }
 
 /**
+ * 定义阶段只问会改变场景本体的取舍
+ *
+ * 「现有系统/平台/厂商/接口/对接」属于后续调研能查的事实，不该在定义收口后再考用户；
+ * 旧提示词只写了"只有用户能回答"，模型仍会把这些当成问题。
+ */
+const NON_DEFINITION_QUESTION_RE =
+  /(现有|在用|已有|既有|已建|平台|对接|接口|厂商|品牌|产品|型号|技术|协议|预算|工期|上线|报价|投资)/u;
+
+/** 对话最后一轮是否已经收口（助手说够了 / 用户说可以整理） */
+function isClosedConversation(
+  messages: readonly { role: string; content: string }[],
+): boolean {
+  const lastAssistant = [...messages].reverse().find((m) => m.role !== "用户");
+  if (
+    lastAssistant &&
+    /(够了|可以整理|点[「“]?整理成定义|整理成定义就行)/u.test(lastAssistant.content)
+  ) {
+    return true;
+  }
+  const lastUser = [...messages].reverse().find((m) => m.role === "用户");
+  return Boolean(
+    lastUser &&
+      /^(?:够了|可以了|没有了|就这样|开始整理)[。！!，,]*$/u.test(lastUser.content.trim()),
+  );
+}
+
+/** 过滤整理结果里的问题：收口后不再追问，且只留场景本体取舍 */
+function sanitizeOpenQuestions(raw: unknown, closed: boolean): string[] {
+  if (closed || !Array.isArray(raw)) return [];
+  return raw
+    .map((q) => String(q).trim())
+    .filter((q) => q !== "" && !NON_DEFINITION_QUESTION_RE.test(q))
+    .slice(0, 2);
+}
+
+/**
  * 「整理成定义」：把「场景定义」对话整理成表1-1
  *
  * - 读该会话全部消息作为输入
@@ -493,9 +532,7 @@ export async function consolidateDefinition(
       incoming = kept.map((r) => ({ ...r, content: compressCell(r.content) }));
       dropped = normalized.dropped;
       intent = String(parsed.intent ?? "").trim();
-      openQuestions = Array.isArray(parsed.open_questions)
-        ? parsed.open_questions.map(String).slice(0, 2)
-        : [];
+      openQuestions = sanitizeOpenQuestions(parsed.open_questions, isClosedConversation(messages));
       error = "";
     } else if (full.trim()) {
       error = "模型返回的内容没有解析出表1-1（多半是输出格式不符），再点一次或换个模型试试";

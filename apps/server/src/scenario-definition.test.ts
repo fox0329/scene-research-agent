@@ -231,6 +231,38 @@ describe("scenario-definition — 整理成定义", () => {
     expect(hasDefinition(db, scenarioId)).toBe(true);
   });
 
+  it("助手已经说「够了」时，整理结果不再冒出新的关键问题", async () => {
+    const { db, scenarioId } = setup();
+    const dsh = mockDsh(consolidation);
+    const convId = await ensureDefinitionConversation(db, dsh, db.scenarioRepo.getById(scenarioId)!);
+    db.messageRepo.insert({ conversation_id: convId, role: "用户", content: "范围只到车站站厅" });
+    db.messageRepo.insert({
+      conversation_id: convId,
+      role: "系统",
+      content: "够了，点「整理成定义」就行。",
+    });
+    const out = await consolidateDefinition(db, dsh, db.scenarioRepo.getById(scenarioId)!, convId);
+    expect(out.openQuestions).toEqual([]);
+  });
+
+  it("整理结果不把现有系统/平台/对接当成定义阶段的问题", async () => {
+    const { db, scenarioId } = setup();
+    const parsed = JSON.parse(consolidation) as Record<string, unknown>;
+    const dsh = mockDsh(
+      JSON.stringify({
+        ...parsed,
+        open_questions: [
+          "站厅改造是单站试点还是整线多站批量推进？",
+          "是否已有在用能源管理平台需要对接？",
+        ],
+      }),
+    );
+    const convId = await ensureDefinitionConversation(db, dsh, db.scenarioRepo.getById(scenarioId)!);
+    db.messageRepo.insert({ conversation_id: convId, role: "用户", content: "主要指的是地铁站厅" });
+    const out = await consolidateDefinition(db, dsh, db.scenarioRepo.getById(scenarioId)!, convId);
+    expect(out.openQuestions).toEqual(["站厅改造是单站试点还是整线多站批量推进？"]);
+  });
+
   it("保留用户已确认的行（用户的决定优先，整理不覆盖）", async () => {
     const { db, scenarioId } = setup();
     ensureAnchorRows(db, scenarioId, "智慧水务");

@@ -79,6 +79,15 @@ function errText(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
+/** 对话最后一轮是否已经收口（助手说够了 / 用户说可以整理） */
+function isDefinitionConversationClosed(messages: readonly ApiDefinitionMessage[]): boolean {
+  const lastAssistant = [...messages].reverse().find((m) => m.role !== "用户");
+  return Boolean(
+    lastAssistant &&
+      /(够了|可以整理|点[「“]?整理成定义|整理成定义就行)/u.test(lastAssistant.content),
+  );
+}
+
 export const ScenarioDefinitionDialog: React.FC<ScenarioDefinitionDialogProps> = ({
   open,
   projectId,
@@ -263,6 +272,10 @@ export const ScenarioDefinitionDialog: React.FC<ScenarioDefinitionDialogProps> =
 
   const busy = sending || consolidating;
   const hasDefinition = (result?.rows.length ?? 0) > 0;
+  /** 助手已经收口时，旧结果里的问题也不再展示（避免“说够了”之后又冒问题） */
+  const openQuestions = isDefinitionConversationClosed(messages)
+    ? []
+    : (result?.open_questions ?? []);
 
   const renderMessage = (m: ApiDefinitionMessage): React.ReactNode => {
     /* 自动开场白是系统替用户发的（落库仍是用户角色，模型上下文才接得上）：
@@ -350,14 +363,15 @@ export const ScenarioDefinitionDialog: React.FC<ScenarioDefinitionDialogProps> =
                     : ""}
                 </p>
               ) : null}
-              {(result?.open_questions?.length ?? 0) > 0 ? (
+              {openQuestions.length > 0 ? (
                 <p className="definition-open-warning" role="status">
-                  还有 {result?.open_questions?.length} 个关键问题没回答：现在关闭也能继续，但后续调研只能按行业通例展开，结论可能偏泛。建议先补一句再整理。
+                  还有 {openQuestions.length} 个可补充的问题，不影响已生成的定义，也不影响继续。
+                  回答后点「整理成定义」会更准；不回答也行，后续研究按行业通例补全。
                 </p>
               ) : null}
               <AlignmentTable
                 items={result?.alignment ?? []}
-                questions={result?.open_questions ?? []}
+                questions={openQuestions}
                 hint="这里只对「核心项 + 系统实际填了/推断的项」——标「推断」的是系统替你猜的，说得准就改，说不准就先留「待定」，后续研究补全；不影响往下走"
                 questionsTitle="还不知道、但后面研究能补上的"
               />
