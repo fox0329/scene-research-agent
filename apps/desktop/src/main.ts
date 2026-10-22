@@ -33,6 +33,7 @@ import {
 } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { join, resolve } from "node:path";
+import { keychainProtectionRequested, keychainStatus } from "./keychain";
 /* 这里刻意用 require 而不是 import：esbuild 打成 CJS 时会把 `import` 的 electron
    套上 __toESM 互操作包装，而 Electron 的模块对象是 getter 式暴露、没有可枚举自有属性，
    包装后 `app`/`BrowserWindow` 全成了 undefined，主进程一启动就崩（真实踩过）。
@@ -158,14 +159,14 @@ function resolveMasterKey(root: string): string | null {
      每次访问钥匙串都会弹系统授权框、**要用户输登录密码**，还会阻塞启动等在那里。
      用户明确反馈过「能不能不要老是输密码」（变更表 #183 / 故障清单 #62）。
      所以改成显式开启：真要"文件被拷走也解不开"的强度，就设 SCENE_KEYCHAIN_PROTECTION=1。 */
-  if (process.env.SCENE_KEYCHAIN_PROTECTION !== "1") {
+  if (!keychainProtectionRequested()) {
     return null;
   }
   /* 这一行故意留在调用之前：macOS 首次访问钥匙串会弹授权框并**阻塞**，
      boot.log 的最后一行就是"卡在哪"的唯一线索（真实排查时正是靠它定位的）。 */
   stage("server:请求系统钥匙串（首次会弹系统授权框，请点允许）");
   const storage = electron.safeStorage;
-  if (!storage?.isEncryptionAvailable?.()) {
+  if (!keychainStatus(storage)) {
     return null;
   }
   const file = join(root, "secrets", "master.key");
@@ -396,8 +397,8 @@ function registerIpc(): void {
     version: app.getVersion(),
     port: appPort,
     dataDir: paths?.root ?? "",
-    /** 密钥是否由系统钥匙串保护（排障时先看这一项） */
-    keychain: Boolean(electron.safeStorage?.isEncryptionAvailable?.()),
+    /** 密钥是否由系统钥匙串保护（排障时先看这一项；默认关闭时不探测 Keychain） */
+    keychain: keychainStatus(electron.safeStorage),
   }));
   /* 数据恢复：重启应用以应用 restore-on-boot.db（preload 暴露 relaunchApp） */
   ipcMain.handle("relaunch-app", () => {
