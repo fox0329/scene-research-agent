@@ -15,8 +15,12 @@ test.beforeEach(async ({ page }) => {
 
 /* ───────────────────── §4.2 表头对齐：三栏头部统一 48px ───────────────────── */
 
-test("栏头统一 48px 且底边线水平对齐（右栏页头已删，变更表 #149）", async ({ page }) => {
-  const heads = [page.locator(".side .side-hd"), page.locator(".main .pgh")];
+test("栏头统一 48px 且底边线水平对齐（三栏各有标题栏，变更表 #275）", async ({ page }) => {
+  const heads = [
+    page.locator(".side .side-hd"),
+    page.locator(".main .pgh"),
+    page.locator(".det .summary-hd"),
+  ];
   const boxes = [];
   for (const h of heads) {
     await expect(h).toBeVisible();
@@ -28,10 +32,10 @@ test("栏头统一 48px 且底边线水平对齐（右栏页头已删，变更�
   const bottoms = boxes.map((b) => Math.round(b.y + b.height));
   expect(Math.max(...bottoms) - Math.min(...bottoms)).toBeLessThanOrEqual(1);
 
-  // 变更表 #149：右栏「第 n/6 步 · 步骤名」整块删除（与流程轴节点、中栏表头重复）
-  // ——右栏不再有 48px 页头，直接从「阶段总结」标题开始（v2.10 也没有 Tab 条了）
-  await expect(page.locator(".det .det-h")).toHaveCount(0);
-  await expect(page.locator(".det .summary-head h4")).toHaveText("阶段总结");
+  // 变更表 #275：右栏恢复一条独立标题栏——不是旧版「第 n/6 步」页头，只写「阶段总结」，
+  // 与左栏品牌同字号（16px/700），下方 1px 底边线与另两栏对齐
+  await expect(page.locator(".det .det-h")).toHaveCount(1);
+  await expect(page.locator(".det .summary-hd h3")).toHaveText("阶段总结");
 });
 
 /* ───────────────────── §4.2 会话管理 ───────────────────── */
@@ -87,7 +91,7 @@ test("右栏只有「阶段总结」：调研信息来源 + 结论提醒，不�
   const det = page.locator(".det");
 
   // 标题 + 两个小节；来源为空时给空态文案，不装成可点链接
-  await expect(det.locator(".summary-head h4")).toHaveText("阶段总结");
+  await expect(det.locator(".summary-hd h3")).toHaveText("阶段总结");
   const subTitles = (await det.locator(".summary-sub").allInnerTexts()).map((t) => t.trim());
   expect(subTitles).toEqual(["调研信息来源", "结论提醒"]);
   const sources = det.locator(".summary-sources li a");
@@ -118,7 +122,7 @@ test("右栏不再有补充说明条目与表格：只剩来源链接与结论�
   await expect(det.locator("table")).toHaveCount(0);
 
   // ② 正文只剩两块：调研信息来源（可点链接列表）+ 结论提醒（文字列表）
-  await expect(det.locator(".summary-head h4")).toHaveText("阶段总结");
+  await expect(det.locator(".summary-hd h3")).toHaveText("阶段总结");
   await expect(det.locator(".summary-sub").nth(0)).toHaveText("调研信息来源");
   await expect(det.locator(".summary-sub").nth(1)).toHaveText("结论提醒");
 
@@ -467,12 +471,13 @@ test("第 1 步：中栏只有表1-1；步标题/引导语/状态行/完整度/�
   // 右栏（变更表 #149 / v2.10）：只剩「阶段总结」，正文是调研信息来源 + 结论提醒；
   // 右栏不再有 Tab 条，也不再有任何表格
   const det = page.locator(".det");
-  await expect(det.locator(".summary-head h4")).toHaveText("阶段总结");
+  await expect(det.locator(".summary-hd h3")).toHaveText("阶段总结");
   await expect(det.locator(".summary-sub").nth(0)).toHaveText("调研信息来源");
   await expect(det.locator(".summary-sub").nth(1)).toHaveText("结论提醒");
   await expect(det.locator("table")).toHaveCount(0);
   await expect(det.locator(".completeness-bar")).toHaveCount(0);
-  await expect(det.locator(".det-h")).toHaveCount(0);
+  // 变更表 #275：右栏标题栏保留（只写「阶段总结」，不再有旧版步骤页头）
+  await expect(det.locator(".det-h")).toHaveCount(1);
 
   // 独立弹窗（不是中栏、不是右下角抽屉）：入口是流程轴上的本步运行按钮（八步同形）
   const entry = page.locator(".flow-actions").getByRole("button", { name: /开始本步分析|重算本步/ });
@@ -811,7 +816,7 @@ test("表格列宽自动适配：生成即是最紧凑布局，未手动拖就�
 test("右栏不再有确认清单/缺口清单（智能体的待办不进用户界面）", async ({ page }) => {
   await gotoStep2(page);
   const det = page.locator(".det");
-  await expect(det.locator(".summary-head h4")).toHaveText("阶段总结");
+  await expect(det.locator(".summary-hd h3")).toHaveText("阶段总结");
 
   await expect(det.locator(".confirm-list")).toHaveCount(0);
   await expect(det.locator(".gap-list")).toHaveCount(0);

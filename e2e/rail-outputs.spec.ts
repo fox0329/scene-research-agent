@@ -224,7 +224,7 @@ test("交付物这一步：一份交付物与动作都在流程轴第二行（�
   await expect(chips.first()).toBeVisible();
 
   // v2.11：右栏只剩「阶段总结」的调研信息来源 + 结论提醒；全文（含装配原料统计）已从界面删除
-  await expect(page.locator(".det .summary-head h4")).toHaveText("阶段总结");
+  await expect(page.locator(".det .summary-hd h3")).toHaveText("阶段总结");
   await expect(page.locator(".det .summary-sub").first()).toBeVisible();
   await expect(page.locator(".det .md-body")).toHaveCount(0);
   await expect(page.locator(".det .fold-toggle")).toHaveCount(0);

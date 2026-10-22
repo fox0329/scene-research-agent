@@ -10,7 +10,9 @@
  *
  * v2.11（用户定调 2026-10-21）：「阶段总结全文删除，不需要」——全文不再进右栏，
  * 也不再提供下载入口；它仍由服务端为**交付物装配**生成（`collectStageSummaries`）。
- * 右栏保留「重新生成」：刷新要点，同时刷新交付物用的全文。
+ *
+ * v2.12（用户定调 2026-10-22）：右栏标题自成一条 48px 栏（与左栏「方案助手」同字号、
+ * 同底边线）；「重新生成」删除——阶段总结只是记录，没有需要重新生成的东西。
  *
  * 同时删除（补充说明 Tab 的连带物，全仓已无消费者）：
  *  - 补充说明条目与核实编辑（`supplements` / `onSupplementChange`）
@@ -208,7 +210,7 @@ export const StageRightPanel: React.FC<StageRightPanelProps> = ({ snapshot, live
     );
   }
 
-  const { brief, onRefreshSummary } = snapshot;
+  const { brief } = snapshot;
   const sources = brief?.sources ?? [];
   const advice = brief?.advice ?? [];
 
@@ -229,75 +231,66 @@ export const StageRightPanel: React.FC<StageRightPanelProps> = ({ snapshot, live
   };
 
   return (
-    <div className="det-body">
-      <section className="det-sec">
-        <div className="summary-head">
-          <h4>阶段总结</h4>
-          <div className="summary-actions">
-            <button
-              type="button"
-              className="btn-mini"
-              onClick={onRefreshSummary}
-              disabled={summaryLoading}
-            >
-              {summaryLoading ? "生成中…" : "重新生成"}
-            </button>
-          </div>
-        </div>
-
-        {/* ① 调研信息来源：只收能点开的 http(s) 地址（文件名:页码这类点不开，留在全文里） */}
-        <h5 className="summary-sub">调研信息来源</h5>
-        {sources.length > 0 ? (
-          <ul className="summary-sources">
-            {sources.map((s, i) => (
-              <li key={`${s.url || s.file}-${i}`}>
-                {s.url !== "" ? (
-                  <a href={s.url} target="_blank" rel="noreferrer" title={s.url}>
-                    {s.label}
-                  </a>
-                ) : (
-                  <span className="summary-source-file" title={s.file}>
-                    {s.label}
-                  </span>
-                )}
-              </li>
-            ))}
-          </ul>
-        ) : researching ? (
-          <p className="summary-empty" role="status">
-            正在补查本步联网调研（检索 + 验真，最多 60 秒）…
-          </p>
-        ) : (
-          <div className="summary-empty">
-            <p>
-              本步没有取得可打开的来源（这一步在调研功能上线前生成，或检索不可用），相关结论按「未知」处理。
+    <>
+      <div className="det-h summary-hd">
+        <h3>阶段总结</h3>
+      </div>
+      <div className="det-body">
+        <section className="det-sec">
+          {/* ① 调研信息来源：只收能点开的 http(s) 地址（文件名:页码这类点不开，留在全文里） */}
+          <h5 className="summary-sub">调研信息来源</h5>
+          {sources.length > 0 ? (
+            <ul className="summary-sources">
+              {sources.map((s, i) => (
+                <li key={`${s.url || s.file}-${i}`}>
+                  {s.url !== "" ? (
+                    <a href={s.url} target="_blank" rel="noreferrer" title={s.url}>
+                      {s.label}
+                    </a>
+                  ) : (
+                    <span className="summary-source-file" title={s.file}>
+                      {s.label}
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          ) : researching ? (
+            <p className="summary-empty" role="status">
+              正在补查本步联网调研（检索 + 验真，最多 60 秒）…
             </p>
-            {onResearch ? (
-              <button type="button" className="btn-mini" onClick={handleResearch}>
-                补跑本步调研
-              </button>
-            ) : null}
-          </div>
-        )}
-        {researchNote ? (
-          <p className="brief-hint" role="status">
-            {researchNote}
-          </p>
-        ) : null}
+          ) : (
+            <div className="summary-empty">
+              <p>
+                本步没有取得可打开的来源（这一步在调研功能上线前生成，或检索不可用），相关结论按「未知」处理。
+              </p>
+              {onResearch ? (
+                <button type="button" className="btn-mini" onClick={handleResearch}>
+                  补跑本步调研
+                </button>
+              ) : null}
+            </div>
+          )}
+          {researchNote ? (
+            <p className="brief-hint" role="status">
+              {researchNote}
+            </p>
+          ) : null}
 
-        {/* ② 结论提醒：领域层确定性规则推导，判不出时只有一句兜底 */}
-        <h5 className="summary-sub">结论提醒</h5>
-        {brief === null ? (
-          <p className="summary-empty">要点加载中…</p>
-        ) : (
-          <ul className="summary-advice">
-            {advice.map((a, i) => (
-              <li key={i}>{a}</li>
-            ))}
-          </ul>
-        )}
+          {/* ② 结论提醒：领域层确定性规则推导，判不出时只有一句兜底 */}
+          <h5 className="summary-sub">结论提醒</h5>
+          {brief === null ? (
+            <p className="summary-empty">要点加载中…</p>
+          ) : (
+            <ul className="summary-advice">
+              {advice.map((a, i) => (
+                <li key={i}>{a}</li>
+              ))}
+            </ul>
+          )}
 
-      </section>
-    </div>
+        </section>
+      </div>
+    </>
   );
 };

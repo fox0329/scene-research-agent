@@ -180,6 +180,13 @@ body {
   font-weight: var(--fb);
 }
 
+/* 右栏「阶段总结」标题栏：与左栏品牌「方案助手」同字号，自成一条栏（底边线由 .det-h 给） */
+.summary-hd h3 {
+  font-family: var(--fh);
+  font-size: var(--tb);
+  font-weight: var(--fb);
+}
+
 .det-body {
   flex: 1;
   overflow-y: auto;
@@ -1846,9 +1853,6 @@ td.ed {
 .btn-mini:hover:not(:disabled) { color: var(--cp); border-color: var(--cp); }
 .btn-mini:disabled { opacity: 0.5; cursor: default; }
 
-.summary-head { display: flex; align-items: center; justify-content: space-between; gap: var(--s2); }
-.summary-actions { display: flex; gap: var(--s1); flex: 0 0 auto; }
-.summary-download { text-decoration: none; }
 .summary-sub {
   margin: var(--s3) 0 var(--s1);
   font-size: var(--txs); font-weight: var(--fm2); color: var(--ct2);
