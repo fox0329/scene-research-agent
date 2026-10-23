@@ -2544,7 +2544,6 @@ td.ed {
   line-height: 1.6;
 }
 
-/* 产品立场（设置页）：只列立场，不做营销文案；用既有色阶与网格间距，不加边框 */
 .stance-list {
   margin: 0;
   padding-left: var(--s5);
