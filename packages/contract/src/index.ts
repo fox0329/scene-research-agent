@@ -470,6 +470,18 @@ export interface SessionHandle {
 }
 
 /** DSH 客户端接口（技术方案 §5.3，冻结后不可变） */
+/** 智能体消息（OpenAI 兼容）：assistant 带 tool_calls，tool 回结果 */
+export interface AgentMessage {
+  role: "system" | "user" | "assistant" | "tool";
+  content?: string | null;
+  tool_calls?: Array<{
+    id: string;
+    type: "function";
+    function: { name: string; arguments: string };
+  }>;
+  tool_call_id?: string;
+}
+
 export interface DshClient {
   createSession(opts: {
     title: string;
@@ -483,6 +495,8 @@ export interface DshClient {
       outputContract: Record<string, unknown>;
       /** #300：OpenAI function 定义；给工具时 tool_choice=auto，模型可边聊边调（tool_call 事件回传） */
       tools?: Array<Record<string, unknown>>;
+      /** #319 智能体运行时：带工具结果的多轮消息日志（给了就不再拼 system/user） */
+      messages?: AgentMessage[];
     },
   ): AsyncIterable<FollowEvent>;
   cancel(h: SessionHandle): Promise<void>;

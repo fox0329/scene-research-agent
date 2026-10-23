@@ -14,6 +14,42 @@ import type { DbInstance } from "@scene/infra";
 import { getReport, saveReportFile } from "./report-service.js";
 
 /** 优化结果（返回给调用方与测试） */
+/** 从 Markdown 里取某个二级章节的正文（含标题行）；找不到返回 null */
+export function sectionText(markdown: string, title: string): string | null {
+  const lines = markdown.split("\n");
+  const needle = title.replace(/^#+\s*/u, "").trim();
+  const start = lines.findIndex(
+    (line) => /^##\s+/u.test(line) && line.replace(/^##\s+/u, "").trim().includes(needle),
+  );
+  if (start < 0) return null;
+  let end = lines.length;
+  for (let i = start + 1; i < lines.length; i += 1) {
+    if (/^##\s+/u.test(lines[i]!)) {
+      end = i;
+      break;
+    }
+  }
+  return lines.slice(start, end).join("\n").trim();
+}
+
+/** 用改写后的章节替换原文中的同名章节（保留其余章节一字不动） */
+export function replaceSection(markdown: string, title: string, replacement: string): string {
+  const lines = markdown.split("\n");
+  const needle = title.replace(/^#+\s*/u, "").trim();
+  const start = lines.findIndex(
+    (line) => /^##\s+/u.test(line) && line.replace(/^##\s+/u, "").trim().includes(needle),
+  );
+  if (start < 0) return markdown;
+  let end = lines.length;
+  for (let i = start + 1; i < lines.length; i += 1) {
+    if (/^##\s+/u.test(lines[i]!)) {
+      end = i;
+      break;
+    }
+  }
+  return [...lines.slice(0, start), replacement.trim(), ...lines.slice(end)].join("\n");
+}
+
 export interface OptimizeResult {
   before: number;
   after: number;
@@ -53,6 +89,9 @@ const SYSTEM = `你是「场景通」的解决方案编辑。用户会给你一�
 2. 可以：简化冗长段落、合并重复内容、调整章节顺序、改表达口吻、压缩列表。
 3. 保留全部一级/二级标题结构（可以合并小节，但不能丢掉章节骨架）；
    如果只是改表达，尽量保持原有数字与引用原样。
+4. 指令是「简化/压缩/精简」时：目标章节压到原文的 **65%–80%**（删掉 20%–35% 的字）。
+   做法：先删铺垫/背景复述/同义反复，再合并重复论点与短句；不许保留原句只改连词或标点。
+5. 只输出要求的那一节（含 ## 标题），不要解释、不要输出其他章节。
 4. 直接输出改写后的完整 Markdown 正文，不要解释、不要加「以下是」这类前言，
    不要用代码围栏包住全文。`;
 
@@ -70,6 +109,11 @@ export const OPTIMIZE_SOLUTION_TOOL = {
           type: "string",
           description: "用户要的优化方向，如「整体压缩到一半」「第三章改得更口语」「把重复的案例合并」",
         },
+        section: {
+          type: "string",
+          description:
+            "用户点名的章节标题（可选），如「现状与问题」；点名章节时必须传，工具只校验并回报该章节",
+        },
       },
       required: ["instruction"],
     },
@@ -79,7 +123,11 @@ export const OPTIMIZE_SOLUTION_TOOL = {
 export function createSolutionOptimizer(deps: { db: DbInstance; dshClient: DshClient }) {
   const { db, dshClient } = deps;
 
-  async function optimize(scenarioId: string, instruction: string): Promise<OptimizeResult> {
+  async function optimize(
+    scenarioId: string,
+    instruction: string,
+    section?: string,
+  ): Promise<OptimizeResult> {
     const scenario = db.scenarioRepo.getById(scenarioId);
     if (!scenario) throw new Error(`场景 ${scenarioId} 不存在`);
     const view = getReport(db, scenario, "solution");
@@ -87,24 +135,75 @@ export function createSolutionOptimizer(deps: { db: DbInstance; dshClient: DshCl
       throw new Error("解决方案还没有生成正式版，请先在中栏点「生成报告」");
     }
     const before = view.markdown.trim();
+    const target = section?.trim() ? sectionText(before, section) : null;
+    if (section?.trim() && !target) {
+      throw new Error(`报告里没有「${section}」章节，请核对章节名`);
+    }
+    const heads = before
+      .split("\n")
+      .filter((line) => /^##\s+/u.test(line))
+      .map((line) => line.trim())
+      .join("\n");
     const session = await dshClient.createSession({ title: `优化解决方案 · ${scenario.name}` });
     let out = "";
-    for await (const event of dshClient.prompt(session, {
-      system: SYSTEM,
-      user: [
-        `【修改指令】\n${instruction.trim()}`,
-        `【上游事实清单（只能引用，不得新增）】\n${upstreamFacts(db, scenarioId) || "（无）"}`,
-        `【当前解决方案】\n${before}`,
-      ].join("\n\n"),
-      outputContract: {},
-    })) {
-      if (event.type === "text") out += String((event as { text?: unknown }).text ?? "");
-      if (event.type === "error") throw new Error(String(event["message"] ?? "模型调用失败"));
-    }
+    const userPrompt = target
+      ? [
+          `【修改指令】\n${instruction.trim()}`,
+          `【报告章节骨架（仅供衔接，不要改写其他章节）】\n${heads}`,
+          `【上游事实清单（只能引用，不得新增）】\n${upstreamFacts(db, scenarioId) || "（无）"}`,
+          `【本节原文】\n${target}`,
+          `【硬性字数】不超过 ${Math.round(target.length * 0.7)} 字（原文 ${target.length} 字）。` +
+            "超了就继续删：先删铺垫与背景复述，再删重复举例与解释性从句；数字和结论必须保留。",
+          "只输出改写后的这一节（含 ## 标题），不要输出其他章节。",
+        ].join("\n\n")
+      : [
+          `【修改指令】\n${instruction.trim()}`,
+          `【上游事实清单（只能引用，不得新增）】\n${upstreamFacts(db, scenarioId) || "（无）"}`,
+          `【当前解决方案】\n${before}`,
+        ].join("\n\n");
+    const run = async (prompt: string): Promise<string> => {
+      let text = "";
+      for await (const event of dshClient.prompt(session, {
+        system: SYSTEM,
+        user: prompt,
+        outputContract: {},
+      })) {
+        if (event.type === "text") text += String((event as { text?: unknown }).text ?? "");
+        if (event.type === "error") throw new Error(String(event["message"] ?? "模型调用失败"));
+      }
+      return text;
+    };
 
-    const next = stripFence(out.trim());
+    out = await run(userPrompt);
+
+    let next = stripFence(out.trim());
     if (!next) throw new Error("模型没有返回内容，报告保持不变");
     if (!/^#{1,4}\s/m.test(next)) throw new Error("改写结果缺少标题结构，报告保持不变");
+
+    if (target) {
+      /* 章节模式：只回填这一节，其余章节原样保留 */
+      if (!/^##\s+/m.test(next)) next = `## ${section!.trim()}\n\n${next}`;
+      const ratio = next.length / target.length;
+      if (ratio < 0.3 || ratio > 1.8) {
+        throw new Error(
+          `「${section}」改写后篇幅变化过大（${Math.round(ratio * 100)}%），已放弃本次修改`,
+        );
+      }
+      const beforeSectionLen = target.length;
+      const afterSectionLen = next.length;
+      next = replaceSection(before, section!, next);
+      const deltaAll = next.length - before.length;
+      saveReportFile(scenario, "solution", next);
+      return {
+        before: before.length,
+        after: next.length,
+        note:
+          `已优化「${section!.trim()}」：本章 ${beforeSectionLen} → ${afterSectionLen} 字` +
+          `（${Math.round((afterSectionLen / beforeSectionLen) * 100)}%）；` +
+          `全文 ${before.length} → ${next.length} 字（${deltaAll >= 0 ? "+" : ""}${deltaAll}）。事实与数字未新增。`,
+      };
+    }
+
     const ratio = next.length / before.length;
     if (ratio < MIN_RATIO || ratio > MAX_RATIO) {
       throw new Error(
@@ -116,7 +215,7 @@ export function createSolutionOptimizer(deps: { db: DbInstance; dshClient: DshCl
     return {
       before: before.length,
       after: next.length,
-      note: `已按「${instruction.trim().slice(0, 40)}」优化解决方案（${before.length} → ${next.length} 字，${delta >= 0 ? "+" : ""}${delta}）。事实与数字未新增。`,
+      note: `已优化解决方案：${before.length} → ${next.length} 字（${delta >= 0 ? "+" : ""}${delta}）。事实与数字未新增。`,
     };
   }
 

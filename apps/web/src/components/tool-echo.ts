@@ -10,6 +10,7 @@ const MARKERS = [
   "已更新表1-1",
   "已新建产品线",
   "已删除 ",
+  "已优化",
 ];
 
 export function stripToolEcho(text: string): string {

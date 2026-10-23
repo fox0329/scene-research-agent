@@ -8,6 +8,7 @@
  */
 
 import { randomUUID } from "node:crypto";
+import type { AgentMessage } from "@scene/contract";
 import type { DshClient, SessionHandle, FollowEvent, SseEventType } from "@scene/contract";
 import { resolveActiveModel, type ResolvedModel } from "./provider-store.js";
 
@@ -125,6 +126,7 @@ class DshClientImpl implements DshClient {
       user: string;
       outputContract: Record<string, unknown>;
       tools?: Array<Record<string, unknown>>;
+      messages?: AgentMessage[];
     },
   ): AsyncIterable<FollowEvent> {
     const session = sessions.get(h.sessionId);
@@ -158,6 +160,7 @@ class DshClientImpl implements DshClient {
       const cap = capabilityOf(`${url}|${resolved.modelId}`);
       const buildBody = (): Record<string, unknown> =>
         buildRequestBody(resolved.modelId, input.system, input.user, input.outputContract, {
+          messages: input.messages,
           structured: cap.structured,
           withoutToolChoice: cap.structured === "prompt",
           withoutThinking: !cap.thinkingParam,
@@ -257,7 +260,7 @@ class DshClientImpl implements DshClient {
     const reader = body.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
-    const toolCalls = new Map<number, { name: string; arguments: string }>();
+    const toolCalls = new Map<number, { id: string; name: string; arguments: string }>();
 
     try {
       while (true) {
@@ -287,7 +290,10 @@ class DshClientImpl implements DshClient {
               }
               /* #300：工具调用参数是分片流式的，按 index 拼回完整调用再一次性回传 */
               for (const tc of chunk.choices?.[0]?.delta?.tool_calls ?? []) {
-                const slot = toolCalls.get(tc.index) ?? { name: "", arguments: "" };
+                const slot =
+                  toolCalls.get(tc.index) ??
+                  { id: String(tc.id ?? `call_${tc.index}`), name: "", arguments: "" };
+                if (tc.id) slot.id = String(tc.id);
                 if (tc.function?.name) slot.name = tc.function.name;
                 if (tc.function?.arguments) slot.arguments += tc.function.arguments;
                 toolCalls.set(tc.index, slot);
@@ -435,19 +441,23 @@ function buildRequestBody(
     structured?: StructuredMode;
     /** #300：对话式工具（tool_choice=auto），区别于 submit_result 那种强制调用 */
     chatTools?: Array<Record<string, unknown>>;
+    /** #319：完整消息日志（含 assistant tool_calls 与 tool 结果） */
+    messages?: AgentMessage[];
   },
 ): Record<string, unknown> {
   // 使用 tool_choice + tools 强制 JSON Schema 输出
   // 这比 response_format 更通用，各 provider 兼容性更好
   const hasSchema = outputContract && Object.keys(outputContract).length > 0;
 
-  const messages = [
-    { role: "system", content: system },
-    {
-      role: "user",
-      content: opts?.withoutToolChoice ? describeOutputContract(user, outputContract) : user,
-    },
-  ];
+  const messages: Array<Record<string, unknown>> = opts?.messages?.length
+    ? (opts.messages as unknown as Array<Record<string, unknown>>)
+    : [
+        { role: "system", content: system },
+        {
+          role: "user",
+          content: opts?.withoutToolChoice ? describeOutputContract(user, outputContract) : user,
+        },
+      ];
 
   const body: Record<string, unknown> = {
     model,

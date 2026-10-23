@@ -487,6 +487,45 @@ describe("createConverseCommand", () => {
       expect(userMessages[0]!.content).toBe("你好");
     });
 
+    it("模型把工具调用写成 JSON 文本时，服务端识别并执行（#317 兼容）", async () => {
+      const calls: Array<{ name: string; args: Record<string, unknown> }> = [];
+      const client = createMockDshClient([
+        { type: "text", text: '{"instruction": "简化「现状与问题」章节", "section": "现状与问题"}' },
+        { type: "done" },
+      ]);
+      const local = createDeps(client);
+      const cmd = createConverseCommand(local.deps);
+      const conv = await cmd.create({ scenario_id: "s1", title: "交付物" });
+      const text: string[] = [];
+      for await (const e of cmd.sendMessage(conv.id, "简化现状与问题", {
+        allowCommands: false,
+        chatTools: {
+          defs: [
+            {
+              type: "function",
+              function: {
+                name: "optimize_solution",
+                parameters: {
+                  type: "object",
+                  properties: { instruction: { type: "string" }, section: { type: "string" } },
+                },
+              },
+            },
+          ],
+          onCall: async (name, args) => {
+            calls.push({ name, args });
+            return "已优化「现状与问题」章节";
+          },
+        },
+      })) {
+        if (e.type === "text") text.push((e as { type: "text"; text: string }).text);
+      }
+      expect(calls).toHaveLength(1);
+      expect(calls[0]!.name).toBe("optimize_solution");
+      expect(calls[0]!.args["section"]).toBe("现状与问题");
+      expect(text.join("")).toContain("已优化「现状与问题」章节");
+    });
+
     it("原生 tool_call：调用 chatTools.onCall，确认语回显并入消息（#300）", async () => {
       const calls: Array<{ name: string; args: Record<string, unknown> }> = [];
       const client = createMockDshClient([
@@ -529,6 +568,50 @@ describe("createConverseCommand", () => {
         .listByConversation(conv.id)
         .filter((m) => m.role === "系统");
       expect(persisted[0]!.content).toContain("已按建议写入表格 1 处");
+    });
+
+    it("工具结果回喂模型，第二轮由模型决定收口（#318 智能体循环）", async () => {
+      let round = 0;
+      const client = {
+        createSession: async () => ({ sessionId: "s" }),
+        prompt: async function* (): AsyncGenerator<FollowEvent> {
+          round += 1;
+          if (round === 1) {
+            yield {
+              type: "tool_call",
+              calls: [
+                { name: "write_table", arguments: JSON.stringify({ fills: [{ row: "A", column: "B", value: "C" }] }) },
+              ],
+            };
+          } else {
+            yield { type: "text", text: "表格已补好，还有一处来源待你确认。" };
+            yield { type: "done" };
+          }
+        },
+        cancel: async () => {},
+      } as unknown as DshClient;
+      const local = createDeps(client);
+      const cmd = createConverseCommand(local.deps);
+      const conv = await cmd.create({ scenario_id: "s1", title: "产物" });
+      const calls: string[] = [];
+      const text: string[] = [];
+      for await (const e of cmd.sendMessage(conv.id, "补进表格", {
+        allowCommands: false,
+        chatTools: {
+          defs: [],
+          onCall: async (name) => {
+            calls.push(name);
+            return "已写入 1 处";
+          },
+        },
+      })) {
+        if (e.type === "text") text.push((e as { type: "text"; text: string }).text);
+      }
+      expect(calls).toEqual(["write_table"]);
+      expect(round).toBe(2);
+      const visible = text.join("");
+      expect(visible).toContain("已写入 1 处");
+      expect(visible).toContain("表格已补好");
     });
 
     it("命令块在流式输出里被拦截，不滚进气泡（#298 用户反馈）", async () => {

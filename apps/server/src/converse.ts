@@ -22,6 +22,7 @@ import {
   HISTORY_MAX_MESSAGES,
   compactConversationHistory,
 } from "./conversation-compaction.js";
+import { runAgent } from "./agent-runtime.js";
 import {
   validateSessionTitle,
   canArchive,
@@ -445,6 +446,8 @@ async function* sendMessage(
 
   let fullReply = "";
   let hasError = false;
+  /** 模型是否已用原生 tool_call 表达过工具意图（用于文本 JSON 兼容兜底） */
+  let toolCallsSeen = 0;
 
   try {
     // 场景上下文（v1.13）：对话里始终带着当前场景定义，支撑场景梳理闭环
@@ -461,67 +464,45 @@ async function* sendMessage(
         "",
       ].join("\n");
     })();
-    const stream = dshClient.prompt(session, {
-      // v1.5：场景定义对话复用本管道，用覆盖项换掉系统提示词与上下文
-      system: override?.system ?? CONVERSE_SYSTEM_PROMPT,
-      // 顺序：对话历史（多轮记忆）→ 调用方上下文（如定义对话的表1-1 现状）→ 场景上下文 → 导入报告 → 本轮消息
-      user: `${historyBlock}${override?.contextPrefix ?? ""}${scenarioCtx}${importReport ? importReport : ""}${content}`,
-      outputContract: {},
-      // #300：产物会话注册 write_table 等对话工具，模型原生 function calling，不再靠文本协议
-      tools: override?.chatTools?.defs,
-    });
-
-    /* 命令块流式拦截：模型输出【执行命令】时，JSON 会先滚进气泡再被剥掉，
-       用户看起来就像「没执行」（#298 实测反馈）。这里把疑似命令块的尾巴扣下不发，
-       流结束后按解析结果决定去留。 */
+    const baseUser = `${historyBlock}${override?.contextPrefix ?? ""}${scenarioCtx}${importReport ? importReport : ""}${content}`;
     const MARKER = "【执行命令】";
     let held = "";
 
-    for await (const event of stream) {
-      if (event.type === "tool_call") {
-        // #300：原生 function calling——工具调用不进气泡，执行结果作为确认语回显并入消息
-        const calls = (event as { type: "tool_call"; calls?: Array<{ name: string; arguments: string }> }).calls ?? [];
-        for (const call of calls) {
-          if (!override?.chatTools) continue;
-          let args: Record<string, unknown> = {};
-          try {
-            args = call.arguments ? (JSON.parse(call.arguments) as Record<string, unknown>) : {};
-          } catch {
-            yield { type: "error", message: `工具 ${call.name} 参数不是合法 JSON` };
-            hasError = true;
-            continue;
-          }
-          try {
-            const result = await override.chatTools.onCall(call.name, args);
-            const note = typeof result === "string" ? result : result.note;
-            if (typeof result !== "string" && result.operation) {
-              yield { type: "operation", id: result.operation.id, summary: result.operation.summary };
-            }
-            yield { type: "text", text: `\n\n${note}\n` };
-            fullReply += `\n\n${note}`;
-          } catch (err: unknown) {
-            const msg = err instanceof Error ? err.message : String(err);
-            yield { type: "error", message: `工具 ${call.name} 执行失败：${msg}` };
-            hasError = true;
-          }
+    /* 智能体运行时（#319）：消息日志 + 步进循环，工具结果以 tool 消息回给模型 */
+    for await (const ev of runAgent({
+      client: dshClient,
+      session,
+      system: override?.system ?? CONVERSE_SYSTEM_PROMPT,
+      user: baseUser,
+      tools: override?.chatTools?.defs,
+      callTool: override?.chatTools?.onCall ?? (async () => ""),
+    })) {
+      if (ev.type === "tool") {
+        toolCallsSeen += 1;
+        if (ev.operation) {
+          yield { type: "operation", id: ev.operation.id, summary: ev.operation.summary };
         }
+        yield { type: "text", text: `\n\n${ev.note}\n` };
+        fullReply += `\n\n${ev.note}`;
         continue;
       }
-      if (event.type !== "text") {
-        // done/error 不冲扣住的尾巴：half-mark 可能只是分块巧了，循环结束统一还
-        yield event;
-        if (event.type === "error") hasError = true;
+      if (ev.type === "error") {
+        yield { type: "error", message: ev.message };
+        hasError = true;
         continue;
       }
-      fullReply += (event as { type: "text"; text: string }).text;
-      let buffer = held + (event as { type: "text"; text: string }).text;
+      if (ev.type === "done") {
+        yield { type: "done" };
+        continue;
+      }
+      fullReply += ev.text;
+      let buffer = held + ev.text;
       held = "";
-      // 已扣住的完整命令块不再外发（解析在流后做）
       const at = buffer.indexOf(MARKER);
       if (at >= 0) {
         held = buffer.slice(at);
         buffer = buffer.slice(0, at);
-        yield { type: "text", text: buffer };
+        if (buffer) yield { type: "text", text: buffer };
         continue;
       }
       let out = buffer;
@@ -534,8 +515,6 @@ async function* sendMessage(
       }
       if (out) yield { type: "text", text: out };
     }
-    // 流结束：扣住的内容若不含完整标记，只是半截「【执行命令…」误判 → 还给别人；
-    // 含完整标记则是命令块（+块后说明，3.5 解析时会归位），不外发
     if (held && !held.includes(MARKER)) {
       yield { type: "text", text: held };
     }
