@@ -454,17 +454,46 @@ async function* sendMessage(
       outputContract: {},
     });
 
-    for await (const event of stream) {
-      yield event;
+    /* 命令块流式拦截：模型输出【执行命令】时，JSON 会先滚进气泡再被剥掉，
+       用户看起来就像「没执行」（#298 实测反馈）。这里把疑似命令块的尾巴扣下不发，
+       流结束后按解析结果决定去留。 */
+    const MARKER = "【执行命令】";
+    let held = "";
 
-      // 拼接回复文本（用于持久化）
-      if (event.type === "text") {
-        fullReply += (event as { type: "text"; text: string }).text;
+    for await (const event of stream) {
+      if (event.type !== "text") {
+        // done/error 不冲扣住的尾巴：half-mark 可能只是分块巧了，循环结束统一还
+        yield event;
+        if (event.type === "error") hasError = true;
+        continue;
       }
-      if (event.type === "error") {
-        hasError = true;
+      fullReply += (event as { type: "text"; text: string }).text;
+      let buffer = held + (event as { type: "text"; text: string }).text;
+      held = "";
+      // 已扣住的完整命令块不再外发（解析在流后做）
+      const at = buffer.indexOf(MARKER);
+      if (at >= 0) {
+        held = buffer.slice(at);
+        buffer = buffer.slice(0, at);
+        yield { type: "text", text: buffer };
+        continue;
       }
+      let out = buffer;
+      for (let keep = Math.min(MARKER.length - 1, buffer.length); keep > 0; keep--) {
+        if (MARKER.startsWith(buffer.slice(-keep))) {
+          out = buffer.slice(0, -keep);
+          held = buffer.slice(-keep);
+          break;
+        }
+      }
+      if (out) yield { type: "text", text: out };
     }
+    // 流结束：扣住的内容若不含完整标记，只是半截「【执行命令…」误判 → 还给别人；
+    // 含完整标记则是命令块（+块后说明，3.5 解析时会归位），不外发
+    if (held && !held.includes(MARKER)) {
+      yield { type: "text", text: held };
+    }
+    held = "";
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     yield { type: "error", message: `DSH 流式调用失败：${msg}` };

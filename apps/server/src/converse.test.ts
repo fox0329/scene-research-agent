@@ -487,6 +487,32 @@ describe("createConverseCommand", () => {
       expect(userMessages[0]!.content).toBe("你好");
     });
 
+    it("命令块在流式输出里被拦截，不滚进气泡（#298 用户反馈）", async () => {
+      // 模拟逐字流式：把含命令块的整段回复按单字符吐出
+      const full = "好的，写进表格。\n\n【执行命令】{\"command\":\"写入表格\",\"params\":{}}\n以上。";
+      const charStream = createMockDshClient(
+        [...full].flatMap((ch) => [
+          { type: "text" as const, text: ch },
+          { type: "done" as const },
+        ]),
+      );
+      const local = createDeps(charStream);
+      const cmd = createConverseCommand(local.deps);
+      const conv = await cmd.create({ scenario_id: "s1", title: "产物" });
+
+      const text: string[] = [];
+      for await (const e of cmd.sendMessage(conv.id, "写", {
+        allowCommands: false,
+        handleCommand: async () => "已写入",
+      })) {
+        if (e.type === "text") text.push((e as { type: "text"; text: string }).text);
+      }
+      const visible = text.join("");
+      expect(visible).toContain("好的，写进表格。");
+      expect(visible).not.toContain("【执行命令】");
+      expect(visible).not.toContain("params");
+    });
+
     it("handleCommand 提供时命令块交给调用方（产物会话写入表格，#298）", async () => {
       const client = createMockDshClient([
         {
