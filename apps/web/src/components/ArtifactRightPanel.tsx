@@ -24,6 +24,7 @@ import {
   type ApiArtifactThread,
   type ApiDefinitionMessage,
 } from "../api";
+import { stripToolEcho } from "./tool-echo";
 import type { StageSnapshot } from "./stage-snapshot";
 
 export interface ArtifactRightPanelProps {
@@ -824,7 +825,9 @@ const MessageBubble: React.FC<{ message: ApiDefinitionMessage }> = ({ message })
         {fmtTime(message.created_at)} · {isUser ? "你" : "助手"}
       </div>
       {/* 模型偶尔仍带 Markdown 加粗号；显示层兜底剥掉，历史消息同样生效 */}
-      <div className="thread-msg-bubble">{message.content.replace(/\*\*/g, "")}</div>
+      <div className="thread-msg-bubble">
+        {stripToolEcho(message.content.replace(/\*\*/g, ""))}
+      </div>
     </div>
   );
 };

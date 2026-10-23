@@ -12,6 +12,7 @@ import {
   libraryIngestPath,
   undoOperation,
 } from "../api";
+import { stripToolEcho } from "./tool-echo";
 
 /** #309：资料助手输入框高度（拖上边缘调高，与产物会话同一套交互） */
 const INPUT_H_KEY = "scene.library.input-h.v1";
@@ -211,7 +212,9 @@ export const LibraryRightPanel: React.FC<{
             messages.map((m) => (
               <div key={m.id} className={`thread-msg${m.role === "用户" ? " user" : ""}`}>
                 <div className="thread-msg-meta">{m.role === "用户" ? "你" : "助手"}</div>
-                <div className="thread-msg-bubble">{m.content.replace(/\*\*/g, "")}</div>
+                <div className="thread-msg-bubble">
+                  {stripToolEcho(m.content.replace(/\*\*/g, ""))}
+                </div>
               </div>
             ))
           )}

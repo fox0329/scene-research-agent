@@ -31,6 +31,7 @@ import {
   type ApiDefinitionMessage,
 } from "../api";
 import { AlignmentTable } from "./AlignmentTable";
+import { stripToolEcho } from "./tool-echo";
 import { InlineText } from "./InlineText";
 import {
   DEMO_DEFINITION_MESSAGES,
@@ -315,7 +316,9 @@ export const ScenarioDefinitionDialog: React.FC<ScenarioDefinitionDialogProps> =
     return (
       <div key={m.id} className={`msg ${m.role === "用户" ? "u" : "ai"}`}>
         <div className="bub">
-          <InlineText text={isGuide ? `（系统引导）${m.content}` : m.content} />
+          <InlineText
+            text={isGuide ? `（系统引导）${m.content}` : stripToolEcho(m.content)}
+          />
         </div>
         <div className="msg-meta">{isGuide ? "系统自动发出 · " : ""}{fmtTime(m.created_at)}</div>
       </div>
