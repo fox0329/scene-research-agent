@@ -139,17 +139,6 @@
 - macOS：`brew install python3`
 - Windows：到 <https://www.python.org/downloads/> 安装，并勾选 “Add python.exe to PATH”
 
-### 校验下载文件
-
-每个 Release 附 `SHA256SUMS.txt`。下载后可核对：
-
-```bash
-# macOS
-shasum -a 256 SceneMaster-*.dmg
-# Windows PowerShell
-Get-FileHash .\SceneMaster-*.exe -Algorithm SHA256
-```
-
 ### 升级前请备份
 
 你的全部数据（场景、材料库、交付物）都在应用数据目录里，覆盖安装不会动它：
