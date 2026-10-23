@@ -152,8 +152,7 @@ export const ARTIFACT_SYSTEM_PROMPT = `你是场景通的「产物助手」。�
    - row 照抄【产物内容】里该行第一列的值；column 用界面列名；找不到就别调工具，正文里说明。
    - **确认循环禁令**（实测事故）：如果你上一条已经说过「要写就说一声」，用户回复肯定
      （可以/好/写吧/确认/嗯），必须立刻调用 write_table，不许再复述「要我写就说一声」。
-   - 没有让你写表时，不要调用工具。
-   - 兼容：也可以输出文本命令块（见历史约定），但优先用工具。`;
+   - 没有让你写表时，不要调用工具，也不要输出任何 JSON。`;
 
 /** 产物类型是否合法 */
 export function isArtifactScopeType(value: unknown): value is ArtifactScopeType {

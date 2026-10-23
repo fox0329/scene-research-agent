@@ -7,7 +7,8 @@
  * M2 优化：大文件分块（R2）暂不处理
  */
 
-import { basename } from "node:path";
+import { basename, extname } from "node:path";
+import { readFileSync } from "node:fs";
 import type {
   DshClient,
   SessionHandle,
@@ -290,8 +291,15 @@ async function executeIngest(
   const { db, dshClient, docParser } = deps;
   const { filePath, productLineId } = opts;
 
-  // 1. 解析文件
-  const parseResult = await docParser(filePath);
+  // 1. 解析文件（#305：纯文本也接受；文件上传仍走原有格式校验）
+  const ext = extname(filePath).toLowerCase();
+  const parseResult: ParseResult = /^\.(txt|md|csv)$/u.test(ext)
+    ? {
+        text: readFileSync(filePath, "utf8"),
+        tables: [],
+        metadata: {},
+      }
+    : await docParser(filePath);
   // 真实文件名优先（上传路由传进来）；没有才退回路径的文件名
   const fileName = opts.fileName?.trim() || basename(filePath);
 
