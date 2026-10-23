@@ -169,6 +169,37 @@ describe("artifact conversation persistence", () => {
     expect(isUserConversation(list[0]!)).toBe(false);
   });
 
+  it("能力底账的编号不进上下文、不进回答（#321 用户实测 4-1-05）", () => {
+    const db = createDb(":memory:");
+    const scenarioId = seedScenario(db);
+    db.stageDataRepo.insert({
+      scenario_id: scenarioId,
+      stage: 3,
+      table_code: "表4-1",
+      row: {
+        ability: "本地监控能力",
+        maturity: "已交付",
+        limitation: "需搭配边缘网关",
+        no: "4-1-05",
+        proof: "验收报告",
+        source: "验收报告.pdf:3",
+      },
+      is_stale: false,
+      source_type: "AI提取",
+    });
+    const ref = normalizeArtifactRef({
+      step: 4,
+      stage: 3,
+      type: "table",
+      id: "表4-1",
+      block: null,
+      title: "能力底账",
+    });
+    const ctx = buildArtifactContext(db, scenarioId, ref);
+    expect(ctx).toContain("本地监控能力");
+    expect(ctx).not.toContain("4-1-05");
+  });
+
   it("第 1 步产物线程复用「场景定义」会话（#308 历史共享）", async () => {
     const db = createDb(":memory:");
     const scenarioId = seedScenario(db);
