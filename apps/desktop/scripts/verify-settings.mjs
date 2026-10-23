@@ -60,7 +60,7 @@ try {
   await win.locator(".empty-state-title, .flow-rail").first().waitFor({ timeout: 90_000 });
 
   /* 进「设置」（导航底部的齿轮按钮） */
-  await win.locator(".side-foot .nav-item").click();
+  await win.getByRole("button", { name: "设置", exact: true }).click();
   await win.getByText("模型配置").first().waitFor({ timeout: 30_000 });
 
   /* 新建供应商并填写：名称 / 链接 / Key / 模型 ID */
