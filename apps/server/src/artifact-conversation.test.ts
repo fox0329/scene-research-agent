@@ -288,7 +288,7 @@ describe("artifact conversation persistence", () => {
         ],
       },
     });
-    expect(note).toContain("写入表格 2 处");
+    expect(note).toContain("写入 2 处");
     const row = db.stageDataRepo.list({
       where: "scenario_id = ? AND table_code = ?",
       params: [scenarioId, "表1-3"],
@@ -296,6 +296,89 @@ describe("artifact conversation persistence", () => {
     expect(row.row.barrier_name).toBe("涉密集成资质（模型知识）");
     expect(row.row.criteria).toBe("需具备涉密集成资质");
     expect(row.row.__ai_cells).toEqual(["barrier_name", "criteria"]);
+  });
+
+  it("新增行与删除行（#302）：按列名映射、插到表里、按第一列值删除", async () => {
+    const db = createDb(":memory:");
+    const scenarioId = seedScenario(db);
+    db.stageDataRepo.insert({
+      scenario_id: scenarioId,
+      stage: 1,
+      table_code: "表1-3",
+      row: { barrier_type: "行业准入", barrier_name: "涉密资质" },
+      is_stale: false,
+      source_type: "AI提取",
+    });
+    const ref = normalizeArtifactRef({
+      step: 2,
+      stage: 1,
+      type: "table",
+      id: "表1-3",
+      block: null,
+      title: "门槛与合规",
+    });
+
+    const note = await fillTableFromCommand(db, scenarioId, ref, {
+      command: "write_table",
+      params: {
+        add_rows: [
+          {
+            values: {
+              门槛类型: "数据壁垒",
+              门槛: "历史运行数据不足三年",
+              判据: "需提供三年以上运行记录",
+            },
+          },
+        ],
+        delete_rows: [{ row: "行业准入" }],
+      },
+    });
+    expect(note).toContain("新增 1 行");
+    expect(note).toContain("删除 1 行");
+    const rows = db.stageDataRepo.list({
+      where: "scenario_id = ? AND table_code = ?",
+      params: [scenarioId, "表1-3"],
+    });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.row.barrier_type).toBe("数据壁垒");
+    expect(rows[0]!.row.criteria).toBe("需提供三年以上运行记录");
+    expect(rows[0]!.row.__ai_cells).toEqual(["barrier_type", "barrier_name", "criteria"]);
+  });
+
+  it("行操作守卫：空操作 / 未知列 / 删不存在的行都报错", async () => {
+    const db = createDb(":memory:");
+    const scenarioId = seedScenario(db);
+    db.stageDataRepo.insert({
+      scenario_id: scenarioId,
+      stage: 1,
+      table_code: "表1-3",
+      row: { barrier_type: "行业准入" },
+      is_stale: false,
+      source_type: "AI提取",
+    });
+    const ref = normalizeArtifactRef({
+      step: 2,
+      stage: 1,
+      type: "table",
+      id: "表1-3",
+      block: null,
+      title: "门槛与合规",
+    });
+    await expect(
+      fillTableFromCommand(db, scenarioId, ref, { command: "write_table", params: {} }),
+    ).rejects.toThrow(/没有任何操作/);
+    await expect(
+      fillTableFromCommand(db, scenarioId, ref, {
+        command: "write_table",
+        params: { add_rows: [{ values: { "没有这列": "x" } }] },
+      }),
+    ).rejects.toThrow(/没有/);
+    await expect(
+      fillTableFromCommand(db, scenarioId, ref, {
+        command: "write_table",
+        params: { delete_rows: [{ row: "不存在" }] },
+      }),
+    ).rejects.toThrow(/找不到/);
   });
 
   it("写入表格命令：未知行 / 未知列 / 超量 / 交付物都拒绝", async () => {

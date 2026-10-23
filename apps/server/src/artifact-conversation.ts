@@ -81,7 +81,7 @@ export const WRITE_TABLE_TOOL = {
   function: {
     name: "write_table",
     description:
-      "把确认要写的内容写进当前产物的表格。只在用户明确要求写入/补充/替换表格时调用；一次可写多处。",
+      "修改当前产物的表格：填格（fills）、新增行（add_rows）、删除行（delete_rows）。只在用户明确要求写入/补充/替换/增删时调用；一次最多各 10 处。",
     parameters: {
       type: "object",
       properties: {
@@ -98,8 +98,32 @@ export const WRITE_TABLE_TOOL = {
             required: ["row", "column", "value"],
           },
         },
+        add_rows: {
+          type: "array",
+          description: "要新增的行，一次最多 10 行；values 用界面列名作键",
+          items: {
+            type: "object",
+            properties: {
+              values: {
+                type: "object",
+                description: "列名 → 值，如 {\"环节\": \"新建环节\", \"代表企业\": \"…\"}",
+              },
+            },
+            required: ["values"],
+          },
+        },
+        delete_rows: {
+          type: "array",
+          description: "要删除的行，一次最多 10 行；row 用该行第一列的现有值",
+          items: {
+            type: "object",
+            properties: {
+              row: { type: "string", description: "该行第一列的现有值" },
+            },
+            required: ["row"],
+          },
+        },
       },
-      required: ["fills"],
     },
   },
 } as const;
@@ -116,6 +140,8 @@ export const ARTIFACT_SYSTEM_PROMPT = `你是场景通的「产物助手」。�
 8. 用户明确让你「补充进表格 / 写入 / 替换」时（或对你要写的提议表示肯定后），
    直接调用 write_table 工具写入；工具调用本身不显示给用户，执行结果会自动回显确认。
    - 一次最多 10 处；单条 value 不超过 200 字；只写当前产物表格里已有的列。
+   - 用户要求补充内容/新增一行时用 add_rows（values 用界面列名作键）；明确要求删除某行时用 delete_rows；
+     不确定要删哪一行就问，不要猜。
    - row 照抄【产物内容】里该行第一列的值；column 用界面列名；找不到就别调工具，正文里说明。
    - **确认循环禁令**（实测事故）：如果你上一条已经说过「要写就说一声」，用户回复肯定
      （可以/好/写吧/确认/嗯），必须立刻调用 write_table，不许再复述「要我写就说一声」。
@@ -420,12 +446,14 @@ export function currentArtifactHash(
 
 /** #298 fill_table 单次写入上限：防止一次回复把整表刷掉 */
 const MAX_FILLS_PER_REPLY = 10;
+/** #302 单次增/删行上限（与写入同量级，防止模型一口气重建整表） */
+const MAX_ROW_OPS_PER_REPLY = 10;
 /** 单格写入上限（与中栏「一格一句话」同量级） */
 const MAX_FILL_VALUE_CHARS = 200;
 
 export interface FillCommand {
   command: string;
-  params: { fills?: unknown };
+  params: { fills?: unknown; add_rows?: unknown; delete_rows?: unknown };
 }
 
 /**
@@ -448,9 +476,16 @@ export async function fillTableFromCommand(
     throw new Error("交付物由前面各步装配，不提供格子写入");
   }
   const fills = Array.isArray(raw.params.fills) ? raw.params.fills : [];
-  if (fills.length === 0) throw new Error("fills 为空：需要 [{row, column, value}]");
+  const addRows = Array.isArray(raw.params.add_rows) ? raw.params.add_rows : [];
+  const deleteRows = Array.isArray(raw.params.delete_rows) ? raw.params.delete_rows : [];
+  if (fills.length === 0 && addRows.length === 0 && deleteRows.length === 0) {
+    throw new Error("没有任何操作：需要 fills / add_rows / delete_rows 之一");
+  }
   if (fills.length > MAX_FILLS_PER_REPLY) {
     throw new Error(`一次最多写入 ${MAX_FILLS_PER_REPLY} 处`);
+  }
+  if (addRows.length > MAX_ROW_OPS_PER_REPLY || deleteRows.length > MAX_ROW_OPS_PER_REPLY) {
+    throw new Error(`一次最多增/删 ${MAX_ROW_OPS_PER_REPLY} 行`);
   }
 
   const table = tableDef(ref.id);
@@ -462,10 +497,10 @@ export async function fillTableFromCommand(
   const filtered = ref.block
     ? rows.filter((r) => rowBelongsToBlock(table, ref.block!, r.row))
     : rows;
-  if (filtered.length === 0) throw new Error("当前产物还没有表格行可写");
-
   const firstCol = table.columns[0]!;
   let applied = 0;
+  let added = 0;
+  let deleted = 0;
   for (const [index, item] of fills.entries()) {
     const spec = (item ?? {}) as { row?: unknown; column?: unknown; value?: unknown };
     const rowNeedle = String(spec.row ?? "").trim();
@@ -504,9 +539,62 @@ export async function fillTableFromCommand(
     applied += 1;
   }
 
+  /* #302 新增行：模型按「界面列名 → 值」给整行，服务端映射成列键后插入 */
+  const stageId = (ref.stage ?? Math.max(0, ref.step - 1)) as 0 | 1 | 2 | 3 | 4 | 5;
+  for (const [index, item] of addRows.entries()) {
+    const spec = (item ?? {}) as { values?: unknown };
+    const values = (spec.values ?? {}) as Record<string, unknown>;
+    const row: Record<string, unknown> = {};
+    const aiCells: string[] = [];
+    for (const [name, value] of Object.entries(values)) {
+      const col = table.columns.find((c) => c.key === name || c.label === name);
+      if (!col) throw new Error(`新增第 ${index + 1} 行：表里没有「${name}」列`);
+      const text = String(value ?? "").trim();
+      if (!text) continue;
+      if (text.length > MAX_FILL_VALUE_CHARS) {
+        throw new Error(`新增第 ${index + 1} 行「${col.label}」超过 ${MAX_FILL_VALUE_CHARS} 字`);
+      }
+      row[col.key] = text;
+      aiCells.push(col.key);
+    }
+    if (Object.keys(row).length === 0) {
+      throw new Error(`新增第 ${index + 1} 行没有任何内容`);
+    }
+    if (aiCells.length > 0) row.__ai_cells = aiCells;
+    db.stageDataRepo.insert({
+      scenario_id: scenarioId,
+      stage: stageId,
+      table_code: ref.id,
+      row,
+      is_stale: false,
+    });
+    added += 1;
+  }
+
+  /* #302 删除行：按第一列值精确匹配，避免模型误删；找不到就报错，不静默跳过 */
+  for (const [index, item] of deleteRows.entries()) {
+    const spec = (item ?? {}) as { row?: unknown };
+    const needle = String(spec.row ?? "").trim();
+    if (!needle) throw new Error(`删除第 ${index + 1} 行缺 row`);
+    const freshRows = db.stageDataRepo.list({
+      where: "scenario_id = ? AND table_code = ?",
+      params: [scenarioId, ref.id],
+      orderBy: "rowid ASC",
+    });
+    const target =
+      freshRows.find((r) => String(r.row[firstCol.key] ?? "").trim() === needle) ??
+      freshRows.find((r) => JSON.stringify(r.row).includes(needle));
+    if (!target) throw new Error(`删除第 ${index + 1} 行：找不到「${needle}」`);
+    db.stageDataRepo.deleteById(target.id);
+    deleted += 1;
+  }
+
   const downstream = getAffectedStages(ref.id);
   if (downstream.length > 0) {
     db.stageDataRepo.markStale(scenarioId, downstream, true);
   }
-  return `已按建议写入表格 ${applied} 处（蓝色字体为助手补写，点击即可修改；改动会像手填一样参与下游重算）。`;
+  const parts = [`写入 ${applied} 处`];
+  if (added > 0) parts.push(`新增 ${added} 行`);
+  if (deleted > 0) parts.push(`删除 ${deleted} 行`);
+  return `已按建议修改表格：${parts.join("、")}（蓝色字体为助手补写，点击即可修改；改动会像手填一样参与下游重算）。`;
 }

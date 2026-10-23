@@ -90,6 +90,7 @@ function createMockDb() {
     }),
     getById: vi.fn(() => undefined),
     update: vi.fn(() => undefined),
+    deleteById: vi.fn(() => false),
   };
 
   const qualityGateRepo: QualityGateRepo = {

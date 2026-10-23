@@ -172,6 +172,12 @@ function createMockStageDataRepo(): StageDataRepo {
       store[idx] = { ...store[idx]!, ...patch } as StageData;
       return store[idx];
     }),
+    deleteById: vi.fn((id: string) => {
+      const idx = store.findIndex((r) => r.id === id);
+      if (idx < 0) return false;
+      store.splice(idx, 1);
+      return true;
+    }),
   };
 }
 

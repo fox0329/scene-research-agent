@@ -1015,6 +1015,8 @@ export interface StageDataRepo {
     id: string,
     patch: { row?: Record<string, unknown>; source_type?: string | null; source?: string | null },
   ): StageData | undefined;
+  /** 删除单行（#302 对话增删行用；按 id 精确删，返回是否删到） */
+  deleteById(id: string): boolean;
 }
 
 function createStageDataRepo(db: Database.Database): StageDataRepo {
@@ -1108,6 +1110,11 @@ function createStageDataRepo(db: Database.Database): StageDataRepo {
     return getById(id);
   };
 
+  const deleteById = (id: string): boolean => {
+    const result = db.prepare(`DELETE FROM stage_data WHERE id = ?`).run(id);
+    return result.changes > 0;
+  };
+
   return {
     list,
     insert,
@@ -1117,6 +1124,7 @@ function createStageDataRepo(db: Database.Database): StageDataRepo {
     deleteByScenarioStageTable,
     getById,
     update,
+    deleteById,
   };
 }
 
