@@ -101,7 +101,7 @@ test.describe("上传入库（联真）", () => {
     await expect(banner).not.toContainText("【错误】");
   });
 
-  test("表格列降维 + 分割线 + 拖拽调宽 + 右栏行详情（变更表 #19）", async ({ page, playwright }) => {
+  test("表格列降维 + 分割线 + 拖拽调宽（#19；#308 右栏行详情已删）", async ({ page, playwright }) => {
     /* 造一行 M1 数据（含曾用名与溯源） */
     const req = await playwright.request.newContext({ baseURL: LIVE });
     const lines = (await (await req.get("/api/v1/library/product-lines")).json()) as {
@@ -152,13 +152,10 @@ test.describe("上传入库（联真）", () => {
     await page.mouse.up();
     const w1 = (await th.boundingBox())!.width;
     expect(w1).toBeGreaterThan(w0 + 30);
-    /* 行点击 → 右栏行详情（补充信息 + 溯源全量） */
+    /* 行点击不再打开右栏行详情（#308）：右栏只有资料助手 */
     await page.locator("tbody tr").first().click();
-    await expect(page.locator(".row-detail")).toBeVisible();
-    await expect(page.locator(".det-h h3")).toContainText("行详情 · 产品清单");
-    const labels = await page.locator(".row-detail .rd-label").allTextContents();
-    expect(labels).toContain("曾用名");
-    expect(labels).toContain("来源标注");
+    await expect(page.locator(".row-detail")).toHaveCount(0);
+    await expect(page.locator(".det")).toContainText("资料助手");
   });
 });
 

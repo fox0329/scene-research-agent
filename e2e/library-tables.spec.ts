@@ -160,7 +160,7 @@ test("空的能力清单：直接显示表头与空行，填完必填列自动�
   await expect(page.locator(".ws table tbody tr")).toHaveCount(2);
 });
 
-test("溯源不占列：主表只留业务列，来源信息在右栏行详情里", async ({ page }) => {
+test("溯源不占列：主表只留业务列（#308 右栏行详情已删）", async ({ page }) => {
   const line = await newLine(page, "溯源右栏");
   await addRow(page, "M1", line.id, {
     model: "E2E-TRACE",
@@ -174,11 +174,11 @@ test("溯源不占列：主表只留业务列，来源信息在右栏行详情�
   const heads = page.locator(".ws table thead th");
   await expect(heads).toContainText(["型号", "产品名称", "状态"]);
   await expect(heads).not.toContainText(["溯源"]);
-  // 点行 → 右栏出现溯源四列（来源类型/权威性/证据等级/来源标注）
+  // 点行 → 右栏不再出现行详情，只剩资料助手
   await page.locator(".ws table tbody tr").first().click();
   const det = page.locator(".det");
-  await expect(det).toContainText("来源");
-  await expect(det).toContainText("证据");
+  await expect(det.locator(".row-detail")).toHaveCount(0);
+  await expect(det).toContainText("资料助手");
 });
 
 test("新建产品线：走应用内对话框（Electron 不支持 window.prompt，故障清单 #70）", async ({ page }) => {

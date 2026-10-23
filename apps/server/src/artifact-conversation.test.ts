@@ -168,6 +168,56 @@ describe("artifact conversation persistence", () => {
     expect(isUserConversation(list[0]!)).toBe(false);
   });
 
+  it("第 1 步产物线程复用「场景定义」会话（#308 历史共享）", async () => {
+    const db = createDb(":memory:");
+    const scenarioId = seedScenario(db);
+    const dsh = mockDsh();
+    const ref = normalizeArtifactRef({
+      step: 1,
+      stage: 0,
+      type: "anchor",
+      id: "表1-1",
+      block: null,
+      title: "场景定义与边界",
+    });
+    const def = db.conversationRepo.insert({
+      scenario_id: scenarioId,
+      title: "场景定义",
+      status: "活跃",
+      dsh_session_id: "dsh-def",
+    });
+    db.messageRepo.insert({
+      conversation_id: def.id,
+      role: "用户",
+      content: "这是智慧教室场景",
+    });
+
+    const thread = readArtifactThread(db, scenarioId, ref);
+    expect(thread.conversation_id).toBe(def.id);
+    expect(thread.messages).toHaveLength(1);
+    expect(thread.messages[0]!.content).toContain("智慧教室");
+
+    const ensured = await ensureArtifactConversation(db, dsh, scenarioId, ref);
+    expect(ensured.id).toBe(def.id);
+    expect(dsh.createSession).not.toHaveBeenCalled();
+  });
+
+  it("第 1 步首次发送新建的就是「场景定义」会话", async () => {
+    const db = createDb(":memory:");
+    const scenarioId = seedScenario(db);
+    const ref = normalizeArtifactRef({
+      step: 1,
+      stage: 0,
+      type: "anchor",
+      id: "表1-1",
+      block: null,
+      title: "场景定义与边界",
+    });
+    const created = await ensureArtifactConversation(db, mockDsh(), scenarioId, ref);
+    expect(created.title).toBe("场景定义");
+    expect(created.kind ?? "用户").toBe("用户");
+  });
+
   it("并发首次发送只落一条会话（唯一索引兜底）", async () => {
     const db = createDb(":memory:");
     const scenarioId = seedScenario(db);

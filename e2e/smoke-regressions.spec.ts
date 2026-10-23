@@ -44,7 +44,11 @@ test("六步推进冒烟：新建场景 → 完成第 1 步 → 第 2 步解锁�
     timeout: 20_000,
   });
   await expect(page.locator(".det .artifact-tabs [role=tab]")).toHaveCount(2);
-  await expect(page.locator(".det .thread-empty")).toContainText(/还没有对话/);
+  // #308：第 1 步右栏复用「场景定义」会话，可能已有定义对话历史；
+  // 没有消息时显示空态，两种情况都必须能继续输入
+  await expect(
+    page.locator(".det .thread-msg, .det .thread-empty").first(),
+  ).toBeVisible({ timeout: 20_000 });
   await expect(page.locator(".det .thread-textarea")).toBeEnabled();
   await expect(page.locator(".proj-convs, .cvi")).toHaveCount(0);
 

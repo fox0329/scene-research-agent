@@ -235,6 +235,17 @@ export function findArtifactConversation(
   scenarioId: string,
   ref: ArtifactRef,
 ): Conversation | undefined {
+  /* #308：第 1 步产物就是「场景定义」对话——右栏历史必须和定义弹窗同一条，
+     否则新建场景后右栏是空的（用户实测质问「场景定义的历史记录没有显示」）。 */
+  if (ref.type === "anchor") {
+    const definition = db.conversationRepo
+      .list({
+        where: "scenario_id = ? AND status = ?",
+        params: [scenarioId, SESSION_STATUS_ACTIVE],
+      })
+      .find((c) => c.title === "场景定义");
+    if (definition) return definition;
+  }
   return db.conversationRepo.list({
     where: scopeWhere(),
     params: [scenarioId, SESSION_STATUS_ACTIVE, ref.step, ref.type, ref.id],
@@ -265,6 +276,20 @@ export async function ensureArtifactConversation(
 
   const title = normalizeConversationTitle(`第 ${ref.step} 步 · ${ref.title}`);
   const session = await dshClient.createSession({ title });
+  if (ref.type === "anchor") {
+    /* 锚产物首次发送：建的就是「场景定义」会话，定义弹窗之后会复用同一条 */
+    return db.conversationRepo.insert({
+      scenario_id: scenarioId,
+      title: "场景定义",
+      status: SESSION_STATUS_ACTIVE,
+      dsh_session_id: session.sessionId,
+      block: ref.block ?? null,
+      purpose: "definition",
+      summary: "",
+      context_hash: "",
+      last_activity_at: null,
+    });
+  }
   try {
     return db.conversationRepo.insert({
       scenario_id: scenarioId,

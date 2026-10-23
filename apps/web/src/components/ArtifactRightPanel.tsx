@@ -749,6 +749,15 @@ const ThreadPane: React.FC<{
             aria-label="针对当前产物发送消息"
           />
           <div className="thread-input-actions">
+            <button
+              type="button"
+              className="btn ghost sm"
+              title="上传材料（PDF / Word / Excel / 文本），助手可据此更新表格"
+              disabled={!live || loading || sending || uploading || !artifact}
+              onClick={() => uploadRef.current?.click()}
+            >
+              {uploading ? "解析中…" : "📎 上传"}
+            </button>
             <span className="thread-input-hint">Enter 发送 · Shift+Enter 换行</span>
             <button
               type="button"
@@ -759,6 +768,17 @@ const ThreadPane: React.FC<{
               {sending ? "发送中…" : "发送"}
             </button>
           </div>
+          <input
+            ref={uploadRef}
+            type="file"
+            hidden
+            accept=".pdf,.docx,.xlsx,.pptx,.txt,.md,.csv"
+            onChange={(e) => {
+              void onUpload(e.target.files);
+              e.target.value = "";
+            }}
+          />
+          {statusNote ? <p className="thread-status">{statusNote}</p> : null}
         </div>
       </div>
     </div>
