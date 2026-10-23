@@ -12,6 +12,35 @@ import {
   libraryIngestPath,
 } from "../api";
 
+/** #309：资料助手输入框高度（拖上边缘调高，与产物会话同一套交互） */
+const INPUT_H_KEY = "scene.library.input-h.v1";
+const INPUT_DEF_H = 64;
+const INPUT_MIN_H = 48;
+const INPUT_MAX_H = 320;
+
+function clampInputH(value: number): number {
+  return Math.min(INPUT_MAX_H, Math.max(INPUT_MIN_H, Math.round(value)));
+}
+
+function readInputH(): number {
+  try {
+    const raw = Number(localStorage.getItem(INPUT_H_KEY));
+    return Number.isFinite(raw) && raw >= INPUT_MIN_H && raw <= INPUT_MAX_H
+      ? Math.round(raw)
+      : INPUT_DEF_H;
+  } catch {
+    return INPUT_DEF_H;
+  }
+}
+
+function saveInputH(value: number): void {
+  try {
+    localStorage.setItem(INPUT_H_KEY, String(value));
+  } catch {
+    /* 隐私模式忽略 */
+  }
+}
+
 type ChatMsg = {
   id: string;
   role: "用户" | "系统";
@@ -34,6 +63,7 @@ export const LibraryRightPanel: React.FC<{
   const [sending, setSending] = useState(false);
   const [loading, setLoading] = useState(false);
   const [note, setNote] = useState<string | null>(null);
+  const [inputH, setInputH] = useState(readInputH);
   const fileRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
@@ -87,6 +117,26 @@ export const LibraryRightPanel: React.FC<{
     },
     [append, lineId],
   );
+
+  /* 拖输入框上边缘调高：mousemove 全程挂在 document 上，出热区不掉跟 */
+  const onInputResizeStart = (event: React.MouseEvent<HTMLDivElement>): void => {
+    event.preventDefault();
+    const startY = event.clientY;
+    const startH = inputH;
+    const onMove = (e: MouseEvent): void => {
+      setInputH(clampInputH(startH - (e.clientY - startY)));
+    };
+    const onUp = (): void => {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+      setInputH((h) => {
+        saveInputH(h);
+        return h;
+      });
+    };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  };
 
   const submit = useCallback(async () => {
     const text = draft.trim();
@@ -166,10 +216,18 @@ export const LibraryRightPanel: React.FC<{
 
         <div className="thread-composer">
           <div className="thread-input-shell">
+            <div
+              className="thread-input-resize"
+              role="separator"
+              aria-label="调整输入框高度"
+              aria-orientation="horizontal"
+              title="拖动调整输入框高度"
+              onMouseDown={onInputResizeStart}
+            />
             <textarea
               className="thread-textarea"
               rows={2}
-              style={{ height: 64 }}
+              style={{ height: inputH }}
               value={draft}
               disabled={!live || !lineId || sending}
               placeholder={

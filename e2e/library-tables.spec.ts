@@ -231,3 +231,25 @@ test("空资料库：每张表都给表头 + 一行可直接填写的空行", as
     await expect(page.locator(".ws table tbody tr")).toHaveCount(1);
   }
 });
+
+test("资料助手输入框可拖上边缘调高，刷新后保留（#309）", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "产品资料库" }).click();
+  const ta = page.locator(".det .thread-textarea");
+  await expect(ta).toBeVisible();
+  const h0 = (await ta.boundingBox())!.height;
+  const handle = page.locator(".det .thread-input-resize");
+  await expect(handle).toHaveCount(1);
+  const hb = (await handle.boundingBox())!;
+  await page.mouse.move(hb.x + hb.width / 2, hb.y + hb.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(hb.x + hb.width / 2, hb.y - 70, { steps: 5 });
+  await page.mouse.up();
+  const h1 = (await ta.boundingBox())!.height;
+  expect(h1).toBeGreaterThan(h0 + 50);
+  await page.reload();
+  await page.getByRole("button", { name: "产品资料库" }).click();
+  await expect
+    .poll(async () => (await page.locator(".det .thread-textarea").boundingBox())!.height)
+    .toBeGreaterThan(h0 + 50);
+});
