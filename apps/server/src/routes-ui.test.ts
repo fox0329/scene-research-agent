@@ -22,6 +22,7 @@ import { createSseHub } from "./sse-hub.js";
 import { pptRunId } from "./ppt-progress.js";
 import {
   libraryWrite,
+  undoLast,
   writeAnchorRows as writeAnchorRowsTool,
 } from "./conversation-tools.js";
 import { undoOperation } from "./operation-log.js";
@@ -3059,6 +3060,33 @@ describe("对话写工具：资料库/表1-1", () => {
     const undone = undoOperation(h.db, out.operation!.id);
     expect(undone.ok).toBe(true);
     expect(h.db.productRepo.getById(product.id)!.name).toBe("旧名字");
+  });
+
+  it("对话说「撤销」：undo_last_operation 恢复最近一次写入", async () => {
+    const line = h.db.productLineRepo.insert({ name: "L-undo" });
+    const product = h.db.productRepo.insert({
+      product_line_id: line.id,
+      model: "EG-300",
+      name: "原名",
+      status: "在售",
+      launch_date: "",
+      position_desc: "",
+      source_type: "用户补充",
+    } as never);
+    const ctx = {
+      db: h.db,
+      app: h.app,
+      conversationId: null,
+      surface: "library",
+      lineId: line.id,
+    };
+    await libraryWrite(ctx, {
+      table: "M1",
+      updates: [{ match: { column: "model", value: "EG-300" }, values: { name: "改名" } }],
+    });
+    const out = undoLast(ctx);
+    expect(out.note).toContain("已撤销");
+    expect(h.db.productRepo.getById(product.id)!.name).toBe("原名");
   });
 
   it("资料库删行：直接删除（可撤销）", async () => {

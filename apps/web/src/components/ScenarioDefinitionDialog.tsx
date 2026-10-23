@@ -25,7 +25,6 @@ import {
   api,
   definitionChatStream,
   parseProjectFile,
-  undoOperation,
   type ApiAnchorRow,
   type ApiDefinitionConsolidation,
   type ApiDefinitionMessage,
@@ -114,7 +113,6 @@ export const ScenarioDefinitionDialog: React.FC<ScenarioDefinitionDialogProps> =
   /** #307：随下一条消息附加的材料（生成过程输入框支持上传） */
   const [attachment, setAttachment] = useState<{ file: string; text: string } | null>(null);
   const [uploading, setUploading] = useState(false);
-  const [lastOp, setLastOp] = useState<{ id: string; summary: string } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const streamRef = useRef<HTMLDivElement>(null);
@@ -156,7 +154,6 @@ export const ScenarioDefinitionDialog: React.FC<ScenarioDefinitionDialogProps> =
           setStreamText("");
           for await (const ev of definitionChatStream(projectId, content)) {
             if (ev.type === "operation") {
-              setLastOp({ id: String(ev.id ?? ""), summary: String(ev.summary ?? "写入") });
               notifyDataChanged();
             } else if (ev.type === "text") {
               reply += String(ev.text ?? "");
@@ -417,28 +414,6 @@ export const ScenarioDefinitionDialog: React.FC<ScenarioDefinitionDialogProps> =
 
           {error ? <p className="modal-error">{error}</p> : null}
         </div>
-
-        {lastOp ? (
-          <div className="thread-undo" role="status">
-            <span>已修改：{lastOp.summary}</span>
-            <button
-              type="button"
-              className="btn ghost sm"
-              onClick={async () => {
-                try {
-                  const r = await undoOperation(lastOp.id);
-                  setError(r.message);
-                  setLastOp(null);
-                  notifyDataChanged();
-                } catch (err) {
-                  setError(`撤销失败：${errText(err)}`);
-                }
-              }}
-            >
-              撤销
-            </button>
-          </div>
-        ) : null}
         {/* 底部：对话视图 = 输入框 + 发送 + 整理成定义；结果视图 = 继续聊 / 完成 */}
         <div className="definition-f">
           {view === "chat" ? (

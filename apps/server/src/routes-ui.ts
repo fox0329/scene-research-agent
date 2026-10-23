@@ -135,10 +135,12 @@ import {
   CONFIRM_OPERATION_TOOL,
   CREATE_PRODUCT_LINE_TOOL,
   LIBRARY_WRITE_TOOL,
+  UNDO_LAST_TOOL,
   WRITE_ANCHOR_ROWS_TOOL,
   confirmOperation,
   createProductLine,
   libraryWrite,
+  undoLast,
   writeAnchorRows as writeAnchorRowsTool,
   type ToolOutcome,
 } from "./conversation-tools.js";
@@ -1454,8 +1456,16 @@ function registerConversationRoutes(
                       ).then((r: { note: string }) => r.note),
                   }
                 : {
-                    defs: [WRITE_TABLE_TOOL],
-                    onCall: async (_name: string, args: Record<string, unknown>) => {
+                    defs: [WRITE_TABLE_TOOL, UNDO_LAST_TOOL],
+                    onCall: async (name: string, args: Record<string, unknown>) => {
+                      if (name === "undo_last_operation") {
+                        return undoLast({
+                          db,
+                          app,
+                          conversationId: conversation.id,
+                          surface: "artifact",
+                        });
+                      }
                       let undo: UndoAction[] = [];
                       const note = await fillTableFromCommand(
                         db,
@@ -1675,20 +1685,21 @@ function registerConversationRoutes(
         system: DEFINITION_SYSTEM,
         contextPrefix: `${buildDefinitionContext(db, scenario)}\n`,
         chatTools: {
-          defs: [WRITE_ANCHOR_ROWS_TOOL],
-          onCall: async (name: string, args: Record<string, unknown>) =>
-            name === "write_anchor_rows"
-              ? writeAnchorRowsTool(
-                  {
-                    db,
-                    app,
-                    conversationId,
-                    surface: "definition",
-                    scenarioId: id,
-                  },
-                  args,
-                )
-              : { note: `未知工具：${name}` },
+          defs: [WRITE_ANCHOR_ROWS_TOOL, UNDO_LAST_TOOL],
+          onCall: async (name: string, args: Record<string, unknown>) => {
+            const toolCtx = {
+              db,
+              app,
+              conversationId,
+              surface: "definition",
+              scenarioId: id,
+            };
+            return name === "write_anchor_rows"
+              ? writeAnchorRowsTool(toolCtx, args)
+              : name === "undo_last_operation"
+                ? undoLast(toolCtx)
+                : { note: `未知工具：${name}` };
+          },
         },
       }),
     );
@@ -2015,7 +2026,12 @@ function registerLibraryRoutes(
       .join("\n");
     const runId = `library:${id}#${++librarySeq}`;
     const toolCtx = { db, app, conversationId: null, surface: "library", lineId: id };
-    const toolDefs = [LIBRARY_WRITE_TOOL, CREATE_PRODUCT_LINE_TOOL, CONFIRM_OPERATION_TOOL];
+    const toolDefs = [
+      LIBRARY_WRITE_TOOL,
+      CREATE_PRODUCT_LINE_TOOL,
+      CONFIRM_OPERATION_TOOL,
+      UNDO_LAST_TOOL,
+    ];
     const runTool = async (name: string, args: Record<string, unknown>): Promise<ToolOutcome> =>
       name === "library_write"
         ? await libraryWrite(toolCtx, args)
@@ -2023,7 +2039,9 @@ function registerLibraryRoutes(
           ? createProductLine(toolCtx, args)
           : name === "confirm_operation"
             ? await confirmOperation(toolCtx, args)
-            : { note: `未知工具：${name}` };
+            : name === "undo_last_operation"
+              ? undoLast(toolCtx)
+              : { note: `未知工具：${name}` };
     const source = (async function* (): AsyncGenerator<import("@scene/contract").FollowEvent> {
       const session = await dshClient.createSession({ title: `资料助手 · ${line.name}` });
       let reply = "";

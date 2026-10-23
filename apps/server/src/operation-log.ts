@@ -159,6 +159,25 @@ export function applyUndoActions(db: DbInstance, undo: UndoAction[]): void {
   }
 }
 
+/** 最近一次未撤销的操作：有会话按会话，没有会话（资料库）按入口 */
+export function latestOperation(
+  db: DbInstance,
+  opts: { conversationId?: string | null; surface: string },
+): OperationRecord | null {
+  const row = opts.conversationId
+    ? (db.db
+        .prepare(
+          "SELECT id FROM operation_log WHERE conversation_id = ? AND undone_at IS NULL ORDER BY created_at DESC LIMIT 1",
+        )
+        .get(opts.conversationId) as { id: string } | undefined)
+    : (db.db
+        .prepare(
+          "SELECT id FROM operation_log WHERE surface = ? AND undone_at IS NULL ORDER BY created_at DESC LIMIT 1",
+        )
+        .get(opts.surface) as { id: string } | undefined);
+  return row ? getOperation(db, row.id) : null;
+}
+
 /** 读整行（撤销前留底）；表名走白名单 */
 export function readRowForUndo(
   db: DbInstance,

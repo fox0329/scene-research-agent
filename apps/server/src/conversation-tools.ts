@@ -15,8 +15,10 @@ import type { DbInstance } from "@scene/infra";
 import { ANCHOR_TABLE_CODE } from "@scene/contract";
 import {
   applyUndoActions,
+  latestOperation,
   readRowForUndo,
   recordOperation,
+  undoOperation,
   type UndoAction,
 } from "./operation-log.js";
 import { takePending } from "./pending-ops.js";
@@ -226,7 +228,7 @@ export async function libraryWrite(
     undo,
   });
   return {
-    note: `已改资料库：${done.join("；")}（可撤销）。`,
+    note: `已改资料库：${done.join("；")}（要撤销说一声）。`,
     operation: { id: rec.id, summary: rec.summary },
   };
 }
@@ -289,7 +291,7 @@ export function writeAnchorRows(ctx: ToolContext, args: Record<string, unknown>)
     undo,
   });
   return {
-    note: `已更新表1-1：${done.join("、")}（可撤销）。`,
+    note: `已更新表1-1：${done.join("、")}（要撤销说一声）。`,
     operation: { id: rec.id, summary: rec.summary },
   };
 }
@@ -421,5 +423,31 @@ export const CONFIRM_OPERATION_TOOL = {
       properties: { op_id: { type: "string", description: "预览里给出的操作 id" } },
       required: ["op_id"],
     },
+  },
+} as const;
+
+
+/** 撤销当前对话最近一次写入（用户说「撤销/撤回」时由模型调用） */
+export function undoLast(ctx: ToolContext): ToolOutcome {
+  const rec = latestOperation(ctx.db, {
+    conversationId: ctx.conversationId,
+    surface: ctx.surface,
+  });
+  if (!rec) throw new Error("没有可撤销的修改");
+  const result = undoOperation(ctx.db, rec.id);
+  if (!result.ok) throw new Error(result.message);
+  return {
+    note: `已撤销上一次修改：${rec.summary}。`,
+    operation: { id: rec.id, summary: `撤销：${rec.summary}` },
+  };
+}
+
+export const UNDO_LAST_TOOL = {
+  type: "function",
+  function: {
+    name: "undo_last_operation",
+    description:
+      "撤销本对话最近一次表格/资料库写入。用户说「撤销」「撤回」「恢复刚才的改动」时调用，不需要参数。",
+    parameters: { type: "object", properties: {} },
   },
 } as const;

@@ -157,7 +157,9 @@ export const ARTIFACT_SYSTEM_PROMPT = `你是场景通的「产物助手」。�
    - row 照抄【产物内容】里该行第一列的值；column 用界面列名；找不到就别调工具，正文里说明。
    - **确认循环禁令**（实测事故）：如果你上一条已经说过「要写就说一声」，用户回复肯定
      （可以/好/写吧/确认/嗯），必须立刻调用 write_table，不许再复述「要我写就说一声」。
-   - 没有让你写表时，不要调用工具，也不要输出任何 JSON。`;
+   - 没有让你写表时，不要调用工具，也不要输出任何 JSON。
+   - 写入确认语末尾带一句「要撤销说一声」；用户说「撤销 / 撤回 / 恢复」时调用 undo_last_operation，
+     不要自己猜要撤销哪一次。`;
 
 /** 产物类型是否合法 */
 export function isArtifactScopeType(value: unknown): value is ArtifactScopeType {
@@ -637,5 +639,5 @@ export async function fillTableFromCommand(
   if (added > 0) parts.push(`新增 ${added} 行`);
   if (deleted > 0) parts.push(`删除 ${deleted} 行`);
   if (undo.length > 0) hooks?.onUndo?.(undo);
-  return `已按建议修改表格：${parts.join("、")}（蓝色字体为助手补写，点击即可修改；改动会像手填一样参与下游重算）。`;
+  return `已按建议修改表格：${parts.join("、")}（蓝色字体为助手补写，点击即可修改；要撤销说一声）。`;
 }

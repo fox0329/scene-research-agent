@@ -3206,29 +3206,3 @@ td.ai-filled .cell-text {
   flex-direction: column;
 }
 
-/* #312 对话写入后的撤销条 */
-.thread-undo {
-  display: flex;
-  width: 100%;
-  max-width: 100%;
-  box-sizing: border-box;
-  min-width: 0;
-  overflow: hidden;
-  align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-1) var(--space-4);
-  font-size: var(--font-size-xs);
-  color: var(--c-text-2);
-  border-top: 1px solid var(--c-border);
-  background: var(--c-surface-2);
-}
-.thread-undo > span {
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.thread-undo > .btn {
-  flex: 0 0 auto;
-}
