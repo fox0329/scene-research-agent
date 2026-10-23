@@ -5,6 +5,7 @@
  * 这是「上传 3 个文件、列表只有 2 个」这种对不上账的情况唯一的出口。
  */
 
+import { describeUploadOutcome } from "./ingest-receipt";
 import { describe, expect, it } from "vitest";
 import { buildIngestReceipt, fileResultLine, type FileIngestResult } from "./ingest-receipt.js";
 
@@ -164,5 +165,27 @@ describe("fileResultLine — 单文件进度行", () => {
 
   it("失败的文件不再补一行（错误行已经说过了）", () => {
     expect(fileResultLine({ name: "a.pdf", rows: 0, failed: true })).toBeNull();
+  });
+});
+
+
+describe("describeUploadOutcome — 对话内上传结果（#326）", () => {
+  it("新增行数就报新增", () => {
+    expect(describeUploadOutcome("CT31.docx", 31, 31)).toContain("新增 31 行");
+  });
+
+  it("0 行但识别到内容：说明是去重，不是空文件", () => {
+    const text = describeUploadOutcome("CT31.docx", 0, 31);
+    expect(text).toContain("识别 31 行");
+    expect(text).toContain("已有这些内容");
+    expect(text).toContain("去重");
+    expect(text).not.toContain("没有识别到");
+  });
+
+  it("0 行且没识别到：说明可重试或补录，并带模型原因", () => {
+    const text = describeUploadOutcome("CT31.docx", 0, 0, "模型没有返回内容");
+    expect(text).toContain("没有识别到可入库");
+    expect(text).toContain("模型没有返回内容");
+    expect(text).toContain("重试");
   });
 });

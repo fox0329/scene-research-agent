@@ -213,3 +213,23 @@ export function buildIngestReceipt(
     emptyFiles,
   };
 }
+
+
+/**
+ * 对话内上传的一句话结果。
+ * 「0 行」必须区分是「识别到了、但资料库已有」还是「根本没识别出内容」，
+ * 否则用户会把一次去重当成文件损坏（#326 实测：CT31 规格书已入库，重传报 0 行）。
+ */
+export function describeUploadOutcome(
+  name: string,
+  inserted: number,
+  recognized: number,
+  modelIssue?: string,
+): string {
+  if (inserted > 0) return `已上传并入库：${name}（新增 ${inserted} 行）`;
+  if (recognized > 0) {
+    return `已上传：${name}（识别 ${recognized} 行，资料库里已有这些内容，去重后没有新增）`;
+  }
+  const reason = modelIssue?.trim() ? `（${modelIssue.trim()}）` : "";
+  return `已上传：${name}，但没有识别到可入库的结构化内容${reason}；可以重试一次，或手动补录`;
+}

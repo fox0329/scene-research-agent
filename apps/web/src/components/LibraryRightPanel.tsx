@@ -13,6 +13,7 @@ import {
 } from "../api";
 import { stripToolEcho } from "./tool-echo";
 import { pickSupportedFiles } from "../constants";
+import { describeUploadOutcome } from "./ingest-receipt";
 import { notifyDataChanged } from "../data-events";
 
 /** #309：资料助手输入框高度（拖上边缘调高，与产物会话同一套交互） */
@@ -118,14 +119,21 @@ export const LibraryRightPanel: React.FC<{
       setNote(`正在上传 ${file.name}…`);
       try {
         let inserted = 0;
+        let recognized = 0;
+        let modelIssue = "";
         for await (const ev of ingestStream(file, lineId)) {
           if (ev.type === "done") {
-            const rows = (ev as { rows?: number }).rows;
-            if (typeof rows === "number") inserted = rows;
+            const d = ev as { rows_inserted?: number; recognized_rows?: number; model_issue?: string };
+            inserted = Number(d.rows_inserted ?? 0);
+            recognized = Number(d.recognized_rows ?? inserted);
+            modelIssue = String(d.model_issue ?? "");
+          } else if (ev.type === "error") {
+            throw new Error(String((ev as { message?: string }).message ?? "入库失败"));
           }
         }
-        setNote(`已入库 ${inserted} 行`);
-        append("系统", `已上传并入库：${file.name}（${inserted} 行）`);
+        const summary = describeUploadOutcome(file.name, inserted, recognized, modelIssue);
+        setNote(summary);
+        append("系统", summary);
       } catch (err) {
         setNote(`上传失败：${err instanceof Error ? err.message : String(err)}`);
       }

@@ -109,6 +109,8 @@ export interface IngestConflict {
 /** ingest 返回结果 */
 export interface IngestResult {
   rowsInserted: number;
+  /** 模型识别出的有效行数（含已存在/被门禁挡下的）；0 行新增时要靠它区分"空文件"与"全是重复" */
+  recognizedRows: number;
   /** 每张表插入行数（M1–M6 / O1–O6），入库反馈用 */
   tableCounts: Record<string, number>;
   /** 并入已有型号的 M1 行数（没新建产品行——旧实现每批材料都会造重复行） */
@@ -345,6 +347,7 @@ async function executeIngest(
 
   return {
     rowsInserted: inserted,
+    recognizedRows: validRows.length,
     tableCounts,
     mergedProducts,
     qualityAssessment,

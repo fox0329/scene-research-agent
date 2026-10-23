@@ -701,6 +701,7 @@ async function* runIngestJob(
     yield {
       type: "done",
       rows_inserted: result.rowsInserted,
+      recognized_rows: result.recognizedRows,
       table_counts: result.tableCounts,
       quality: result.qualityAssessment,
       completeness: result.completenessReport,
