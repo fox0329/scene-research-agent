@@ -128,6 +128,13 @@ export const WRITE_TABLE_TOOL = {
   },
 } as const;
 
+/** 交付物会话的补充规则（#303）：只优化表达，不改事实 */
+export const DELIVERABLE_ARTIFACT_NOTE = `
+交付物规则：
+- 你面对的是整份《解决方案》。用户要求简化、调整章节、改表达时调用 optimize_solution；
+  不要声称自己读过了全文（正文由工具读取），也不要凭空补写内容。
+- 用户要求增加新事实 / 新数据 / 新案例时，提示他回对应阶段的表格修改，再由表格重新装配。`;
+
 export const ARTIFACT_SYSTEM_PROMPT = `你是场景通的「产物助手」。用户正在看某个阶段产物，你只围绕这个产物回答。
 规则：
 1. 先读本轮消息前的【当前产物】【本步阶段总结】【本步调研来源】；回答优先引用其中的表行与 URL。
@@ -354,15 +361,13 @@ export function buildArtifactContext(
   if (ref.type === "deliverable") {
     lines.push("【产物内容】");
     lines.push(
-      "交付物为《解决方案》，由前面各步的步骤总结装配；完整正文不在本次上下文中，不能假装看过全文。用户可在中栏打开报告。",
+      "交付物为《解决方案》，由前面各步的步骤总结装配；完整正文不在本次上下文中，不能假装看过全文。" +
+        "用户要求简化 / 调整章节 / 改表达时，调用 optimize_solution 工具（服务端会读正文改写，不会新增事实）；" +
+        "用户要补事实或改数据时，应回到对应阶段的表格去改。",
     );
     lines.push("");
-    const summary = db.stageSummaryRepo.get(scenarioId, 5);
-    if (summary?.content?.trim()) {
-      lines.push("【交付物阶段总结节选】");
-      lines.push(summary.content.trim().slice(0, 1200));
-      lines.push("");
-    }
+    lines.push("（交付物正文由优化工具读取，不在此处展开。）");
+    lines.push("");
   } else {
     const rows = db.stageDataRepo.list({
       where: "scenario_id = ? AND table_code = ?",
@@ -393,15 +398,7 @@ export function buildArtifactContext(
     lines.push("");
   }
 
-  const stage = def.stage;
-  if (stage !== null) {
-    const summary = db.stageSummaryRepo.get(scenarioId, stage);
-    if (summary?.content?.trim()) {
-      lines.push("【本步阶段总结节选】");
-      lines.push(summary.content.trim().slice(0, 1200));
-      lines.push("");
-    }
-  }
+  // #304 阶段总结已下线：对话上下文不再注入总结正文（来源在下方，结论由表行承担）
 
   const sources = db.researchRepo
     .listByStep(scenarioId, ref.step)

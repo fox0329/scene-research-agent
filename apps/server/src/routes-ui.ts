@@ -86,8 +86,10 @@ import {
   fillTableFromCommand,
   readArtifactThread,
   WRITE_TABLE_TOOL,
+  DELIVERABLE_ARTIFACT_NOTE,
   touchArtifactConversation,
 } from "./artifact-conversation.js";
+import { createSolutionOptimizer, OPTIMIZE_SOLUTION_TOOL } from "./solution-optimize.js";
 import { requestScenarioClarify } from "./scenario-clarify.js";
 import { makeSourceLookup, runPostcheck } from "./postcheck-pass.js";
 import {
@@ -1288,7 +1290,7 @@ function registerConversationRoutes(
   deps: UiRoutesDeps,
   converseCmd: ReturnType<typeof createConverseCommand>,
 ) {
-  const { db, hub } = deps;
+  const { db, hub, dshClient } = deps;
   let convSeq = 0;
   /** 场景定义对话的 SSE 流序号（与普通会话互不干扰） */
   let defSeq = 0;
@@ -1404,17 +1406,30 @@ function registerConversationRoutes(
       const source = (async function* () {
         try {
           yield* converseCmd.sendMessage(conversation.id, content, {
-            system: ARTIFACT_SYSTEM_PROMPT,
+            system:
+              ref.type === "deliverable"
+                ? `${ARTIFACT_SYSTEM_PROMPT}\n${DELIVERABLE_ARTIFACT_NOTE}`
+                : ARTIFACT_SYSTEM_PROMPT,
             contextPrefix,
             // 产物会话内不执行全局【执行命令】（推进阶段/导出等仍在中栏发起）；
             // 写表走原生 function calling（#300）：模型直接调 write_table 工具，蓝字提醒、不标注来源
             allowCommands: false,
             handleCommand: (command) => fillTableFromCommand(db, id, ref, command),
-            chatTools: {
-              defs: [WRITE_TABLE_TOOL],
-              onCall: (_name: string, args: Record<string, unknown>) =>
-                fillTableFromCommand(db, id, ref, { command: "写入表格", params: args }),
-            },
+            chatTools:
+              ref.type === "deliverable"
+                ? {
+                    defs: [OPTIMIZE_SOLUTION_TOOL],
+                    onCall: (_name: string, args: Record<string, unknown>) =>
+                      createSolutionOptimizer({ db, dshClient }).optimize(
+                        id,
+                        String(args.instruction ?? ""),
+                      ).then((r: { note: string }) => r.note),
+                  }
+                : {
+                    defs: [WRITE_TABLE_TOOL],
+                    onCall: (_name: string, args: Record<string, unknown>) =>
+                      fillTableFromCommand(db, id, ref, { command: "写入表格", params: args }),
+                  },
           });
         } finally {
           // 无论正常结束、报错还是客户端断开，都记录活动时间与当前产物指纹
