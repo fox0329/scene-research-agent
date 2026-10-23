@@ -513,10 +513,13 @@ async function* sendMessage(
     fullReply = replyWithoutCmd;
   }
   if (command) {
-    yield {
-      type: "text",
-      text: `\n\n⏳ 正在执行：${command.command}…\n`,
-    };
+    // 自定义处理器（产物会话写入表格）自带结果确认语，不再先喊一遍「正在执行」
+    if (!override?.handleCommand) {
+      yield {
+        type: "text",
+        text: `\n\n⏳ 正在执行：${command.command}…\n`,
+      };
+    }
     try {
       if (override?.handleCommand) {
         commandResult = `\n\n${await override.handleCommand(command)}`;
