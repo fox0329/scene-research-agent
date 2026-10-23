@@ -4,11 +4,11 @@ import type React from "react";
 /**
  * 三栏壳列宽状态：拖宽（偏离 #1，已批准）+ 缘收起（偏离 #2）
  * 配方来源：design-system app-shell-layout.md（React 拖拽骨架 §3.4）
- * 范围：左 200-320 / 右 240-480（AGENTS §4.2 批准值）；宽度写 localStorage 重启保留。
+ * 范围：左 200-320 / 右 240-720（#297：上限 480→720，给对话更大空间）；宽度写 localStorage 重启保留。
  */
 
 export const SIDE_RANGE = { min: 200, max: 320, def: 256 } as const;
-export const DET_RANGE = { min: 240, max: 480, def: 280 } as const;
+export const DET_RANGE = { min: 240, max: 720, def: 280 } as const;
 
 const KEY_SIDE = "shell.side-w";
 const KEY_DET = "shell.det-w";

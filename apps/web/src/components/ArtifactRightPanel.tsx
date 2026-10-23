@@ -37,7 +37,34 @@ const DEFAULT_TOP_PCT = 30;
 const MIN_TOP_PCT = 22;
 const MAX_TOP_PCT = 58;
 const TOP_PCT_KEY = "scene.artifact.split.v1";
-/** 输入框最大高度 */
+/** 输入框高度（#297：拖输入框上边缘调高，写 localStorage 重启保留） */
+const INPUT_H_KEY = "scene.artifact.input-h.v1";
+const INPUT_DEF_H = 64;
+const INPUT_MIN_H = 48;
+const INPUT_MAX_H = 320;
+
+function clampInputH(value: number): number {
+  return Math.min(INPUT_MAX_H, Math.max(INPUT_MIN_H, Math.round(value)));
+}
+
+function readInputH(): number {
+  try {
+    const raw = Number(localStorage.getItem(INPUT_H_KEY));
+    return Number.isFinite(raw) && raw >= INPUT_MIN_H && raw <= INPUT_MAX_H
+      ? Math.round(raw)
+      : INPUT_DEF_H;
+  } catch {
+    return INPUT_DEF_H;
+  }
+}
+
+function saveInputH(value: number): void {
+  try {
+    localStorage.setItem(INPUT_H_KEY, String(value));
+  } catch {
+    /* 隐私模式写不进去不影响拖动 */
+  }
+}
 
 function clampPct(value: number): number {
   return Math.min(MAX_TOP_PCT, Math.max(MIN_TOP_PCT, Math.round(value)));
@@ -384,6 +411,7 @@ const ThreadPane: React.FC<{
   const [sending, setSending] = useState(false);
   const [streamText, setStreamText] = useState<string | null>(null);
   const [summaryOpen, setSummaryOpen] = useState(false);
+  const [inputH, setInputH] = useState(readInputH);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const seqRef = useRef(0);
@@ -555,6 +583,27 @@ const ThreadPane: React.FC<{
     }
   }, [appendLocal, draft, live, projectId, ref, sending]);
 
+  /* 拖输入框上边缘调高：mousemove 全程挂在 document 上，出热区不掉跟 */
+  const onInputResizeStart = (event: React.MouseEvent<HTMLDivElement>): void => {
+    event.preventDefault();
+    const startY = event.clientY;
+    const startH = inputH;
+    const onMove = (e: MouseEvent): void => {
+      const next = clampInputH(startH - (e.clientY - startY));
+      setInputH(next);
+    };
+    const onUp = (): void => {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+      setInputH((h) => {
+        saveInputH(h);
+        return h;
+      });
+    };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  };
+
   const onKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>): void => {
     if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
       event.preventDefault();
@@ -654,10 +703,19 @@ const ThreadPane: React.FC<{
 
       <div className="thread-composer">
         <div className="thread-input-shell">
+          <div
+            className="thread-input-resize"
+            role="separator"
+            aria-label="调整输入框高度"
+            aria-orientation="horizontal"
+            title="拖动调整输入框高度"
+            onMouseDown={onInputResizeStart}
+          />
           <textarea
             ref={inputRef}
             className="thread-textarea"
             rows={2}
+            style={{ height: inputH }}
             value={draft}
             disabled={!live || loading || sending || !artifact}
             placeholder={live ? "针对这个产物追问，或输入「补一条来源」…" : "演示模式不可发送"}

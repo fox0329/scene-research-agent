@@ -614,7 +614,7 @@ test("左栏可拖宽：跟手 + 上限 320 钳制", async ({ page }) => {
   expect(await widthOf(side)).toBeLessThanOrEqual(321);
 });
 
-test("右栏可拖宽：反向跟手 + 上限 480 钳制", async ({ page }) => {
+test("右栏可拖宽：反向跟手 + 上限 720 钳制（#297 放宽）", async ({ page }) => {
   const det = page.locator(".det");
   const w0 = await widthOf(det);
   expect(Math.round(w0)).toBe(280);
@@ -624,6 +624,26 @@ test("右栏可拖宽：反向跟手 + 上限 480 钳制", async ({ page }) => {
   await page.mouse.move(rz.x - 100 + rz.width / 2, rz.y + 200, { steps: 4 });
   await page.mouse.up();
   expect(Math.round(await widthOf(det))).toBe(380);
+  // #297：上限从 480 放宽到 720，拖更多也能继续变宽
+  const rz2 = (await page.locator(".col-resizer--det").boundingBox())!;
+  await page.mouse.move(rz2.x + rz2.width / 2, rz2.y + 200);
+  await page.mouse.down();
+  await page.mouse.move(rz2.x - 600 + rz2.width / 2, rz2.y + 200, { steps: 4 });
+  await page.mouse.up();
+  expect(Math.round(await widthOf(det))).toBe(720);
+});
+
+test("输入框上边缘可拖动调高（#297）", async ({ page }) => {
+  const det = page.locator(".det");
+  const box = (await det.locator(".thread-textarea").boundingBox())!;
+  expect(Math.round(box.height)).toBe(64);
+  const rz = (await det.locator(".thread-input-resize").boundingBox())!;
+  await page.mouse.move(rz.x + rz.width / 2, rz.y + rz.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(rz.x + rz.width / 2, rz.y + rz.height / 2 - 56, { steps: 4 });
+  await page.mouse.up();
+  const raised = (await det.locator(".thread-textarea").boundingBox())!;
+  expect(Math.round(raised.height)).toBe(120);
 });
 
 test("列宽刷新后保留（localStorage）", async ({ page }) => {

@@ -3113,8 +3113,8 @@ td.ed {
 .thread-textarea {
   width: 100%;
   border: none;
-  /* 用户反馈：长输入要能拖高输入框（只在纵向拖，不破坏布局） */
-  resize: vertical;
+  /* #297：拖输入框上边缘调高（.thread-input-resize），不再用右下角原生 grip */
+  resize: none;
   outline: none;
   background: transparent;
   color: var(--ct);
@@ -3125,6 +3125,22 @@ td.ed {
   min-height: var(--size-48);
   max-height: 320px;
   overflow-y: auto;
+}
+.thread-input-shell { position: relative; }
+/* 输入框上边缘的拖动热区：视觉只有 1px 提示线，悬停加深 */
+.thread-input-resize {
+  position: absolute;
+  top: calc(-1 * var(--s05));
+  left: 0;
+  right: 0;
+  height: 9px;
+  cursor: row-resize;
+  z-index: 2;
+  touch-action: none;
+}
+.thread-input-resize:hover {
+  background: color-mix(in srgb, var(--cp) 18%, transparent);
+  border-radius: var(--rp);
 }
 .thread-textarea::placeholder { color: var(--ct3); }
 .thread-input-actions {
