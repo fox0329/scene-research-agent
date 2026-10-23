@@ -31,7 +31,7 @@ import {
 } from "../api";
 import { AlignmentTable } from "./AlignmentTable";
 import { stripToolEcho } from "./tool-echo";
-import { notifyDataChanged } from "../data-events";
+import { notifyDataChanged, notifyThreadChanged } from "../data-events";
 import { InlineText } from "./InlineText";
 import {
   DEMO_DEFINITION_MESSAGES,
@@ -170,6 +170,8 @@ export const ScenarioDefinitionDialog: React.FC<ScenarioDefinitionDialogProps> =
       setStreamText(null);
       appendLocal("系统", reply || "【错误】未收到回复内容");
       sendingRef.current = false;
+      /* 同一会话也挂在右栏：让面板立即重取，而不是等用户切页 */
+      notifyThreadChanged();
       setSending(false);
     },
     [appendLocal, demo, projectId],

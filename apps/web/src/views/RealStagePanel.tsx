@@ -77,10 +77,17 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
 
   /* #315：右栏对话改表后中栏立即重取，否则用户看到的还是旧值 */
   useEffect(() => {
-    return onDataChanged(() => {
+    const refresh = () => {
       setPatched({});
       void reload();
-    });
+    };
+    const off = onDataChanged(refresh);
+    /* 兜底：别的窗口/入口写入后，回到本页立即重取 */
+    window.addEventListener("focus", refresh);
+    return () => {
+      off();
+      window.removeEventListener("focus", refresh);
+    };
   }, [reload]);
 
   /* 单元格编辑：本地即时更新 + 落库 */

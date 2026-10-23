@@ -14,3 +14,15 @@ export function onDataChanged(handler: () => void): () => void {
   window.addEventListener(DATA_CHANGED, handler);
   return () => window.removeEventListener(DATA_CHANGED, handler);
 }
+
+/** 对话消息变化（别的入口写了消息，右栏要立即重取，不能等切页） */
+export const THREAD_CHANGED = "scene:thread-changed";
+
+export function notifyThreadChanged(): void {
+  window.dispatchEvent(new CustomEvent(THREAD_CHANGED));
+}
+
+export function onThreadChanged(handler: () => void): () => void {
+  window.addEventListener(THREAD_CHANGED, handler);
+  return () => window.removeEventListener(THREAD_CHANGED, handler);
+}

@@ -931,7 +931,13 @@ export const RealLibraryView: React.FC<{
 
   /* #315：右栏资料助手写入后，中栏表格重取 */
   useEffect(() => {
-    return onDataChanged(() => setReloadTick((t) => t + 1));
+    const refresh = () => setReloadTick((t) => t + 1);
+    const off = onDataChanged(refresh);
+    window.addEventListener("focus", refresh);
+    return () => {
+      off();
+      window.removeEventListener("focus", refresh);
+    };
   }, []);
 
   /* 产品线列表变化时保证选中有效 */

@@ -14,7 +14,7 @@ import {
 import { stripToolEcho } from "./tool-echo";
 import { pickSupportedFiles } from "../constants";
 import { describeUploadOutcome } from "./ingest-receipt";
-import { notifyDataChanged } from "../data-events";
+import { notifyDataChanged, onDataChanged, onThreadChanged } from "../data-events";
 
 /** #309：资料助手输入框高度（拖上边缘调高，与产物会话同一套交互） */
 const INPUT_H_KEY = "scene.library.input-h.v1";
@@ -134,12 +134,35 @@ export const LibraryRightPanel: React.FC<{
         const summary = describeUploadOutcome(file.name, inserted, recognized, modelIssue);
         setNote(summary);
         append("系统", summary);
+        /* 入库会改 M1–M6，中栏必须立刻重取 */
+        notifyDataChanged();
       } catch (err) {
         setNote(`上传失败：${err instanceof Error ? err.message : String(err)}`);
       }
     },
     [append, lineId],
   );
+
+  /** 外部写入（别的入口、表格编辑）后重取对话；窗口重新聚焦也补一次 */
+  useEffect(() => {
+    if (!live || !lineId) return;
+    const reload = () => {
+      if (sending) return;
+      void libraryChat(lineId)
+        .then((r) => setMessages(r.messages as ChatMsg[]))
+        .catch(() => {
+          /* 重取失败保持现状 */
+        });
+    };
+    const offData = onDataChanged(reload);
+    const offThread = onThreadChanged(reload);
+    window.addEventListener("focus", reload);
+    return () => {
+      offData();
+      offThread();
+      window.removeEventListener("focus", reload);
+    };
+  }, [live, lineId, sending]);
 
   /* 拖输入框上边缘调高：mousemove 全程挂在 document 上，出热区不掉跟 */
   const onInputResizeStart = (event: React.MouseEvent<HTMLDivElement>): void => {

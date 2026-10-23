@@ -24,7 +24,7 @@ import {
   type ApiDefinitionMessage,
 } from "../api";
 import { stripToolEcho } from "./tool-echo";
-import { notifyDataChanged } from "../data-events";
+import { notifyDataChanged, onDataChanged, onThreadChanged } from "../data-events";
 import type { StageSnapshot } from "./stage-snapshot";
 
 export interface ArtifactRightPanelProps {
@@ -505,7 +505,10 @@ const ThreadPane: React.FC<{
     api
       .artifactThread(projectId, ref)
       .then((state) => {
-        if (alive) setThread(state);
+        if (!alive) return;
+        setThread(state);
+        /* 别的入口（场景定义、步骤动作）可能刚写了消息：空闲时一并刷新，不能等切页 */
+        if (!sending && !streamText) setMessages(state.messages);
       })
       .catch(() => {
         /* 元数据刷新失败不打断阅读，下次发送/切换会重试 */
@@ -515,6 +518,31 @@ const ThreadPane: React.FC<{
     };
     // ref 的对象身份每次快照刷新都会变，故意只依赖 artifact；稳定 key 的加载在上面
   }, [artifact, live, projectId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /** 外部写入消息后的重取（数据变更、别的对话入口、窗口重新聚焦） */
+  useEffect(() => {
+    if (!live || !projectId || !ref) return;
+    const reload = () => {
+      if (sending || streamText) return;
+      void api
+        .artifactThread(projectId, ref)
+        .then((state) => {
+          setThread(state);
+          setMessages(state.messages);
+        })
+        .catch(() => {
+          /* 重取失败保持现状 */
+        });
+    };
+    const offData = onDataChanged(reload);
+    const offThread = onThreadChanged(reload);
+    window.addEventListener("focus", reload);
+    return () => {
+      offData();
+      offThread();
+      window.removeEventListener("focus", reload);
+    };
+  }, [live, projectId, ref, sending, streamText]);
 
   /* 新消息 / 流式增量后滚到底部；双 rAF 等网格布局算完，否则第一次打开停在半截 */
   useEffect(() => {
