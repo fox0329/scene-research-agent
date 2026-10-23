@@ -25,6 +25,7 @@ import {
   type ApiDefinitionMessage,
 } from "../api";
 import { stripToolEcho } from "./tool-echo";
+import { notifyDataChanged } from "../data-events";
 import type { StageSnapshot } from "./stage-snapshot";
 
 export interface ArtifactRightPanelProps {
@@ -567,6 +568,7 @@ const ThreadPane: React.FC<{
           setStreamText(reply);
         } else if (ev.type === "operation") {
           setLastOp({ id: String(ev.id ?? ""), summary: String(ev.summary ?? "写入") });
+          notifyDataChanged();
         } else if (ev.type === "error") {
           failed = true;
           reply += `${reply ? "\n" : ""}【错误】${String(ev.message ?? "未知错误")}`;
@@ -796,6 +798,7 @@ const ThreadPane: React.FC<{
                     const r = await undoOperation(lastOp.id);
                     setStatusNote(r.message);
                     setLastOp(null);
+                    notifyDataChanged();
                     if (projectId && ref) {
                       const state = await api.artifactThread(projectId, ref);
                       setThread(state);

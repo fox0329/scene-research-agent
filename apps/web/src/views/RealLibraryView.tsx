@@ -5,6 +5,7 @@ import { SceneTable, type ColumnDef } from "../components/SceneTable";
 import { MaterialUpload } from "../components/MaterialUpload";
 import type { RowDetail } from "../components/RowDetailPanel";
 import { useToast } from "../components/Toast";
+import { onDataChanged } from "../data-events";
 import { promptText } from "../components/prompt-text";
 import { dedupePreviewText } from "../components/library-dedupe";
 import { TABLES_BY_CODE } from "@scene/contract";
@@ -927,6 +928,11 @@ export const RealLibraryView: React.FC<{
   const [lineId, setLineId] = useState(lines[0]?.id ?? "");
   const [tab, setTab] = useState<TabKey>("M1");
   const [reloadTick, setReloadTick] = useState(0);
+
+  /* #315：右栏资料助手写入后，中栏表格重取 */
+  useEffect(() => {
+    return onDataChanged(() => setReloadTick((t) => t + 1));
+  }, []);
 
   /* 产品线列表变化时保证选中有效 */
   useEffect(() => {

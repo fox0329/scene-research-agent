@@ -8,6 +8,7 @@ import {
 } from "@scene/contract";
 import { api, type ApiStagePanel, type ApiStageRow } from "../api";
 import { useAsync } from "../hooks/useAsync";
+import { onDataChanged } from "../data-events";
 import { SchemaTable, tableBlocks, tableCategories } from "../components/SchemaTable";
 import type { StageBriefView, StageSnapshot } from "../components/stage-snapshot";
 import { useToast } from "../components/Toast";
@@ -73,6 +74,14 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
     [projectId, stage, stepId],
   );
   const { showToast } = useToast();
+
+  /* #315：右栏对话改表后中栏立即重取，否则用户看到的还是旧值 */
+  useEffect(() => {
+    return onDataChanged(() => {
+      setPatched({});
+      void reload();
+    });
+  }, [reload]);
 
   /* 单元格编辑：本地即时更新 + 落库 */
   const [patched, setPatched] = useState<Record<string, ApiStageRow>>({});

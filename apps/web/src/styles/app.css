@@ -2890,6 +2890,7 @@ td.ed {
 }
 
 .artifact-stack {
+  min-width: 0;
   flex: 1;
   min-height: 0;
   display: grid;
@@ -2937,6 +2938,7 @@ td.ed {
 }
 
 .thread-pane {
+  min-width: 0;
   min-height: 0;
   display: flex;
   flex-direction: column;
@@ -3083,12 +3085,14 @@ td.ed {
 }
 
 .thread-composer {
+  min-width: 0;
   flex-shrink: 0;
   border-top: 1px solid var(--cb);
   padding: var(--s2) var(--s3) var(--s3);
   background: var(--csr);
 }
 .thread-input-shell {
+  min-width: 0;
   border: 1px solid var(--cb);
   border-radius: var(--r8);
   background: var(--cf);
@@ -3205,6 +3209,11 @@ td.ai-filled .cell-text {
 /* #312 对话写入后的撤销条 */
 .thread-undo {
   display: flex;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  min-width: 0;
+  overflow: hidden;
   align-items: center;
   gap: var(--space-2);
   padding: var(--space-1) var(--space-4);
@@ -3214,8 +3223,12 @@ td.ai-filled .cell-text {
   background: var(--c-surface-2);
 }
 .thread-undo > span {
-  flex: 1;
+  flex: 1 1 auto;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.thread-undo > .btn {
+  flex: 0 0 auto;
 }

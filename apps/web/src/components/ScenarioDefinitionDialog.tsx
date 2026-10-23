@@ -32,6 +32,7 @@ import {
 } from "../api";
 import { AlignmentTable } from "./AlignmentTable";
 import { stripToolEcho } from "./tool-echo";
+import { notifyDataChanged } from "../data-events";
 import { InlineText } from "./InlineText";
 import {
   DEMO_DEFINITION_MESSAGES,
@@ -156,6 +157,7 @@ export const ScenarioDefinitionDialog: React.FC<ScenarioDefinitionDialogProps> =
           for await (const ev of definitionChatStream(projectId, content)) {
             if (ev.type === "operation") {
               setLastOp({ id: String(ev.id ?? ""), summary: String(ev.summary ?? "写入") });
+              notifyDataChanged();
             } else if (ev.type === "text") {
               reply += String(ev.text ?? "");
               setStreamText(reply);
@@ -426,6 +428,7 @@ export const ScenarioDefinitionDialog: React.FC<ScenarioDefinitionDialogProps> =
                   const r = await undoOperation(lastOp.id);
                   setError(r.message);
                   setLastOp(null);
+                  notifyDataChanged();
                 } catch (err) {
                   setError(`撤销失败：${errText(err)}`);
                 }

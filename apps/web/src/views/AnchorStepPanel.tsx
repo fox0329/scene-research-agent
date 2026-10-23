@@ -16,6 +16,7 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { onDataChanged } from "../data-events";
 import { api, type ApiAnchorRow } from "../api";
 import { AnchorFoldPanel } from "../components/AnchorFoldPanel";
 import { anchorSummary } from "../components/definition-progress";
@@ -132,6 +133,11 @@ export const AnchorStepPanel: React.FC<AnchorStepPanelProps> = ({
   );
 
   /** 关闭定义对话：对话条数/表1-1 可能已变，重取一次 */
+  /** #315：右栏对话改表后，锚表立即重取 */
+  useEffect(() => {
+    return onDataChanged(() => reloadDef());
+  }, [reloadDef]);
+
   const handleDialogClose = useCallback(() => {
     setDialogOpen(false);
     reloadDef();

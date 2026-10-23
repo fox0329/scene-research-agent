@@ -13,6 +13,7 @@ import {
   undoOperation,
 } from "../api";
 import { stripToolEcho } from "./tool-echo";
+import { notifyDataChanged } from "../data-events";
 
 /** #309：资料助手输入框高度（拖上边缘调高，与产物会话同一套交互） */
 const INPUT_H_KEY = "scene.library.input-h.v1";
@@ -164,6 +165,7 @@ export const LibraryRightPanel: React.FC<{
       for await (const ev of libraryChatStream(lineId, text)) {
         if (ev.type === "operation") {
           setLastOp({ id: String(ev.id ?? ""), summary: String(ev.summary ?? "写入") });
+          notifyDataChanged();
         } else if (ev.type === "text") {
           const piece = String((ev as { text?: unknown }).text ?? "");
           if (!piece) continue;
@@ -232,6 +234,7 @@ export const LibraryRightPanel: React.FC<{
                   const r = await undoOperation(lastOp.id);
                   setNote(r.message);
                   setLastOp(null);
+                  notifyDataChanged();
                   setMessages((await libraryChat(lineId!)).messages as ChatMsg[]);
                 } catch (err) {
                   setNote(`撤销失败：${err instanceof Error ? err.message : String(err)}`);
