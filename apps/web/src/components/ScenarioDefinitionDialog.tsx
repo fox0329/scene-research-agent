@@ -315,12 +315,13 @@ export const ScenarioDefinitionDialog: React.FC<ScenarioDefinitionDialogProps> =
     /* 自动开场白是系统替用户发的（落库仍是用户角色，模型上下文才接得上）：
        界面上必须标出来，不能让用户以为"我没打过这句话"。 */
     const isGuide = m.role === "用户" && m.content === GUIDE_MESSAGE;
+    const body =
+      m.role === "用户" ? (isGuide ? `（系统引导）${m.content}` : m.content) : stripToolEcho(m.content);
+    if (!body) return null;
     return (
       <div key={m.id} className={`msg ${m.role === "用户" ? "u" : "ai"}`}>
         <div className="bub">
-          <InlineText
-            text={isGuide ? `（系统引导）${m.content}` : stripToolEcho(m.content)}
-          />
+          <InlineText text={body} />
         </div>
         <div className="msg-meta">{isGuide ? "系统自动发出 · " : ""}{fmtTime(m.created_at)}</div>
       </div>

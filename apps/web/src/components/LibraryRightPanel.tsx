@@ -211,14 +211,17 @@ export const LibraryRightPanel: React.FC<{
               <strong>资料助手</strong>
             </div>
           ) : (
-            messages.map((m) => (
-              <div key={m.id} className={`thread-msg${m.role === "用户" ? " user" : ""}`}>
-                <div className="thread-msg-meta">{m.role === "用户" ? "你" : "助手"}</div>
-                <div className="thread-msg-bubble">
-                  {stripToolEcho(m.content.replace(/\*\*/g, ""))}
+            messages.map((m) => {
+              const body =
+                m.role === "用户" ? m.content : stripToolEcho(m.content.replace(/\*\*/g, ""));
+              if (!body) return null;
+              return (
+                <div key={m.id} className={`thread-msg${m.role === "用户" ? " user" : ""}`}>
+                  <div className="thread-msg-meta">{m.role === "用户" ? "你" : "助手"}</div>
+                  <div className="thread-msg-bubble">{body}</div>
                 </div>
-              </div>
-            ))
+              );
+            })
           )}
         </div>
 
