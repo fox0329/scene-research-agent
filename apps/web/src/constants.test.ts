@@ -55,6 +55,16 @@ describe("上传前体积预检（变更表 #155）", () => {
     expect(describeOversize([], 50)).toBe("");
   });
 
+  it("旧版 .doc 在上传前就被拦下，并给出可执行的提示（#325）", () => {
+    const { files, skippedNames } = pickSupportedFiles([
+      fakeFile("CT33规格参数.doc", 1),
+      fakeFile("CT33规格参数.docx", 1),
+    ] as unknown as File[]);
+    expect(files.map((f) => f.name)).toEqual(["CT33规格参数.docx"]);
+    expect(describeSkipped(skippedNames)).toContain("旧版 .doc");
+    expect(describeSkipped(skippedNames)).toContain("另存为 .docx");
+  });
+
   it("与既有的类型跳过清单互不影响", () => {
     const { files, skippedNames } = pickSupportedFiles([
       fakeFile("图纸.dwg", 1),

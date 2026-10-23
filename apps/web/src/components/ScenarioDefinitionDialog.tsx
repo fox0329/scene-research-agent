@@ -265,10 +265,20 @@ export const ScenarioDefinitionDialog: React.FC<ScenarioDefinitionDialogProps> =
   const onPickFile = useCallback(
     async (files: FileList | null) => {
       if (!files?.length || demo) return;
+      const file = files.item(0);
+      if (!file) return;
+      if (/\.doc$/iu.test(file.name)) {
+        setError("旧版 Word .doc 读不了：请在 Word 中另存为 .docx 后重新上传");
+        return;
+      }
+      if (/\.(pdf|docx|xlsx|pptx|txt|md|csv)$/iu.test(file.name) === false) {
+        setError("不支持的文件格式：请上传 PDF / .docx / .xlsx / .pptx / .txt / .md / .csv");
+        return;
+      }
       setUploading(true);
       setError(null);
       try {
-        const r = await parseProjectFile(projectId, files[0]!);
+        const r = await parseProjectFile(projectId, file);
         setAttachment({ file: r.file, text: r.text });
       } catch (err: unknown) {
         setError(`上传解析失败：${errText(err)}`);

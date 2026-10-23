@@ -12,6 +12,7 @@ import {
   libraryIngestPath,
 } from "../api";
 import { stripToolEcho } from "./tool-echo";
+import { pickSupportedFiles } from "../constants";
 import { notifyDataChanged } from "../data-events";
 
 /** #309：资料助手输入框高度（拖上边缘调高，与产物会话同一套交互） */
@@ -102,17 +103,29 @@ export const LibraryRightPanel: React.FC<{
   const uploadFiles = useCallback(
     async (files: FileList | null) => {
       if (!lineId || !files?.length) return;
-      setNote(`正在上传 ${files[0]!.name}…`);
+      /* 先物化：input.files 是活引用，onChange 里清空 value 后它会变空（实测 .name 报错） */
+      const file = files.item(0);
+      if (!file) return;
+      const { files: supported, skippedNames } = pickSupportedFiles([file]);
+      if (supported.length === 0) {
+        setNote(
+          skippedNames.length
+            ? `不支持这个文件：${skippedNames[0]}。仅支持 PDF / .docx / .xlsx / .pptx / 文本；旧版 .doc 请先另存为 .docx。`
+            : "没有可上传的文件",
+        );
+        return;
+      }
+      setNote(`正在上传 ${file.name}…`);
       try {
         let inserted = 0;
-        for await (const ev of ingestStream(files[0]!, lineId)) {
+        for await (const ev of ingestStream(file, lineId)) {
           if (ev.type === "done") {
             const rows = (ev as { rows?: number }).rows;
             if (typeof rows === "number") inserted = rows;
           }
         }
         setNote(`已入库 ${inserted} 行`);
-        append("系统", `已上传并入库：${files[0]!.name}（${inserted} 行）`);
+        append("系统", `已上传并入库：${file.name}（${inserted} 行）`);
       } catch (err) {
         setNote(`上传失败：${err instanceof Error ? err.message : String(err)}`);
       }
