@@ -7,11 +7,9 @@
  */
 
 import { existsSync } from "node:fs";
-import type { Conversation, Message } from "@scene/contract";
+import { randomUUID } from "node:crypto";
+import type { Message } from "@scene/contract";
 import type { DbInstance } from "@scene/infra";
-import { SESSION_STATUS_ACTIVE } from "@scene/domain";
-
-export const LIBRARY_KIND = "资料库会话" as const;
 
 export const LIBRARY_SYSTEM_PROMPT = `你是「场景通」的资料助手，服务于当前产品线的资料库。
 规则：
@@ -20,37 +18,39 @@ export const LIBRARY_SYSTEM_PROMPT = `你是「场景通」的资料助手，服
 3. 不要编造材料名、页码或数据；没有就直说「资料库里没有」。
 4. 输出纯文本，不要用「**」「##」这类 Markdown 符号；保持简洁。`;
 
-/** 取（或建）一条产品线的资料库会话；并发首建由 list 复查兜底 */
-export function ensureLibraryConversation(db: DbInstance, lineId: string): Conversation {
-  const found = db.conversationRepo.list({
-    where: "scenario_id = ? AND kind = ?",
-    params: [lineId, LIBRARY_KIND],
-    orderBy: "created_at ASC",
-  })[0];
-  if (found) return found;
-  const line = db.productLineRepo.getById(lineId);
-  const created = db.conversationRepo.insert({
-    scenario_id: lineId,
-    title: `资料助手 · ${line?.name ?? lineId}`,
-    status: SESSION_STATUS_ACTIVE,
-    kind: LIBRARY_KIND,
-    scope_type: "legacy",
-    purpose: "library",
-  } as never);
-  return created;
-}
-
+/** 读资料库对话（按产品线） */
 export function readLibraryThread(
   db: DbInstance,
   lineId: string,
-): { conversation_id: string | null; messages: Message[] } {
-  const found = db.conversationRepo.list({
-    where: "scenario_id = ? AND kind = ?",
-    params: [lineId, LIBRARY_KIND],
-    orderBy: "created_at ASC",
-  })[0];
-  if (!found) return { conversation_id: null, messages: [] };
-  return { conversation_id: found.id, messages: db.messageRepo.listByConversation(found.id) };
+): { conversation_id: null; messages: Message[] } {
+  const rows = db.db
+    .prepare(
+      "SELECT id, role, content, created_at FROM library_message WHERE product_line_id = ? ORDER BY created_at ASC, rowid ASC",
+    )
+    .all(lineId) as Array<{ id: string; role: string; content: string; created_at: string }>;
+  return {
+    conversation_id: null,
+    messages: rows.map((r) => ({
+      id: r.id,
+      conversation_id: "library",
+      role: r.role as Message["role"],
+      content: r.content,
+      created_at: r.created_at,
+    })),
+  };
+}
+
+export function appendLibraryMessage(
+  db: DbInstance,
+  lineId: string,
+  role: "用户" | "系统",
+  content: string,
+): void {
+  db.db
+    .prepare(
+      "INSERT INTO library_message (id, product_line_id, role, content, created_at) VALUES (?, ?, ?, ?, ?)",
+    )
+    .run(randomUUID(), lineId, role, content, new Date().toISOString());
 }
 
 /**

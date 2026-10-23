@@ -2933,6 +2933,20 @@ describe("产物唯一会话路由", () => {
       payload: { content: "  " },
     });
     expect(bad.statusCode).toBe(400);
+
+    // 首次发送才建会话（含 dsh_session_id），并正常出流
+    const sent = await h.app.inject({
+      method: "POST",
+      url: `/api/v1/library/${line.id}/chat/messages`,
+      payload: { content: "你好" },
+    });
+    expect(sent.statusCode).toBe(200);
+    expect(sent.payload).toContain("你好");
+    const after = await h.app.inject({
+      method: "GET",
+      url: `/api/v1/library/${line.id}/chat`,
+    });
+    expect(after.json().messages.length).toBeGreaterThanOrEqual(2);
   });
 
   it("资料库链接/路径入库：非法目标 400", async () => {

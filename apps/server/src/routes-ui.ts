@@ -126,8 +126,8 @@ import { createIngestCommand } from "./ingest.js";
 import { boundaryEvidenceError, isLocatableSource } from "./library-gate.js";
 import { parseStage, streamEvents } from "./sse-stream.js";
 import {
+  appendLibraryMessage,
   buildLibraryContext,
-  ensureLibraryConversation,
   readLibraryThread,
   LIBRARY_SYSTEM_PROMPT,
 } from "./library-chat.js";
@@ -336,7 +336,7 @@ export function registerUiRoutes(app: FastifyInstance, deps: UiRoutesDeps): void
 
   registerProjectRoutes(app, deps);
   registerConversationRoutes(app, deps, converseCmd);
-  registerLibraryRoutes(app, deps, converseCmd, ingestCmd);
+  registerLibraryRoutes(app, deps, ingestCmd);
   registerSystemRoutes(app, deps);
 
   // ── 上传入库（multipart → 临时文件 → ingest 命令 → SSE 进度） ──
@@ -1884,10 +1884,9 @@ function findProductOfLine(
 function registerLibraryRoutes(
   app: FastifyInstance,
   deps: UiRoutesDeps,
-  converseCmd: ReturnType<typeof createConverseCommand>,
   ingestCmd: ReturnType<typeof createIngestCommand>,
 ) {
-  const { db, hub } = deps;
+  const { db, hub, dshClient } = deps;
   let librarySeq = 0;
 
   /** 资料库右栏对话（#305）：打开不建会话，首次发送才建；历史持久化 */
@@ -1905,15 +1904,41 @@ function registerLibraryRoutes(
     const body = (request.body ?? {}) as { content?: unknown };
     const content = String(body.content ?? "").trim();
     if (!content) return badRequest(reply, "消息内容不能为空");
-    const conversation = ensureLibraryConversation(db, id);
     const contextPrefix = buildLibraryContext(db, id);
+    appendLibraryMessage(db, id, "用户", content);
+    const history = db.db
+      .prepare(
+        "SELECT role, content FROM library_message WHERE product_line_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 12",
+      )
+      .all(id) as Array<{ role: string; content: string }>;
+    const historyBlock = history
+      .reverse()
+      .filter((_m, i) => i < history.length - 1)
+      .map((m) => `${m.role === "用户" ? "用户" : "助手"}：${m.content}`)
+      .join("\n");
     const runId = `library:${id}#${++librarySeq}`;
     const source = (async function* () {
-      yield* converseCmd.sendMessage(conversation.id, content, {
+      const session = await dshClient.createSession({ title: `资料助手 · ${line.name}` });
+      let reply = "";
+      for await (const ev of dshClient.prompt(session, {
         system: LIBRARY_SYSTEM_PROMPT,
-        contextPrefix,
-        allowCommands: false,
-      });
+        user: `${historyBlock ? `【对话历史】\n${historyBlock}\n\n` : ""}${contextPrefix}${content}`,
+        outputContract: {},
+      })) {
+        if (ev.type === "text") {
+          const piece = String((ev as { text?: unknown }).text ?? "");
+          reply += piece;
+          yield ev;
+        } else if (ev.type === "error") {
+          yield ev;
+        }
+      }
+      appendLibraryMessage(
+        db,
+        id,
+        "系统",
+        reply.trim() || "（模型没有返回内容）",
+      );
     })();
     hub.start(runId, source);
     const lastEventId =

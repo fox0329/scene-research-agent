@@ -285,6 +285,17 @@ CREATE TABLE IF NOT EXISTS message (
 CREATE INDEX IF NOT EXISTS idx_message_conversation_created
   ON message (conversation_id, created_at);
 
+-- #305 资料库对话消息：按产品线隔离（不挂 scenario 外键；产品线删除时同删）
+CREATE TABLE IF NOT EXISTS library_message (
+  id               TEXT PRIMARY KEY,
+  product_line_id  TEXT NOT NULL,
+  role             TEXT NOT NULL CHECK (role IN ('用户','系统')),
+  content          TEXT NOT NULL,
+  created_at       TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_library_message_line_created
+  ON library_message (product_line_id, created_at);
+
 CREATE TABLE IF NOT EXISTS quality_gate (
   id               TEXT PRIMARY KEY,
   scenario_id      TEXT NOT NULL REFERENCES scenario(id),
