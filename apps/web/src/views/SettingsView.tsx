@@ -640,11 +640,11 @@ const SettingsViewMock: React.FC = () => {
           <div className="pnl-b">
             <div className="settings-kv-grid">
               <span className="kv-k">业务数据库</span>
-              <span className="kv-v kv-mono">data/scene-master.db</span>
+              <span className="kv-v kv-mono">data/scene.db</span>
             </div>
 
             <div className="settings-actions">
-              <button className="btn" onClick={() => showToast("导出完成：data/scene-master.db")}>导出数据</button>
+              <button className="btn" onClick={() => showToast("导出完成：data/scene.db")}>导出数据</button>
               <button className="btn" onClick={() => showToast("请选择要导入的文件")}>导入数据</button>
               <button className="btn" onClick={() => showToast("已打开 data/ 目录")}>打开目录</button>
             </div>

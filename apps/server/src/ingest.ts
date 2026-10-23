@@ -1183,10 +1183,23 @@ function insertLimitation(
   quality: RowQuality,
 ): boolean {
   const f = row.fields;
+  const productName = String(f["product_name"] ?? "");
+  const description = String(f["description"] ?? "");
   try {
+    /* 重复入库去重：同一产品 + 同一限制描述只留一行（#326 验收发现重复导入会翻倍） */
+    const existing = (db.limitationRepo.list({
+      where: "product_line_id = ?",
+      params: [productLineId],
+    }) as Limitation[]).filter(
+      (l) =>
+        l.product_line_id === productLineId &&
+        normalizeValue(l.product_name) === normalizeValue(productName) &&
+        normalizeValue(l.description) === normalizeValue(description),
+    );
+    if (existing.length > 0) return false;
     db.limitationRepo.insert({
       product_line_id: productLineId,
-      product_name: String(f["product_name"] ?? ""),
+      product_name: productName,
       description: String(f["description"] ?? ""),
       impact: (f["impact"] as Limitation["impact"]) ?? "中",
       fix_status: (f["fix_status"] as Limitation["fix_status"]) ?? "无计划",
@@ -1233,6 +1246,15 @@ function insertPriceQuote(
   // 契约必填：型号命中产品清单 + 配置/含税单价非空，否则不入库
   if (!config || !unitPrice) return false;
   try {
+    /* 同一产品 + 配置 + 单价 + 口径 已存在则不重复入库 */
+    const exists = (db.quoteRepo.list({ where: "product_id = ?", params: [productId] }) as PriceQuote[]).some(
+      (q) =>
+        q.product_id === productId &&
+        normalizeValue(q.config) === normalizeValue(config) &&
+        normalizeValue(q.unit_price) === normalizeValue(unitPrice) &&
+        q.price_scope === scope,
+    );
+    if (exists) return false;
     db.quoteRepo.insert({
       product_id: productId,
       model,
@@ -1271,6 +1293,15 @@ function insertOptionalMaterial(
   if (!category) return false;
 
   try {
+    /* 同一类目 + 同内容只留一份：payload 键序可能变，先按键排序再比 */
+    const signature = stableJson(row.fields);
+    const exists = (db.optionalMaterialRepo.list({
+      where: "product_line_id = ?",
+      params: [productLineId],
+    }) as OptionalMaterial[]).some(
+      (m) => m.product_line_id === productLineId && m.category === category && stableJson(m.payload as Record<string, unknown>) === signature,
+    );
+    if (exists) return false;
     db.optionalMaterialRepo.insert({
       product_line_id: productLineId,
       category,
@@ -1284,6 +1315,22 @@ function insertOptionalMaterial(
   } catch {
     return false;
   }
+}
+
+/** 稳定的 JSON 签名（键递归排序），用于可选材料去重 */
+function stableJson(value: Record<string, unknown>): string {
+  const sort = (v: unknown): unknown => {
+    if (Array.isArray(v)) return v.map(sort);
+    if (v && typeof v === "object") {
+      return Object.fromEntries(
+        Object.keys(v as Record<string, unknown>)
+          .sort()
+          .map((k) => [k, sort((v as Record<string, unknown>)[k])]),
+      );
+    }
+    return v;
+  };
+  return JSON.stringify(sort(value));
 }
 
 // ─── 子函数：质量评估 + 完成度检查 ────────────────────────

@@ -218,6 +218,17 @@ describe("createIngestCommand", () => {
     deps = { db, dshClient, docParser };
   });
 
+  describe("重复入库：同一份产出不产生重复行（#326 验收发现）", () => {
+    it("M1–M5 / O 全部去重：第二次 rowsInserted 为 0", async () => {
+      const cmd = createIngestCommand(deps);
+      const first = await cmd.execute({ filePath: "/tmp/whitepaper.pdf", productLineId: "pl1" });
+      expect(first.rowsInserted).toBe(6);
+      const second = await cmd.execute({ filePath: "/tmp/whitepaper.pdf", productLineId: "pl1" });
+      expect(second.rowsInserted).toBe(0);
+      expect(second.recognizedRows).toBe(6);
+    });
+  });
+
   describe("正常流程：解析→分类→入库→评估", () => {
     it("应返回正确的 rowsInserted 数量", async () => {
       const cmd = createIngestCommand(deps);

@@ -225,8 +225,12 @@ export function describeUploadOutcome(
   inserted: number,
   recognized: number,
   modelIssue?: string,
+  conflicts = 0,
 ): string {
-  if (inserted > 0) return `已上传并入库：${name}（新增 ${inserted} 行）`;
+  if (inserted > 0) {
+    const conflictNote = conflicts > 0 ? `；另有 ${conflicts} 条与资料库现有值冲突，已保留原值` : "";
+    return `已上传并入库：${name}（新增 ${inserted} 行${conflictNote}）`;
+  }
   if (recognized > 0) {
     return `已上传：${name}（识别 ${recognized} 行，资料库里已有这些内容，去重后没有新增）`;
   }

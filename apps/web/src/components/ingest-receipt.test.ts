@@ -174,6 +174,13 @@ describe("describeUploadOutcome — 对话内上传结果（#326）", () => {
     expect(describeUploadOutcome("CT31.docx", 31, 31)).toContain("新增 31 行");
   });
 
+  it("有冲突时说明保留原值，不让用户以为被覆盖", () => {
+    const text = describeUploadOutcome("CT31.docx", 3, 46, "", 14);
+    expect(text).toContain("新增 3 行");
+    expect(text).toContain("14 条");
+    expect(text).toContain("保留原值");
+  });
+
   it("0 行但识别到内容：说明是去重，不是空文件", () => {
     const text = describeUploadOutcome("CT31.docx", 0, 31);
     expect(text).toContain("识别 31 行");

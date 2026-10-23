@@ -121,17 +121,24 @@ export const LibraryRightPanel: React.FC<{
         let inserted = 0;
         let recognized = 0;
         let modelIssue = "";
+        let conflicts = 0;
         for await (const ev of ingestStream(file, lineId)) {
           if (ev.type === "done") {
-            const d = ev as { rows_inserted?: number; recognized_rows?: number; model_issue?: string };
+            const d = ev as {
+              rows_inserted?: number;
+              recognized_rows?: number;
+              model_issue?: string;
+              conflicts?: unknown[];
+            };
             inserted = Number(d.rows_inserted ?? 0);
             recognized = Number(d.recognized_rows ?? inserted);
             modelIssue = String(d.model_issue ?? "");
+            conflicts = Array.isArray(d.conflicts) ? d.conflicts.length : 0;
           } else if (ev.type === "error") {
             throw new Error(String((ev as { message?: string }).message ?? "入库失败"));
           }
         }
-        const summary = describeUploadOutcome(file.name, inserted, recognized, modelIssue);
+        const summary = describeUploadOutcome(file.name, inserted, recognized, modelIssue, conflicts);
         setNote(summary);
         append("系统", summary);
         /* 入库会改 M1–M6，中栏必须立刻重取 */
