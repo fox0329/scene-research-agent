@@ -89,6 +89,7 @@ jobs:
       # 两个平台都卡在“上传产物”一步（构建本身是成功的）。Release 资产不受该配额限制。
       - name: 挂到 Release（tag 构建）
         if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
