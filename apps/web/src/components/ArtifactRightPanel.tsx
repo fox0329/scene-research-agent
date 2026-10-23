@@ -18,6 +18,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   api,
   artifactUpload,
+  undoOperation,
   artifactMessageStream,
   type ApiArtifactRef,
   type ApiArtifactThread,
@@ -415,6 +416,8 @@ const ThreadPane: React.FC<{
   const [inputH, setInputH] = useState(readInputH);
   const [uploading, setUploading] = useState(false);
   const [statusNote, setStatusNote] = useState<string | null>(null);
+  /** #312：最近一次可撤销的写入 */
+  const [lastOp, setLastOp] = useState<{ id: string; summary: string } | null>(null);
   const uploadRef = useRef<HTMLInputElement | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -561,6 +564,8 @@ const ThreadPane: React.FC<{
         if (ev.type === "text") {
           reply += String(ev.text ?? "");
           setStreamText(reply);
+        } else if (ev.type === "operation") {
+          setLastOp({ id: String(ev.id ?? ""), summary: String(ev.summary ?? "写入") });
         } else if (ev.type === "error") {
           failed = true;
           reply += `${reply ? "\n" : ""}【错误】${String(ev.message ?? "未知错误")}`;
@@ -779,6 +784,31 @@ const ThreadPane: React.FC<{
             }}
           />
           {statusNote ? <p className="thread-status">{statusNote}</p> : null}
+          {lastOp ? (
+            <div className="thread-undo" role="status">
+              <span>已修改：{lastOp.summary}</span>
+              <button
+                type="button"
+                className="btn ghost sm"
+                onClick={async () => {
+                  try {
+                    const r = await undoOperation(lastOp.id);
+                    setStatusNote(r.message);
+                    setLastOp(null);
+                    if (projectId && ref) {
+                      const state = await api.artifactThread(projectId, ref);
+                      setThread(state);
+                      setMessages(state.messages);
+                    }
+                  } catch (err) {
+                    setStatusNote(`撤销失败：${err instanceof Error ? err.message : String(err)}`);
+                  }
+                }}
+              >
+                撤销
+              </button>
+            </div>
+          ) : null}
         </div>
       </div>
     </div>

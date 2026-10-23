@@ -3201,3 +3201,21 @@ td.ai-filled .cell-text {
   display: flex;
   flex-direction: column;
 }
+
+/* #312 对话写入后的撤销条 */
+.thread-undo {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-4);
+  font-size: var(--font-size-xs);
+  color: var(--c-text-2);
+  border-top: 1px solid var(--c-border);
+  background: var(--c-surface-2);
+}
+.thread-undo > span {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

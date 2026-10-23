@@ -19,6 +19,7 @@ import {
   touchArtifactConversation,
 } from "./artifact-conversation.js";
 import { compactConversationHistory } from "./conversation-compaction.js";
+import { applyUndoActions } from "./operation-log.js";
 import { isUserConversation } from "./conversation-kind.js";
 
 function mockDsh(): DshClient {
@@ -498,3 +499,45 @@ describe("artifact conversation persistence", () => {
     expect(context).toContain("不要编造来源");
   });
 });
+
+
+  it("写表留撤销：填格后逆操作可恢复原值（#312）", async () => {
+    const db = createDb(":memory:");
+    const scenarioId = seedScenario(db);
+    db.stageDataRepo.insert({
+      scenario_id: scenarioId,
+      stage: 2,
+      table_code: "表1-3",
+      row: { barrier_type: "行业准入", barrier_name: "涉密资质", threshold: "旧门槛" },
+      is_stale: false,
+      source_type: "AI提取",
+    });
+    const ref = normalizeArtifactRef({
+      step: 2,
+      stage: 1,
+      type: "table",
+      id: "表1-3",
+      block: null,
+      title: "门槛与合规",
+    });
+    let undo: Array<Record<string, unknown>> = [];
+    await fillTableFromCommand(
+      db,
+      scenarioId,
+      ref,
+      {
+        command: "write_table",
+        params: { fills: [{ row: "行业准入", column: "门槛", value: "新门槛" }] },
+      },
+      { onUndo: (actions) => { undo = actions; } },
+    );
+    const row = db.stageDataRepo
+      .list({ where: "scenario_id = ? AND table_code = ?", params: [scenarioId, "表1-3"] })
+      .find((r) => String(r.row["barrier_name"] ?? "") === "新门槛");
+    expect(row).toBeDefined();
+    expect(undo.length).toBeGreaterThan(0);
+
+    applyUndoActions(db, undo as never);
+    const after = db.stageDataRepo.getById(row!.id)!;
+    expect(String(after.row["barrier_name"] ?? "")).toBe("涉密资质");
+  });

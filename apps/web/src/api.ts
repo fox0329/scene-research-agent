@@ -1127,6 +1127,12 @@ export const reconnectArtifactStream = (
  * request.file() 在第一个 file 部件处返回，之后的字段收不到），同时通过
  * URL query 兜底，任何客户端字段顺序都能过。
  */
+/** 撤销一次对话写入（#312） */
+export const undoOperation = (id: string) =>
+  req<{ ok: boolean; message: string }>(`/operations/${encodeURIComponent(id)}/undo`, {
+    method: "POST",
+  });
+
 /** 通用文件解析（#307）：只返回文字，不落库；场景定义等生成过程输入框用 */
 export async function parseProjectFile(
   projectId: string,

@@ -132,6 +132,19 @@ import {
   LIBRARY_SYSTEM_PROMPT,
 } from "./library-chat.js";
 import {
+  CONFIRM_OPERATION_TOOL,
+  CREATE_PRODUCT_LINE_TOOL,
+  LIBRARY_WRITE_TOOL,
+  WRITE_ANCHOR_ROWS_TOOL,
+  confirmOperation,
+  createProductLine,
+  libraryWrite,
+  writeAnchorRows as writeAnchorRowsTool,
+  type ToolOutcome,
+} from "./conversation-tools.js";
+import { recordOperation, undoOperation, type UndoAction } from "./operation-log.js";
+import { takePendingByScope } from "./pending-ops.js";
+import {
   assessQuality,
   checkCompleteness,
   spotCheckSources,
@@ -281,6 +294,14 @@ function reportKindOf(raw: unknown): ReportKind | undefined {
 }
 
 export function registerUiRoutes(app: FastifyInstance, deps: UiRoutesDeps): void {
+  /** 撤销一次对话写入（#312）：返回是否成功与说明 */
+  app.post("/api/v1/operations/:id/undo", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const result = undoOperation(deps.db, id);
+    if (!result.ok) return badRequest(reply, result.message);
+    return result;
+  });
+
   const { db, dshClient, hub } = deps;
   /** 上传上限：契约口径为准，测试可注入小值（见 AppDeps.uploadLimitMb） */
   const uploadLimitMb = deps.uploadLimitMb ?? FILE_UPLOAD_LIMIT_MB;
@@ -1433,8 +1454,25 @@ function registerConversationRoutes(
                   }
                 : {
                     defs: [WRITE_TABLE_TOOL],
-                    onCall: (_name: string, args: Record<string, unknown>) =>
-                      fillTableFromCommand(db, id, ref, { command: "写入表格", params: args }),
+                    onCall: async (_name: string, args: Record<string, unknown>) => {
+                      let undo: UndoAction[] = [];
+                      const note = await fillTableFromCommand(
+                        db,
+                        id,
+                        ref,
+                        { command: "写入表格", params: args },
+                        { onUndo: (actions) => { undo = actions as UndoAction[]; } },
+                      );
+                      if (undo.length === 0) return note;
+                      const rec = recordOperation(db, {
+                        conversationId: conversation.id,
+                        surface: "artifact",
+                        tool: "write_table",
+                        summary: note,
+                        undo,
+                      });
+                      return { note, operation: { id: rec.id, summary: rec.summary } };
+                    },
                   },
           });
         } finally {
@@ -1635,6 +1673,22 @@ function registerConversationRoutes(
       converseCmd.sendMessage(conversationId, content, {
         system: DEFINITION_SYSTEM,
         contextPrefix: `${buildDefinitionContext(db, scenario)}\n`,
+        chatTools: {
+          defs: [WRITE_ANCHOR_ROWS_TOOL],
+          onCall: async (name: string, args: Record<string, unknown>) =>
+            name === "write_anchor_rows"
+              ? writeAnchorRowsTool(
+                  {
+                    db,
+                    app,
+                    conversationId,
+                    surface: "definition",
+                    scenarioId: id,
+                  },
+                  args,
+                )
+              : { note: `未知工具：${name}` },
+        },
       }),
     );
     await streamEvents(hub, runId, request, reply);
@@ -1959,18 +2013,80 @@ function registerLibraryRoutes(
       .map((m) => `${m.role === "用户" ? "用户" : "助手"}：${m.content}`)
       .join("\n");
     const runId = `library:${id}#${++librarySeq}`;
-    const source = (async function* () {
+    const toolCtx = { db, app, conversationId: null, surface: "library", lineId: id };
+    /* 「确认」走确定性路径：不让模型决定执不执行删除（#312） */
+    if (/^(确认|确定|执行|确认执行)/u.test(content)) {
+      const pending = takePendingByScope(`library:${id}`);
+      if (pending) {
+        const source = (async function* (): AsyncGenerator<import("@scene/contract").FollowEvent> {
+          try {
+            const result = await pending.run();
+            if (result.operationId) {
+              yield {
+                type: "operation",
+                id: result.operationId,
+                summary: result.note,
+              };
+            }
+            yield { type: "text", text: `\n\n${result.note}\n` };
+            appendLibraryMessage(db, id, "系统", result.note);
+          } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : String(err);
+            yield { type: "error", message: `执行失败：${msg}` };
+            appendLibraryMessage(db, id, "系统", `【错误】执行失败：${msg}`);
+          }
+        })();
+        hub.start(runId, source);
+        await streamEvents(hub, runId, request, reply, null);
+        return;
+      }
+    }
+    const toolDefs = [LIBRARY_WRITE_TOOL, CREATE_PRODUCT_LINE_TOOL, CONFIRM_OPERATION_TOOL];
+    const source = (async function* (): AsyncGenerator<import("@scene/contract").FollowEvent> {
       const session = await dshClient.createSession({ title: `资料助手 · ${line.name}` });
       let reply = "";
       for await (const ev of dshClient.prompt(session, {
         system: LIBRARY_SYSTEM_PROMPT,
         user: `${historyBlock ? `【对话历史】\n${historyBlock}\n\n` : ""}${contextPrefix}${content}`,
         outputContract: {},
+        tools: toolDefs,
       })) {
         if (ev.type === "text") {
           const piece = String((ev as { text?: unknown }).text ?? "");
           reply += piece;
           yield ev;
+        } else if (ev.type === "tool_call") {
+          const calls =
+            (ev as { calls?: Array<{ name: string; arguments: string }> }).calls ?? [];
+          for (const call of calls) {
+            let args: Record<string, unknown> = {};
+            try {
+              args = call.arguments ? (JSON.parse(call.arguments) as Record<string, unknown>) : {};
+            } catch {
+              yield { type: "error", message: `工具 ${call.name} 参数不是合法 JSON` };
+              continue;
+            }
+            try {
+              const result: ToolOutcome =
+                call.name === "library_write"
+                  ? await libraryWrite(toolCtx, args)
+                  : call.name === "create_product_line"
+                    ? createProductLine(toolCtx, args)
+                    : call.name === "confirm_operation"
+                      ? await confirmOperation(toolCtx, args)
+                      : { note: `未知工具：${call.name}` };
+              if (result.operation) {
+                yield { type: "operation", id: result.operation.id, summary: result.operation.summary };
+              }
+              yield { type: "text", text: `\n\n${result.note}\n` };
+              reply += `\n\n${result.note}`;
+            } catch (err: unknown) {
+              yield {
+                type: "error",
+                message: `工具 ${call.name} 执行失败：${err instanceof Error ? err.message : String(err)}`,
+              };
+            }
+          }
         } else if (ev.type === "error") {
           yield ev;
         }

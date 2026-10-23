@@ -20,6 +20,12 @@ import { saveReportFile } from "./report-service.js";
 import { createApp } from "./app.js";
 import { createSseHub } from "./sse-hub.js";
 import { pptRunId } from "./ppt-progress.js";
+import {
+  libraryWrite,
+  writeAnchorRows as writeAnchorRowsTool,
+} from "./conversation-tools.js";
+import { undoOperation } from "./operation-log.js";
+import { ensureAnchorRows } from "./scenario-anchor.js";
 
 // ─── 工厂 ──────────────────────────────────────────────────
 
@@ -3012,5 +3018,116 @@ describe("产物唯一会话路由", () => {
     });
     expect(badPost.statusCode).toBe(400);
     expect(badPost.json().error).toContain("不属于");
+  });
+});
+
+
+// ─── 对话写工具 + 撤销（#312–#314） ─────────────────────────
+
+describe("对话写工具：资料库/表1-1", () => {
+  let h: Harness;
+  beforeEach(() => {
+    h = makeHarness();
+  });
+
+  it("资料库改行：写入生效，撤销恢复原值", async () => {
+    const line = h.db.productLineRepo.insert({ name: "L-tool" });
+    const product = h.db.productRepo.insert({
+      product_line_id: line.id,
+      model: "EG-100",
+      name: "旧名字",
+      status: "在售",
+      launch_date: "",
+      position_desc: "",
+      source_type: "用户补充",
+    } as never);
+    const ctx = {
+      db: h.db,
+      app: h.app,
+      conversationId: null,
+      surface: "library",
+      lineId: line.id,
+    };
+    const out = await libraryWrite(ctx, {
+      table: "M1",
+      updates: [{ match: { column: "model", value: "EG-100" }, values: { name: "新名字" } }],
+    });
+    expect(out.note).toContain("已改资料库");
+    expect(h.db.productRepo.getById(product.id)!.name).toBe("新名字");
+    expect(out.operation?.id).toBeTruthy();
+
+    const undone = undoOperation(h.db, out.operation!.id);
+    expect(undone.ok).toBe(true);
+    expect(h.db.productRepo.getById(product.id)!.name).toBe("旧名字");
+  });
+
+  it("资料库删行：直接删除（可撤销）", async () => {
+    const line = h.db.productLineRepo.insert({ name: "L-del" });
+    const product = h.db.productRepo.insert({
+      product_line_id: line.id,
+      model: "EG-200",
+      name: "待删",
+      status: "在售",
+      launch_date: "",
+      position_desc: "",
+      source_type: "用户补充",
+    } as never);
+    const ctx = {
+      db: h.db,
+      app: h.app,
+      conversationId: null,
+      surface: "library",
+      lineId: line.id,
+    };
+    const deleted = await libraryWrite(ctx, {
+      table: "M1",
+      delete: [{ match: { column: "model", value: "EG-200" } }],
+    });
+    expect(deleted.note).toContain("已改资料库");
+    expect(h.db.productRepo.getById(product.id)).toBeUndefined();
+
+    const undone = undoOperation(h.db, deleted.operation!.id);
+    expect(undone.ok).toBe(true);
+    expect(h.db.productRepo.getById(product.id)?.name).toBe("待删");
+  });
+
+  it("表1-1 写行：按行名更新内容，撤销恢复", async () => {
+    const { scenarioId } = seedScenario(h.db, "工具写定义");
+    ensureAnchorRows(h.db, scenarioId, "工具写定义");
+    const ctx = {
+      db: h.db,
+      app: h.app,
+      conversationId: null,
+      surface: "definition",
+      scenarioId,
+    };
+    const out = writeAnchorRowsTool(ctx, {
+      rows: [{ item: "场景边界", content: "智慧教室：普通教室、阶梯教室" }],
+    });
+    expect(out.note).toContain("已更新表1-1");
+    const row = h.db.stageDataRepo
+      .listByScenarioStage(scenarioId, 1 as never)
+      .find((r) => r.table_code === "表1-1" && String((r.row as Record<string, unknown>)["item"]).includes("场景边界"));
+    expect(String((row!.row as Record<string, unknown>)["content"])).toContain("智慧教室");
+
+    const undone = undoOperation(h.db, out.operation!.id);
+    expect(undone.ok).toBe(true);
+    const after = h.db.stageDataRepo.getById(row!.id)!;
+    expect(String((after.row as Record<string, unknown>)["content"])).not.toContain("智慧教室");
+  });
+
+  it("撤销接口：未知 id → 400", async () => {
+    const res = await h.app.inject({
+      method: "POST",
+      url: "/api/v1/operations/nope/undo",
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toContain("找不到");
+  });
+
+  it("撤销不存在的操作 → 明确失败，不抛错", () => {
+    const r = undoOperation(h.db, "nope");
+    expect(r.ok).toBe(false);
+    expect(r.message).toContain("找不到");
   });
 });

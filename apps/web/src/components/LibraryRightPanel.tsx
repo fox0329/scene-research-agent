@@ -10,6 +10,7 @@ import {
   libraryChat,
   libraryChatStream,
   libraryIngestPath,
+  undoOperation,
 } from "../api";
 
 /** #309：资料助手输入框高度（拖上边缘调高，与产物会话同一套交互） */
@@ -63,6 +64,7 @@ export const LibraryRightPanel: React.FC<{
   const [sending, setSending] = useState(false);
   const [loading, setLoading] = useState(false);
   const [note, setNote] = useState<string | null>(null);
+  const [lastOp, setLastOp] = useState<{ id: string; summary: string } | null>(null);
   const [inputH, setInputH] = useState(readInputH);
   const fileRef = useRef<HTMLInputElement | null>(null);
 
@@ -144,6 +146,7 @@ export const LibraryRightPanel: React.FC<{
     setSending(true);
     setDraft("");
     setNote(null);
+    setLastOp(null);
     append("用户", text);
     try {
       /* 纯链接/绝对路径：直接入库，不进模型 */
@@ -158,7 +161,9 @@ export const LibraryRightPanel: React.FC<{
       let reply = "";
       let streamed = false;
       for await (const ev of libraryChatStream(lineId, text)) {
-        if (ev.type === "text") {
+        if (ev.type === "operation") {
+          setLastOp({ id: String(ev.id ?? ""), summary: String(ev.summary ?? "写入") });
+        } else if (ev.type === "text") {
           const piece = String((ev as { text?: unknown }).text ?? "");
           if (!piece) continue;
           reply += piece;
@@ -213,6 +218,27 @@ export const LibraryRightPanel: React.FC<{
         </div>
 
         {note ? <p className="thread-status">{note}</p> : null}
+        {lastOp ? (
+          <div className="thread-undo" role="status">
+            <span>已修改：{lastOp.summary}</span>
+            <button
+              type="button"
+              className="btn ghost sm"
+              onClick={async () => {
+                try {
+                  const r = await undoOperation(lastOp.id);
+                  setNote(r.message);
+                  setLastOp(null);
+                  setMessages((await libraryChat(lineId!)).messages as ChatMsg[]);
+                } catch (err) {
+                  setNote(`撤销失败：${err instanceof Error ? err.message : String(err)}`);
+                }
+              }}
+            >
+              撤销
+            </button>
+          </div>
+        ) : null}
 
         <div className="thread-composer">
           <div className="thread-input-shell">

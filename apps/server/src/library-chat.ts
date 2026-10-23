@@ -13,10 +13,14 @@ import type { DbInstance } from "@scene/infra";
 
 export const LIBRARY_SYSTEM_PROMPT = `你是「场景通」的资料助手，服务于当前产品线的资料库。
 规则：
-1. 只围绕资料库回答：有哪些材料、覆盖哪些表、还缺什么；需要事实时以给出的资料清单为准。
-2. 用户上传文件 / 贴链接 / 给绝对路径时，告诉他会入库；落库动作由界面按钮完成，你不需要假装执行。
-3. 不要编造材料名、页码或数据；没有就直说「资料库里没有」。
-4. 输出纯文本，不要用「**」「##」这类 Markdown 符号；保持简洁。`;
+1. 只围绕资料库回答：有哪些材料、覆盖哪些表、还缺什么；需要事实时以给出的资料清单与行摘要为准。
+2. 用户要改/增/删资料行时调用 library_write（行用「列=值」定位，列名照抄上下文）；
+   要新建产品线时调用 create_product_line。
+3. 删除行只出预览：调用后把「将删除哪几行」告诉用户，等用户说确认，再调用 confirm_operation。
+4. 用户上传文件 / 贴链接 / 给绝对路径时，告诉他会入库；落库动作由界面按钮完成，你不需要假装执行。
+5. 不要编造材料名、页码或数据；没有就直说「资料库里没有」。写入来源必须来自用户原文。
+6. 调用工具时，正文不要重复输出 JSON 参数，也不要贴整行数据；只说明改了哪一行、哪个字段。
+7. 输出纯文本，不要用「**」「##」这类 Markdown 符号；保持简洁。`;
 
 /** 读资料库对话（按产品线） */
 export function readLibraryThread(
@@ -87,6 +91,38 @@ export function buildLibraryContext(db: DbInstance, lineId: string): string {
     `限制 ${db.limitationRepo.list().length}`,
   ];
   lines.push("", `【库内规模】${stat.join(" · ")}`);
+
+  /* 可写表的行摘要（#312）：模型据此用「列=值」定位，不需要猜 id */
+  lines.push("", "【可改的表（列名=写入键）】");
+  lines.push("M1 产品清单：model、name、status、launch_date、position_desc");
+  lines.push("M3 能力清单：name、description、domain、maturity");
+  lines.push("M4 边界：description、reason、has_plan、response、owner");
+  lines.push("M5 限制：description、impact、fix_status、external_visible");
+  lines.push("M6 报价：model、config、unit_price、price_scope、valid_until");
+  try {
+    const products = db.productRepo
+      .list({ where: "product_line_id = ?", params: [lineId] })
+      .slice(0, 20)
+      .map((r) => `${String(r.model)}｜${String(r.name)}`);
+    if (products.length) lines.push("", "【M1 现有行】", ...products.map((t) => `- ${t}`));
+    const caps = db.capabilityRepo
+      .list({ where: "product_line_id = ?", params: [lineId] })
+      .slice(0, 20)
+      .map((r) => String(r.name));
+    if (caps.length) lines.push("", "【M3 现有能力】", ...caps.map((t) => `- ${t}`));
+    const bounds = db.boundaryRepo
+      .list({ where: "product_line_id = ?", params: [lineId] })
+      .slice(0, 20)
+      .map((r) => String(r.description));
+    if (bounds.length) lines.push("", "【M4 现有边界】", ...bounds.map((t) => `- ${t}`));
+    const limits = db.limitationRepo
+      .list({ where: "product_line_id = ?", params: [lineId] })
+      .slice(0, 20)
+      .map((r) => String(r.description));
+    if (limits.length) lines.push("", "【M5 现有局限】", ...limits.map((t) => `- ${t}`));
+  } catch {
+    /* 行摘要失败不影响回答 */
+  }
   lines.push("", "回答要求：以以上清单为准；没有的信息写「资料库里没有」。");
   return `${lines.join("\n")}\n\n`;
 }

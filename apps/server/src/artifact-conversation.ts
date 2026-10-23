@@ -489,6 +489,7 @@ export async function fillTableFromCommand(
   scenarioId: string,
   ref: ArtifactRef,
   raw: { command: string; params: Record<string, unknown> },
+  hooks?: { onUndo?: (undo: Array<Record<string, unknown>>) => void },
 ): Promise<string> {
   if (raw.command !== "写入表格" && raw.command !== "write_table") {
     throw new Error(`产物会话只支持「写入表格」，不支持「${raw.command}」`);
@@ -519,6 +520,8 @@ export async function fillTableFromCommand(
     ? rows.filter((r) => rowBelongsToBlock(table, ref.block!, r.row))
     : rows;
   const firstCol = table.columns[0]!;
+  /* #312：边写边留底，成功后交给调用方记审计、换可撤销句柄 */
+  const undo: Array<Record<string, unknown>> = [];
   let applied = 0;
   let added = 0;
   let deleted = 0;
@@ -548,6 +551,10 @@ export async function fillTableFromCommand(
 
     /* 同一条回复可能写同一行多处：每次都重读最新行，避免第二处把第一处覆盖回去 */
     const fresh = db.stageDataRepo.getById(target.id) ?? target;
+    const beforeFill = db.db.prepare("SELECT * FROM stage_data WHERE id = ?").get(target.id) as
+      | Record<string, unknown>
+      | undefined;
+    if (beforeFill) undo.push({ kind: "update", table: "stage_data", id: target.id, before: beforeFill });
     const aiCells = new Set(
       Array.isArray(fresh.row.__ai_cells)
         ? (fresh.row.__ai_cells as unknown[]).map(String)
@@ -582,13 +589,14 @@ export async function fillTableFromCommand(
       throw new Error(`新增第 ${index + 1} 行没有任何内容`);
     }
     if (aiCells.length > 0) row.__ai_cells = aiCells;
-    db.stageDataRepo.insert({
+    const created = db.stageDataRepo.insert({
       scenario_id: scenarioId,
       stage: stageId,
       table_code: ref.id,
       row,
       is_stale: false,
     });
+    undo.push({ kind: "delete", table: "stage_data", id: created.id });
     added += 1;
   }
 
@@ -606,6 +614,10 @@ export async function fillTableFromCommand(
       freshRows.find((r) => String(r.row[firstCol.key] ?? "").trim() === needle) ??
       freshRows.find((r) => JSON.stringify(r.row).includes(needle));
     if (!target) throw new Error(`删除第 ${index + 1} 行：找不到「${needle}」`);
+    const beforeDelete = db.db.prepare("SELECT * FROM stage_data WHERE id = ?").get(target.id) as
+      | Record<string, unknown>
+      | undefined;
+    if (beforeDelete) undo.push({ kind: "insert", table: "stage_data", row: beforeDelete });
     db.stageDataRepo.deleteById(target.id);
     deleted += 1;
   }
@@ -617,5 +629,6 @@ export async function fillTableFromCommand(
   const parts = [`写入 ${applied} 处`];
   if (added > 0) parts.push(`新增 ${added} 行`);
   if (deleted > 0) parts.push(`删除 ${deleted} 行`);
+  if (undo.length > 0) hooks?.onUndo?.(undo);
   return `已按建议修改表格：${parts.join("、")}（蓝色字体为助手补写，点击即可修改；改动会像手填一样参与下游重算）。`;
 }

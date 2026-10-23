@@ -160,7 +160,10 @@ export function createConverseCommand(deps: ConverseDeps) {
         /** #300：原生 function calling——产物会话的写表工具，优先于文本命令块 */
         chatTools?: {
           defs: Array<Record<string, unknown>>;
-          onCall: (name: string, args: Record<string, unknown>) => Promise<string>;
+          onCall: (
+            name: string,
+            args: Record<string, unknown>,
+          ) => Promise<string | { note: string; operation?: { id: string; summary: string } }>;
         };
       },
     ): AsyncIterable<FollowEvent> =>
@@ -363,7 +366,10 @@ async function* sendMessage(
     handleCommand?: (command: { command: string; params: Record<string, unknown> }) => Promise<string>;
     chatTools?: {
       defs: Array<Record<string, unknown>>;
-      onCall: (name: string, args: Record<string, unknown>) => Promise<string>;
+      onCall: (
+        name: string,
+        args: Record<string, unknown>,
+      ) => Promise<string | { note: string; operation?: { id: string; summary: string } }>;
     };
   },
 ): AsyncIterable<FollowEvent> {
@@ -486,7 +492,11 @@ async function* sendMessage(
             continue;
           }
           try {
-            const note = await override.chatTools.onCall(call.name, args);
+            const result = await override.chatTools.onCall(call.name, args);
+            const note = typeof result === "string" ? result : result.note;
+            if (typeof result !== "string" && result.operation) {
+              yield { type: "operation", id: result.operation.id, summary: result.operation.summary };
+            }
             yield { type: "text", text: `\n\n${note}\n` };
             fullReply += `\n\n${note}`;
           } catch (err: unknown) {

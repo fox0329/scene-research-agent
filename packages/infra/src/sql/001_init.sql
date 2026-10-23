@@ -285,6 +285,20 @@ CREATE TABLE IF NOT EXISTS message (
 CREATE INDEX IF NOT EXISTS idx_message_conversation_created
   ON message (conversation_id, created_at);
 
+-- #312 对话写操作审计：一行 = 一次工具调用；undo_json 供一键撤销
+CREATE TABLE IF NOT EXISTS operation_log (
+  id               TEXT PRIMARY KEY,
+  conversation_id  TEXT,
+  surface          TEXT NOT NULL,
+  tool             TEXT NOT NULL,
+  summary          TEXT NOT NULL,
+  undo_json        TEXT NOT NULL,
+  created_at       TEXT NOT NULL,
+  undone_at        TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_operation_log_conversation
+  ON operation_log (conversation_id, created_at);
+
 -- #305 资料库对话消息：按产品线隔离（不挂 scenario 外键；产品线删除时同删）
 CREATE TABLE IF NOT EXISTS library_message (
   id               TEXT PRIMARY KEY,

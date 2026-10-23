@@ -455,7 +455,8 @@ export type SseEventType =
    */
   | "postcheck"
   | "done"
-  | "error";
+  | "error"
+  | "operation";
 
 /** SSE follow 事件 */
 export interface FollowEvent {
