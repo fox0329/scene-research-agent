@@ -107,7 +107,7 @@ export const OnboardingGuide: React.FC<OnboardingGuideProps> = ({
         <header className="onboard-hd">
           <div>
             <span className="onboard-kicker">开始之前</span>
-            <h2 id="onboard-title">欢迎使用方案助手</h2>
+            <h2 id="onboard-title">欢迎使用场景通</h2>
             <p>先补齐下面三件事，分析和联网调研才跑得起来；只差一两步也可以直接用。</p>
           </div>
           <button className="onboard-x" type="button" aria-label="关闭引导" onClick={onClose}>

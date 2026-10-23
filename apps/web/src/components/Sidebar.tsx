@@ -40,7 +40,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   return (
     <nav className="side">
       <div className="side-hd">
-        <h1>方案助手</h1>
+        <h1>场景通</h1>
         {/* 新建项目：联真模式接 API；演示模式保持占位入口 */}
         <button className="nbtn" type="button" aria-label="新建项目" onClick={onNewProject}>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">

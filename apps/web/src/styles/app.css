@@ -180,7 +180,7 @@ body {
   font-weight: var(--fb);
 }
 
-/* 右栏「阶段总结」标题栏：与左栏品牌「方案助手」同字号，自成一条栏（底边线由 .det-h 给） */
+/* 右栏「阶段总结」标题栏：与左栏品牌「场景通」同字号，自成一条栏（底边线由 .det-h 给） */
 .summary-hd h3 {
   font-family: var(--fh);
   font-size: var(--tb);
