@@ -3190,3 +3190,14 @@ td.ai-filled .cell-text {
   flex-direction: column;
   gap: var(--s2);
 }
+
+/* #307 资料库右栏上下分栏：上详情、下资料助手 */
+.lib-detail {
+  min-height: 0;
+  overflow: auto;
+}
+.lib-chat-wrap {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}

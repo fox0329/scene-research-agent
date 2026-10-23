@@ -2918,6 +2918,31 @@ describe("产物唯一会话路由", () => {
     expect(msgs[0]!.content).toContain("500 盏 LED");
   });
 
+  it("通用文件解析：txt 返回文字、不落库（#307）", async () => {
+    const { scenarioId } = seedScenario(h.db, "解析测试");
+    const boundary = "----sceneParseBoundary";
+    const body = [
+      `--${boundary}`,
+      'Content-Disposition: form-data; name="file"; filename="要点.txt"',
+      "Content-Type: text/plain",
+      "",
+      "站厅照明 500 盏，环控 8 台机组。",
+      `--${boundary}--`,
+      "",
+    ].join("\r\n");
+    const res = await h.app.inject({
+      method: "POST",
+      url: `/api/v1/projects/${scenarioId}/files/parse`,
+      headers: { "content-type": `multipart/form-data; boundary=${boundary}` },
+      body,
+    });
+    expect(res.statusCode).toBe(200);
+    const json = res.json() as { text: string; chars: number; file: string };
+    expect(json.file).toBe("要点.txt");
+    expect(json.text).toContain("500 盏");
+    expect(json.chars).toBeGreaterThan(0);
+  });
+
   it("资料库对话：打开不建会话；空消息 400", async () => {
     const line = h.db.productLineRepo.insert({ name: "L-chat" });
     const empty = await h.app.inject({

@@ -24,6 +24,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   api,
   definitionChatStream,
+  parseProjectFile,
   type ApiAnchorRow,
   type ApiDefinitionConsolidation,
   type ApiDefinitionMessage,
@@ -107,6 +108,10 @@ export const ScenarioDefinitionDialog: React.FC<ScenarioDefinitionDialogProps> =
   const [view, setView] = useState<"chat" | "result">("chat");
   const [result, setResult] = useState<ApiDefinitionConsolidation | null>(null);
   const [consolidating, setConsolidating] = useState(false);
+  /** #307：随下一条消息附加的材料（生成过程输入框支持上传） */
+  const [attachment, setAttachment] = useState<{ file: string; text: string } | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
 
   const streamRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -243,10 +248,32 @@ export const ScenarioDefinitionDialog: React.FC<ScenarioDefinitionDialogProps> =
   const submitDraft = (): void => {
     const text = draft.trim();
     if (!text || sendingRef.current) return;
+    /* 附件内容随消息进入这一轮，让模型在生成定义时能引用材料 */
+    const content = attachment
+      ? `【材料：${attachment.file}】\n${attachment.text.slice(0, 4000)}\n\n${text}`
+      : text;
     setDraft("");
+    setAttachment(null);
     if (inputRef.current) inputRef.current.style.height = "";
-    void send(text);
+    void send(content);
   };
+
+  const onPickFile = useCallback(
+    async (files: FileList | null) => {
+      if (!files?.length || demo) return;
+      setUploading(true);
+      setError(null);
+      try {
+        const r = await parseProjectFile(projectId, files[0]!);
+        setAttachment({ file: r.file, text: r.text });
+      } catch (err: unknown) {
+        setError(`上传解析失败：${errText(err)}`);
+      } finally {
+        setUploading(false);
+      }
+    },
+    [demo, projectId],
+  );
 
   /** 「整理成定义」：这是唯一写表入口（用户显式动作，不自动改表） */
   const consolidate = useCallback(async () => {
@@ -385,6 +412,19 @@ export const ScenarioDefinitionDialog: React.FC<ScenarioDefinitionDialogProps> =
         <div className="definition-f">
           {view === "chat" ? (
             <>
+              {attachment ? (
+                <span className="chip" title={attachment.file}>
+                  已附加：{attachment.file}
+                  <button
+                    type="button"
+                    className="candidate-action"
+                    aria-label="移除附件"
+                    onClick={() => setAttachment(null)}
+                  >
+                    移除
+                  </button>
+                </span>
+              ) : null}
               <textarea
                 ref={inputRef}
                 className="definition-ta"
@@ -404,6 +444,15 @@ export const ScenarioDefinitionDialog: React.FC<ScenarioDefinitionDialogProps> =
                 }}
               />
               <button
+                className="btn ghost"
+                type="button"
+                title="上传材料（PDF / Word / Excel / 文本），随下一条消息一起发送"
+                disabled={busy || demo || uploading}
+                onClick={() => fileRef.current?.click()}
+              >
+                {uploading ? "解析中…" : "📎"}
+              </button>
+              <button
                 className="btn"
                 type="button"
                 disabled={busy || draft.trim().length === 0}
@@ -411,6 +460,16 @@ export const ScenarioDefinitionDialog: React.FC<ScenarioDefinitionDialogProps> =
               >
                 {sending ? "发送中…" : "发送"}
               </button>
+              <input
+                ref={fileRef}
+                type="file"
+                hidden
+                accept=".pdf,.docx,.xlsx,.pptx,.txt,.md,.csv"
+                onChange={(e) => {
+                  void onPickFile(e.target.files);
+                  e.target.value = "";
+                }}
+              />
               <button
                 className="btn primary"
                 type="button"

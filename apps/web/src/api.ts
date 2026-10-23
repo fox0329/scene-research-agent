@@ -1127,6 +1127,26 @@ export const reconnectArtifactStream = (
  * request.file() 在第一个 file 部件处返回，之后的字段收不到），同时通过
  * URL query 兜底，任何客户端字段顺序都能过。
  */
+/** 通用文件解析（#307）：只返回文字，不落库；场景定义等生成过程输入框用 */
+export async function parseProjectFile(
+  projectId: string,
+  file: File,
+): Promise<{ file: string; text: string; chars: number }> {
+  const form = new FormData();
+  form.append("file", file);
+  const res = await fetch(
+    `${BASE}/projects/${encodeURIComponent(projectId)}/files/parse`,
+    { method: "POST", body: form },
+  );
+  const data = (await res.json().catch(() => null)) as
+    | { file?: string; text?: string; chars?: number; error?: string }
+    | null;
+  if (!res.ok || !data?.text) {
+    throw new Error(data?.error ?? `解析失败（HTTP ${res.status}）`);
+  }
+  return { file: data.file ?? file.name, text: data.text, chars: data.chars ?? 0 };
+}
+
 /** 产物会话内上传材料（#306）：服务端解析正文并作为系统消息写入会话 */
 export async function artifactUpload(
   projectId: string,

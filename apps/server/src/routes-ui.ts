@@ -1525,6 +1525,48 @@ function registerConversationRoutes(
     }
   });
 
+  /**
+   * 通用文件解析（#307）：只解析文字，不落库、不留文件。
+   * 场景定义对话等"生成过程"输入框用它在发送前附加材料内容。
+   */
+  app.post("/api/v1/projects/:id/files/parse", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    if (!db.scenarioRepo.getById(id)) return notFound(reply, `场景 ${id} 不存在`);
+    let file: Awaited<ReturnType<typeof request.file>>;
+    try {
+      file = await request.file();
+    } catch (err) {
+      const tooLarge = describeUploadFailure(err, deps.uploadLimitMb ?? FILE_UPLOAD_LIMIT_MB);
+      if (tooLarge) {
+        return reply.code(413).send({ statusCode: 413, code: "FILE_TOO_LARGE", message: tooLarge });
+      }
+      return badRequest(reply, "需要 multipart 表单（字段 file）");
+    }
+    if (!file) return badRequest(reply, "缺少上传文件（multipart 字段 file）");
+    const suffix = file.filename.includes(".")
+      ? file.filename.slice(file.filename.lastIndexOf("."))
+      : ".bin";
+    const filePath = join(tmpdir(), `parse-${Date.now()}-${++convSeq}${suffix}`);
+    try {
+      await pipeline(file.file, createWriteStream(filePath));
+      if (file.file.truncated) {
+        return reply.code(413).send({ statusCode: 413, code: "FILE_TOO_LARGE", message: "文件超过上传上限" });
+      }
+      const text = /\.(txt|md|csv)$/iu.test(suffix)
+        ? readFileSync(filePath, "utf8")
+        : (await parseDocument(filePath)).text;
+      const clean = text.replace(/\u0000/gu, "").trim();
+      if (!clean) return badRequest(reply, "文件里没有可读取的文字");
+      return { file: file.filename, text: clean.slice(0, 6000), chars: clean.length };
+    } catch (err) {
+      return reply
+        .code(500)
+        .send({ error: `解析失败：${err instanceof Error ? err.message : String(err)}` });
+    } finally {
+      rmSync(filePath, { force: true });
+    }
+  });
+
   app.get("/api/v1/projects/:id/artifacts/thread/events", async (request, reply) => {
     const { id } = request.params as { id: string };
     if (!db.scenarioRepo.getById(id)) return notFound(reply, `场景 ${id} 不存在`);
