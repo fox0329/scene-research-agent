@@ -34,11 +34,43 @@ export interface ParsedCommand {
  * @returns clean 为剥离命令块后的正文；command 缺省表示纯对话
  */
 export function parseCommandBlock(text: string): { clean: string; command?: ParsedCommand } {
-  const match = text.match(/【执行命令】\s*(\{[\s\S]*?\})\s*$/);
-  if (!match?.[1]) return { clean: text };
-  const clean = text.slice(0, match.index).trimEnd();
+  const start = text.lastIndexOf("【执行命令】");
+  if (start < 0) return { clean: text };
+  const braceStart = text.indexOf("{", start);
+  if (braceStart < 0) return { clean: text };
+
+  /* 括号配平提取完整 JSON：模型常在命令块后面再补一句话（#298 事故），不能再要求块在结尾 */
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  let braceEnd = -1;
+  for (let i = braceStart; i < text.length; i++) {
+    const ch = text[i]!;
+    if (escaped) {
+      escaped = false;
+    } else if (ch === "\\") {
+      escaped = true;
+    } else if (ch === '"') {
+      inString = !inString;
+    } else if (!inString) {
+      if (ch === "{") depth += 1;
+      else if (ch === "}") {
+        depth -= 1;
+        if (depth === 0) {
+          braceEnd = i;
+          break;
+        }
+      }
+    }
+  }
+  if (braceEnd < 0) return { clean: text };
+
+  const raw = text.slice(braceStart, braceEnd + 1);
+  const before = stripOrphanFence(text.slice(0, start).trimEnd());
+  const after = text.slice(braceEnd + 1).trim();
+  const clean = [before, after].filter(Boolean).join("\n\n");
   try {
-    const parsed = JSON.parse(match[1]) as { command?: unknown; params?: unknown };
+    const parsed = JSON.parse(raw) as { command?: unknown; params?: unknown };
     if (typeof parsed.command === "string" && parsed.command) {
       return {
         clean,
@@ -51,7 +83,15 @@ export function parseCommandBlock(text: string): { clean: string; command?: Pars
   } catch {
     /* 非法命令块：按纯文本处理 */
   }
-  return { clean };
+  return { clean: text };
+}
+
+/** 命令块前若有 ```json 围栏开头，剥掉孤立的围栏行（命令块已取走，留着自己会显示出来） */
+function stripOrphanFence(text: string): string {
+  return text
+    .split("\n")
+    .filter((line) => !/^\s*```\s*(json)?\s*$/u.test(line.trim()) || false)
+    .join("\n");
 }
 
 /** 产品去重（同型号合并，保留最早一条；规格参数归并、F3 照打） */

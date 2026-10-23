@@ -20,6 +20,7 @@ import {
   HISTORY_MAX_CHARS,
   HISTORY_MAX_MESSAGES,
 } from "./converse.js";
+import { parseCommandBlock } from "./scenario-commands.js";
 import type { ConverseDeps, ConverseDb } from "./converse.js";
 
 // ─── Mock 工厂 ─────────────────────────────────────────────
@@ -173,6 +174,32 @@ function createDeps(
 }
 
 // ─── 测试用例 ──────────────────────────────────────────────
+
+describe("parseCommandBlock（#298 容错）", () => {
+  const BLOCK =
+    '{\"command\":\"写入表格\",\"params\":{\"fills\":[{\"row\":\"器件\",\"column\":\"代表企业\",\"value\":\"欧普照明\"}]}}';
+
+  it("命令块在结尾：照常解析", () => {
+    const r = parseCommandBlock("好的。\n\n【执行命令】" + BLOCK);
+    expect(r.command?.command).toBe("写入表格");
+    expect(r.clean).toBe("好的。");
+  });
+
+  it("命令块后还有一句话：也能解析（用户实测事故）", () => {
+    const r = parseCommandBlock("好的。\n\n【执行命令】" + BLOCK + "\n以上已按 6 行整理，蓝字可改。");
+    expect(r.command?.command).toBe("写入表格");
+    expect(r.clean).toContain("好的。");
+    expect(r.clean).toContain("以上已按 6 行整理");
+    expect(r.clean).not.toContain("执行命令");
+  });
+
+  it("value 里带大括号/引号也能配平提取", () => {
+    const tricky =
+      '{\"command\":\"写入表格\",\"params\":{\"fills\":[{\"row\":\"器件\",\"column\":\"核实说明\",\"value\":\"格式 {a: 1} 与 \\u3010执行命令\\u3011 字样示例\"}]}}';
+    const r = parseCommandBlock("【执行命令】" + tricky);
+    expect(r.command?.command).toBe("写入表格");
+  });
+});
 
 describe("createConverseCommand", () => {
   let deps: ConverseDeps;
