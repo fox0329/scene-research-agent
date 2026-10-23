@@ -4,7 +4,8 @@ import { ArtifactRightPanel } from "./components/ArtifactRightPanel";
 import { ScenarioDefinitionDialog } from "./components/ScenarioDefinitionDialog";
 import { NewScenarioDialog } from "./components/NewScenarioDialog";
 import { OnboardingGuide } from "./components/OnboardingGuide";
-import { RowDetailPanel, type RowDetail } from "./components/RowDetailPanel";
+import { type RowDetail } from "./components/RowDetailPanel";
+import { LibraryRightPanel } from "./components/LibraryRightPanel";
 import type { StageSnapshot } from "./components/stage-snapshot";
 import { ToastProvider, useToast } from "./components/Toast";
 import { LibraryView } from "./views/LibraryView";
@@ -125,6 +126,8 @@ const AppShell: React.FC = () => {
   const [definitionRefresh, setDefinitionRefresh] = useState(0);
   /** 资料库行详情（右栏备注区，变更表 #19） */
   const [rowDetail, setRowDetail] = useState<RowDetail | null>(null);
+  /** 资料库右栏对话按当前选中的产品线隔离（#305） */
+  const [libraryLineId, setLibraryLineId] = useState<string>("");
   const layout = useColumnLayout();
 
   const live = liveProjects !== null;
@@ -388,6 +391,7 @@ const AppShell: React.FC = () => {
             lines={lines}
             onChanged={() => void refreshProjects().catch(() => {})}
             onRowSelect={live ? setRowDetail : undefined}
+            onActiveLine={setLibraryLineId}
           />
         )}
         {view === "settings" && <SettingsView live={live} />}
@@ -399,8 +403,13 @@ const AppShell: React.FC = () => {
       <aside className="det">
         {view === "project" ? (
           <ArtifactRightPanel snapshot={stageSnapshot} live={live} projectId={activeProject?.id} />
-        ) : view === "library" && live && rowDetail ? (
-          <RowDetailPanel detail={rowDetail} onClose={() => setRowDetail(null)} />
+        ) : view === "library" ? (
+          <LibraryRightPanel
+            lineId={libraryLineId}
+            live={live}
+            rowDetail={rowDetail}
+            onCloseDetail={() => setRowDetail(null)}
+          />
         ) : null}
       </aside>
 

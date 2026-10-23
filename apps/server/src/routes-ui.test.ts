@@ -2884,6 +2884,68 @@ describe("产物唯一会话路由", () => {
     expect(list).toHaveLength(1);
   });
 
+  it("对话内上传材料：解析成系统消息写进会话（#306）", async () => {
+    const { scenarioId } = seedScenario(h.db, "上传测试");
+    const boundary = "----sceneChatBoundary";
+    const body = [
+      `--${boundary}`,
+      'Content-Disposition: form-data; name="file"; filename="需求.txt"',
+      "Content-Type: text/plain",
+      "",
+      "地铁站厅照明改造，需要 500 盏 LED 灯具。",
+      `--${boundary}--`,
+      "",
+    ].join("\r\n");
+    const res = await h.app.inject({
+      method: "POST",
+      url: `/api/v1/projects/${scenarioId}/artifacts/thread/upload?step=2&type=table&id=${encodeURIComponent("表1-3")}`,
+      headers: { "content-type": `multipart/form-data; boundary=${boundary}` },
+      body,
+    });
+    expect(res.statusCode).toBe(200);
+    const json = res.json() as { chars: number; file: string };
+    expect(json.file).toBe("需求.txt");
+    expect(json.chars).toBeGreaterThan(0);
+
+    const thread = await h.app.inject({
+      method: "GET",
+      url: `/api/v1/projects/${scenarioId}/artifacts/thread?step=2&type=table&id=${encodeURIComponent("表1-3")}`,
+    });
+    const msgs = thread.json().messages as Array<{ role: string; content: string }>;
+    expect(msgs).toHaveLength(1);
+    expect(msgs[0]!.role).toBe("系统");
+    expect(msgs[0]!.content).toContain("已上传材料");
+    expect(msgs[0]!.content).toContain("500 盏 LED");
+  });
+
+  it("资料库对话：打开不建会话；空消息 400", async () => {
+    const line = h.db.productLineRepo.insert({ name: "L-chat" });
+    const empty = await h.app.inject({
+      method: "GET",
+      url: `/api/v1/library/${line.id}/chat`,
+    });
+    expect(empty.statusCode).toBe(200);
+    expect(empty.json().conversation_id).toBeNull();
+
+    const bad = await h.app.inject({
+      method: "POST",
+      url: `/api/v1/library/${line.id}/chat/messages`,
+      payload: { content: "  " },
+    });
+    expect(bad.statusCode).toBe(400);
+  });
+
+  it("资料库链接/路径入库：非法目标 400", async () => {
+    const line = h.db.productLineRepo.insert({ name: "L-path" });
+    const res = await h.app.inject({
+      method: "POST",
+      url: `/api/v1/library/${line.id}/ingest-path`,
+      payload: { target: "not-a-path" },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toContain("路径不存在");
+  });
+
   it("产物会话不出现在左栏会话列表；非法产物 400", async () => {
     const { scenarioId } = seedScenario(h.db, "产物会话可见性");
     await h.app.inject({

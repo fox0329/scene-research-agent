@@ -40,6 +40,8 @@ interface LibraryViewProps {
   onChanged?: () => void;
   /** 行点击上报右栏行详情（联真，变更表 #19） */
   onRowSelect?: (detail: RowDetail | null) => void;
+  /** 当前产品线变化（右栏资料对话按产品线隔离，#305） */
+  onActiveLine?: (lineId: string) => void;
 }
 
 export const LibraryView: React.FC<LibraryViewProps> = ({
@@ -47,12 +49,18 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
   lines = [],
   onChanged,
   onRowSelect,
+  onActiveLine,
 }) => {
   const [activeTab, setActiveTab] = useState("m1");
 
   if (live) {
     return (
-      <RealLibraryView lines={lines} onChanged={onChanged} onRowSelect={onRowSelect} />
+      <RealLibraryView
+        lines={lines}
+        onChanged={onChanged}
+        onRowSelect={onRowSelect}
+        onActiveLine={onActiveLine}
+      />
     );
   }
 

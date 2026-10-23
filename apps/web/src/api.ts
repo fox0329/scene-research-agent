@@ -1127,6 +1127,60 @@ export const reconnectArtifactStream = (
  * request.file() 在第一个 file 部件处返回，之后的字段收不到），同时通过
  * URL query 兜底，任何客户端字段顺序都能过。
  */
+/** 产物会话内上传材料（#306）：服务端解析正文并作为系统消息写入会话 */
+export async function artifactUpload(
+  projectId: string,
+  ref: ApiArtifactRef,
+  file: File,
+): Promise<{ file: string; chars: number }> {
+  const q = new URLSearchParams({
+    step: String(ref.step),
+    type: ref.type,
+    id: ref.id,
+    ...(ref.block ? { block: ref.block } : {}),
+  });
+  const form = new FormData();
+  form.append("file", file);
+  const res = await fetch(
+    `${BASE}/projects/${encodeURIComponent(projectId)}/artifacts/thread/upload?${q.toString()}`,
+    { method: "POST", body: form },
+  );
+  const data = (await res.json().catch(() => null)) as
+    | { file?: string; chars?: number; error?: string }
+    | null;
+  if (!res.ok || !data?.file) {
+    throw new Error(data?.error ?? `上传失败（HTTP ${res.status}）`);
+  }
+  return { file: data.file, chars: data.chars ?? 0 };
+}
+
+/** 资料库右栏对话（#305）：打开不建会话，首次发送才创建 */
+export const libraryChat = (lineId: string) =>
+  req<{ conversation_id: string | null; messages: ApiDefinitionMessage[] }>(
+    `/library/${encodeURIComponent(lineId)}/chat`,
+  );
+
+/** 资料库对话发送（SSE 流） */
+export const libraryChatStream = (
+  lineId: string,
+  content: string,
+  signal?: AbortSignal,
+) =>
+  sseRequest(
+    `/library/${encodeURIComponent(lineId)}/chat/messages`,
+    { content },
+    { lastId: null },
+    "POST",
+    signal,
+  );
+
+/** 链接 / 绝对路径直接入库（#305）；大文件仍走文件上传通道 */
+export const libraryIngestPath = (lineId: string, target: string) =>
+  req<{ inserted: number; tableCounts: Record<string, number>; file: string }>(
+    `/library/${encodeURIComponent(lineId)}/ingest-path`,
+    { method: "POST", body: { target } },
+  );
+
 export async function* ingestStream(
   file: File,
   productLineId: string,

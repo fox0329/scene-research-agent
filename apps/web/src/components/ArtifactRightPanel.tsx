@@ -17,6 +17,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   api,
+  artifactUpload,
   artifactMessageStream,
   type ApiArtifactRef,
   type ApiArtifactThread,
@@ -412,6 +413,9 @@ const ThreadPane: React.FC<{
   const [streamText, setStreamText] = useState<string | null>(null);
   const [summaryOpen, setSummaryOpen] = useState(false);
   const [inputH, setInputH] = useState(readInputH);
+  const [uploading, setUploading] = useState(false);
+  const [statusNote, setStatusNote] = useState<string | null>(null);
+  const uploadRef = useRef<HTMLInputElement | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const seqRef = useRef(0);
@@ -582,6 +586,27 @@ const ThreadPane: React.FC<{
       }
     }
   }, [appendLocal, draft, live, projectId, ref, sending]);
+
+  /* #306：对话内上传材料 → 服务端解析成系统消息写入会话，助手下一轮可据此写表 */
+  const onUpload = useCallback(
+    async (files: FileList | null) => {
+      if (!live || !projectId || !ref || !files?.length || uploading) return;
+      setUploading(true);
+      try {
+        const r = await artifactUpload(projectId, ref, files[0]!);
+        setError(null);
+        const state = await api.artifactThread(projectId, ref);
+        setThread(state);
+        setMessages(state.messages);
+        setStatusNote(`已上传「${r.file}」，解析 ${r.chars} 字，可以让助手据此更新表格`);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+      } finally {
+        setUploading(false);
+      }
+    },
+    [live, projectId, ref, uploading],
+  );
 
   /* 拖输入框上边缘调高：mousemove 全程挂在 document 上，出热区不掉跟 */
   const onInputResizeStart = (event: React.MouseEvent<HTMLDivElement>): void => {

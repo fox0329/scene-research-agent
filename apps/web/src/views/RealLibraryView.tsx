@@ -920,7 +920,9 @@ export const RealLibraryView: React.FC<{
   onChanged?: () => void;
   /** 行点击上报右栏行详情；null=清空（切表/切产品线时） */
   onRowSelect?: (detail: RowDetail | null) => void;
-}> = ({ lines, onChanged, onRowSelect }) => {
+  /** 当前产品线变化（右栏资料对话按产品线隔离，#305） */
+  onActiveLine?: (lineId: string) => void;
+}> = ({ lines, onChanged, onRowSelect, onActiveLine }) => {
   const { showToast } = useToast();
   const [lineId, setLineId] = useState(lines[0]?.id ?? "");
   const [tab, setTab] = useState<TabKey>("M1");
@@ -930,6 +932,11 @@ export const RealLibraryView: React.FC<{
   useEffect(() => {
     if (!lines.some((l) => l.id === lineId)) setLineId(lines[0]?.id ?? "");
   }, [lines, lineId]);
+
+  /* 产品线变化 → 通知右栏切换对话 */
+  useEffect(() => {
+    if (lineId) onActiveLine?.(lineId);
+  }, [lineId, onActiveLine]);
 
   /* 切表 / 切产品线：清空右栏行详情 */
   useEffect(() => {

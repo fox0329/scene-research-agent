@@ -8,7 +8,7 @@
  */
 
 import type { FastifyInstance } from "fastify";
-import { createWriteStream, existsSync, rmSync } from "node:fs";
+import { createWriteStream, existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { pipeline } from "node:stream/promises";
 import { join } from "node:path";
 import { tmpdir, homedir } from "node:os";
@@ -125,6 +125,12 @@ import {
 import { createIngestCommand } from "./ingest.js";
 import { boundaryEvidenceError, isLocatableSource } from "./library-gate.js";
 import { parseStage, streamEvents } from "./sse-stream.js";
+import {
+  buildLibraryContext,
+  ensureLibraryConversation,
+  readLibraryThread,
+  LIBRARY_SYSTEM_PROMPT,
+} from "./library-chat.js";
 import {
   assessQuality,
   checkCompleteness,
@@ -330,7 +336,7 @@ export function registerUiRoutes(app: FastifyInstance, deps: UiRoutesDeps): void
 
   registerProjectRoutes(app, deps);
   registerConversationRoutes(app, deps, converseCmd);
-  registerLibraryRoutes(app, deps);
+  registerLibraryRoutes(app, deps, converseCmd, ingestCmd);
   registerSystemRoutes(app, deps);
 
   // ── 上传入库（multipart → 临时文件 → ingest 命令 → SSE 进度） ──
@@ -1444,6 +1450,81 @@ function registerConversationRoutes(
     }
   });
 
+  /**
+   * 产物会话内上传材料（#306）：解析正文 → 作为一条系统消息写进会话，
+   * 助手下一轮就能看到内容并用 write_table 落表。文件本身不长期驻留临时目录。
+   */
+  app.post("/api/v1/projects/:id/artifacts/thread/upload", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    if (!db.scenarioRepo.getById(id)) return notFound(reply, `场景 ${id} 不存在`);
+    const query = request.query as Record<string, string | undefined>;
+    let ref;
+    try {
+      ref = normalizeArtifactRef({
+        step: Number(query.step),
+        stage: query.stage === undefined ? null : Number(query.stage),
+        type: query.type as never,
+        id: String(query.id ?? ""),
+        block: query.block === undefined ? null : String(query.block),
+        title: query.title === undefined ? undefined : String(query.title),
+      });
+    } catch (err) {
+      return badRequest(reply, err instanceof Error ? err.message : String(err));
+    }
+    let file: Awaited<ReturnType<typeof request.file>>;
+    try {
+      file = await request.file();
+    } catch (err) {
+      const tooLarge = describeUploadFailure(err, deps.uploadLimitMb ?? FILE_UPLOAD_LIMIT_MB);
+      if (tooLarge) {
+        return reply.code(413).send({ statusCode: 413, code: "FILE_TOO_LARGE", message: tooLarge });
+      }
+      return badRequest(reply, "需要 multipart 表单（字段 file）");
+    }
+    if (!file) return badRequest(reply, "缺少上传文件（multipart 字段 file）");
+    const suffix = file.filename.includes(".")
+      ? file.filename.slice(file.filename.lastIndexOf("."))
+      : ".bin";
+    const filePath = join(tmpdir(), `chat-upload-${Date.now()}-${++convSeq}${suffix}`);
+    try {
+      await pipeline(file.file, createWriteStream(filePath));
+      if (file.file.truncated) {
+        return reply.code(413).send({ statusCode: 413, code: "FILE_TOO_LARGE", message: "文件超过上传上限" });
+      }
+      let text = "";
+      if (/\.(txt|md|csv)$/iu.test(suffix)) {
+        text = readFileSync(filePath, "utf8");
+      } else {
+        const parsed = await parseDocument(filePath);
+        text = parsed.text;
+      }
+      const clean = text.replace(/\u0000/gu, "").trim();
+      if (!clean) return badRequest(reply, "文件里没有可读取的文字");
+      const conversation = await ensureArtifactConversation(db, dshClient, id, ref);
+      const content = `【已上传材料：${file.filename}】\n${clean.slice(0, 6000)}${
+        clean.length > 6000 ? "\n……（后面还有内容，已截断）" : ""
+      }`;
+      const message = db.messageRepo.insert({
+        conversation_id: conversation.id,
+        role: "系统",
+        content,
+      });
+      touchArtifactConversation(db, conversation.id, id, ref);
+      return {
+        conversation_id: conversation.id,
+        message,
+        file: file.filename,
+        chars: clean.length,
+      };
+    } catch (err) {
+      return reply
+        .code(500)
+        .send({ error: `上传解析失败：${err instanceof Error ? err.message : String(err)}` });
+    } finally {
+      rmSync(filePath, { force: true });
+    }
+  });
+
   app.get("/api/v1/projects/:id/artifacts/thread/events", async (request, reply) => {
     const { id } = request.params as { id: string };
     if (!db.scenarioRepo.getById(id)) return notFound(reply, `场景 ${id} 不存在`);
@@ -1800,8 +1881,98 @@ function findProductOfLine(
     .find((p) => p.model.trim().toLowerCase() === key);
 }
 
-function registerLibraryRoutes(app: FastifyInstance, deps: UiRoutesDeps) {
-  const { db } = deps;
+function registerLibraryRoutes(
+  app: FastifyInstance,
+  deps: UiRoutesDeps,
+  converseCmd: ReturnType<typeof createConverseCommand>,
+  ingestCmd: ReturnType<typeof createIngestCommand>,
+) {
+  const { db, hub } = deps;
+  let librarySeq = 0;
+
+  /** 资料库右栏对话（#305）：打开不建会话，首次发送才建；历史持久化 */
+  app.get("/api/v1/library/:id/chat", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    if (!db.productLineRepo.getById(id)) return notFound(reply, `产品线 ${id} 不存在`);
+    const state = readLibraryThread(db, id);
+    return { conversation_id: state.conversation_id, messages: state.messages };
+  });
+
+  app.post("/api/v1/library/:id/chat/messages", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const line = db.productLineRepo.getById(id);
+    if (!line) return notFound(reply, `产品线 ${id} 不存在`);
+    const body = (request.body ?? {}) as { content?: unknown };
+    const content = String(body.content ?? "").trim();
+    if (!content) return badRequest(reply, "消息内容不能为空");
+    const conversation = ensureLibraryConversation(db, id);
+    const contextPrefix = buildLibraryContext(db, id);
+    const runId = `library:${id}#${++librarySeq}`;
+    const source = (async function* () {
+      yield* converseCmd.sendMessage(conversation.id, content, {
+        system: LIBRARY_SYSTEM_PROMPT,
+        contextPrefix,
+        allowCommands: false,
+      });
+    })();
+    hub.start(runId, source);
+    const lastEventId =
+      (request.headers["last-event-id"] as string | undefined) ??
+      (request.query as { lastEventId?: string }).lastEventId;
+    await streamEvents(hub, runId, request, reply, lastEventId);
+  });
+
+  /**
+   * 链接 / 绝对路径入库（#305）：资料库右栏对话里贴 URL 或本机路径，直接解析入库。
+   * 同步执行并返回入库结果；大文件走文件上传通道（带进度）。
+   */
+  app.post("/api/v1/library/:id/ingest-path", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    if (!db.productLineRepo.getById(id)) return notFound(reply, `产品线 ${id} 不存在`);
+    const body = (request.body ?? {}) as { target?: unknown };
+    const target = String(body.target ?? "").trim();
+    if (!target) return badRequest(reply, "需要 target（URL 或绝对路径）");
+    let filePath = target;
+    let cleanup: (() => void) | undefined;
+    if (/^https?:\/\//u.test(target)) {
+      try {
+        const res = await fetch(target);
+        if (!res.ok) return badRequest(reply, `下载失败（HTTP ${res.status}）`);
+        const buf = Buffer.from(await res.arrayBuffer());
+        if (buf.length === 0) return badRequest(reply, "下载内容为空");
+        const ext = (() => {
+          try {
+            const pathname = new URL(target).pathname;
+            const i = pathname.lastIndexOf(".");
+            return i >= 0 ? pathname.slice(i).slice(0, 8) : ".bin";
+          } catch {
+            return ".bin";
+          }
+        })();
+        filePath = join(tmpdir(), `lib-fetch-${Date.now()}-${++librarySeq}${ext}`);
+        writeFileSync(filePath, buf);
+        cleanup = () => rmSync(filePath, { force: true });
+      } catch (err) {
+        return badRequest(reply, `下载失败：${err instanceof Error ? err.message : String(err)}`);
+      }
+    } else if (!target.startsWith("/") || !existsSync(target)) {
+      return badRequest(reply, "路径不存在；请给绝对路径或 http(s) 链接");
+    }
+    try {
+      const result = await ingestCmd.execute({ filePath, productLineId: id });
+      return {
+        inserted: result.rowsInserted,
+        tableCounts: result.tableCounts,
+        file: filePath.split("/").pop() ?? filePath,
+      };
+    } catch (err) {
+      return reply
+        .code(500)
+        .send({ error: `入库失败：${err instanceof Error ? err.message : String(err)}` });
+    } finally {
+      cleanup?.();
+    }
+  });
 
   app.get("/api/v1/library/product-lines", async () => {
     return db.productLineRepo.list({ orderBy: "created_at ASC" }).map((line) => {
