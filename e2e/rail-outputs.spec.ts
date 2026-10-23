@@ -245,7 +245,7 @@ test("交付物这一步：一份交付物与动作都在流程轴第二行（�
   await expect(chips.first()).toBeVisible();
 
   // v2：交付物步右栏锚定「解决方案」产物，上区来源/备注，下区唯一会话；全文仍不进界面
-  await expect(page.locator(".det .artifact-title")).toHaveText("解决方案");
+  await expect(page.locator(".det .thread-head")).toContainText("解决方案");
   await expect(page.locator(".det .artifact-tabs [role=tab]")).toHaveCount(2);
   await expect(page.locator(".det .thread-pane")).toBeVisible();
   await expect(page.locator(".det .md-body")).toHaveCount(0);

@@ -3072,7 +3072,8 @@ td.ed {
   background: var(--cpg);
   color: var(--ct);
   font-size: var(--txs);
-  line-height: 1.6;
+  /* 用户反馈：行距小一点，把空间留给对话记录 */
+  line-height: 1.45;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
@@ -3112,7 +3113,8 @@ td.ed {
 .thread-textarea {
   width: 100%;
   border: none;
-  resize: none;
+  /* 用户反馈：长输入要能拖高输入框（只在纵向拖，不破坏布局） */
+  resize: vertical;
   outline: none;
   background: transparent;
   color: var(--ct);
@@ -3121,7 +3123,8 @@ td.ed {
   line-height: 1.55;
   padding: var(--s1) var(--s05);
   min-height: var(--size-48);
-  max-height: var(--size-100);
+  max-height: 320px;
+  overflow-y: auto;
 }
 .thread-textarea::placeholder { color: var(--ct3); }
 .thread-input-actions {

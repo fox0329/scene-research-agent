@@ -40,7 +40,7 @@ test("六步推进冒烟：新建场景 → 完成第 1 步 → 第 2 步解锁�
   await expect(defDlg).toHaveCount(0);
 
   // 1.1) 关闭定义对话后，右栏必须回到「第 1 步产物 / 表1-1」；左栏仍只有场景
-  await expect(page.locator(".det .artifact-title")).toHaveText("场景定义与边界", {
+  await expect(page.locator(".det .thread-head")).toContainText("场景定义与边界", {
     timeout: 20_000,
   });
   await expect(page.locator(".det .artifact-tabs [role=tab]")).toHaveCount(2);

@@ -15,7 +15,6 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { FLOW_LAST_STEP, flowStep } from "@scene/contract";
 import {
   api,
   artifactMessageStream,
@@ -39,7 +38,6 @@ const MIN_TOP_PCT = 22;
 const MAX_TOP_PCT = 58;
 const TOP_PCT_KEY = "scene.artifact.split.v1";
 /** 输入框最大高度 */
-const TEXTAREA_MAX_HEIGHT = 100;
 
 function clampPct(value: number): number {
   return Math.min(MAX_TOP_PCT, Math.max(MIN_TOP_PCT, Math.round(value)));
@@ -169,31 +167,8 @@ export const ArtifactRightPanel: React.FC<ArtifactRightPanelProps> = ({
     }
   };
 
-  const stageLabel = artifact
-    ? artifact.step === FLOW_LAST_STEP
-      ? "交付物"
-      : `阶段 ${flowStep(artifact.step).stage ?? ""} · ${flowStep(artifact.step).title}`
-    : "阶段总结";
-
   return (
     <>
-      <div className="artifact-head">
-        <div className="artifact-eyebrow">{stageLabel}</div>
-        <div className="artifact-title-row">
-          <h2 className="artifact-title" title={artifact?.title}>
-            {artifact?.title ?? "阶段总结"}
-          </h2>
-        </div>
-        <div className="artifact-meta">
-          <span className={`dot ${sourceCount > 0 ? "success" : "muted"}`} />
-          <span>
-            {sourceCount > 0 ? `${sourceCount} 条来源` : "暂无来源"}
-            {" · "}
-            {adviceCount > 0 ? `${adviceCount} 条提醒` : "暂无提醒"}
-          </span>
-        </div>
-      </div>
-
       <div className="detail-tabs artifact-tabs" role="tablist" aria-label="产物信息">
         <button
           type="button"
@@ -580,11 +555,6 @@ const ThreadPane: React.FC<{
     }
   }, [appendLocal, draft, live, projectId, ref, sending]);
 
-  const autoGrow = (el: HTMLTextAreaElement): void => {
-    el.style.height = "auto";
-    el.style.height = `${Math.min(el.scrollHeight, TEXTAREA_MAX_HEIGHT)}px`;
-  };
-
   const onKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>): void => {
     if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
       event.preventDefault();
@@ -592,26 +562,11 @@ const ThreadPane: React.FC<{
     }
   };
 
-  const stageTitle = artifact ? flowStep(artifact.step).title : "产物";
-
   return (
     <div className="thread-pane">
+      {/* 只留产物名一行：来源数、提醒数、「唯一会话」这类元信息不再提醒用户 */}
       <div className="thread-head">
-        <div className="thread-title-row">
-          <strong>{artifact?.title ?? "产物会话"}</strong>
-          <span className="badge">{live ? "唯一会话" : "演示模式"}</span>
-        </div>
-        <div className="thread-sub">
-          <span>{artifact?.block ? `当前子块 · ${artifact.block}` : stageTitle}</span>
-          <span>·</span>
-          <span>历史完整保留</span>
-          {sourceCount > 0 ? (
-            <>
-              <span>·</span>
-              <span>{sourceCount} 条来源</span>
-            </>
-          ) : null}
-        </div>
+        <strong>{artifact?.title ?? "产物会话"}</strong>
       </div>
 
       <div
@@ -622,9 +577,7 @@ const ThreadPane: React.FC<{
         onScroll={onThreadScroll}
       >
         {!live ? (
-          <p className="thread-empty">
-            演示模式：连上后端后，针对当前产物的追问会保存在这条唯一会话里。
-          </p>
+          <p className="thread-empty">演示模式</p>
         ) : loading ? (
           <div className="loading-strip" role="status" aria-label="加载产物会话" />
         ) : error && messages.length === 0 ? (
@@ -670,9 +623,6 @@ const ThreadPane: React.FC<{
             {messages.length === 0 && streamText === null ? (
               <div className="thread-empty">
                 <strong>还没有对话</strong>
-                <p>
-                  针对「{artifact?.title ?? "当前产物"}」问依据、改法或缺口；第一次发送才会创建这条会话。
-                </p>
               </div>
             ) : null}
             {messages.map((m) => (
@@ -704,9 +654,6 @@ const ThreadPane: React.FC<{
 
       <div className="thread-composer">
         <div className="thread-input-shell">
-          <div className="thread-input-top">
-            <span className="thread-input-scope">产物 · {artifact?.title ?? "未选择"}</span>
-          </div>
           <textarea
             ref={inputRef}
             className="thread-textarea"
@@ -715,7 +662,6 @@ const ThreadPane: React.FC<{
             disabled={!live || loading || sending || !artifact}
             placeholder={live ? "针对这个产物追问，或输入「补一条来源」…" : "演示模式不可发送"}
             onChange={(e) => setDraft(e.target.value)}
-            onInput={(e) => autoGrow(e.currentTarget)}
             onKeyDown={onKeyDown}
             aria-label="针对当前产物发送消息"
           />
@@ -744,7 +690,8 @@ const MessageBubble: React.FC<{ message: ApiDefinitionMessage }> = ({ message })
       <div className="thread-msg-meta">
         {fmtTime(message.created_at)} · {isUser ? "你" : "助手"}
       </div>
-      <div className="thread-msg-bubble">{message.content}</div>
+      {/* 模型偶尔仍带 Markdown 加粗号；显示层兜底剥掉，历史消息同样生效 */}
+      <div className="thread-msg-bubble">{message.content.replace(/\*\*/g, "")}</div>
     </div>
   );
 };

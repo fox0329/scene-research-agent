@@ -15,7 +15,7 @@ test.beforeEach(async ({ page }) => {
 
 /* ───────────── §4.2 栏头：左右两栏 48px，右栏是产物头（变更表 #295） ───────────── */
 
-test("栏头结构：左/中栏 48px，右栏产物头 + 双页签 + 唯一会话", async ({ page }) => {
+test("栏头结构：左/中栏 48px，右栏只有双页签 + 会话（#296 去产物头）", async ({ page }) => {
   const left = page.locator(".side .side-hd");
   const main = page.locator(".main .pgh");
   for (const h of [left, main]) {
@@ -25,12 +25,11 @@ test("栏头结构：左/中栏 48px，右栏产物头 + 双页签 + 唯一会�
     expect(Math.round(box!.height)).toBe(H48);
   }
 
-  // v2：右栏不再是一条「阶段总结」标题栏，而是「阶段/产物名/来源与提醒数」的产物头
+  // #296：阶段眉标/产物名/来源提醒数全删，右栏直接从双页签开始
   const det = page.locator(".det");
-  await expect(det.locator(".artifact-head")).toBeVisible();
-  await expect(det.locator(".artifact-eyebrow")).toContainText(/阶段/);
-  await expect(det.locator(".artifact-title")).not.toBeEmpty();
+  await expect(det.locator(".artifact-head")).toHaveCount(0);
   await expect(det.locator(".artifact-tabs [role=tab]")).toHaveCount(2);
+  await expect(det.locator(".thread-head")).toContainText(/.+/);
   await expect(det.locator(".thread-pane")).toBeVisible();
 });
 
@@ -77,10 +76,9 @@ test("右栏以产物为最小单元：来源/备注双页签 + 唯一会话，�
   await gotoStep2(page);
   const det = page.locator(".det");
 
-  // 产物头：阶段 + 业务名 + 唯一会话；不再有「阶段总结」标题栏
-  await expect(det.locator(".artifact-eyebrow")).toContainText(/阶段/);
-  // 等第 2 步的产物真正挂上右栏：否则 artifact key 的 setTab("sources") 会在方向键之后才跑
-  await expect(det.locator(".artifact-title")).toContainText("门槛");
+  // 等第 2 步的产物真正挂上右栏（会话头出现业务名）：
+  // 否则 artifact key 的 setTab("sources") 会在方向键之后才跑
+  await expect(det.locator(".thread-head")).toContainText("门槛");
   await expect(det.locator(".artifact-tabs [role=tab]").first()).toHaveAttribute(
     "aria-selected",
     "true",
@@ -141,13 +139,14 @@ test("右栏没有补充说明表格：来源/备注之外只有唯一会话，�
   await expect(det.locator("select, [contenteditable='true']")).toHaveCount(0);
 });
 
-test("产物会话空态说清归属：历史完整保留，第一次发送才创建", async ({ page }) => {
+test("会话区只留产物名 + 空态一句话（#296 去掉元信息提醒）", async ({ page }) => {
   await gotoStep2(page);
   const det = page.locator(".det");
-  await expect(det.locator(".thread-head")).toContainText("历史完整保留");
-  await expect(det.locator(".thread-title-row .badge")).toContainText(/唯一会话|演示模式/);
+  await expect(det.locator(".thread-head strong")).not.toBeEmpty();
+  await expect(det.locator(".thread-head .badge")).toHaveCount(0);
+  await expect(det.locator(".thread-sub")).toHaveCount(0);
+  await expect(det.locator(".thread-input-scope")).toHaveCount(0);
   await expect(det.locator(".thread-empty")).toContainText(/演示模式|还没有对话/);
-  await expect(det.locator(".thread-input-scope")).toContainText("产物");
   // 演示态不请求后端，输入框明确禁用；联真态才允许第一次发送创建会话
   await expect(det.locator(".thread-textarea")).toBeDisabled();
 });
@@ -520,8 +519,7 @@ test("第 1 步：中栏只有表1-1；步标题/引导语/状态行/完整度/�
   // 右栏 v2（变更表 #295）：第 1 步锚定「场景定义与边界 / 表1-1」，
   // 上区是信息来源/备注，下区是这条产物的唯一会话；右栏没有任何表格
   const det = page.locator(".det");
-  await expect(det.locator(".artifact-title")).toHaveText("场景定义与边界");
-  expect(await det.locator(".artifact-eyebrow").innerText()).toMatch(/表1-1|场景定义/);
+  await expect(det.locator(".thread-head")).toContainText("场景定义与边界");
   await expect(det.locator(".artifact-tabs [role=tab]")).toHaveCount(2);
   await expect(det.locator("table")).toHaveCount(0);
   await expect(det.locator(".completeness-bar")).toHaveCount(0);
@@ -865,7 +863,7 @@ test("表格列宽自动适配：生成即是最紧凑布局，未手动拖就�
 test("右栏不再有确认清单/缺口清单（智能体的待办不进用户界面）", async ({ page }) => {
   await gotoStep2(page);
   const det = page.locator(".det");
-  await expect(det.locator(".artifact-title")).not.toBeEmpty();
+  await expect(det.locator(".thread-head")).not.toBeEmpty();
 
   await expect(det.locator(".confirm-list")).toHaveCount(0);
   await expect(det.locator(".gap-list")).toHaveCount(0);
