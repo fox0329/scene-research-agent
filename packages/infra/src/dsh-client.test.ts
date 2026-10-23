@@ -103,6 +103,66 @@ describe("createDshClient", () => {
     expect(String((events.at(-1)! as Record<string, unknown>).message)).toMatch(/无法连接到模型服务|设置页/);
   });
 
+  it("工具调用分片流：按 index 拼回并以 tool_call 事件回传（#300）", async () => {
+    seedRegistry();
+    const origFetch = globalThis.fetch;
+    let sentTools: unknown = null;
+    const sse = (obj: unknown): string => "data: ".concat(JSON.stringify(obj), "\n\n");
+    const fullArgs = JSON.stringify({ fills: [{ row: "器件", column: "代表企业", value: "欧普" }] });
+    const mid = Math.floor(fullArgs.length / 2);
+    const tc = (part: string, withName: boolean): unknown => ({
+      choices: [{
+        delta: {
+          tool_calls: [{
+            index: 0,
+            ...(withName ? { id: "c1", function: { name: "write_table", arguments: part } } : { function: { arguments: part } }),
+          }],
+        },
+      }],
+    });
+    const chunks = [
+      sse({ choices: [{ delta: { content: "好的，写入。" } }] }),
+      sse(tc(fullArgs.slice(0, mid), true)),
+      sse(tc(fullArgs.slice(mid), false)),
+      sse({ choices: [{ delta: {}, finish_reason: "tool_calls" }] }),
+      "data: [DONE]\n\n",
+    ];
+    globalThis.fetch = (async (_url: string | URL, init?: RequestInit) => {
+      sentTools = JSON.parse(String(init?.body)).tools;
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          const enc = new TextEncoder();
+          for (const c of chunks) controller.enqueue(enc.encode(c));
+          controller.close();
+        },
+      });
+      return new Response(body, { status: 200 });
+    }) as typeof fetch;
+    try {
+      const client = createDshClient();
+      const h = await client.createSession({ title: "工具" });
+      const events: FollowEvent[] = [];
+      for await (const e of client.prompt(h, {
+        system: "s",
+        user: "u",
+        outputContract: {},
+        tools: [{ type: "function", function: { name: "write_table", parameters: {} } }],
+      })) {
+        events.push(e);
+      }
+      expect(sentTools).toHaveLength(1);
+      const tc = events.find((e) => e.type === "tool_call") as
+        | { type: "tool_call"; calls: Array<{ name: string; arguments: string }> }
+        | undefined;
+      expect(tc).toBeDefined();
+      expect(tc!.calls[0]!.name).toBe("write_table");
+      const parsed = JSON.parse(tc!.calls[0]!.arguments);
+      expect(parsed.fills[0]).toEqual({ row: "器件", column: "代表企业", value: "欧普" });
+    } finally {
+      globalThis.fetch = origFetch;
+    }
+  });
+
   it("模型流中途卡住不再吐字节 → 报超时错误（不静默挂住，用户不会永远看到「分析中」）", async () => {
     seedRegistry();
     process.env["LLM_IDLE_TIMEOUT_MS"] = "80";

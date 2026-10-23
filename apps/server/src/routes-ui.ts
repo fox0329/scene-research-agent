@@ -85,6 +85,7 @@ import {
   normalizeArtifactRef,
   fillTableFromCommand,
   readArtifactThread,
+  WRITE_TABLE_TOOL,
   touchArtifactConversation,
 } from "./artifact-conversation.js";
 import { requestScenarioClarify } from "./scenario-clarify.js";
@@ -1406,9 +1407,14 @@ function registerConversationRoutes(
             system: ARTIFACT_SYSTEM_PROMPT,
             contextPrefix,
             // 产物会话内不执行全局【执行命令】（推进阶段/导出等仍在中栏发起）；
-            // 唯一放行「写入表格」：按用户拍板（#298）由助手直接补表，蓝字提醒、不标注来源
+            // 写表走原生 function calling（#300）：模型直接调 write_table 工具，蓝字提醒、不标注来源
             allowCommands: false,
             handleCommand: (command) => fillTableFromCommand(db, id, ref, command),
+            chatTools: {
+              defs: [WRITE_TABLE_TOOL],
+              onCall: (_name: string, args: Record<string, unknown>) =>
+                fillTableFromCommand(db, id, ref, { command: "写入表格", params: args }),
+            },
           });
         } finally {
           // 无论正常结束、报错还是客户端断开，都记录活动时间与当前产物指纹

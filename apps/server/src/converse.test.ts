@@ -487,6 +487,50 @@ describe("createConverseCommand", () => {
       expect(userMessages[0]!.content).toBe("你好");
     });
 
+    it("原生 tool_call：调用 chatTools.onCall，确认语回显并入消息（#300）", async () => {
+      const calls: Array<{ name: string; args: Record<string, unknown> }> = [];
+      const client = createMockDshClient([
+        { type: "text", text: "好的，写入。" },
+        {
+          type: "tool_call",
+          calls: [
+            {
+              name: "write_table",
+              arguments: JSON.stringify({ fills: [{ row: "器件", column: "代表企业", value: "欧普" }] }),
+            },
+          ],
+        },
+        { type: "done" },
+      ]);
+      const local = createDeps(client);
+      const cmd = createConverseCommand(local.deps);
+      const conv = await cmd.create({ scenario_id: "s1", title: "产物" });
+
+      const text: string[] = [];
+      for await (const e of cmd.sendMessage(conv.id, "补进表格", {
+        allowCommands: false,
+        chatTools: {
+          defs: [],
+          onCall: async (name, args) => {
+            calls.push({ name, args });
+            return "已按建议写入表格 1 处";
+          },
+        },
+      })) {
+        if (e.type === "text") text.push((e as { type: "text"; text: string }).text);
+      }
+      expect(calls).toHaveLength(1);
+      expect(calls[0]!.name).toBe("write_table");
+      expect(calls[0]!.args).toEqual({ fills: [{ row: "器件", column: "代表企业", value: "欧普" }] });
+      const visible = text.join("");
+      expect(visible).toContain("好的，写入。");
+      expect(visible).toContain("已按建议写入表格 1 处");
+      const persisted = local.db.messageRepo
+        .listByConversation(conv.id)
+        .filter((m) => m.role === "系统");
+      expect(persisted[0]!.content).toContain("已按建议写入表格 1 处");
+    });
+
     it("命令块在流式输出里被拦截，不滚进气泡（#298 用户反馈）", async () => {
       // 模拟逐字流式：把含命令块的整段回复按单字符吐出
       const full = "好的，写进表格。\n\n【执行命令】{\"command\":\"写入表格\",\"params\":{}}\n以上。";

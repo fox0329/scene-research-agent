@@ -157,6 +157,11 @@ export function createConverseCommand(deps: ConverseDeps) {
         allowCommands?: boolean;
         /** #298：提供时命令块不再走全局 executeAppCommand，交给调用方（产物会话只放行 fill_table） */
         handleCommand?: (command: { command: string; params: Record<string, unknown> }) => Promise<string>;
+        /** #300：原生 function calling——产物会话的写表工具，优先于文本命令块 */
+        chatTools?: {
+          defs: Array<Record<string, unknown>>;
+          onCall: (name: string, args: Record<string, unknown>) => Promise<string>;
+        };
       },
     ): AsyncIterable<FollowEvent> =>
       sendMessage(db, dshClient, conversationId, content, importFiles, override),
@@ -356,6 +361,10 @@ async function* sendMessage(
     contextPrefix?: string;
     allowCommands?: boolean;
     handleCommand?: (command: { command: string; params: Record<string, unknown> }) => Promise<string>;
+    chatTools?: {
+      defs: Array<Record<string, unknown>>;
+      onCall: (name: string, args: Record<string, unknown>) => Promise<string>;
+    };
   },
 ): AsyncIterable<FollowEvent> {
   // 1. 校验会话存在且活跃
@@ -452,6 +461,8 @@ async function* sendMessage(
       // 顺序：对话历史（多轮记忆）→ 调用方上下文（如定义对话的表1-1 现状）→ 场景上下文 → 导入报告 → 本轮消息
       user: `${historyBlock}${override?.contextPrefix ?? ""}${scenarioCtx}${importReport ? importReport : ""}${content}`,
       outputContract: {},
+      // #300：产物会话注册 write_table 等对话工具，模型原生 function calling，不再靠文本协议
+      tools: override?.chatTools?.defs,
     });
 
     /* 命令块流式拦截：模型输出【执行命令】时，JSON 会先滚进气泡再被剥掉，
@@ -461,6 +472,31 @@ async function* sendMessage(
     let held = "";
 
     for await (const event of stream) {
+      if (event.type === "tool_call") {
+        // #300：原生 function calling——工具调用不进气泡，执行结果作为确认语回显并入消息
+        const calls = (event as { type: "tool_call"; calls?: Array<{ name: string; arguments: string }> }).calls ?? [];
+        for (const call of calls) {
+          if (!override?.chatTools) continue;
+          let args: Record<string, unknown> = {};
+          try {
+            args = call.arguments ? (JSON.parse(call.arguments) as Record<string, unknown>) : {};
+          } catch {
+            yield { type: "error", message: `工具 ${call.name} 参数不是合法 JSON` };
+            hasError = true;
+            continue;
+          }
+          try {
+            const note = await override.chatTools.onCall(call.name, args);
+            yield { type: "text", text: `\n\n${note}\n` };
+            fullReply += `\n\n${note}`;
+          } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : String(err);
+            yield { type: "error", message: `工具 ${call.name} 执行失败：${msg}` };
+            hasError = true;
+          }
+        }
+        continue;
+      }
       if (event.type !== "text") {
         // done/error 不冲扣住的尾巴：half-mark 可能只是分块巧了，循环结束统一还
         yield event;

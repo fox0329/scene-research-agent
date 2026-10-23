@@ -480,6 +480,8 @@ export interface DshClient {
       system: string;
       user: string;
       outputContract: Record<string, unknown>;
+      /** #300：OpenAI function 定义；给工具时 tool_choice=auto，模型可边聊边调（tool_call 事件回传） */
+      tools?: Array<Record<string, unknown>>;
     },
   ): AsyncIterable<FollowEvent>;
   cancel(h: SessionHandle): Promise<void>;

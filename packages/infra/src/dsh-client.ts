@@ -124,6 +124,7 @@ class DshClientImpl implements DshClient {
       system: string;
       user: string;
       outputContract: Record<string, unknown>;
+      tools?: Array<Record<string, unknown>>;
     },
   ): AsyncIterable<FollowEvent> {
     const session = sessions.get(h.sessionId);
@@ -160,6 +161,7 @@ class DshClientImpl implements DshClient {
           structured: cap.structured,
           withoutToolChoice: cap.structured === "prompt",
           withoutThinking: !cap.thinkingParam,
+          chatTools: input.tools,
         });
 
       const headers: Record<string, string> = {
@@ -255,6 +257,7 @@ class DshClientImpl implements DshClient {
     const reader = body.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
+    const toolCalls = new Map<number, { name: string; arguments: string }>();
 
     try {
       while (true) {
@@ -282,7 +285,23 @@ class DshClientImpl implements DshClient {
               if (content) {
                 yield { type: "text", text: content };
               }
+              /* #300：工具调用参数是分片流式的，按 index 拼回完整调用再一次性回传 */
+              for (const tc of chunk.choices?.[0]?.delta?.tool_calls ?? []) {
+                const slot = toolCalls.get(tc.index) ?? { name: "", arguments: "" };
+                if (tc.function?.name) slot.name = tc.function.name;
+                if (tc.function?.arguments) slot.arguments += tc.function.arguments;
+                toolCalls.set(tc.index, slot);
+              }
               if (chunk.choices?.[0]?.finish_reason) {
+                if (toolCalls.size > 0) {
+                  yield {
+                    type: "tool_call",
+                    calls: [...toolCalls.entries()]
+                      .sort(([a], [b]) => a - b)
+                      .map(([, v]) => v),
+                  };
+                  toolCalls.clear();
+                }
                 // finish_reason 要透出去：`length` = 被输出上限截断，调用方必须按失败处理
                 yield { type: "done", finishReason: chunk.choices[0].finish_reason };
                 return;
@@ -410,7 +429,13 @@ function buildRequestBody(
   system: string,
   user: string,
   outputContract: Record<string, unknown>,
-  opts?: { withoutToolChoice?: boolean; withoutThinking?: boolean; structured?: StructuredMode },
+  opts?: {
+    withoutToolChoice?: boolean;
+    withoutThinking?: boolean;
+    structured?: StructuredMode;
+    /** #300：对话式工具（tool_choice=auto），区别于 submit_result 那种强制调用 */
+    chatTools?: Array<Record<string, unknown>>;
+  },
 ): Record<string, unknown> {
   // 使用 tool_choice + tools 强制 JSON Schema 输出
   // 这比 response_format 更通用，各 provider 兼容性更好
@@ -436,6 +461,12 @@ function buildRequestBody(
   /* 关掉思考模式：理由见 llmThinkingEnabled（思考阶段正文要等 60~90 秒，实测会被网络重置） */
   if (!opts?.withoutThinking && !llmThinkingEnabled()) {
     body.thinking = { type: "disabled" };
+  }
+
+  /* 对话式工具：模型自己决定调不调（对比上面 hasSchema 强制 submit_result） */
+  if (!hasSchema && opts?.chatTools?.length) {
+    body.tools = opts.chatTools;
+    body.tool_choice = "auto";
   }
 
   const mode = opts?.structured ?? "tools";

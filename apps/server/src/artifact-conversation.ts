@@ -72,6 +72,38 @@ const ARTIFACT_TYPES: readonly ArtifactScopeType[] = ["anchor", "table", "delive
  * 围绕当前产物回答；明确禁止它声称看过未提供的材料，也禁止在产物会话里执行
  * 「推进阶段 / 导出」这类会改变全局状态的动作——那些仍由用户在中栏按钮发起。
  */
+/**
+ * #300：写表工具的 function 定义（原生 function calling）。
+ * 行用该行第一列的现有值定位，列用界面列名——模型从【产物内容】上下文里直接抄，不用懂内部键。
+ */
+export const WRITE_TABLE_TOOL = {
+  type: "function",
+  function: {
+    name: "write_table",
+    description:
+      "把确认要写的内容写进当前产物的表格。只在用户明确要求写入/补充/替换表格时调用；一次可写多处。",
+    parameters: {
+      type: "object",
+      properties: {
+        fills: {
+          type: "array",
+          description: "要写入的单元格列表，一次最多 10 处",
+          items: {
+            type: "object",
+            properties: {
+              row: { type: "string", description: "目标行第一列的现有值（照抄上下文【产物内容】里的值）" },
+              column: { type: "string", description: "界面列名（如：代表企业、核实说明）" },
+              value: { type: "string", description: "要写入的一句话，不超过 200 字" },
+            },
+            required: ["row", "column", "value"],
+          },
+        },
+      },
+      required: ["fills"],
+    },
+  },
+} as const;
+
 export const ARTIFACT_SYSTEM_PROMPT = `你是场景通的「产物助手」。用户正在看某个阶段产物，你只围绕这个产物回答。
 规则：
 1. 先读本轮消息前的【当前产物】【本步阶段总结】【本步调研来源】；回答优先引用其中的表行与 URL。
@@ -81,15 +113,14 @@ export const ARTIFACT_SYSTEM_PROMPT = `你是场景通的「产物助手」。�
 5. 回复里不要出现「表1-1」「表5-1」这类内部表号或英文字段名；用业务名（如「门槛与合规」「系统架构」）指代。
 6. 输出纯文本：不要用「**」「##」「- 」这类 Markdown 符号；分段直接换行。
 7. 保持简洁，中文回答；需要引用来源时用「标题｜URL」或「文件名:页码」。
-8. 用户明确让你「补充进表格 / 写入 / 替换」时，在回答末尾输出命令块（替换表格里你建议的位置，用户拍板 2026-10-23）：
-【执行命令】{"command":"写入表格","params":{"fills":[{"row":"该行第一列的现有值，如：器件","column":"界面列名，如：代表企业","value":"要写入的一句话"}]}}
-   - 命令块放在回答最后，后面不要再补任何说明。
+8. 用户明确让你「补充进表格 / 写入 / 替换」时（或对你要写的提议表示肯定后），
+   直接调用 write_table 工具写入；工具调用本身不显示给用户，执行结果会自动回显确认。
    - 一次最多 10 处；单条 value 不超过 200 字；只写当前产物表格里已有的列。
-   - 行定位用【产物内容】里每行第一列的现有值；找不到就别写，改在正文里说明。
-   - **确认循环禁令**（实测事故 #298）：如果你上一条消息已经说过「要写就说一声 / 我出命令」，
-     用户回复肯定（如「可以」「好」「写吧」「确认」「嗯」），必须立刻输出命令块，
-     不许再复述一遍「要我写就说一声」；也不许只描述要写什么而不给命令块。
-   - 没有让你写表时，不要输出这个命令块。`;
+   - row 照抄【产物内容】里该行第一列的值；column 用界面列名；找不到就别调工具，正文里说明。
+   - **确认循环禁令**（实测事故）：如果你上一条已经说过「要写就说一声」，用户回复肯定
+     （可以/好/写吧/确认/嗯），必须立刻调用 write_table，不许再复述「要我写就说一声」。
+   - 没有让你写表时，不要调用工具。
+   - 兼容：也可以输出文本命令块（见历史约定），但优先用工具。`;
 
 /** 产物类型是否合法 */
 export function isArtifactScopeType(value: unknown): value is ArtifactScopeType {
@@ -410,7 +441,7 @@ export async function fillTableFromCommand(
   ref: ArtifactRef,
   raw: { command: string; params: Record<string, unknown> },
 ): Promise<string> {
-  if (raw.command !== "写入表格") {
+  if (raw.command !== "写入表格" && raw.command !== "write_table") {
     throw new Error(`产物会话只支持「写入表格」，不支持「${raw.command}」`);
   }
   if (ref.type === "deliverable") {
