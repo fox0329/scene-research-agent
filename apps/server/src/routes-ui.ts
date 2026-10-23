@@ -83,6 +83,7 @@ import {
   buildArtifactContext,
   ensureArtifactConversation,
   normalizeArtifactRef,
+  fillTableFromCommand,
   readArtifactThread,
   touchArtifactConversation,
 } from "./artifact-conversation.js";
@@ -1220,8 +1221,14 @@ function registerProjectRoutes(app: FastifyInstance, deps: UiRoutesDeps) {
     if (!cell || body.value === undefined) return badRequest(reply, "需要 cell 与 value");
     const row = db.stageDataRepo.getById(rowId);
     if (!row || row.scenario_id !== id) return notFound(reply, `阶段数据 ${rowId} 不存在`);
+    /* 用户亲手改了这一格 → 助手补写（#298 蓝字）标记即摘除，之后当普通内容对待 */
+    const aiCells = Array.isArray(row.row.__ai_cells)
+      ? (row.row.__ai_cells as unknown[]).map(String).filter((k) => k !== cell)
+      : [];
+    const nextRow = { ...row.row, [cell]: body.value };
+    if (Array.isArray(row.row.__ai_cells)) nextRow.__ai_cells = aiCells;
     const updated = db.stageDataRepo.update(rowId, {
-      row: { ...row.row, [cell]: body.value },
+      row: nextRow,
       source_type: "用户确认",
     });
     /* 改了这一格 → 引用这张表的下游阶段标「待重算」（如 表2-2 → 阶段 2、4）
@@ -1398,8 +1405,10 @@ function registerConversationRoutes(
           yield* converseCmd.sendMessage(conversation.id, content, {
             system: ARTIFACT_SYSTEM_PROMPT,
             contextPrefix,
-            // 产物会话内不执行【执行命令】：推进阶段/导出/改表仍由用户在中栏发起
+            // 产物会话内不执行全局【执行命令】（推进阶段/导出等仍在中栏发起）；
+            // 唯一放行「写入表格」：按用户拍板（#298）由助手直接补表，蓝字提醒、不标注来源
             allowCommands: false,
+            handleCommand: (command) => fillTableFromCommand(db, id, ref, command),
           });
         } finally {
           // 无论正常结束、报错还是客户端断开，都记录活动时间与当前产物指纹

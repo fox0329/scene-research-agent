@@ -95,15 +95,24 @@ const CellTextarea: React.FC<{
   placeholder: string;
   ariaLabel: string;
   onCommit: (value: string) => void;
-}> = ({ value, placeholder, ariaLabel, onCommit }) => (
+  /** #298：助手补写的格用蓝色字体提醒（用户一改就由服务端摘掉标记） */
+  aiFilled?: boolean;
+}> = ({ value, placeholder, ariaLabel, onCommit, aiFilled }) => (
   <AutoGrowTextarea
     value={value}
     placeholder={placeholder}
     ariaLabel={ariaLabel}
     commitOnBlur
+    className={aiFilled ? "cell-input cell-input--multi ai-filled" : undefined}
     onChange={onCommit}
   />
 );
+
+/** 行里是否有该列的「助手补写」标记（#298，写在行 JSON 的 __ai_cells） */
+function isAiFilled(row: Record<string, unknown>, key: string): boolean {
+  const cells = row.__ai_cells;
+  return Array.isArray(cells) && cells.includes(key);
+}
 
 /**
  * 通用场景表格组件
@@ -568,6 +577,7 @@ export function SceneTable<T extends Record<string, unknown>>({
                           value={String(value ?? "")}
                           placeholder={placeholderOf(col, row)}
                           ariaLabel={`${col.label}（第 ${ri + 1} 行）`}
+                          aiFilled={isAiFilled(row, col.key)}
                           onCommit={(next) => onCellChange?.(ri, col.key, next)}
                         />
                       </td>
@@ -590,7 +600,7 @@ export function SceneTable<T extends Record<string, unknown>>({
                   return (
                     <td
                       key={col.key}
-                      className="ed"
+                      className={isAiFilled(row, col.key) ? "ed ai-filled" : "ed"}
                       contentEditable
                       suppressContentEditableWarning
                       title={String(value ?? "")}

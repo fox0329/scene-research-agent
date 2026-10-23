@@ -151,7 +151,13 @@ export function createConverseCommand(deps: ConverseDeps) {
        * - `contextPrefix`：追加在用户消息前的场景上下文
        * - `allowCommands=false`：不执行回复里的【执行命令】（产物会话用）
        */
-      override?: { system?: string; contextPrefix?: string; allowCommands?: boolean },
+      override?: {
+        system?: string;
+        contextPrefix?: string;
+        allowCommands?: boolean;
+        /** #298：提供时命令块不再走全局 executeAppCommand，交给调用方（产物会话只放行 fill_table） */
+        handleCommand?: (command: { command: string; params: Record<string, unknown> }) => Promise<string>;
+      },
     ): AsyncIterable<FollowEvent> =>
       sendMessage(db, dshClient, conversationId, content, importFiles, override),
   };
@@ -345,7 +351,12 @@ async function* sendMessage(
   conversationId: string,
   content: string,
   importFiles?: (paths: string[]) => Promise<ChatImportOutcome[]>,
-  override?: { system?: string; contextPrefix?: string; allowCommands?: boolean },
+  override?: {
+    system?: string;
+    contextPrefix?: string;
+    allowCommands?: boolean;
+    handleCommand?: (command: { command: string; params: Record<string, unknown> }) => Promise<string>;
+  },
 ): AsyncIterable<FollowEvent> {
   // 1. 校验会话存在且活跃
   const conversation = db.conversationRepo.getById(conversationId);
@@ -464,19 +475,27 @@ async function* sendMessage(
   // 产物会话只讨论当前产物，明确禁止模型借命令块推进阶段/导出/改表。
   const parsed = parseCommandBlock(fullReply);
   const allowCommands = override?.allowCommands !== false;
-  const command = allowCommands ? parsed.command : null;
+  // handleCommand 提供时命令块交给调用方处置（产物会话只放行写入表格），不算「禁止命令」
+  const command =
+    allowCommands || override?.handleCommand ? parsed.command : null;
   const replyWithoutCmd = parsed.clean;
   let commandResult = "";
-  if (!allowCommands && parsed.command) fullReply = replyWithoutCmd;
+  if (!allowCommands && !override?.handleCommand && parsed.command) {
+    fullReply = replyWithoutCmd;
+  }
   if (command) {
     yield {
       type: "text",
       text: `\n\n⏳ 正在执行：${command.command}…\n`,
     };
     try {
-      const target = db.scenarioRepo.getById(conversation.scenario_id);
-      if (!target) throw new Error(`场景 ${conversation.scenario_id} 不存在`);
-      commandResult = `\n\n${await executeAppCommand(db as unknown as import("@scene/infra").DbInstance, dshClient, target, command)}`;
+      if (override?.handleCommand) {
+        commandResult = `\n\n${await override.handleCommand(command)}`;
+      } else {
+        const target = db.scenarioRepo.getById(conversation.scenario_id);
+        if (!target) throw new Error(`场景 ${conversation.scenario_id} 不存在`);
+        commandResult = `\n\n${await executeAppCommand(db as unknown as import("@scene/infra").DbInstance, dshClient, target, command)}`;
+      }
     } catch (err: unknown) {
       commandResult = `\n\n【执行结果】命令执行失败：${err instanceof Error ? err.message : String(err)}`;
     }

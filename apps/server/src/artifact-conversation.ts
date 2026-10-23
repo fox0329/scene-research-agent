@@ -27,6 +27,7 @@ import {
   type Message,
 } from "@scene/contract";
 import { normalizeConversationTitle, SESSION_STATUS_ACTIVE } from "@scene/domain";
+import { getAffectedStages } from "@scene/domain";
 import type { DbInstance } from "@scene/infra";
 import type { DshClient } from "@scene/contract";
 import { compactConversationHistory } from "./conversation-compaction.js";
@@ -79,7 +80,12 @@ export const ARTIFACT_SYSTEM_PROMPT = `你是场景通的「产物助手」。�
 4. 不输出【执行命令】块，不替用户推进阶段、导出文件或修改表格；需要改表时给建议，由用户自己操作。
 5. 回复里不要出现「表1-1」「表5-1」这类内部表号或英文字段名；用业务名（如「门槛与合规」「系统架构」）指代。
 6. 输出纯文本：不要用「**」「##」「- 」这类 Markdown 符号；分段直接换行。
-7. 保持简洁，中文回答；需要引用来源时用「标题｜URL」或「文件名:页码」。`;
+7. 保持简洁，中文回答；需要引用来源时用「标题｜URL」或「文件名:页码」。
+8. 用户明确让你「补充进表格 / 写入 / 替换」时，在回答末尾输出命令块（替换表格里你建议的位置，用户拍板 2026-10-23）：
+【执行命令】{"command":"写入表格","params":{"fills":[{"row":"该行第一列的现有值，如：器件","column":"界面列名，如：代表企业","value":"要写入的一句话"}]}}
+   - 一次最多 10 处；单条 value 不超过 200 字；只写当前产物表格里已有的列。
+   - 行定位用【产物内容】里每行第一列的现有值；找不到就别写，改在正文里说明。
+   - 没有让你写表时，不要输出这个命令块。`;
 
 /** 产物类型是否合法 */
 export function isArtifactScopeType(value: unknown): value is ArtifactScopeType {
@@ -375,4 +381,97 @@ export function currentArtifactHash(
     }
   }
   return hash.digest("hex").slice(0, 16);
+}
+
+/** #298 fill_table 单次写入上限：防止一次回复把整表刷掉 */
+const MAX_FILLS_PER_REPLY = 10;
+/** 单格写入上限（与中栏「一格一句话」同量级） */
+const MAX_FILL_VALUE_CHARS = 200;
+
+export interface FillCommand {
+  command: string;
+  params: { fills?: unknown };
+}
+
+/**
+ * 把助手回复里的「写入表格」命令落到当前产物的表。
+ *
+ * 定位方式对模型友好：行用**该行第一列的现有值**（如「器件」）匹配，列用**界面列名或列键**。
+ * 写入不改 source_type（不冒充有来源）；在该行 JSON 的 `__ai_cells` 记下补写列，
+ * 前端据此用蓝色字体提醒，用户一编辑该格服务端就摘掉标记。
+ */
+export async function fillTableFromCommand(
+  db: DbInstance,
+  scenarioId: string,
+  ref: ArtifactRef,
+  raw: { command: string; params: Record<string, unknown> },
+): Promise<string> {
+  if (raw.command !== "写入表格") {
+    throw new Error(`产物会话只支持「写入表格」，不支持「${raw.command}」`);
+  }
+  if (ref.type === "deliverable") {
+    throw new Error("交付物由前面各步装配，不提供格子写入");
+  }
+  const fills = Array.isArray(raw.params.fills) ? raw.params.fills : [];
+  if (fills.length === 0) throw new Error("fills 为空：需要 [{row, column, value}]");
+  if (fills.length > MAX_FILLS_PER_REPLY) {
+    throw new Error(`一次最多写入 ${MAX_FILLS_PER_REPLY} 处`);
+  }
+
+  const table = tableDef(ref.id);
+  const rows = db.stageDataRepo.list({
+    where: "scenario_id = ? AND table_code = ?",
+    params: [scenarioId, ref.id],
+    orderBy: "rowid ASC",
+  });
+  const filtered = ref.block
+    ? rows.filter((r) => rowBelongsToBlock(table, ref.block!, r.row))
+    : rows;
+  if (filtered.length === 0) throw new Error("当前产物还没有表格行可写");
+
+  const firstCol = table.columns[0]!;
+  let applied = 0;
+  for (const [index, item] of fills.entries()) {
+    const spec = (item ?? {}) as { row?: unknown; column?: unknown; value?: unknown };
+    const rowNeedle = String(spec.row ?? "").trim();
+    const colNeedle = String(spec.column ?? "").trim();
+    const value = String(spec.value ?? "").trim();
+    if (!rowNeedle || !colNeedle || !value) {
+      throw new Error(`第 ${index + 1} 条缺 row / column / value`);
+    }
+    if (value.length > MAX_FILL_VALUE_CHARS) {
+      throw new Error(`第 ${index + 1} 条超过 ${MAX_FILL_VALUE_CHARS} 字`);
+    }
+    const col = table.columns.find(
+      (c) => c.key === colNeedle || c.label === colNeedle,
+    );
+    if (!col) throw new Error(`第 ${index + 1} 条：表里没有「${colNeedle}」列`);
+
+    const target = filtered.find((r) =>
+      String(r.row[firstCol.key] ?? "").trim() === rowNeedle,
+    ) ??
+      filtered.find((r) =>
+        JSON.stringify(r.row).includes(rowNeedle),
+      );
+    if (!target) throw new Error(`第 ${index + 1} 条：找不到「${rowNeedle}」行`);
+
+    /* 同一条回复可能写同一行多处：每次都重读最新行，避免第二处把第一处覆盖回去 */
+    const fresh = db.stageDataRepo.getById(target.id) ?? target;
+    const aiCells = new Set(
+      Array.isArray(fresh.row.__ai_cells)
+        ? (fresh.row.__ai_cells as unknown[]).map(String)
+        : [],
+    );
+    aiCells.add(col.key);
+    db.stageDataRepo.update(target.id, {
+      row: { ...fresh.row, [col.key]: value, __ai_cells: [...aiCells] },
+    });
+    applied += 1;
+  }
+
+  const downstream = getAffectedStages(ref.id);
+  if (downstream.length > 0) {
+    db.stageDataRepo.markStale(scenarioId, downstream, true);
+  }
+  return `已按建议写入表格 ${applied} 处（蓝色字体为助手补写，点击即可修改；改动会像手填一样参与下游重算）。`;
 }

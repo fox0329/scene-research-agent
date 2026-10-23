@@ -468,6 +468,26 @@ describe("项目路由", () => {
     expect(res.json().source_type).toBe("用户确认");
   });
 
+  it("PATCH stage-data 用户改格摘掉助手补写标记（#298 蓝字）", async () => {
+    const { scenarioId } = seedScenario(h.db);
+    const row = h.db.stageDataRepo.insert({
+      scenario_id: scenarioId,
+      stage: 1 as StageId,
+      table_code: "表1-3",
+      row: { barrier_type: "行业准入", barrier_name: "助手补的", __ai_cells: ["barrier_name"] },
+      is_stale: false,
+      source_type: "AI推断",
+    });
+    const res = await h.app.inject({
+      method: "PATCH",
+      url: `/api/v1/projects/${scenarioId}/stage-data/${row.id}`,
+      payload: { cell: "barrier_name", value: "我改成自己的" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().row.barrier_name).toBe("我改成自己的");
+    expect(res.json().row.__ai_cells).toEqual([]);
+  });
+
   it("PATCH stage-data 缺参 400 / 行不属于场景 404", async () => {
     const { scenarioId } = seedScenario(h.db);
     const noCell = await h.app.inject({

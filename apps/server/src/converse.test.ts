@@ -460,6 +460,43 @@ describe("createConverseCommand", () => {
       expect(userMessages[0]!.content).toBe("你好");
     });
 
+    it("handleCommand 提供时命令块交给调用方（产物会话写入表格，#298）", async () => {
+      const client = createMockDshClient([
+        {
+          type: "text",
+          text: "好的，补进表格。\n\n【执行命令】{\"command\":\"写入表格\",\"params\":{\"fills\":[]}}",
+        },
+        { type: "done" },
+      ]);
+      const handled: Array<{ command: string; params: Record<string, unknown> }> = [];
+      const local = createDeps(client);
+      const cmd = createConverseCommand(local.deps);
+      const conv = await cmd.create({ scenario_id: "s1", title: "产物" });
+
+      const events: FollowEvent[] = [];
+      for await (const e of cmd.sendMessage(conv.id, "补进表格", {
+        allowCommands: false,
+        handleCommand: async (command) => {
+          handled.push(command);
+          return "已按建议写入表格 1 处（蓝字提醒）";
+        },
+      })) {
+        events.push(e);
+      }
+
+      expect(handled).toHaveLength(1);
+      expect(handled[0]!.command).toBe("写入表格");
+      const text = events
+        .filter((e): e is { type: "text"; text: string } => e.type === "text")
+        .map((e) => e.text)
+        .join("");
+      expect(text).toContain("已按建议写入表格");
+      const persisted = local.db.messageRepo
+        .listByConversation(conv.id)
+        .filter((m) => m.role === "系统");
+      expect(persisted[0]!.content).not.toContain("执行命令");
+    });
+
     it("产物会话禁用命令块：不执行、不把命令写进消息", async () => {
       const client = createMockDshClient([
         { type: "text", text: "建议先补一条来源。\n\n【执行命令】{\"command\":\"no_such_command\"}" },

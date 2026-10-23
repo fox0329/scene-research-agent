@@ -12,6 +12,7 @@ import {
   buildArtifactContext,
   currentArtifactHash,
   ensureArtifactConversation,
+  fillTableFromCommand,
   findArtifactConversation,
   normalizeArtifactRef,
   readArtifactThread,
@@ -257,6 +258,83 @@ describe("artifact conversation persistence", () => {
     touchArtifactConversation(db, conversation.id, scenarioId, ref);
     expect(readArtifactThread(db, scenarioId, ref).stale).toBe(false);
     expect(currentArtifactHash(db, scenarioId, ref)).toMatch(/^[0-9a-f]{16}$/);
+  });
+
+  it("写入表格命令：按第一列值定位行、支持列名，写入 __ai_cells 并标下游待重算（#298）", async () => {
+    const db = createDb(":memory:");
+    const scenarioId = seedScenario(db);
+    db.stageDataRepo.insert({
+      scenario_id: scenarioId,
+      stage: 1,
+      table_code: "表1-3",
+      row: { barrier_type: "行业准入", barrier_name: "涉密资质" },
+      is_stale: false,
+      source_type: "AI提取",
+    });
+    const ref = normalizeArtifactRef({
+      step: 2,
+      stage: 1,
+      type: "table",
+      id: "表1-3",
+      block: null,
+      title: "门槛与合规",
+    });
+    const note = await fillTableFromCommand(db, scenarioId, ref, {
+      command: "写入表格",
+      params: {
+        fills: [
+          { row: "行业准入", column: "门槛", value: "涉密集成资质（模型知识）" },
+          { row: "行业准入", column: "判据", value: "需具备涉密集成资质" },
+        ],
+      },
+    });
+    expect(note).toContain("写入表格 2 处");
+    const row = db.stageDataRepo.list({
+      where: "scenario_id = ? AND table_code = ?",
+      params: [scenarioId, "表1-3"],
+    })[0]!;
+    expect(row.row.barrier_name).toBe("涉密集成资质（模型知识）");
+    expect(row.row.criteria).toBe("需具备涉密集成资质");
+    expect(row.row.__ai_cells).toEqual(["barrier_name", "criteria"]);
+  });
+
+  it("写入表格命令：未知行 / 未知列 / 超量 / 交付物都拒绝", async () => {
+    const db = createDb(":memory:");
+    const scenarioId = seedScenario(db);
+    db.stageDataRepo.insert({
+      scenario_id: scenarioId,
+      stage: 1,
+      table_code: "表1-3",
+      row: { barrier_type: "行业准入" },
+      is_stale: false,
+      source_type: "AI提取",
+    });
+    const ref = normalizeArtifactRef({
+      step: 2,
+      stage: 1,
+      type: "table",
+      id: "表1-3",
+      block: null,
+      title: "门槛与合规",
+    });
+    await expect(
+      fillTableFromCommand(db, scenarioId, ref, {
+        command: "写入表格",
+        params: { fills: [{ row: "不存在", column: "门槛", value: "x" }] },
+      }),
+    ).rejects.toThrow(/找不到/);
+    await expect(
+      fillTableFromCommand(db, scenarioId, ref, {
+        command: "写入表格",
+        params: { fills: [{ row: "行业准入", column: "没有这列", value: "x" }] },
+      }),
+    ).rejects.toThrow(/没有/);
+    await expect(
+      fillTableFromCommand(db, scenarioId, ref, {
+        command: "推进阶段",
+        params: {},
+      }),
+    ).rejects.toThrow(/只支持/);
   });
 
   it("上下文包含当前产物的表行与场景定义", async () => {

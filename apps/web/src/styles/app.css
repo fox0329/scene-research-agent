@@ -3126,6 +3126,13 @@ td.ed {
   max-height: 320px;
   overflow-y: auto;
 }
+/* #298：助手补写的表格格用蓝色字体提醒；用户一编辑服务端就摘掉标记 */
+.cell-input.ai-filled,
+td.ai-filled,
+td.ai-filled .cell-text {
+  color: var(--cp) !important;
+}
+
 .thread-input-shell { position: relative; }
 /* 输入框上边缘的拖动热区：视觉只有 1px 提示线，悬停加深 */
 .thread-input-resize {
