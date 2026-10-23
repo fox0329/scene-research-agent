@@ -59,6 +59,13 @@ try {
 
   await win.locator(".empty-state-title, .flow-rail").first().waitFor({ timeout: 90_000 });
 
+  /* 全新数据目录会弹首次引导，先关掉，否则遮罩会挡住导航点击 */
+  const closeOnboard = win.locator('[aria-label="关闭引导"]');
+  if (await closeOnboard.count()) {
+    await closeOnboard.first().click().catch(() => {});
+    await win.locator(".onboard-mask").waitFor({ state: "detached", timeout: 5_000 }).catch(() => {});
+  }
+
   /* 进「设置」（导航底部的齿轮按钮） */
   await win.getByRole("button", { name: "设置", exact: true }).click();
   await win.getByText("模型配置").first().waitFor({ timeout: 30_000 });
