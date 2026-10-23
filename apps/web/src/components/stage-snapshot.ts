@@ -37,13 +37,14 @@ export interface ArtifactView {
 }
 
 export interface StageSnapshot {
-  summaryLoading: boolean;
+  /** 来源/备注是否加载中（阶段总结已下线，#304） */
+  briefLoading: boolean;
   /** 本步要点：来源地址 + 结论提醒（null=还没取到）；信息来源 / 备注页的数据源 */
   brief: StageBriefView | null;
   /** 当前右栏锚定的产物；缺省（演示/旧面板）时不渲染产物会话 */
   artifact?: ArtifactView;
-  /** 重新生成阶段总结（全文与要点一起刷新；全文只用于交付物装配） */
-  onRefreshSummary: () => void;
+  /** 重新拉取本步来源/备注 */
+  onRefreshBrief: () => void;
   /**
    * 补跑本步联网调研（历史步骤没跑过调研时用）
    *

@@ -117,8 +117,7 @@ export const DemoStagePanel: React.FC<DemoStagePanelProps> = ({
 
   const snapshot = useMemo<StageSnapshot>(
     () => ({
-      summary,
-      summaryLoading: false,
+      briefLoading: false,
       brief,
       ...(stepId !== undefined && activeTable
         ? {
@@ -131,7 +130,7 @@ export const DemoStagePanel: React.FC<DemoStagePanelProps> = ({
             },
           }
         : {}),
-      onRefreshSummary: () => undefined,
+      onRefreshBrief: () => undefined,
     }),
     [summary, brief, stepId, activeTable, block],
   );

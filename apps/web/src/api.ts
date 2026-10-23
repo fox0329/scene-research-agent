@@ -270,13 +270,6 @@ export interface ApiPostcheckReport {
   byKind: Record<string, number>;
 }
 
-/** 阶段总结文档（六段骨架 Markdown） */
-export interface ApiStageSummary {
-  stage: number;
-  markdown: string;
-  completeness: ApiCompleteness;
-}
-
 /** 右栏要点视图的一条来源（可点开） */
 export interface ApiStageBriefSource {
   label: string;
@@ -632,15 +625,6 @@ export const api = {
       `/projects/${encodeURIComponent(id)}/stages/${stage}/completeness${step ? `?step=${step}` : ""}`,
     ),
   /** 阶段总结；`step` 传了就是"只讲这一步"（无诉求全文、无上下游衔接） */
-  stageSummary: (id: string, stage: number, refresh = false, step?: number) => {
-    const q = new URLSearchParams();
-    if (refresh) q.set("refresh", "1");
-    if (step) q.set("step", String(step));
-    const qs = q.toString();
-    return req<ApiStageSummary>(
-      `/projects/${encodeURIComponent(id)}/stages/${stage}/summary${qs ? `?${qs}` : ""}`,
-    );
-  },
   /**
    * 阶段总结要点（右栏产物的「信息来源 / 备注」）：只给来源地址 + 结论提醒
    *
@@ -664,9 +648,6 @@ export const api = {
       `/projects/${encodeURIComponent(id)}/steps/${step}/research`,
       { method: "POST", body: {} },
     ),
-  /** 阶段总结 Markdown 下载地址（直接给 <a download> 用；传 step 则只导出本步） */
-  stageSummaryDownloadUrl: (id: string, stage: number, step?: number) =>
-    `${BASE}/projects/${encodeURIComponent(id)}/stages/${stage}/summary?format=md${step ? `&step=${step}` : ""}`,
   patchStageCell: (id: string, rowId: string, cell: string, value: unknown) =>
     req<ApiStageRow>(
       `/projects/${encodeURIComponent(id)}/stage-data/${encodeURIComponent(rowId)}`,

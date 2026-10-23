@@ -61,7 +61,7 @@ export const DemoFirstStep: React.FC<DemoFirstStepProps> = ({
 
   const snapshot = useMemo<StageSnapshot>(
     () => ({
-      summaryLoading: false,
+      briefLoading: false,
       brief: demoStageBrief(1, 1),
       artifact: {
         step: 1,
@@ -70,7 +70,7 @@ export const DemoFirstStep: React.FC<DemoFirstStepProps> = ({
         block: null,
         title: "场景定义与边界",
       },
-      onRefreshSummary: () => undefined,
+      onRefreshBrief: () => undefined,
     }),
     [],
   );

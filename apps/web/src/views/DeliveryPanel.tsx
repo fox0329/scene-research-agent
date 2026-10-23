@@ -513,7 +513,7 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
 
   const snapshot = useMemo<StageSnapshot>(
     () => ({
-      summaryLoading: briefLoading,
+      briefLoading,
       brief: apiBrief ?? fallbackBrief,
       artifact: {
         step: 6,
@@ -522,7 +522,7 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
         block: null,
         title: "解决方案",
       },
-      onRefreshSummary: () => {
+      onRefreshBrief: () => {
         void loadBrief();
         void loadReports();
       },

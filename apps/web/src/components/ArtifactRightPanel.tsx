@@ -280,7 +280,7 @@ const SourcesPane: React.FC<{ snapshot: StageSnapshot | null }> = ({ snapshot })
   const key = artifact ? String(artifact.step) : "none";
 
   useEffect(() => {
-    if (!onResearch || snapshot?.summaryLoading || !snapshot?.brief) return;
+    if (!onResearch || snapshot?.briefLoading || !snapshot?.brief) return;
     if (sources.length > 0) return;
     if (autoRan.current === key) return;
     autoRan.current = key;
@@ -296,7 +296,7 @@ const SourcesPane: React.FC<{ snapshot: StageSnapshot | null }> = ({ snapshot })
       )
       .catch(() => setResearchNote("补查失败，可点「补跑本步调研」重试"))
       .finally(() => setResearching(false));
-  }, [onResearch, snapshot?.summaryLoading, snapshot?.brief, sources.length, key]);
+  }, [onResearch, snapshot?.briefLoading, snapshot?.brief, sources.length, key]);
 
   const handleResearch = (): void => {
     if (!onResearch || researching) return;
@@ -317,7 +317,7 @@ const SourcesPane: React.FC<{ snapshot: StageSnapshot | null }> = ({ snapshot })
   if (!snapshot?.brief) {
     return (
       <p className="summary-empty">
-        {snapshot?.summaryLoading ? "来源加载中…" : "来源暂不可用，切回中栏重试"}
+        {snapshot?.briefLoading ? "来源加载中…" : "来源暂不可用，切回中栏重试"}
       </p>
     );
   }

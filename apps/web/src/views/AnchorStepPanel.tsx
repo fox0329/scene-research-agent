@@ -141,36 +141,28 @@ export const AnchorStepPanel: React.FC<AnchorStepPanelProps> = ({
     onChanged?.();
     onFlowChanged?.();
   }, [onChanged, onFlowChanged]);
-
-  /* 右栏阶段总结：**只讲本步**（第 1 步 = 表1-1；用户定调"只针对当前阶段，不要整理整个过程"） */
-  const [summary, setSummary] = useState<string | null>(null);
-  const [summaryLoading, setSummaryLoading] = useState(false);
+  /* 右栏要点：来源地址 + 结论提醒（阶段总结已下线，#304） */
+  const [briefLoading, setBriefLoading] = useState(false);
   const [brief, setBrief] = useState<StageBriefView | null>(null);
-  const loadSummary = useCallback(
-    async (refresh = false) => {
-      setSummaryLoading(true);
-      try {
-        // 整篇与要点各管各的：一个失败不把另一个打掉
-        const [s, b] = await Promise.allSettled([
-          api.stageSummary(projectId, 1, refresh, 1),
-          api.stageBrief(projectId, 1, 1),
-        ]);
-        setSummary(s.status === "fulfilled" ? s.value.markdown : null);
-        setBrief(b.status === "fulfilled" ? b.value.brief : null);
-      } finally {
-        setSummaryLoading(false);
-      }
-    },
-    [projectId],
-  );
+  const loadBrief = useCallback(async () => {
+    setBriefLoading(true);
+    try {
+      const b = await api.stageBrief(projectId, 1, 1);
+      setBrief(b.brief);
+    } catch {
+      setBrief(null);
+    } finally {
+      setBriefLoading(false);
+    }
+  }, [projectId]);
   useEffect(() => {
-    void loadSummary(false);
-  }, [loadSummary]);
+    void loadBrief();
+  }, [loadBrief]);
+
 
   const snapshot = useMemo<StageSnapshot | null>(() => {
     return {
-      summary,
-      summaryLoading,
+      briefLoading,
       brief,
       artifact: {
         step: 1,
@@ -180,9 +172,9 @@ export const AnchorStepPanel: React.FC<AnchorStepPanelProps> = ({
         title: "场景定义与边界",
         revision: anchor.map((row) => `${row.item}=${row.content}`).join("\u0001"),
       },
-      onRefreshSummary: () => void loadSummary(true),
+      onRefreshBrief: () => void loadBrief(),
     };
-  }, [projectId, summary, summaryLoading, brief, loadSummary]);
+  }, [projectId, briefLoading, brief, loadBrief]);
 
   useEffect(() => {
     onStageSnapshot?.(snapshot);

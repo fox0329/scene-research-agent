@@ -145,42 +145,35 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
     return mine.filter((r) => rowBelongsToBlock(def, block, r.row));
   }, [rows, activeTable, block]);
 
-  /* 阶段总结：整篇 Markdown（折叠看全文）+ 要点（来源地址 + 结论提醒） */
-  const [summary, setSummary] = useState<string | null>(null);
-  const [summaryLoading, setSummaryLoading] = useState(false);
+  /* 右栏要点（来源地址 + 结论提醒）；阶段总结已下线（#304），只取 brief */
+  const [briefLoading, setBriefLoading] = useState(false);
   const [brief, setBrief] = useState<StageBriefView | null>(null);
-  const loadSummary = useCallback(
-    async (refresh = false) => {
-      setSummaryLoading(true);
-      try {
-        // 两个请求各管各的：要点取不到不该把整篇也打掉（反之亦然）
-        const [s, b] = await Promise.allSettled([
-          api.stageSummary(projectId, stage, refresh, stepId),
-          api.stageBrief(projectId, stage, stepId),
-        ]);
-        setSummary(s.status === "fulfilled" ? s.value.markdown : null);
-        setBrief(b.status === "fulfilled" ? b.value.brief : null);
-      } finally {
-        setSummaryLoading(false);
-      }
-    },
-    [projectId, stage, stepId],
-  );
+  const loadBrief = useCallback(async () => {
+    setBriefLoading(true);
+    try {
+      const b = await api.stageBrief(projectId, stage, stepId);
+      setBrief(b.brief);
+    } catch {
+      setBrief(null);
+    } finally {
+      setBriefLoading(false);
+    }
+  }, [projectId, stage, stepId]);
   useEffect(() => {
-    void loadSummary(false);
-  }, [loadSummary]);
+    void loadBrief();
+  }, [loadBrief]);
 
-  /* 分析落库后父级把 refreshToken +1：重取本步数据与阶段总结（分析刚写完时本地还是旧快照） */
+  /* 分析落库后父级把 refreshToken +1：重取本步数据与来源/备注（分析刚写完时本地还是旧快照） */
   useEffect(() => {
     if (refreshToken === undefined || refreshToken === 0) return;
     reload();
-    void loadSummary(true);
-  }, [refreshToken, reload, loadSummary]);
+    void loadBrief();
+  }, [refreshToken, reload, loadBrief]);
 
   /**
    * 长跑对账：只静默重取本步数据（`reload()` 同查询重取不再回加载态，表格不闪）
    *
-   * 阶段总结**不跟着重生成**——它只在跑完那一次（`refreshToken`）重写。
+   * 来源/备注**不跟着重拉**——它只在跑完那一次（`refreshToken`）刷新。
    */
   useEffect(() => {
     if (silentRefreshToken === undefined || silentRefreshToken === 0) return;
@@ -211,17 +204,16 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
   const handleResearch = useCallback(async () => {
     if (stepId === undefined) return { saved: 0 };
     const result = await api.runStepResearch(projectId, stepId);
-    await loadSummary(true);
+    await loadBrief();
     reload();
     return { saved: result.saved };
-  }, [projectId, stepId, loadSummary, reload]);
+  }, [projectId, stepId, loadBrief, reload]);
 
-  /* 右栏数据面：阶段总结（全文 + 要点） */
+  /* 右栏数据面：来源/备注（阶段总结已下线） */
   const snapshot = useMemo<StageSnapshot | null>(() => {
     if (!data) return null;
     return {
-      summary,
-      summaryLoading,
+      briefLoading,
       brief,
       ...(stepId !== undefined && activeTable
         ? {
@@ -234,11 +226,11 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
             },
           }
         : {}),
-      onRefreshSummary: () => void loadSummary(true),
+      onRefreshBrief: () => void loadBrief(),
       onResearch: handleResearch,
     };
     // patched 也必须进依赖：单元格保存后产物内容变了，右栏要重新算「产物已更新」
-  }, [data, patched, summary, summaryLoading, brief, handleResearch, stepId, activeTable, block]);
+  }, [data, patched, briefLoading, brief, handleResearch, stepId, activeTable, block]);
 
   useEffect(() => {
     onStageSnapshot?.(snapshot);
@@ -325,7 +317,7 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
             <div className="empty-state">
               <div className="empty-state-title">本步没有信息表</div>
               <div className="empty-state-desc">
-                交付物由系统按「章节 ← 表映射」装配，不需要模型分析；可在右栏查看阶段总结。
+                交付物由系统按「章节 ← 表映射」装配，不需要模型分析；来源与提醒见右栏。
               </div>
             </div>
           </div>
