@@ -1,0 +1,3261 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>方案助手 · 产物会话原型 v2</title>
+<!-- 方案助手 · 产物会话原型 v2：左栏场景导航，右栏以阶段产物为最小单元，上方信息来源/备注，下方唯一会话。 -->
+<style>
+:root {
+  --color-primary: #2563eb;
+  --color-primary-hover: #1d4ed8;
+  --color-primary-soft: #eff6ff;
+  --color-primary-active: #1e40af;
+  --color-primary-tint: #dbeafe;
+  --color-success: #059669;
+  --color-success-soft: #ecfdf5;
+  --color-warning: #d97706;
+  --color-warning-soft: #fffbeb;
+  --color-error: #dc2626;
+  --color-error-soft: #fef2f2;
+  --color-error-border: #fecaca;
+  --color-text-on-fill: #ffffff;
+  --color-bg-page: #fafaf9;
+  --color-bg-page-rgb: 250, 250, 249;
+  --color-bg-surface: #ffffff;
+  --color-bg-muted: #f4f4f5;
+  --color-bg-subtle: #fbfbfa;
+  --color-bg-inverse: #18181b;
+  --color-text-primary: #18181b;
+  --color-text-secondary: #63636b;
+  --color-text-faint: #a1a1aa;
+  --color-text-inverse: #e4e4e7;
+  --color-border: #e4e4e7;
+  --color-border-strong: #c7cbd4;
+  --color-neutral: #a1a1aa;
+  --color-neutral-soft: #f4f4f5;
+  --color-info-soft: #eff6ff;
+  --color-success-hover: #047857;
+  --color-success-border: #a7f3d0;
+  --color-warning-hover: #b45309;
+  --color-warning-border: #fde68a;
+  --color-error-hover: #b91c1c;
+  --color-selection-bg: var(--color-primary-soft);
+  --color-selection-text: var(--color-primary);
+  --color-disabled-bg: #f4f4f5;
+  --color-disabled-text: #a1a1aa;
+  --color-disabled-border: #e4e4e7;
+  --color-disabled-fill: #93c5fd;
+  --font-sans: "SF Pro Text", "PingFang SC", system-ui, -apple-system, sans-serif;
+  --font-heading: "SF Pro Display", "PingFang SC", system-ui, sans-serif;
+  --font-mono: "SF Mono", "Menlo", "PingFang SC", monospace;
+  --font-weight-regular: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+  --text-xs: 12px;
+  --text-2xs: 11px;
+  --text-sm: 14px;
+  --text-base: 16px;
+  --text-lg: 18px;
+  --text-xl: 20px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-12: 48px;
+  --space-0_5: 2px;
+  --space-0_75: 3px;
+  --space-1_25: 5px;
+  --space-1_5: 6px;
+  --space-1_75: 7px;
+  --space-2_25: 9px;
+  --space-2_5: 10px;
+  --space-2_75: 11px;
+  --space-3_25: 13px;
+  --space-3_5: 14px;
+  --space-card-pad: var(--space-4);
+  --space-stack: var(--space-2);
+  --space-inline: var(--space-3);
+  --space-section: var(--space-5);
+  --space-page: var(--space-6);
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xs: 2px;
+  --radius-xl: 14px;
+  --radius-pill: 999px;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-lg: 0 12px 32px rgba(24, 24, 27, 0.14);
+  --shadow-dock: 0 5px 20px rgba(24, 24, 27, 0.06);
+  --shadow-dock-focus: 0 5px 22px rgba(37, 99, 235, 0.16);
+  --color-overlay: rgba(24, 24, 27, 0.4);
+  --icon-xs: 14px;
+  --icon-sm: 16px;
+  --icon-md: 18px;
+  --icon-lg: 24px;
+  --size-7: 7px;
+  --size-8: 8px;
+  --size-14: 14px;
+  --size-18: 18px;
+  --size-20: 20px;
+  --size-22: 22px;
+  --size-24: 24px;
+  --size-28: 28px;
+  --size-30: 30px;
+  --size-32: 32px;
+  --size-34: 34px;
+  --size-36: 36px;
+  --size-38: 38px;
+  --size-40: 40px;
+  --size-44: 44px;
+  --size-48: 48px;
+  --size-52: 52px;
+  --size-56: 56px;
+  --size-60: 60px;
+  --size-92: 92px;
+  --size-116: 116px;
+  --size-180: 180px;
+  --size-320: 320px;
+  --size-420: 420px;
+  --size-560: 560px;
+  --size-620: 620px;
+  --size-760: 760px;
+
+  /* 布局：三栏骨架列宽 + 窄屏/浮层变体（值来自 v6 基线实测；新应用别自己写列宽） */
+  --layout-sidebar-width: 248px;
+  --layout-sidebar-narrow-width: 224px;
+  --layout-sidebar-overlay-width: 300px;
+  --layout-detail-width: 340px;
+  --layout-detail-overlay-width: 360px;
+
+  --focus-ring-width: 2px;
+  --focus-ring-offset: -2px;
+  --focus-ring-color: var(--color-primary);
+  --focus-ring-color-on-fill: var(--color-text-on-fill);
+  --z-rail: 90;
+  --z-bar: 100;
+  --z-scrim: 190;
+  --z-drawer: 200;
+  --z-overlay: 300;
+  --z-toast: 400;
+  --bp-detail: 1320px;
+  --bp-drawer: 940px;
+  --duration-fast: 150ms;
+  --duration-normal: 200ms;
+  --duration-slow: 300ms;
+  --duration-loop: 1.5s;
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --ease-out: cubic-bezier(0, 0, 0.2, 1);
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body {
+  /* 纵向 flex：导航条按内容自然高（≤940px 会换行变高），骨架吃掉剩余高度。
+     不要改回 calc(100vh - 导航条高度) —— 导航条实高由内容决定（实测 41.5px，换行后 54px），
+     任何写死的预算值都会在某个断点对不上，底部留下缝隙或溢出（见 §5.1） */
+  display: flex;
+  flex-direction: column;
+  font-family: var(--font-sans);
+  color: var(--color-text-primary);
+  background: var(--color-bg-page);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+:focus { outline: none; }
+/* 焦点环内缩于元素边界内：不与相邻元素重叠、不被 overflow 容器裁切（规范 §2.1） */
+:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
+}
+.primary-action:focus-visible,
+.btn.primary:focus-visible,
+.candidate-action.primary:focus-visible,
+.send-btn:focus-visible {
+  outline-color: var(--focus-ring-color-on-fill);
+}
+
+.nav-item,
+.conversation-item,
+.btn,
+.tab,
+.input-action,
+.session-chip,
+.context-chip,
+.candidate-action,
+.icon-btn,
+.detail-tab,
+.intent,
+.send-btn,
+.primary-action {
+  transition:
+    background-color var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
+}
+.primary-action:active,
+.btn:active,
+.send-btn:active,
+.icon-btn:active,
+.input-action:active,
+.candidate-action:active {
+  transform: scale(0.97);
+}
+
+ [hidden] { display: none !important; }
+
+.prototype-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2_5) var(--space-4);
+  background: var(--color-bg-inverse);
+  color: var(--color-text-inverse);
+  font-size: var(--text-xs);
+  flex-wrap: wrap;
+  flex: none; /* 不参与收缩：≤940px 文档滚动时若被压扁，换行后的内容会溢出 */
+  position: sticky;
+  top: 0;
+  z-index: var(--z-bar);
+}
+.prototype-bar .drawer-toggle { display: none; }
+.prototype-bar b { color: var(--color-text-on-fill); }
+.prototype-bar .spacer { flex: 1; }
+.prototype-bar .meta { color: var(--color-text-faint); }
+
+.shell {
+  display: grid;
+  grid-template-columns: var(--layout-sidebar-width) minmax(0, 1fr) var(--layout-detail-width);
+  /* 基准 0 + flex:1：高度取"整屏减去导航条实测高度"，三栏各自内部滚动（桌面不整页滚动）。
+     基准写 0 而非 auto，保证不随内容长高——否则长列表会把整页顶开，内部滚动条失效 */
+  flex: 1 1 0;
+  min-width: 0; /* flex 子项的 min-width 默认 auto（按 min-content），列窄时会把骨架顶宽导致横向溢出 */
+  min-height: 0;
+  background: var(--color-bg-page);
+}
+
+.sidebar,
+.center-column,
+.detail-panel {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.sidebar {
+  background: var(--color-bg-surface);
+  border-right: 1px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
+}
+
+.sidebar-scroll { flex: 1; overflow-y: auto; padding: var(--space-3); }
+.sidebar-foot {
+  border-top: 1px solid var(--color-border);
+  padding: var(--space-3);
+}
+
+.nav-item,
+.conversation-item,
+.btn,
+.tab,
+.input-action,
+.session-chip,
+.context-chip,
+.candidate-action {
+  font-family: var(--font-sans);
+}
+
+.primary-action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  width: 100%;
+  height: var(--size-38);
+  border: 0;
+  border-radius: var(--radius-md);
+  background: var(--color-primary);
+  color: var(--color-text-on-fill);
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+  margin-bottom: var(--space-3);
+}
+.primary-action:hover { background: var(--color-primary-hover); }
+.primary-action svg,
+.nav-item svg,
+.icon-btn svg,
+.input-action svg {
+  width: var(--icon-md);
+  height: var(--icon-md);
+  flex: 0 0 var(--icon-md);
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2_5);
+  width: 100%;
+  height: var(--size-36);
+  padding: 0 var(--space-2_5);
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-text-primary);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  text-align: left;
+}
+.nav-item:hover { background: var(--color-bg-muted); }
+.nav-item.active { background: var(--color-primary-soft); color: var(--color-primary); font-weight: var(--font-weight-medium); }
+.nav-item .count {
+  margin-left: auto;
+  color: var(--color-text-secondary);
+  font-size: var(--text-2xs);
+  background: var(--color-bg-muted);
+  border-radius: var(--radius-pill);
+  padding: 1px var(--space-1_75);
+}
+/* 活跃计数的文字用 700 档：600 档在 tint 底上 4.24，不足 AA 4.5（v1.9） */
+.nav-item.active .count { background: var(--color-primary-tint); color: var(--color-primary-hover); }
+
+.section-label {
+  margin: var(--space-4) 0 var(--space-2);
+  padding: 0 var(--space-2_5);
+  font-size: var(--text-2xs);
+  letter-spacing: .05em;
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+}
+
+.conversation-item {
+  display: grid;
+  grid-template-columns: var(--size-8) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  min-height: var(--size-38);
+  padding: var(--space-1_5) var(--space-2_5);
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-text-primary);
+  font-size: var(--text-sm);
+  text-align: left;
+  cursor: pointer;
+}
+.conversation-item:hover { background: var(--color-bg-muted); }
+.conversation-item.active { background: var(--color-primary-soft); color: var(--color-primary); }
+.conversation-item .title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.conversation-item .meta {
+  color: var(--color-text-secondary);
+  font-size: var(--text-2xs);
+  white-space: nowrap;
+}
+.status-dot {
+  width: var(--size-7);
+  height: var(--size-7);
+  border-radius: 50%;
+  background: var(--color-success);
+}
+.status-dot.warning { background: var(--color-warning); }
+.status-dot.muted { background: var(--color-neutral); }
+
+.status-block {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-2_5);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-subtle);
+}
+.status-line {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1_5);
+  color: var(--color-text-secondary);
+  font-size: var(--text-xs);
+}
+
+.center-column {
+  display: flex;
+  flex-direction: column;
+  background: var(--color-bg-page);
+}
+
+.center-inner {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-5) var(--space-6) 0;
+}
+
+.workspace-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding-bottom: var(--space-4);
+}
+.workspace-title {
+  min-width: 0;
+}
+.workspace-title h1 {
+  margin: 0;
+  font-family: var(--font-heading);
+  font-size: var(--text-xl);
+  line-height: 1.2;
+}
+.workspace-title p {
+  margin: var(--space-1) 0 0;
+  color: var(--color-text-secondary);
+  font-size: var(--text-xs);
+}
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: 0 0 auto;
+}
+.icon-btn {
+  width: var(--size-34);
+  height: var(--size-34);
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-surface);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+.icon-btn:hover { color: var(--color-primary); border-color: var(--color-primary); background: var(--color-primary-soft); }
+
+.view-tabs {
+  display: flex;
+  gap: var(--space-2);
+  overflow-x: auto;
+  padding-bottom: var(--space-3);
+}
+.tab {
+  height: var(--size-32);
+  padding: 0 var(--space-3);
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
+  background: var(--color-bg-muted);
+  color: var(--color-text-secondary);
+  font-size: var(--text-xs);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.tab:hover { color: var(--color-text-primary); }
+.tab.active {
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+  border-color: transparent;
+}
+
+.main-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: grid;
+  align-content: start;
+  gap: var(--space-4);
+  padding-right: var(--space-0_5);
+}
+
+.view { display: none; }
+.view.active {
+  display: grid;
+  gap: var(--space-4);
+  animation: view-enter var(--duration-normal) var(--ease-out);
+}
+
+.panel {
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 320px;
+}
+.panel-head {
+  min-height: var(--size-52);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+}
+.panel-head h2 {
+  margin: 0;
+  font-size: var(--text-base);
+}
+.panel-head p {
+  margin: var(--space-0_5) 0 0;
+  color: var(--color-text-secondary);
+  font-size: var(--text-xs);
+}
+.panel-body { padding: var(--space-4); }
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1_25);
+  min-height: var(--size-24);
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-pill);
+  background: var(--color-bg-muted);
+  color: var(--color-text-secondary);
+  font-size: var(--text-2xs);
+  white-space: nowrap;
+}
+.badge.primary { background: var(--color-primary-soft); color: var(--color-primary); }
+/* success/warning 的文字用 700 档（*-hover）：600 档在 soft 底上 3.58 / 3.07，均不足 AA 4.5（v1.9） */
+.badge.success { background: var(--color-success-soft); color: var(--color-success-hover); }
+.badge.warning { background: var(--color-warning-soft); color: var(--color-warning-hover); }
+
+.session-strip {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(168px, 1fr);
+  gap: var(--space-2);
+  overflow-x: auto;
+  padding-bottom: var(--space-0_5);
+}
+.session-chip {
+  min-height: var(--size-60);
+  display: grid;
+  align-content: center;
+  gap: var(--space-0_75);
+  padding: var(--space-2) var(--space-2_5);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-surface);
+  color: var(--color-text-primary);
+  text-align: left;
+  cursor: pointer;
+}
+.session-chip:hover { border-color: var(--color-border-strong); background: var(--color-bg-subtle); }
+.session-chip.active {
+  border-color: transparent;
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+}
+.session-chip strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-sm);
+}
+.session-chip span {
+  color: var(--color-text-secondary);
+  font-size: var(--text-2xs);
+}
+
+.conversation-stream {
+  display: grid;
+  gap: var(--space-4);
+}
+.message {
+  display: grid;
+  gap: var(--space-1_5);
+  max-width: min(var(--size-760), 86%);
+}
+.message.user { justify-self: end; }
+.message-meta {
+  font-size: var(--text-2xs);
+  color: var(--color-text-secondary);
+}
+.message.user .message-meta { text-align: right; }
+.bubble {
+  padding: var(--space-3) var(--space-3_5);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  background: var(--color-bg-surface);
+}
+.message.user .bubble {
+  border-color: transparent;
+  background: var(--color-primary);
+  color: var(--color-text-on-fill);
+}
+.bubble p { margin: 0; }
+.bubble p + p { margin-top: var(--space-2); }
+
+.attachment-card {
+  justify-self: start;
+  width: min(var(--size-620), 100%);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-subtle);
+  overflow: hidden;
+}
+.attachment-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2_5) var(--space-3);
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-bg-surface);
+}
+.attachment-head strong { font-size: var(--text-sm); }
+.attachment-body { padding: var(--space-3); }
+.candidate-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2_25) 0;
+  border-bottom: 1px solid var(--color-border);
+}
+.candidate-row:last-child { border-bottom: 0; }
+.candidate-main { min-width: 0; }
+.candidate-main strong {
+  display: block;
+  font-size: var(--text-sm);
+}
+.candidate-main span {
+  display: block;
+  margin-top: var(--space-0_5);
+  color: var(--color-text-secondary);
+  font-size: var(--text-2xs);
+}
+.candidate-actions {
+  display: flex;
+  gap: var(--space-1_5);
+  flex: 0 0 auto;
+}
+.candidate-action {
+  height: var(--size-28);
+  padding: 0 var(--space-2_25);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  background: var(--color-bg-surface);
+  color: var(--color-text-secondary);
+  font-size: var(--text-2xs);
+  cursor: pointer;
+}
+.candidate-action.primary {
+  border-color: transparent;
+  background: var(--color-primary);
+  color: var(--color-text-on-fill);
+}
+.candidate-action:hover { border-color: var(--color-primary); color: var(--color-primary); }
+.candidate-action.primary:hover { color: var(--color-text-on-fill); }
+
+.context-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+.context-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1_5);
+  min-height: var(--size-28);
+  padding: 0 var(--space-2_5);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  background: var(--color-bg-surface);
+  color: var(--color-text-secondary);
+  font-size: var(--text-2xs);
+  cursor: pointer;
+}
+.context-chip.active {
+  border-color: transparent;
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+}
+
+.split-list {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.split-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-3);
+  align-items: center;
+  padding: var(--space-2_75) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-subtle);
+}
+.split-main { min-width: 0; }
+.split-main strong {
+  display: block;
+  font-size: var(--text-sm);
+}
+/* 只匹配直接子级：后代选择器会误命中 .progress > span（7px 轨道被 2px margin-top 顶出 overflow:hidden 裁掉） */
+.split-main > span {
+  display: block;
+  margin-top: var(--space-0_5);
+  color: var(--color-text-secondary);
+  font-size: var(--text-2xs);
+}
+
+.knowledge-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+.knowledge-card {
+  min-height: var(--size-116);
+  display: grid;
+  align-content: start;
+  gap: var(--space-1_75);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-subtle);
+}
+.knowledge-card strong { font-size: var(--text-sm); }
+.knowledge-card p {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: var(--text-xs);
+}
+
+.empty-state {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-3);
+  padding: var(--space-12) var(--space-4);
+  text-align: center;
+}
+.empty-state strong { font-size: var(--text-base); }
+.empty-state p {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+}
+
+.skeleton-line {
+  height: var(--size-14);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-muted);
+  animation: skeleton-pulse var(--duration-loop) ease-in-out infinite;
+}
+@keyframes skeleton-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+@keyframes view-enter {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: none; }
+}
+
+.banner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+}
+.banner.warning {
+  background: var(--color-warning-soft);
+  /* 文字用 700 档：600 档在 soft 底上 3.07，不足 AA 4.5（v1.9） */
+  color: var(--color-warning-hover);
+}
+
+.input-dock {
+  position: sticky;
+  bottom: 0;
+  padding: var(--space-3) 0 var(--space-5);
+  background: linear-gradient(180deg, rgba(var(--color-bg-page-rgb), 0), rgba(var(--color-bg-page-rgb), .94) 28%, rgba(var(--color-bg-page-rgb), 1));
+}
+.input-shell {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-bg-surface);
+  box-shadow: var(--shadow-dock);
+  overflow: hidden;
+  transition:
+    border-color var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out);
+}
+.input-shell:focus-within {
+  border-color: var(--color-primary);
+  box-shadow: var(--shadow-dock-focus);
+}
+.input-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2_25) var(--space-3) 0;
+}
+.input-scope {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1_5);
+  min-width: 0;
+  color: var(--color-text-secondary);
+  font-size: var(--text-xs);
+}
+.input-scope svg {
+  width: var(--icon-xs);
+  height: var(--icon-xs);
+  flex: 0 0 var(--icon-xs);
+  stroke: var(--color-primary);
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.input-scope span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.intent-switch {
+  display: inline-flex;
+  padding: var(--space-0_75);
+  border-radius: var(--radius-pill);
+  background: var(--color-bg-muted);
+}
+.intent {
+  border: 0;
+  border-radius: var(--radius-pill);
+  padding: var(--space-1_25) var(--space-2_25);
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-size: var(--text-2xs);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.intent.active {
+  background: var(--color-bg-surface);
+  color: var(--color-primary);
+  box-shadow: var(--shadow-sm);
+}
+.input-textarea {
+  width: 100%;
+  min-height: var(--size-92);
+  max-height: var(--size-180);
+  resize: vertical;
+  border: 0;
+  outline: 0;
+  padding: var(--space-2) var(--space-3) var(--space-1);
+  background: transparent;
+  color: var(--color-text-primary);
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  line-height: 1.55;
+}
+.input-textarea::placeholder { color: var(--color-text-faint); }
+.input-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3) var(--space-2_5);
+  border-top: 1px solid var(--color-bg-muted);
+  flex-wrap: wrap;
+}
+.input-action {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1_25);
+  min-height: var(--size-30);
+  padding: 0 var(--space-2_25);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  background: var(--color-bg-surface);
+  color: var(--color-text-secondary);
+  font-size: var(--text-2xs);
+  cursor: pointer;
+}
+.input-action svg { width: var(--icon-xs); height: var(--icon-xs); }
+.input-action:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  background: var(--color-primary-soft);
+}
+.input-hint {
+  margin-left: auto;
+  color: var(--color-text-secondary);
+  font-size: var(--text-2xs);
+}
+.send-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1_5);
+  min-height: var(--size-32);
+  padding: 0 var(--space-3_25);
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--color-primary);
+  color: var(--color-text-on-fill);
+  font-size: var(--text-xs);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+}
+.send-btn:hover { background: var(--color-primary-hover); }
+
+.detail-panel {
+  display: flex;
+  flex-direction: column;
+  background: var(--color-bg-surface);
+  border-left: 1px solid var(--color-border);
+}
+.detail-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-0_75);
+  padding: var(--space-3) var(--space-3) 0;
+}
+.detail-tab {
+  height: var(--size-32);
+  border: 0;
+  border-radius: var(--radius-md);
+  background: var(--color-bg-muted);
+  color: var(--color-text-secondary);
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
+.detail-tab.active {
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+}
+.detail-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-4);
+}
+.detail-section { margin-bottom: var(--space-5); }
+.detail-section:last-child { margin-bottom: 0; }
+.detail-title {
+  margin-bottom: var(--space-2);
+  color: var(--color-text-secondary);
+  font-size: var(--text-2xs);
+  letter-spacing: .04em;
+}
+.source-quote {
+  margin: 0;
+  padding: var(--space-2_75) var(--space-3);
+  border-left: 3px solid var(--color-primary);
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+  background: var(--color-bg-muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--color-text-primary);
+}
+.source-path {
+  margin-top: var(--space-1_75);
+  color: var(--color-text-secondary);
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  word-break: break-all;
+}
+.meta-grid {
+  display: grid;
+  gap: var(--space-1_75);
+}
+.meta-row {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  color: var(--color-text-secondary);
+  font-size: var(--text-xs);
+}
+.meta-row strong {
+  color: var(--color-text-primary);
+  font-weight: var(--font-weight-medium);
+  text-align: right;
+}
+.progress {
+  height: var(--size-7);
+  border-radius: var(--radius-pill);
+  background: var(--color-bg-muted);
+  overflow: hidden;
+}
+.progress span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--color-primary);
+}
+.side-list {
+  display: grid;
+  gap: var(--space-2);
+}
+.side-row {
+  display: grid;
+  gap: var(--space-0_75);
+  padding: var(--space-2_25) var(--space-2_5);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-subtle);
+}
+.side-row strong {
+  font-size: var(--text-sm);
+}
+.side-row span {
+  color: var(--color-text-secondary);
+  font-size: var(--text-2xs);
+}
+.detail-panel-view { display: none; }
+.detail-panel-view.active {
+  display: block;
+  animation: view-enter var(--duration-fast) var(--ease-out);
+}
+
+.btn {
+  min-height: var(--size-32);
+  padding: 0 var(--space-2_75);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-surface);
+  color: var(--color-text-primary);
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
+.btn:hover { border-color: var(--color-primary); color: var(--color-primary); }
+.btn.primary {
+  border-color: transparent;
+  background: var(--color-primary);
+  color: var(--color-text-on-fill);
+}
+.btn.danger { color: var(--color-error); border-color: var(--color-error-border); }
+
+/* ===== v1.1 交互组件：Tooltip / kbd / 命令面板 / Toast / Dialog / 抽屉 / 示例卡 ===== */
+
+[data-tip] { position: relative; }
+[data-tip]::after {
+  content: attr(data-tip);
+  position: absolute;
+  bottom: calc(100% + var(--space-1_5));
+  left: 50%;
+  transform: translateX(-50%);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-inverse);
+  color: var(--color-text-inverse);
+  font-size: var(--text-2xs);
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--duration-fast) var(--ease-out);
+  z-index: var(--z-overlay);
+}
+[data-tip]:hover::after,
+[data-tip]:focus-visible::after { opacity: 1; }
+
+.kbd {
+  display: inline-block;
+  padding: 1px var(--space-1_5);
+  border: 1px solid var(--color-border);
+  border-bottom-width: 2px;
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-muted);
+  color: var(--color-text-secondary);
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+}
+
+.cmdk-overlay {
+  position: fixed;
+  inset: 0;
+  display: none;
+  background: var(--color-overlay);
+  z-index: var(--z-overlay);
+  padding: 12vh var(--space-4) var(--space-4);
+}
+.cmdk-overlay.open { display: block; }
+.cmdk-panel {
+  width: min(var(--size-560), 100%);
+  margin: 0 auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-bg-surface);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+  animation: view-enter var(--duration-normal) var(--ease-out);
+}
+.cmdk-input {
+  width: 100%;
+  min-height: var(--size-48);
+  padding: 0 var(--space-4);
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--color-text-primary);
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  border-bottom: 1px solid var(--color-border);
+}
+.cmdk-input::placeholder { color: var(--color-text-faint); }
+.cmdk-list {
+  max-height: var(--size-320);
+  overflow-y: auto;
+  padding: var(--space-2);
+}
+.cmdk-section {
+  margin: var(--space-2) 0 var(--space-1);
+  padding: 0 var(--space-2_5);
+  font-size: var(--text-2xs);
+  color: var(--color-text-secondary);
+}
+.cmdk-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  min-height: var(--size-40);
+  padding: 0 var(--space-2_5);
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-text-primary);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  text-align: left;
+  cursor: pointer;
+}
+.cmdk-item svg {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+  flex: 0 0 var(--icon-sm);
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.cmdk-item .cmdk-hint { margin-left: auto; }
+.cmdk-item.active { background: var(--color-primary-soft); color: var(--color-primary); }
+.cmdk-empty {
+  padding: var(--space-4);
+  text-align: center;
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+}
+
+.toast-stack {
+  position: fixed;
+  right: var(--space-5);
+  bottom: var(--space-5);
+  display: grid;
+  gap: var(--space-2);
+  z-index: var(--z-toast);
+}
+.toast {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--size-40);
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-surface);
+  box-shadow: var(--shadow-lg);
+  color: var(--color-text-primary);
+  font-size: var(--text-sm);
+  animation: toast-in var(--duration-normal) var(--ease-out);
+}
+.toast.out { animation: toast-out var(--duration-fast) var(--ease-in) forwards; }
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes toast-out {
+  to { opacity: 0; transform: translateY(4px); }
+}
+
+.dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  display: none;
+  place-items: center;
+  padding: var(--space-4);
+  background: var(--color-overlay);
+  z-index: var(--z-overlay);
+}
+.dialog-backdrop.open { display: grid; }
+.dialog {
+  width: min(var(--size-420), 100%);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-bg-surface);
+  box-shadow: var(--shadow-lg);
+  animation: view-enter var(--duration-normal) var(--ease-out);
+}
+.dialog-head { padding: var(--space-4) var(--space-4) 0; }
+.dialog-head h2 {
+  margin: 0;
+  font-family: var(--font-heading);
+  font-size: var(--text-lg);
+}
+.dialog-body {
+  padding: var(--space-2) var(--space-4) 0;
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+}
+.dialog-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  padding: var(--space-4);
+}
+
+.drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  display: none;
+  background: var(--color-overlay);
+  /* 用 --z-scrim(190) 而非 --z-drawer：与抽屉同值时靠 DOM 顺序决胜，背板在抽屉之后会盖住抽屉，里面就点不动了 */
+  z-index: var(--z-scrim);
+}
+body.drawer-open .drawer-backdrop,
+body.detail-open .drawer-backdrop { display: block; }
+
+.sample-cards {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-2);
+  width: min(var(--size-560), 100%);
+}
+.sample-card {
+  min-height: var(--size-56);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-subtle);
+  color: var(--color-text-secondary);
+  font-family: var(--font-sans);
+  font-size: var(--text-xs);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out),
+    background-color var(--duration-fast) var(--ease-out);
+}
+.sample-card:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  background: var(--color-primary-soft);
+}
+
+.detail-toggle { display: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+@media (max-width: 1320px) {
+  .shell { grid-template-columns: var(--layout-sidebar-narrow-width) minmax(0, 1fr); }
+  .detail-panel {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: min(var(--layout-detail-overlay-width), 92vw);
+    z-index: var(--z-drawer);
+    transform: translateX(100%);
+    transition: transform var(--duration-normal) var(--ease-out);
+    box-shadow: var(--shadow-lg);
+  }
+  body.detail-open .detail-panel { transform: none; }
+  .detail-toggle { display: grid; }
+}
+
+@media (max-width: 940px) {
+  .shell { grid-template-columns: minmax(0, 1fr); flex: 0 0 auto; height: auto; }
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: min(var(--layout-sidebar-overlay-width), 84vw);
+    z-index: var(--z-drawer);
+    transform: translateX(-100%);
+    transition: transform var(--duration-normal) var(--ease-out);
+    box-shadow: var(--shadow-lg);
+  }
+  body.drawer-open .sidebar { transform: none; }
+  .prototype-bar .drawer-toggle { display: grid; place-items: center; }
+  .center-inner { padding: var(--space-4) var(--space-4) 0; }
+  .knowledge-grid { grid-template-columns: 1fr; }
+  .workspace-header { align-items: flex-start; }
+  .sample-cards { grid-template-columns: 1fr; }
+}
+
+/* ===== v1.8 桌面端列收起：左/右/双收三态，内缘细箭头，完全收没（轨道 0px）=====
+   收起是瞬时切换——动效规范只允许 opacity/transform/颜色，网格轨道属布局属性不做动画。
+   visibility:hidden 把收起列移出 Tab 序列与可达树，不留"焦点进去却看不见"的隐形按钮。
+   ≤1320px 两列已变浮层（各自有打开开关），收起柄一并隐藏让位 */
+.edge-toggle {
+  position: fixed;
+  top: 50%;
+  transform: translateY(-50%);
+  width: var(--size-20);
+  height: var(--size-44);
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  background: var(--color-bg-surface);
+  color: var(--color-text-secondary);
+  opacity: 0.55;
+  cursor: pointer;
+  z-index: var(--z-rail);
+  transition: opacity var(--duration-fast) var(--ease-out),
+              color var(--duration-fast) var(--ease-out),
+              border-color var(--duration-fast) var(--ease-out);
+}
+.edge-toggle:hover,
+.edge-toggle:focus-visible { opacity: 1; color: var(--color-primary); border-color: var(--color-primary); }
+.edge-toggle svg { width: var(--icon-xs); height: var(--icon-xs); }
+.edge-toggle--side { left: calc(var(--layout-sidebar-width) - var(--size-20) / 2); }
+.edge-toggle--detail { right: calc(var(--layout-detail-width) - var(--size-20) / 2); }
+.edge-toggle .chev-expand { display: none; }
+body.sidebar-collapsed .edge-toggle--side { left: 0; }
+body.detail-collapsed .edge-toggle--detail { right: 0; }
+body.sidebar-collapsed .edge-toggle--side .chev-collapse,
+body.detail-collapsed .edge-toggle--detail .chev-collapse { display: none; }
+body.sidebar-collapsed .edge-toggle--side .chev-expand,
+body.detail-collapsed .edge-toggle--detail .chev-expand { display: block; }
+
+body.sidebar-collapsed .shell { grid-template-columns: 0 minmax(0, 1fr) var(--layout-detail-width); }
+body.detail-collapsed .shell { grid-template-columns: var(--layout-sidebar-width) minmax(0, 1fr) 0; }
+body.sidebar-collapsed.detail-collapsed .shell { grid-template-columns: 0 minmax(0, 1fr) 0; }
+body.sidebar-collapsed .sidebar,
+body.detail-collapsed .detail-panel { visibility: hidden; overflow: hidden; }
+body.sidebar-collapsed .sidebar { border-right: 0; }
+body.detail-collapsed .detail-panel { border-left: 0; }
+@media (max-width: 1320px) { .edge-toggle { display: none; } }
+
+/* ===== v1.3 新增：显式字重 / 禁用态 / 数字等宽 ===== */
+/* 字重显式声明：原先 h1/h2 与 strong 吃浏览器默认粗体，Tailwind preflight 下会失效 */
+h1, h2 { font-weight: var(--font-weight-bold); }
+strong, b { font-weight: var(--font-weight-bold); }
+
+/* 禁用态（v1.3 新增；模板示例未加 disabled，样式已就位） */
+.btn:disabled,
+.primary-action:disabled,
+.send-btn:disabled,
+.icon-btn:disabled,
+.input-action:disabled,
+.candidate-action:disabled,
+.nav-item:disabled,
+.intent:disabled,
+.context-chip:disabled,
+.detail-tab:disabled {
+  background: var(--color-disabled-bg);
+  border-color: var(--color-disabled-border);
+  color: var(--color-disabled-text);
+  cursor: not-allowed;
+  transform: none;
+}
+.primary-action:disabled,
+.send-btn:disabled,
+.btn.primary:disabled {
+  background: var(--color-disabled-fill);
+  border-color: transparent;
+  color: var(--color-text-on-fill);
+}
+.input-textarea:disabled {
+  background: var(--color-disabled-bg);
+  color: var(--color-disabled-text);
+  cursor: not-allowed;
+}
+
+/* 数字等宽：金额/计数列对齐（opt-in，加 .num 即生效） */
+.num { font-variant-numeric: tabular-nums; }
+
+/* ===== v1.4 新增：通用表单控件（设置页 / 新建对象表单）=====
+   此前模板的输入只有输入栏 textarea 与命令面板搜索框，表单类页面无模式可用。
+   控件高度与 .primary-action / 输入栏一致（38px），焦点环沿用全局内缩环 + 主色边框。 */
+.field {
+  display: grid;
+  gap: var(--space-1_5);
+}
+.field > label {
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-primary);
+}
+.field-hint {
+  font-size: var(--text-xs);
+  color: var(--color-text-secondary);
+}
+.field-error {
+  font-size: var(--text-xs);
+  color: var(--color-error);
+}
+.input,
+.textarea,
+.select {
+  width: 100%;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-surface);
+  color: var(--color-text-primary);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  transition:
+    border-color var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out);
+}
+.input,
+.select {
+  min-height: var(--size-38);
+  padding: 0 var(--space-2_5);
+}
+.textarea {
+  min-height: var(--size-92);
+  padding: var(--space-2) var(--space-2_5);
+  line-height: 1.55;
+  resize: vertical;
+}
+.input::placeholder,
+.textarea::placeholder { color: var(--color-text-faint); }
+.input:focus-visible,
+.textarea:focus-visible,
+.select:focus-visible { border-color: var(--color-primary); }
+.input[aria-invalid="true"],
+.textarea[aria-invalid="true"],
+.select[aria-invalid="true"] { border-color: var(--color-error); }
+
+/* 下拉：隐藏原生箭头，用 ::after 画三角（不引图标、不硬编码色值） */
+.select-wrap {
+  position: relative;
+  display: block;
+}
+.select {
+  appearance: none;
+  padding-right: var(--space-6);
+}
+.select-wrap::after {
+  content: '';
+  position: absolute;
+  right: var(--space-2_5);
+  top: 50%;
+  margin-top: calc(var(--space-1_25) * -1);
+  pointer-events: none;
+  /* 边框宽度用字面值：与 .kbd 的 border-bottom-width 一致，边框粗细不属于 Token 管辖的视觉值 */
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-top: 5px solid var(--color-text-secondary);
+}
+
+/* 勾选 / 单选 / 开关：统一走主色 accent，不引第三方开关 */
+.check {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--color-text-primary);
+  cursor: pointer;
+}
+/* :not(.switch) 必须留着——开关也是 checkbox，否则会被这条的 16px 尺寸覆盖 */
+.check input[type="checkbox"]:not(.switch),
+.check input[type="radio"] {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+  margin: 0;
+  flex: 0 0 auto;
+  accent-color: var(--color-primary);
+  cursor: pointer;
+}
+.switch {
+  appearance: none;
+  position: relative;
+  width: var(--size-38);
+  height: var(--size-22);
+  flex: 0 0 auto;
+  margin: 0;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--color-border-strong);
+  cursor: pointer;
+  transition: background-color var(--duration-fast) var(--ease-out);
+}
+.switch::after {
+  content: '';
+  position: absolute;
+  top: var(--space-0_5);
+  left: var(--space-0_5);
+  width: var(--size-18);
+  height: var(--size-18);
+  border-radius: var(--radius-pill);
+  background: var(--color-bg-surface);
+  transition: transform var(--duration-fast) var(--ease-out);
+}
+.switch:checked { background: var(--color-primary); }
+.switch:checked::after { transform: translateX(16px); }
+
+.form-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  padding-top: var(--space-1);
+}
+
+.input:disabled,
+.textarea:disabled,
+.select:disabled,
+.switch:disabled,
+.check input:disabled {
+  background: var(--color-disabled-bg);
+  border-color: var(--color-disabled-border);
+  color: var(--color-disabled-text);
+  cursor: not-allowed;
+}
+.switch:disabled::after { background: var(--color-disabled-text); }
+.check:has(input:disabled) {
+  color: var(--color-disabled-text);
+  cursor: not-allowed;
+}
+</style>
+</head>
+<body>
+<style>
+  /* 原型 v2 新增布局：右栏 = 产物头 + 信息来源/备注 + 可拖拽的会话区。
+     只补齐模板未提供的布局原子；颜色、字号、间距、尺寸全部走 Token。 */
+  .artifact-head {
+    flex: 0 0 auto;
+    padding: var(--space-4) var(--space-4) var(--space-3);
+    border-bottom: 1px solid var(--color-border);
+  }
+  .artifact-eyebrow {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1_5);
+    color: var(--color-text-secondary);
+    font-size: var(--text-2xs);
+    letter-spacing: .05em;
+  }
+  .artifact-title-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    margin-top: var(--space-1);
+    min-width: 0;
+  }
+  .artifact-title {
+    margin: 0;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: var(--text-lg);
+    font-weight: var(--font-weight-semibold);
+  }
+  .artifact-meta {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1_5);
+    margin-top: var(--space-1_5);
+    color: var(--color-text-secondary);
+    font-size: var(--text-2xs);
+  }
+  .artifact-meta .dot {
+    width: var(--size-7);
+    height: var(--size-7);
+    border-radius: 50%;
+    background: var(--color-success);
+  }
+  .artifact-meta .dot.warning { background: var(--color-warning); }
+  .artifact-meta .dot.muted { background: var(--color-text-tertiary); }
+  .right-tabs {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .right-tabs .detail-tab {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-1_5);
+  }
+  .right-tabs .detail-tab .badge {
+    padding: 0 var(--space-1_25);
+  }
+  .inspector-stack {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 0;
+    min-height: 0;
+  }
+  .inspector-top {
+    flex: 0 0 30%;
+    min-height: var(--size-116);
+    overflow-y: auto;
+    padding: var(--space-3) var(--space-4) var(--space-4);
+    border-bottom: 1px solid var(--color-border);
+  }
+  .inspector-top .detail-section:last-child { margin-bottom: 0; }
+  .split-handle {
+    flex: 0 0 var(--space-2_5);
+    position: relative;
+    cursor: row-resize;
+    touch-action: none;
+    user-select: none;
+    background: var(--color-bg-surface);
+  }
+  .split-handle::before {
+    content: "";
+    position: absolute;
+    left: var(--space-4);
+    right: var(--space-4);
+    top: 50%;
+    height: 1px;
+    background: var(--color-border);
+    transform: translateY(-50%);
+  }
+  .split-handle:hover::before,
+  .split-handle:focus-visible::before { background: var(--color-primary); }
+  .split-handle:focus-visible { outline-offset: calc(-1 * var(--focus-ring-offset)); }
+  .thread-pane {
+    flex: 1 1 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    background: var(--color-bg-surface);
+  }
+  .thread-head {
+    flex: 0 0 auto;
+    padding: var(--space-3) var(--space-4) var(--space-2);
+    border-bottom: 1px solid var(--color-border);
+  }
+  .thread-title-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-width: 0;
+  }
+  .thread-title-row strong {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: var(--text-sm);
+    font-weight: var(--font-weight-semibold);
+  }
+  .thread-title-row .icon-btn { margin-left: auto; }
+  .thread-sub {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1_5);
+    margin-top: var(--space-1_5);
+    color: var(--color-text-secondary);
+    font-size: var(--text-2xs);
+  }
+  .thread-sub .context-chip {
+    padding: var(--space-0_75) var(--space-1_75);
+    font-size: var(--text-2xs);
+  }
+  .thread-scroll {
+    flex: 1 1 0;
+    min-height: 0;
+    overflow-y: auto;
+    padding: var(--space-3) var(--space-4) var(--space-2);
+  }
+  .thread-scroll .conversation-stream { margin-top: 0; }
+  .thread-scroll .message { margin-bottom: var(--space-3); }
+  .thread-scroll .message:last-child { margin-bottom: 0; }
+  .thread-scroll .bubble { font-size: var(--text-xs); }
+  .thread-scroll .message-meta { font-size: var(--text-2xs); }
+  .compress-divider {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    flex-wrap: wrap;
+    margin: var(--space-2) 0 var(--space-3);
+    padding: var(--space-2) 0;
+    border-top: 1px dashed var(--color-border);
+    border-bottom: 1px dashed var(--color-border);
+    color: var(--color-text-secondary);
+    font-size: var(--text-2xs);
+  }
+  .compress-divider .candidate-action { margin-left: auto; }
+  .summary-card {
+    margin-bottom: var(--space-3);
+    padding: var(--space-2_5) var(--space-3);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-bg-subtle);
+    color: var(--color-text-secondary);
+    font-size: var(--text-2xs);
+    line-height: 1.6;
+  }
+  .summary-card strong { color: var(--color-text-primary); }
+  .summary-card ul { margin: var(--space-1) 0 0; padding-left: var(--space-4); }
+  .thread-composer {
+    position: static;
+    flex: 0 0 auto;
+    padding: var(--space-2) var(--space-3) var(--space-3);
+    background: var(--color-bg-surface);
+    border-top: 1px solid var(--color-border);
+  }
+  .thread-composer .input-shell { box-shadow: var(--shadow-sm); }
+  .thread-composer .input-top { padding: var(--space-1_75) var(--space-2_5) 0; }
+  .thread-composer .input-scope { font-size: var(--text-2xs); }
+  .thread-composer .input-textarea {
+    min-height: var(--size-56);
+    max-height: var(--size-116);
+    padding: var(--space-1_5) var(--space-2_5);
+    font-size: var(--text-xs);
+  }
+  .thread-composer .input-actions { padding: var(--space-1_5) var(--space-2_5); }
+  .thread-composer .input-action { min-height: var(--size-28); font-size: var(--text-2xs); }
+  .thread-composer .input-hint { display: none; }
+  .thread-composer .send-btn { margin-left: auto; min-height: var(--size-30); }
+  .source-row .badge { flex: 0 0 auto; }
+  .note-caption {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1_5);
+    margin-bottom: var(--space-1_5);
+    color: var(--color-text-secondary);
+    font-size: var(--text-2xs);
+  }
+  .source-empty-title {
+    font-size: var(--text-sm);
+    font-weight: var(--font-weight-medium);
+  }
+  .empty-state .btn { margin-top: var(--space-2_5); }
+  .empty-actions { display: flex; gap: var(--space-2); flex-wrap: wrap; justify-content: center; }
+  .new-scene-form { display: grid; gap: var(--space-3); }
+  .new-scene-form .textarea { min-height: var(--size-56); }
+  .sidebar-brand {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-1) var(--space-1) var(--space-3);
+  }
+  .brand-mark {
+    display: grid;
+    place-items: center;
+    width: var(--size-32);
+    height: var(--size-32);
+    border-radius: var(--radius-md);
+    background: var(--color-primary);
+    color: var(--color-text-inverse);
+    font-size: var(--text-sm);
+    font-weight: var(--font-weight-semibold);
+  }
+  .brand-text {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-0_5);
+    min-width: 0;
+  }
+  .brand-text strong { font-size: var(--text-sm); }
+  .brand-text small {
+    color: var(--color-text-secondary);
+    font-size: var(--text-2xs);
+  }
+  .stage-tab {
+    display: inline-flex;
+    align-items: center;
+    height: var(--size-32);
+    padding: 0 var(--space-2_5);
+    border: 0;
+    border-radius: var(--radius-md);
+    background: transparent;
+    color: var(--color-text-secondary);
+    font-family: var(--font-sans);
+    font-size: var(--text-xs);
+    white-space: nowrap;
+    cursor: pointer;
+  }
+  .stage-tab:hover { background: var(--color-bg-muted); }
+  .stage-tab.active {
+    background: var(--color-primary-soft);
+    color: var(--color-primary);
+    font-weight: var(--font-weight-medium);
+  }
+  .thread-pane > .input-dock {
+    position: static;
+    flex: 0 0 auto;
+    padding: 0;
+    background: var(--color-bg-surface);
+  }
+</style>
+
+<div class="prototype-bar">
+  <button class="icon-btn drawer-toggle" data-tip="打开导航" aria-label="打开导航">
+    <svg viewBox="0 0 24 24"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
+  </button>
+  <b>原型 v2</b>
+  <span class="meta">方案助手 · 产物会话</span>
+  <span class="spacer"></span>
+  <span class="meta">按 <span class="kbd">⌘K</span> 打开命令面板</span>
+  <span class="meta">右栏以「阶段产物」为最小单元</span>
+</div>
+
+<div class="shell">
+  <aside class="sidebar">
+    <div class="sidebar-scroll">
+      <div class="sidebar-brand">
+        <span class="brand-mark" aria-hidden="true">方</span>
+        <span class="brand-text">
+          <strong>方案助手</strong>
+          <small>场景落地分析</small>
+        </span>
+      </div>
+      <button class="primary-action" data-new-scene>
+        <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+        新建场景
+      </button>
+
+      <div class="section-label">基础设施</div>
+      <button class="nav-item" data-toast="产品资料库（原型演示）">
+        <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+        产品资料库
+        <span class="count">2 线</span>
+      </button>
+
+      <div class="section-label">场景</div>
+      <div class="side-list" id="sceneList">
+        <button class="conversation-item active" data-scene="智慧会议室" data-view="view1">
+          <span class="status-dot"></span>
+          <span class="title">智慧会议室</span>
+          <span class="meta">阶段 1 / 6</span>
+        </button>
+        <button class="conversation-item" data-scene="工业设备预测性维护" data-toast="该场景尚未展开（原型演示）">
+          <span class="status-dot warning"></span>
+          <span class="title">工业设备预测性维护</span>
+          <span class="meta">阶段 0 / 6</span>
+        </button>
+        <button class="conversation-item" data-scene="智慧园区" data-toast="智慧园区已交付（原型演示）">
+          <span class="status-dot muted"></span>
+          <span class="title">智慧园区</span>
+          <span class="meta">已交付</span>
+        </button>
+        <button class="conversation-item" id="newSceneItem" data-scene="智能照明改造" data-view="view3" hidden>
+          <span class="status-dot warning"></span>
+          <span class="title">智能照明改造</span>
+          <span class="meta">阶段 0 / 6</span>
+        </button>
+      </div>
+
+      <div class="section-label">全局</div>
+      <button class="nav-item" data-toast="跨场景搜索（原型演示）">
+        <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>
+        搜索
+      </button>
+      <button class="nav-item" data-toast="待处理收件箱（原型演示）">
+        <svg viewBox="0 0 24 24"><path d="M4 4h16v16H4z"/><path d="M8 9h8M8 13h5"/></svg>
+        收件箱
+        <span class="count">3</span>
+      </button>
+    </div>
+
+    <div class="sidebar-foot">
+      <div class="status-block">
+        <div class="status-line"><span class="status-dot"></span>本地数据 · 已同步</div>
+        <div class="status-line"><span class="status-dot"></span>DSH 会话内核 · 已连接</div>
+        <div class="status-line"><span class="status-dot warning"></span>3 个场景进行中</div>
+      </div>
+    </div>
+  </aside>
+
+  <main class="center-column">
+    <div class="center-inner">
+      <header class="workspace-header">
+        <div class="workspace-title">
+          <h1 id="workspaceTitle">智慧会议室</h1>
+          <p id="workspaceSubtitle">阶段 1 · 认识场景 · 表 2-3 分层架构</p>
+        </div>
+        <div class="header-actions">
+          <button class="btn" data-toast="上传材料（原型演示）">上传材料</button>
+          <button class="icon-btn" data-tip="搜索" aria-label="搜索" data-cmd="open-cmdk">
+            <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>
+          </button>
+          <button class="icon-btn detail-toggle" data-tip="右栏" aria-label="打开右栏">
+            <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M15 4v16"/></svg>
+          </button>
+        </div>
+      </header>
+
+      <div class="view-tabs stage-tabs" role="tablist" aria-label="阶段切换">
+        <button class="stage-tab" role="tab" aria-selected="false" data-stage="0" data-toast="阶段 0 · 材料入库（原型演示）">材料入库</button>
+        <button class="stage-tab active" role="tab" aria-selected="true" data-stage="1" data-view="view1">认识场景</button>
+        <button class="stage-tab" role="tab" aria-selected="false" data-stage="2" data-toast="阶段 2 · 理解商业（原型演示）">理解商业</button>
+        <button class="stage-tab" role="tab" aria-selected="false" data-stage="3" data-toast="阶段 3 · 能力匹配（原型演示）">能力匹配</button>
+        <button class="stage-tab" role="tab" aria-selected="false" data-stage="4" data-toast="阶段 4 · 方案与实现（原型演示）">方案实现</button>
+        <button class="stage-tab" role="tab" aria-selected="false" data-stage="5" data-view="view2">最终交付物</button>
+      </div>
+
+      <div class="main-scroll">
+        <!-- ===== 场景 1：工作台 · 认识场景 · 分层架构 ===== -->
+        <section class="view active" data-panel="view1">
+          <div class="banner warning">
+            ⚠️ 分层架构有 2 个节点证据等级为 C；阶段质量关前建议补来源，不影响继续整理。
+          </div>
+
+          <div class="panel">
+            <div class="panel-head">
+              <div>
+                <h2>表 2-3 · 分层架构</h2>
+                <p>阶段 1 认识场景 · 5 层 · 最后确认 10:22</p>
+              </div>
+              <div class="header-actions">
+                <span class="badge primary">v3 · 已确认</span>
+                <button class="candidate-action" data-toast="编辑分层架构（原型演示）">编辑</button>
+              </div>
+            </div>
+            <div class="panel-body">
+              <div class="split-list">
+                <div class="split-row">
+                  <div class="split-main">
+                    <strong>展示层</strong>
+                    <span>预约面板 · 门口屏 · 移动端</span>
+                  </div>
+                  <div class="candidate-actions">
+                    <span class="badge warning">待补证据</span>
+                    <button class="candidate-action" data-toast="已把「展示层」加入会话上下文（原型演示）">追问</button>
+                  </div>
+                </div>
+                <div class="split-row">
+                  <div class="split-main">
+                    <strong>应用层</strong>
+                    <span>会议预约 · 场景联动 · 能耗看板</span>
+                  </div>
+                  <div class="candidate-actions">
+                    <span class="badge success">T1</span>
+                    <button class="candidate-action" data-toast="已把「应用层」加入会话上下文（原型演示）">追问</button>
+                  </div>
+                </div>
+                <div class="split-row">
+                  <div class="split-main">
+                    <strong>平台层</strong>
+                    <span>中控主机 · 协议网关 · 设备管理</span>
+                  </div>
+                  <div class="candidate-actions">
+                    <span class="badge primary">当前节点</span>
+                    <button class="candidate-action primary" data-toast="已把「平台层 / 中控主机」加入会话上下文（原型演示）">追问</button>
+                  </div>
+                </div>
+                <div class="split-row">
+                  <div class="split-main">
+                    <strong>网络层</strong>
+                    <span>园区网 · Wi-Fi 6 · VLAN 隔离</span>
+                  </div>
+                  <div class="candidate-actions">
+                    <span class="badge success">T1</span>
+                    <button class="candidate-action" data-toast="已把「网络层」加入会话上下文（原型演示）">追问</button>
+                  </div>
+                </div>
+                <div class="split-row">
+                  <div class="split-main">
+                    <strong>设备层</strong>
+                    <span>灯光 · 空调 · 窗帘 · 传感器</span>
+                  </div>
+                  <div class="candidate-actions">
+                    <span class="badge warning">待补证据</span>
+                    <button class="candidate-action" data-toast="已把「设备层」加入会话上下文（原型演示）">追问</button>
+                  </div>
+                </div>
+              </div>
+
+              <blockquote class="source-quote" style="margin-top: var(--space-3);">
+                设备层通过协议网关接入平台层，平台层统一向应用层提供设备能力；中控主机不直接承担末端控制。
+              </blockquote>
+              <div class="source-path" style="margin-top: var(--space-1_5);">表 2-3 分层架构 · 场景认识总结 · 来源：园区网络架构图 p.3 / 中控主机白皮书 p.8</div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-head">
+              <div>
+                <h2>阶段 1 产物</h2>
+                <p>同一阶段下，右栏以当前选中的产物为单位</p>
+              </div>
+              <span class="badge">4 件</span>
+            </div>
+            <div class="panel-body">
+              <div class="split-list">
+                <div class="split-row">
+                  <div class="split-main"><strong>表 2-2 · 场景要素清单</strong><span>12 项 · 已确认</span></div>
+                  <button class="candidate-action" data-toast="打开场景要素清单（原型演示）">打开</button>
+                </div>
+                <div class="split-row">
+                  <div class="split-main"><strong>表 2-3 · 分层架构</strong><span>5 层 · 当前产物</span></div>
+                  <span class="badge primary">当前</span>
+                </div>
+                <div class="split-row">
+                  <div class="split-main"><strong>表 2-4 · 要素间关系</strong><span>8 条关系 · 待复核</span></div>
+                  <button class="candidate-action" data-toast="打开要素间关系（原型演示）">打开</button>
+                </div>
+                <div class="split-row">
+                  <div class="split-main"><strong>表 1-3 · 门槛与合规</strong><span>6 项 · 2 项待补</span></div>
+                  <button class="candidate-action" data-toast="打开门槛与合规（原型演示）">打开</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ===== 场景 2：最终交付物 · 第 3.2 节 ===== -->
+        <section class="view" data-panel="view2">
+          <div class="panel">
+            <div class="panel-head">
+              <div>
+                <h2>智慧会议室解决方案 · 客户汇报版</h2>
+                <p>最终交付物 · 第 3 章 商业判断 · 第 3.2 节</p>
+              </div>
+              <span class="badge primary">v7</span>
+            </div>
+            <div class="panel-body">
+              <blockquote class="source-quote" id="originalText">设备部是付费者，因为设备采购预算由设备部提出。</blockquote>
+              <div class="source-path" style="margin-top: var(--space-2);">原文 42 字 · 引用 2 条 · 基于表 3-2 / 表 3-3</div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-head">
+              <div>
+                <h2>建议修改 · 2 处</h2>
+                <p>挑战「设备部是付费者」的单一归因，补一条预算归属证据</p>
+              </div>
+              <span class="badge warning" id="proposalBadge">待确认</span>
+            </div>
+            <div class="panel-body">
+              <div class="split-list">
+                <div class="split-row">
+                  <div class="split-main">
+                    <strong>角色：付费者 → 预算归属方</strong>
+                    <span>行政部（年度预算）· 设备部改为需求提出方</span>
+                  </div>
+                  <div class="candidate-actions">
+                    <button class="candidate-action primary" data-apply>应用</button>
+                  </div>
+                </div>
+                <div class="split-row">
+                  <div class="split-main">
+                    <strong>依据：补 2025 年预算批复</strong>
+                    <span>预算批复.pdf · 第 3 页 · T1 / A</span>
+                  </div>
+                  <div class="candidate-actions">
+                    <button class="candidate-action" data-toast="打开 2025 年预算批复（原型演示）">查看</button>
+                  </div>
+                </div>
+              </div>
+              <div class="context-bar" style="margin-top: var(--space-3);">
+                <button class="candidate-action primary" data-apply>应用修改</button>
+                <button class="candidate-action" data-toast="已改为只调整措辞（原型演示）">只改措辞</button>
+                <button class="candidate-action danger" data-reject>拒绝修改</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-head">
+              <div>
+                <h2>下游引用</h2>
+                <p>应用修改后会重算，不会静默覆盖</p>
+              </div>
+              <span class="badge">3 处</span>
+            </div>
+            <div class="panel-body">
+              <div class="side-list">
+                <div class="side-row"><strong>第 4.1 节 · 采购机制</strong><span>引用「付费者」判断</span></div>
+                <div class="side-row"><strong>第 6.2 节 · 预算测算</strong><span>引用预算归属口径</span></div>
+                <div class="side-row"><strong>表 3-2 · 客户角色</strong><span>引用角色字段</span></div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ===== 场景 3：新建场景后 · 阶段 0 ===== -->
+        <section class="view" data-panel="view3">
+          <div class="banner warning">
+            新场景已创建。材料入库是阶段 0 的第一步，右栏会自动整理来源并建立唯一会话。
+          </div>
+
+          <div class="panel">
+            <div class="panel-head">
+              <div>
+                <h2>材料入库</h2>
+                <p id="newSceneHint">还没有材料 · 支持 PDF / Word / Excel / 图片</p>
+              </div>
+              <span class="badge">阶段 0</span>
+            </div>
+            <div class="panel-body">
+              <div class="empty-state">
+                <strong>先把材料放进来</strong>
+                <p>拖入文件，或从产品资料库带入。材料解析完成后，右栏会出现来源清单和场景定义会话。</p>
+                <div class="empty-actions">
+                  <button class="btn primary" data-toast="打开文件选择（原型演示）">导入材料</button>
+                  <button class="btn" data-toast="从产品资料库带入（原型演示）">从资料库带入</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-head">
+              <div>
+                <h2>场景定义</h2>
+                <p>先用一句话说清要分析什么</p>
+              </div>
+              <span class="badge">待填写</span>
+            </div>
+            <div class="panel-body">
+              <div class="meta-grid">
+                <div class="meta-row"><span>场景名称</span><strong id="newSceneNameDisplay">智能照明改造</strong></div>
+                <div class="meta-row"><span>客户 / 行业</span><strong id="newSceneCustomerDisplay">待补充</strong></div>
+                <div class="meta-row"><span>分析诉求</span><strong id="newSceneDemandDisplay">待补充</strong></div>
+                <div class="meta-row"><span>当前阶段</span><strong>阶段 0 · 材料入库</strong></div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
+  </main>
+
+  <aside class="detail-panel" id="rightPanel">
+    <div class="artifact-head">
+      <div class="artifact-eyebrow">
+        <span id="artifactStage">阶段 1 · 认识场景</span>
+        <span>·</span>
+        <span class="badge" id="artifactVersion">v3</span>
+      </div>
+      <div class="artifact-title-row">
+        <h2 class="artifact-title" id="artifactTitle">表 2-3 · 分层架构</h2>
+        <span class="badge success" id="artifactStatus">已确认</span>
+        <button class="icon-btn" data-tip="产物操作" aria-label="产物操作" data-toast="产物操作（原型演示）">
+          <svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg>
+        </button>
+      </div>
+      <div class="artifact-meta">
+        <span class="dot" id="artifactDot"></span>
+        <span id="artifactMeta">2 个节点待补证据</span>
+        <span>·</span>
+        <span>唯一会话</span>
+      </div>
+    </div>
+
+    <div class="detail-tabs right-tabs" role="tablist" aria-label="产物信息">
+      <button class="detail-tab active" role="tab" aria-selected="true" data-side="side1">
+        信息来源
+        <span class="badge" id="sourceCount">8</span>
+      </button>
+      <button class="detail-tab" role="tab" aria-selected="false" data-side="side2">
+        备注
+        <span class="badge" id="noteCount">4</span>
+      </button>
+    </div>
+
+    <div class="inspector-stack" id="inspectorStack">
+      <div class="inspector-top" id="inspectorTop">
+        <section class="detail-panel-view active" data-side-panel="side1">
+          <div data-inspector-for="view1">
+            <div class="detail-title">来源 · 8 条</div>
+            <div class="split-list">
+              <div class="split-row">
+                <div class="split-main"><strong>智慧会议室改造需求说明书</strong><span>需求说明书.pdf · p.12 · T1 / A</span></div>
+                <div class="candidate-actions"><span class="badge success">T1</span><button class="candidate-action" data-source-open="需求说明书.pdf p.12">打开</button></div>
+              </div>
+              <div class="split-row">
+                <div class="split-main"><strong>会议室设备清单</strong><span>设备清单.xlsx · 设备页 · T2 / B</span></div>
+                <div class="candidate-actions"><span class="badge success">T2</span><button class="candidate-action" data-source-open="设备清单.xlsx">打开</button></div>
+              </div>
+              <div class="split-row">
+                <div class="split-main"><strong>园区网络架构图</strong><span>网络架构图.pdf · p.3 · T1 / A</span></div>
+                <div class="candidate-actions"><span class="badge success">T1</span><button class="candidate-action" data-source-open="网络架构图.pdf p.3">打开</button></div>
+              </div>
+              <div class="split-row">
+                <div class="split-main"><strong>中控主机厂商协议白皮书</strong><span>协议白皮书.pdf · p.8 · T2 / B</span></div>
+                <div class="candidate-actions"><span class="badge success">T2</span><button class="candidate-action" data-source-open="协议白皮书.pdf p.8">打开</button></div>
+              </div>
+              <div class="split-row">
+                <div class="split-main"><strong>客户访谈纪要 · 行政部</strong><span>访谈纪要.docx · 2025-09-18 · T2 / B</span></div>
+                <div class="candidate-actions"><span class="badge success">T2</span><button class="candidate-action" data-source-open="访谈纪要.docx">打开</button></div>
+              </div>
+              <div class="split-row">
+                <div class="split-main"><strong>同类项目招标公告</strong><span>ccgp.gov.cn · 2025-08-02 · T3 / C</span></div>
+                <div class="candidate-actions"><span class="badge warning">T3</span><button class="candidate-action" data-source-open="招标公告网页">打开</button></div>
+              </div>
+            </div>
+            <div class="context-bar" style="margin-top: var(--space-2);">
+              <button class="candidate-action" data-toast="查看全部 8 条来源（原型演示）">查看全部 8 条</button>
+              <button class="candidate-action" data-toast="补查来源（原型演示）">补查来源</button>
+            </div>
+          </div>
+
+          <div data-inspector-for="view2" hidden>
+            <div class="detail-title">来源 · 3 条</div>
+            <div class="split-list">
+              <div class="split-row">
+                <div class="split-main"><strong>2025 年智慧办公预算批复</strong><span>预算批复.pdf · p.3 · T1 / A</span></div>
+                <div class="candidate-actions"><span class="badge success">T1</span><button class="candidate-action" data-source-open="预算批复.pdf p.3">打开</button></div>
+              </div>
+              <div class="split-row">
+                <div class="split-main"><strong>设备部 2025 年设备更新申请</strong><span>设备更新申请.pdf · p.2 · T2 / B</span></div>
+                <div class="candidate-actions"><span class="badge success">T2</span><button class="candidate-action" data-source-open="设备更新申请.pdf p.2">打开</button></div>
+              </div>
+              <div class="split-row">
+                <div class="split-main"><strong>园区信息安全评审纪要</strong><span>安全评审.docx · p.1 · T1 / A</span></div>
+                <div class="candidate-actions"><span class="badge success">T1</span><button class="candidate-action" data-source-open="安全评审.docx p.1">打开</button></div>
+              </div>
+            </div>
+          </div>
+
+          <div data-inspector-for="view3" hidden>
+            <div class="empty-state" style="padding-top: var(--space-3);">
+              <strong>还没有来源</strong>
+              <p>导入材料后，检索源文件会出现在这里；每条都带页码和证据等级。</p>
+              <button class="btn" data-toast="导入材料（原型演示）">导入材料</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="detail-panel-view" data-side-panel="side2">
+          <div data-inspector-for="view1">
+            <div class="detail-title">备注 · 4 条</div>
+            <div class="note-caption"><span class="badge">AI 结论</span> 由当前产物字段与来源推导</div>
+            <blockquote class="source-quote">场景以存量会议室改造为主，核心是跨品牌设备联动；设备层不包含门禁。</blockquote>
+            <div class="banner warning" style="margin-top: var(--space-2_5);">提醒：中控主机协议未确认，阶段 3 能力匹配前需补一条厂商协议证据。</div>
+            <div class="side-list" style="margin-top: var(--space-3);">
+              <div class="side-row"><strong>我的备注</strong><span>客户行政部强调“不想再装一套 App”，展示层优先门口屏。</span></div>
+              <div class="side-row"><strong>待确认</strong><span>设备层是否包含门禁？当前边界写“不含”，需和客户确认。</span></div>
+            </div>
+          </div>
+
+          <div data-inspector-for="view2" hidden>
+            <div class="detail-title">备注 · 4 条</div>
+            <div class="note-caption"><span class="badge">AI 结论</span> 与交付物当前版本绑定</div>
+            <blockquote class="source-quote">付费者是行政部，不是设备部；设备部只是需求提出方。</blockquote>
+            <div class="banner warning" style="margin-top: var(--space-2_5);">提醒：应用修改后，下游 3 处引用需要重算；第 6.2 节预算测算会受影响。</div>
+            <div class="side-list" style="margin-top: var(--space-3);">
+              <div class="side-row"><strong>客户口径</strong><span>汇报时不要写“设备部不持预算”，改为“预算归口行政部”。</span></div>
+              <div class="side-row"><strong>待确认</strong><span>2025 年预算是否包含运维费用？当前批复未拆分。</span></div>
+            </div>
+          </div>
+
+          <div data-inspector-for="view3" hidden>
+            <div class="empty-state" style="padding-top: var(--space-3);">
+              <strong>还没有备注</strong>
+              <p>会话里确认的结论、提醒和待确认项会自动收进这里。</p>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <div class="split-handle" id="splitHandle" role="separator" aria-orientation="horizontal" tabindex="0"
+           aria-label="调整信息来源与会话区高度" aria-valuemin="22" aria-valuemax="58" aria-valuenow="30"></div>
+
+      <div class="thread-pane">
+        <div class="thread-head">
+          <div class="thread-title-row">
+            <strong id="threadTitle">分层架构</strong>
+            <span class="badge success" id="threadStatus">无任务</span>
+            <button class="icon-btn" data-tip="会话操作" aria-label="会话操作" data-toast="会话操作（原型演示）">
+              <svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg>
+            </button>
+          </div>
+          <div class="thread-sub">
+            <span id="threadScope">基于 v3</span>
+            <span>· 历史完整保留</span>
+          </div>
+        </div>
+
+        <div class="thread-scroll" id="threadScroll">
+          <div data-thread-for="view1">
+            <button class="candidate-action" data-load-earlier>加载更早消息</button>
+            <div class="compress-divider">
+              <span>上下文已压缩 · 保留 9 条关键记忆</span>
+              <button class="candidate-action" data-summary-toggle>查看摘要</button>
+            </div>
+            <div class="summary-card" hidden>
+              <strong>压缩后保留的记忆</strong>
+              <ul>
+                <li>决策：中控主机归平台层，设备层只放末端设备。</li>
+                <li>约束：园区数据不出园，协议网关需通过安全评审。</li>
+                <li>未决：门禁是否属于本场景边界，待客户确认。</li>
+              </ul>
+            </div>
+            <div class="conversation-stream">
+              <div class="message user">
+                <div class="message-meta">10:18 · 用户</div>
+                <div class="bubble"><p>中控主机为什么放在平台层，而不是设备层？</p></div>
+              </div>
+              <div class="message">
+                <div class="message-meta">10:18 · 助手 · 2 条来源</div>
+                <div class="bubble">
+                  <p>中控主机承担协议转换和场景编排，属于平台能力；设备层只保留末端设备。</p>
+                  <p>如果把它放设备层，跨品牌联动逻辑会散到每个房间，后续复制和运维都会变重。</p>
+                </div>
+                <div class="context-bar">
+                  <span class="context-chip active">平台层</span>
+                  <span class="context-chip">中控主机</span>
+                  <span class="context-chip">v3</span>
+                </div>
+              </div>
+              <div class="attachment-card">
+                <div class="attachment-head">
+                  <strong>依据 · 2 条</strong>
+                  <span class="badge success">T1 + T2</span>
+                </div>
+                <div class="attachment-body">
+                  <div class="candidate-row">
+                    <div class="candidate-main">
+                      <strong>园区网络架构图</strong>
+                      <span>网络架构图.pdf · p.3 · T1 / A</span>
+                    </div>
+                    <button class="candidate-action" data-source-open="网络架构图.pdf p.3">定位</button>
+                  </div>
+                  <div class="candidate-row">
+                    <div class="candidate-main">
+                      <strong>中控主机厂商协议白皮书</strong>
+                      <span>协议白皮书.pdf · p.8 · T2 / B</span>
+                    </div>
+                    <button class="candidate-action" data-source-open="协议白皮书.pdf p.8">定位</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div data-thread-for="view2" hidden>
+            <div class="compress-divider">
+              <span>上下文已压缩 · 保留 6 条关键记忆</span>
+              <button class="candidate-action" data-summary-toggle>查看摘要</button>
+            </div>
+            <div class="summary-card" hidden>
+              <strong>压缩后保留的记忆</strong>
+              <ul>
+                <li>决策：付费者改为「行政部（年度预算）」。</li>
+                <li>约束：客户口径不写“设备部不持预算”。</li>
+                <li>未决：下游 3 处引用待应用后重算。</li>
+              </ul>
+            </div>
+            <div class="conversation-stream">
+              <div class="message user">
+                <div class="message-meta">09:52 · 用户</div>
+                <div class="bubble"><p>这段结论太绝对，改成预算归属口径，并补上预算来源。</p></div>
+              </div>
+              <div class="message">
+                <div class="message-meta">09:52 · 助手 · 2 条来源</div>
+                <div class="bubble">
+                  <p>问题不在措辞，而在角色判断：设备部提需求，但不持有预算。建议把“付费者”改成“预算归属方”。</p>
+                </div>
+              </div>
+              <div class="attachment-card">
+                <div class="attachment-head">
+                  <strong>修改提案 · 2 处</strong>
+                  <span class="badge warning">待确认</span>
+                </div>
+                <div class="attachment-body">
+                  <div class="candidate-row">
+                    <div class="candidate-main">
+                      <strong>角色：付费者 → 预算归属方</strong>
+                      <span>行政部（年度预算）· 设备部改为需求提出方</span>
+                    </div>
+                    <button class="candidate-action primary" data-apply>应用</button>
+                  </div>
+                  <div class="candidate-row">
+                    <div class="candidate-main">
+                      <strong>依据：补 2025 年预算批复</strong>
+                      <span>预算批复.pdf · p.3 · T1 / A</span>
+                    </div>
+                    <button class="candidate-action" data-source-open="预算批复.pdf p.3">查看</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div data-thread-for="view3" hidden>
+            <div class="conversation-stream">
+              <div class="message">
+                <div class="message-meta">刚刚 · 助手</div>
+                <div class="bubble">
+                  <p>已创建「<span id="threadNewSceneName">智能照明改造</span>」。</p>
+                  <p>先把材料拖进来，或从资料库选择；右侧会自动整理来源，我也会在这里持续记录判断。</p>
+                </div>
+                <div class="context-bar">
+                  <span class="context-chip active">阶段 0</span>
+                  <span class="context-chip">材料入库</span>
+                  <span class="context-chip">新场景</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="input-dock">
+          <div class="thread-composer">
+            <div class="input-shell">
+            <div class="input-top">
+              <div class="input-scope">
+                <svg viewBox="0 0 24 24"><path d="M9 12l2 2 4-4"/><path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z"/></svg>
+                <span id="inputScope">产物 · 分层架构</span>
+              </div>
+              <span class="badge">唯一会话</span>
+            </div>
+            <textarea class="input-textarea" placeholder="针对这个产物追问，或输入「补一条来源」…"></textarea>
+            <div class="input-actions">
+              <button class="input-action">
+                <svg viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+                引用上下文
+              </button>
+              <button class="send-btn">发送</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </aside>
+</div>
+
+<!-- v1.8 桌面端列收起柄（左/右/双收三态，机制见 §5.1）：内缘细箭头，hover 显形；
+     ≤1320px 自动隐藏（两列届时变浮层，由既有开关接管）。别删——这是模板自带的交互机制 -->
+<button class="edge-toggle edge-toggle--side" aria-expanded="true" aria-label="收起导航列">
+  <svg class="chev-collapse" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
+  <svg class="chev-expand" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18l6-6-6-6"/></svg>
+</button>
+<button class="edge-toggle edge-toggle--detail" aria-expanded="true" aria-label="收起详情列">
+  <svg class="chev-collapse" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18l6-6-6-6"/></svg>
+  <svg class="chev-expand" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
+</button>
+
+<!-- 抽屉/详情滑出的统一背板：点击即关闭 -->
+<div class="drawer-backdrop" data-close-drawers></div>
+
+<!-- ⌘K 命令面板：槽位为命令清单（图标 + 名称 + data-cmd）。内置命令动词：view:<视图> / focus-input / confirm-dialog -->
+<div class="cmdk-overlay" id="cmdk" role="dialog" aria-modal="true" aria-label="命令面板">
+  <div class="cmdk-panel">
+    <input class="cmdk-input" type="text" placeholder="搜索命令、场景或产物…" aria-label="搜索命令" />
+    <div class="cmdk-list">
+      <div class="cmdk-section">前往</div>
+      <button class="cmdk-item" data-cmd="view:view1">
+        <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M9 4v16"/></svg>
+        工作台 · 表 2-3 分层架构
+      </button>
+      <button class="cmdk-item" data-cmd="view:view2">
+        <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+        交付物 · 3.2 付费关系
+      </button>
+      <div class="cmdk-section">操作</div>
+      <button class="cmdk-item" data-cmd="new-scene">
+        <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+        新建场景
+      </button>
+      <button class="cmdk-item" data-cmd="focus-input">
+        <svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        聚焦当前产物会话
+        <span class="cmdk-hint kbd">Enter</span>
+      </button>
+      <button class="cmdk-item" data-cmd="confirm-dialog">
+        <svg viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><path d="M12 9v4M12 17h.01"/></svg>
+        归档当前产物
+      </button>
+      <div class="cmdk-empty" hidden>没有匹配命令</div>
+    </div>
+  </div>
+</div>
+
+<div class="dialog-backdrop" id="confirmDialog" role="dialog" aria-modal="true" aria-labelledby="confirmDialogTitle">
+  <div class="dialog">
+    <div class="dialog-head"><h2 id="confirmDialogTitle">归档这个产物？</h2></div>
+    <div class="dialog-body">归档后，这个产物的来源、备注和会话都变为只读，可在场景归档中恢复。</div>
+    <div class="dialog-foot">
+      <button class="btn" data-dialog-close>取消</button>
+      <button class="btn danger" data-dialog-confirm>归档产物</button>
+    </div>
+  </div>
+</div>
+
+<div class="dialog-backdrop" id="newSceneDialog" role="dialog" aria-modal="true" aria-labelledby="newSceneTitle">
+  <div class="dialog">
+    <div class="dialog-head"><h2 id="newSceneTitle">新建场景</h2></div>
+    <div class="dialog-body">
+      <div class="new-scene-form">
+        <div class="field">
+          <label for="newSceneName">场景名称</label>
+          <input class="input" id="newSceneName" type="text" value="智能照明改造" autocomplete="off" />
+          <div class="field-error" id="newSceneError" hidden>请填写场景名称</div>
+        </div>
+        <div class="field">
+          <label for="newSceneCustomer">客户 / 行业</label>
+          <input class="input" id="newSceneCustomer" type="text" value="某园区 · 智能建筑" autocomplete="off" />
+        </div>
+        <div class="field">
+          <label for="newSceneDemand">一句话诉求</label>
+          <textarea class="textarea" id="newSceneDemand" rows="2">园区照明能否做存量改造，值不值得投入？</textarea>
+          <div class="field-hint">之后可以在阶段 1 继续补充，不必一次写全。</div>
+        </div>
+      </div>
+    </div>
+    <div class="dialog-foot">
+      <button class="btn" data-new-scene-close>取消</button>
+      <button class="btn primary" data-new-scene-submit>创建并进入</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast-stack" aria-live="polite"></div>
+
+<script>
+  // 视图联动 + v1.1 交互机制：事件委托 / 滚动记忆 / 命令面板 / Toast / Dialog / 抽屉
+  const shell = {
+    views: document.querySelectorAll('[data-panel]'),
+    viewTriggers: document.querySelectorAll('[data-view]'),
+    sideTabs: document.querySelectorAll('[data-side]'),
+    sidePanels: document.querySelectorAll('[data-side-panel]'),
+    workspaceTitle: document.getElementById('workspaceTitle'),
+    workspaceSubtitle: document.getElementById('workspaceSubtitle'),
+    inputScope: document.getElementById('inputScope'),
+    mainScroll: document.querySelector('.main-scroll'),
+    textarea: document.querySelector('.input-textarea'),
+    cmdk: document.getElementById('cmdk'),
+    cmdkInput: document.querySelector('.cmdk-input'),
+    cmdkItems: Array.from(document.querySelectorAll('.cmdk-item')),
+    cmdkEmpty: document.querySelector('.cmdk-empty'),
+    dialog: document.getElementById('confirmDialog'),
+    toastStack: document.querySelector('.toast-stack'),
+    // 输入栏自动长高的上限，与 .input-textarea 的 max-height 同为 --size-180
+    textareaMaxHeight: parseInt(
+      getComputedStyle(document.documentElement).getPropertyValue('--size-180'), 10) || 180,
+  };
+
+  // 原型演示提示：统一标注"原型演示"，避免评审误认为已调用真实模型
+  const demoCopy = {
+    sent: '已发送（原型演示，未调用模型）',
+    executed: '已执行（原型演示）',
+    switched: (title) => `已切换到「${title}」（原型演示）`,
+    actionSuffix: '（原型演示）'
+  };
+
+  // 每个主视图的页头、输入栏与阶段
+  const workspaceCopy = {
+    view1: {
+      title: '智慧会议室',
+      subtitle: '阶段 1 · 认识场景 · 表 2-3 分层架构',
+      input: '产物 · 分层架构',
+      placeholder: '针对这个产物追问，或输入「补一条来源」…',
+      stage: '1',
+      scene: '智慧会议室',
+      side: 'side1'
+    },
+    view2: {
+      title: '智慧会议室',
+      subtitle: '阶段 5 · 最终交付物 · 第 3.2 节',
+      input: '产物 · 3.2 付费关系',
+      placeholder: '说明想怎么改，或输入「补上预算来源」…',
+      stage: '5',
+      scene: '智慧会议室',
+      side: 'side2'
+    },
+    view3: {
+      title: '智能照明改造',
+      subtitle: '阶段 0 · 材料入库 · 待开始',
+      input: '产物 · 材料入库',
+      placeholder: '先导入材料，或描述这个场景…',
+      stage: '0',
+      scene: '智能照明改造',
+      side: 'side1'
+    }
+  };
+
+  // 右栏产物检查器：每个视图对应一个阶段产物，以及它的唯一会话
+  const sceneCopy = {
+    view1: {
+      stage: '1',
+      scene: '智慧会议室',
+      side: 'side1',
+      dot: 'warning',
+      stageLabel: '阶段 1 · 认识场景',
+      title: '表 2-3 · 分层架构',
+      version: 'v3',
+      status: '已确认',
+      statusBadge: 'success',
+      meta: '2 个节点待补证据',
+      sourceCount: '8',
+      noteCount: '4',
+      thread: '分层架构',
+      threadStatus: '无任务',
+      threadBadge: 'success',
+      threadScope: '基于 v3'
+    },
+    view2: {
+      stage: '5',
+      scene: '智慧会议室',
+      side: 'side2',
+      dot: 'warning',
+      stageLabel: '阶段 5 · 最终交付物',
+      title: '3.2 付费关系',
+      version: 'v7',
+      status: '待确认',
+      statusBadge: 'warning',
+      meta: '2 处修改待处理',
+      sourceCount: '3',
+      noteCount: '4',
+      thread: '3.2 付费关系',
+      threadStatus: '待确认',
+      threadBadge: 'warning',
+      threadScope: '基于 v7'
+    },
+    view3: {
+      stage: '0',
+      scene: '智能照明改造',
+      side: 'side1',
+      dot: 'muted',
+      stageLabel: '阶段 0 · 材料入库',
+      title: '材料入库',
+      version: '待开始',
+      status: '未开始',
+      statusBadge: '',
+      meta: '等待导入材料',
+      sourceCount: '0',
+      noteCount: '0',
+      thread: '场景定义',
+      threadStatus: '未开始',
+      threadBadge: '',
+      threadScope: '基于新场景'
+    }
+  };
+
+  function setText(id, value) {
+    const node = document.getElementById(id);
+    if (node) node.textContent = value;
+  }
+
+  function syncScene(scene) {
+    document.querySelectorAll('[data-scene]').forEach((item) => {
+      item.classList.toggle('active', item.dataset.scene === scene);
+    });
+  }
+
+  function activateSide(side) {
+    // 只让顶部两个 Tab 呈现选中态；来源行、候选行等触发器不抢 active
+    document.querySelectorAll('.right-tabs .detail-tab').forEach((item) => {
+      const isActive = item.dataset.side === side;
+      item.classList.toggle('active', isActive);
+      item.setAttribute('aria-selected', String(isActive));
+    });
+    document.querySelectorAll('[data-side-panel]').forEach((item) => {
+      item.classList.toggle('active', item.dataset.sidePanel === side);
+    });
+  }
+
+  function syncRight(view) {
+    const copy = sceneCopy[view];
+    if (!copy) return;
+    setText('artifactStage', copy.stageLabel);
+    setText('artifactTitle', copy.title);
+    setText('artifactVersion', copy.version);
+    setText('artifactMeta', copy.meta);
+    setText('sourceCount', copy.sourceCount);
+    setText('noteCount', copy.noteCount);
+    setText('threadTitle', copy.thread);
+    setText('threadStatus', copy.threadStatus);
+    setText('threadScope', copy.threadScope);
+    const applied = view === 'view2' && proposalApplied;
+    const artifactDot = document.getElementById('artifactDot');
+    if (artifactDot) artifactDot.className = `dot ${applied ? 'success' : copy.dot}`.trim();
+    const artifactStatus = document.getElementById('artifactStatus');
+    if (artifactStatus) {
+      artifactStatus.textContent = applied ? '已确认' : copy.status;
+      artifactStatus.className = `badge ${applied ? 'success' : copy.statusBadge}`.trim();
+    }
+    if (applied) setText('artifactMeta', '修改已应用 · 下游 3 处待重算');
+    const threadStatus = document.getElementById('threadStatus');
+    if (threadStatus) {
+      threadStatus.textContent = applied ? '已应用' : copy.threadStatus;
+      threadStatus.className = `badge ${applied ? 'success' : copy.threadBadge}`.trim();
+    }
+    document.querySelectorAll('[data-inspector-for]').forEach((item) => {
+      item.hidden = item.dataset.inspectorFor !== view;
+    });
+    document.querySelectorAll('[data-thread-for]').forEach((item) => {
+      item.hidden = item.dataset.threadFor !== view;
+    });
+    document.querySelectorAll('.stage-tabs .stage-tab').forEach((tab) => {
+      const isActive = tab.dataset.stage === copy.stage;
+      tab.classList.toggle('active', isActive);
+      tab.setAttribute('aria-selected', String(isActive));
+    });
+    syncScene(copy.scene);
+    activateSide(copy.side);
+    const top = document.getElementById('inspectorTop');
+    if (top) top.scrollTop = 0;
+    const scroll = document.getElementById('threadScroll');
+    if (scroll) scroll.scrollTop = 0;
+    if (view === 'view3') {
+      setText('threadNewSceneName', workspaceCopy.view3.title);
+      setText('newSceneNameDisplay', workspaceCopy.view3.title);
+    }
+  }
+
+  const scrollMemory = {};
+  let activeView = 'view1';
+  let proposalApplied = false;
+  let cmdkIndex = 0;
+  let lastFocused = null;
+  let cmdkTrigger = null;
+  const drawerTriggers = { 'drawer-open': null, 'detail-open': null };
+
+  function setView(view) {
+    scrollMemory[activeView] = shell.mainScroll.scrollTop;
+    activeView = view;
+    shell.viewTriggers.forEach((item) => {
+      const isActive = item.dataset.view === view;
+      item.classList.toggle('active', isActive);
+      if (item.getAttribute('role') === 'tab') item.setAttribute('aria-selected', String(isActive));
+      if (item.classList.contains('nav-item')) {
+        if (isActive) item.setAttribute('aria-current', 'page');
+        else item.removeAttribute('aria-current');
+      }
+    });
+    shell.views.forEach((item) => item.classList.toggle('active', item.dataset.panel === view));
+    // workspaceCopy 缺 key 时兜底：新增导航项忘记补文案只降级、不抛错（否则整页交互死掉）
+    const copy = workspaceCopy[view];
+    if (!copy) console.warn(`[原型模板] workspaceCopy 缺少 "${view}" 的文案，页头与输入栏上下文已留空。请在 workspaceCopy 中补齐 ${view} 的 title/subtitle/input。`);
+    shell.workspaceTitle.textContent = (copy && copy.title) || '';
+    shell.workspaceSubtitle.textContent = (copy && copy.subtitle) || '';
+    shell.inputScope.textContent = (copy && copy.input) || '';
+    shell.textarea.placeholder = (copy && copy.placeholder) || '';
+    if (typeof syncRight === 'function') syncRight(view);
+    // 等一帧让 content-visibility 面板按真实高度渲染，否则滚动恢复会被浏览器校正掉
+    requestAnimationFrame(() => {
+      shell.mainScroll.scrollTop = scrollMemory[view] || 0;
+    });
+  }
+
+  // chip / 意图开关：同一容器内互斥激活。作用域按容器，避免清掉另一组（详情列有两个 context-bar）
+  function activateChip(target, className) {
+    target.parentElement.querySelectorAll(`.${className}`).forEach((item) => {
+      item.classList.remove('active');
+      item.setAttribute('aria-pressed', 'false');
+    });
+    target.classList.add('active');
+    target.setAttribute('aria-pressed', 'true');
+  }
+
+  // 按标记里已有的 .active 补齐 aria-pressed（屏幕阅读器要读选中态；作者不必手写该属性）
+  function syncChipAria() {
+    document.querySelectorAll('.session-chip, .context-chip, .intent').forEach((item) => {
+      item.setAttribute('aria-pressed', String(item.classList.contains('active')));
+    });
+  }
+
+  // 列收起柄的初始状态：应用若把 sidebar-collapsed / detail-collapsed 写进 <body> 当默认态
+  // （三种起始布局：默认全展开 / 左收 / 右收 / 双收），柄的 aria 与文案要跟着对上
+  function syncCollapseAria() {
+    [['sidebar', '.edge-toggle--side', '导航列'], ['detail', '.edge-toggle--detail', '详情列']].forEach(([key, sel, name]) => {
+      const btn = document.querySelector(sel);
+      if (!btn) return;
+      const collapsed = document.body.classList.contains(`${key}-collapsed`);
+      btn.setAttribute('aria-expanded', String(!collapsed));
+      btn.setAttribute('aria-label', `${collapsed ? '展开' : '收起'}${name}`);
+    });
+  }
+
+  function toast(message) {
+    const node = document.createElement('div');
+    node.className = 'toast';
+    node.textContent = message;
+    shell.toastStack.appendChild(node);
+    setTimeout(() => {
+      node.classList.add('out');
+      node.addEventListener('animationend', () => node.remove(), { once: true });
+    }, 2400);
+  }
+
+  // 多场景共用一个 Dialog：触发按钮可用 data-dialog-title / -body / -confirm 提供本场景文案；
+  // 不带这些属性则保持模板静态文案（单场景应用的默认）。确认按钮文字切换后焦点仍落在它上面
+  function openDialog(trigger) {
+    lastFocused = trigger || document.activeElement;
+    if (trigger) {
+      const title = trigger.getAttribute('data-dialog-title');
+      const body = trigger.getAttribute('data-dialog-body');
+      const confirmText = trigger.getAttribute('data-dialog-confirm');
+      const titleEl = shell.dialog.querySelector('#confirmDialogTitle');
+      const bodyEl = shell.dialog.querySelector('.dialog-body');
+      const confirmEl = shell.dialog.querySelector('[data-dialog-confirm]');
+      if (title && titleEl) titleEl.textContent = title;
+      if (body && bodyEl) bodyEl.textContent = body;
+      if (confirmText && confirmEl) confirmEl.textContent = confirmText;
+    }
+    shell.dialog.classList.add('open');
+    shell.dialog.querySelector('[data-dialog-confirm]').focus();
+  }
+
+  function closeDialog() {
+    shell.dialog.classList.remove('open');
+    // 触发按钮可能位于未激活的 Tab 面板内（display:none 子树 focus() 会静默失败）
+    if (lastFocused && lastFocused.offsetParent !== null) lastFocused.focus();
+  }
+
+  function setDrawer(name, on) {
+    const other = name === 'drawer-open' ? 'detail-open' : 'drawer-open';
+    if (on) {
+      // 记下打开抽屉前的焦点（通常就是那个 toggle 按钮），关闭时归还，避免焦点掉到 body
+      if (!document.body.classList.contains(name)) {
+        const origin = document.activeElement;
+        drawerTriggers[name] = origin && origin !== document.body ? origin : null;
+      }
+      drawerTriggers[other] = null; // 互斥关掉的另一个抽屉不再归还（焦点已移入新抽屉）
+    }
+    document.body.classList.toggle(name, on);
+    document.body.style.overflow = on ? 'hidden' : '';
+    if (on) document.body.classList.remove(other);
+    else {
+      const trigger = drawerTriggers[name];
+      drawerTriggers[name] = null;
+      if (trigger && trigger.offsetParent !== null) trigger.focus();
+    }
+  }
+
+  function closeDrawers() {
+    setDrawer('drawer-open', false);
+    setDrawer('detail-open', false);
+  }
+
+  // 桌面端列收起（v1.8）：左/右独立收放，轨道归 0、列移出可达树；瞬时切换（布局属性不做动画）。
+  // 柄本身保持焦点，aria-expanded 随状态翻转
+  function toggleColumn(which) {
+    const cls = which === 'sidebar' ? 'sidebar-collapsed' : 'detail-collapsed';
+    const btn = document.querySelector(which === 'sidebar' ? '.edge-toggle--side' : '.edge-toggle--detail');
+    const collapsed = document.body.classList.toggle(cls);
+    const name = which === 'sidebar' ? '导航列' : '详情列';
+    btn.setAttribute('aria-expanded', String(!collapsed));
+    btn.setAttribute('aria-label', (collapsed ? '展开' : '收起') + name);
+  }
+
+  function visibleCmdkItems() {
+    return shell.cmdkItems.filter((item) => !item.hidden);
+  }
+
+  function setCmdkActive(index) {
+    const items = visibleCmdkItems();
+    if (!items.length) return;
+    cmdkIndex = (index + items.length) % items.length;
+    shell.cmdkItems.forEach((item) => item.classList.remove('active'));
+    items[cmdkIndex].classList.add('active');
+    items[cmdkIndex].scrollIntoView({ block: 'nearest' });
+  }
+
+  function filterCmdk(keyword) {
+    const query = keyword.trim().toLowerCase();
+    shell.cmdkItems.forEach((item) => {
+      item.hidden = Boolean(query) && !item.textContent.toLowerCase().includes(query);
+    });
+    shell.cmdkEmpty.hidden = visibleCmdkItems().length > 0;
+    setCmdkActive(0);
+  }
+
+  function openCmdk() {
+    // 记下打开前的焦点，关闭时归还；停在 body 上说明本来就没有焦点，不必记
+    cmdkTrigger = document.activeElement === document.body ? null : document.activeElement;
+    shell.cmdk.classList.add('open');
+    shell.cmdkInput.value = '';
+    filterCmdk('');
+    shell.cmdkInput.focus();
+  }
+
+  function closeCmdk() {
+    shell.cmdk.classList.remove('open');
+    const focused = document.activeElement;
+    // 命令若已把焦点交给别的元素（focus-input 给了输入栏、confirm-dialog 给了对话框）就不抢回来
+    const movedAway = focused && focused !== document.body && !shell.cmdk.contains(focused);
+    if (movedAway) {
+      // 接力：接管的浮层（如对话框）记的归还目标是已隐藏的面板输入框，改用 ⌘K 之前的元素
+      if (cmdkTrigger) lastFocused = cmdkTrigger;
+    } else if (cmdkTrigger && cmdkTrigger.offsetParent !== null) {
+      cmdkTrigger.focus();
+    }
+    cmdkTrigger = null;
+  }
+
+  function runCommand(cmd) {
+    if (cmd.startsWith('view:')) {
+      const view = cmd.slice(5);
+      setView(view);
+      if (workspaceCopy[view]) toast(demoCopy.switched(workspaceCopy[view].title));
+    } else if (cmd === 'focus-input') {
+      shell.textarea.focus();
+    } else if (cmd === 'open-cmdk') {
+      openCmdk();
+    } else if (cmd === 'confirm-dialog') {
+      openDialog();
+    } else if (cmd === 'new-scene') {
+      openNewScene();
+    }
+  }
+
+  function autoGrow() {
+    // 上限与 .input-textarea 的 max-height 同源（--size-180），避免 CSS 与 JS 各写一个数
+    shell.textarea.style.height = 'auto';
+    shell.textarea.style.height = `${Math.min(shell.textarea.scrollHeight, shell.textareaMaxHeight)}px`;
+  }
+
+  function sendMessage() {
+    const text = shell.textarea.value.trim();
+    if (!text) return;
+    const thread = document.getElementById('threadScroll');
+    const stream = thread && thread.querySelector(`[data-thread-for="${activeView}"] .conversation-stream`);
+    if (!stream) { toast(demoCopy.sent); return; }
+    const time = new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+    const message = document.createElement('div');
+    message.className = 'message user';
+    message.innerHTML = `<div class="message-meta">${time} · 用户</div><div class="bubble"><p></p></div>`;
+    message.querySelector('p').textContent = text;
+    stream.appendChild(message);
+    thread.scrollTop = thread.scrollHeight;
+    shell.textarea.value = '';
+    autoGrow();
+    toast(demoCopy.sent);
+  }
+
+  // 事件委托：全站点击统一入口，不给逐元素挂监听
+  document.addEventListener('click', (event) => {
+    if (event.target.classList.contains('cmdk-overlay')) { closeCmdk(); return; }
+    if (event.target.classList.contains('dialog-backdrop')) { closeDialog(); return; }
+    if (event.target.hasAttribute('data-close-drawers')) { closeDrawers(); return; }
+
+    const target = event.target.closest('button');
+    if (!target) return;
+
+    if (target.dataset.view) { setView(target.dataset.view); return; }
+    if (target.dataset.side) {
+      activateSide(target.dataset.side);
+      return;
+    }
+    if (target.classList.contains('session-chip')) { activateChip(target, 'session-chip'); return; }
+    if (target.classList.contains('context-chip')) { activateChip(target, 'context-chip'); return; }
+    if (target.classList.contains('intent')) { activateChip(target, 'intent'); return; }
+    if (target.classList.contains('sample-card')) {
+      shell.textarea.value = target.textContent.trim();
+      autoGrow();
+      shell.textarea.focus();
+      return;
+    }
+    // closeCmdk 只对"从面板内发起"的命令生效——外部按钮（如页头搜索图标）用 data-cmd 打开面板时，
+    // 先 open 后 close 会把刚打开的面板立刻关掉
+    if (target.dataset.cmd) {
+      const fromCmdk = !!target.closest('#cmdk');
+      runCommand(target.dataset.cmd);
+      if (fromCmdk) closeCmdk();
+      return;
+    }
+    if (target.classList.contains('drawer-toggle')) { setDrawer('drawer-open', true); return; }
+    if (target.classList.contains('detail-toggle')) { setDrawer('detail-open', true); return; }
+    if (target.classList.contains('edge-toggle--side')) { toggleColumn('sidebar'); return; }
+    if (target.classList.contains('edge-toggle--detail')) { toggleColumn('detail'); return; }
+    if (target.hasAttribute('data-dialog-open')) { openDialog(target); return; }
+    if (target.hasAttribute('data-dialog-close')) { closeDialog(); return; }
+    if (target.hasAttribute('data-dialog-confirm')) { closeDialog(); toast(demoCopy.executed); return; }
+    if (target.classList.contains('send-btn')) { sendMessage(); return; }
+    // 引用/导入等输入栏按钮：名称是槽位，故读按钮自身文字拼提示，不写死
+    if (target.classList.contains('input-action')) { toast(target.textContent.trim() + demoCopy.actionSuffix); return; }
+  });
+
+  document.addEventListener('keydown', (event) => {
+    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+      event.preventDefault();
+      if (shell.cmdk.classList.contains('open')) closeCmdk();
+      else openCmdk();
+      return;
+    }
+    if (event.key === 'Escape') {
+      if (shell.cmdk.classList.contains('open')) closeCmdk();
+      else if (shell.dialog.classList.contains('open')) closeDialog();
+      else if (document.body.classList.contains('drawer-open')) setDrawer('drawer-open', false);
+      else if (document.body.classList.contains('detail-open')) setDrawer('detail-open', false);
+      return;
+    }
+    if (shell.cmdk.classList.contains('open')) {
+      if (event.key === 'ArrowDown') { event.preventDefault(); setCmdkActive(cmdkIndex + 1); }
+      else if (event.key === 'ArrowUp') { event.preventDefault(); setCmdkActive(cmdkIndex - 1); }
+      else if (event.key === 'Enter') {
+        event.preventDefault();
+        const item = visibleCmdkItems()[cmdkIndex];
+        if (item) runCommand(item.dataset.cmd);
+        closeCmdk();
+      }
+      return;
+    }
+    // Tab 组方向键切换：焦点随选中的 Tab 移动
+    const tablist = event.target.closest('[role="tablist"]');
+    if (tablist && (event.key === 'ArrowRight' || event.key === 'ArrowLeft')) {
+      event.preventDefault();
+      const tabs = Array.from(tablist.querySelectorAll('[role="tab"]'));
+      if (!tabs.includes(event.target)) return;
+      const dir = event.key === 'ArrowRight' ? 1 : -1;
+      const next = tabs[(tabs.indexOf(event.target) + dir + tabs.length) % tabs.length];
+      next.focus();
+      next.click();
+      return;
+    }
+    // 导航列上下键：焦点在侧栏按钮（主操作/导航项/分组列表）间循环移动
+    const sidebar = event.target.closest('.sidebar-scroll');
+    if (sidebar && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) {
+      const items = Array.from(sidebar.querySelectorAll('button'));
+      const index = items.indexOf(event.target);
+      if (index === -1) return;
+      event.preventDefault();
+      const dir = event.key === 'ArrowDown' ? 1 : -1;
+      items[(index + dir + items.length) % items.length].focus();
+    }
+  });
+
+  shell.cmdkInput.addEventListener('input', () => filterCmdk(shell.cmdkInput.value));
+  shell.textarea.addEventListener('input', autoGrow);
+  shell.textarea.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault();
+      sendMessage();
+    }
+  });
+
+  // 表单提交：原型不做真实提交，一律拦掉默认行为——否则 <form> 会整页重载，演示状态全丢
+  document.addEventListener('submit', (event) => {
+    event.preventDefault();
+    toast(demoCopy.executed);
+  });
+
+  // ===== 右栏上下分栏：拖动 / 键盘 / 双击复位 =====
+  const inspectorStack = document.getElementById('inspectorStack');
+  const inspectorTop = document.getElementById('inspectorTop');
+  const splitHandle = document.getElementById('splitHandle');
+  const SPLIT_MIN = 22;
+  const SPLIT_MAX = 58;
+  const SPLIT_DEFAULT = 30;
+  let splitPercent = SPLIT_DEFAULT;
+  let isSplitDragging = false;
+
+  function applySplit(percent, persist = true) {
+    splitPercent = Math.min(SPLIT_MAX, Math.max(SPLIT_MIN, percent));
+    if (inspectorTop) inspectorTop.style.flexBasis = `${splitPercent}%`;
+    if (splitHandle) {
+      splitHandle.setAttribute('aria-valuenow', String(Math.round(splitPercent)));
+      splitHandle.setAttribute('aria-valuetext', `上方 ${Math.round(splitPercent)}%，下方 ${Math.round(100 - splitPercent)}%`);
+    }
+    if (persist) {
+      try { localStorage.setItem('scene.inspector.split', String(splitPercent)); } catch (_) { /* 原型环境忽略 */ }
+    }
+  }
+
+  try {
+    const saved = parseFloat(localStorage.getItem('scene.inspector.split') || '');
+    if (Number.isFinite(saved)) splitPercent = saved;
+  } catch (_) { /* 忽略 */ }
+  applySplit(splitPercent, false);
+
+  if (splitHandle) {
+    splitHandle.addEventListener('pointerdown', (event) => {
+      isSplitDragging = true;
+      splitHandle.setPointerCapture(event.pointerId);
+      event.preventDefault();
+    });
+    splitHandle.addEventListener('pointermove', (event) => {
+      if (!isSplitDragging || !inspectorStack) return;
+      const rect = inspectorStack.getBoundingClientRect();
+      applySplit(((event.clientY - rect.top) / rect.height) * 100);
+    });
+    const stopSplit = (event) => {
+      if (!isSplitDragging) return;
+      isSplitDragging = false;
+      try { splitHandle.releasePointerCapture(event.pointerId); } catch (_) { /* 忽略 */ }
+    };
+    splitHandle.addEventListener('pointerup', stopSplit);
+    splitHandle.addEventListener('pointercancel', stopSplit);
+    splitHandle.addEventListener('dblclick', () => applySplit(SPLIT_DEFAULT));
+    splitHandle.addEventListener('keydown', (event) => {
+      if (event.key === 'ArrowUp') { event.preventDefault(); applySplit(splitPercent - 2); }
+      else if (event.key === 'ArrowDown') { event.preventDefault(); applySplit(splitPercent + 2); }
+      else if (event.key === 'Home') { event.preventDefault(); applySplit(SPLIT_MIN); }
+      else if (event.key === 'End') { event.preventDefault(); applySplit(SPLIT_MAX); }
+    });
+  }
+
+  // ===== 修改提案 =====
+  function applyProposal() {
+    proposalApplied = true;
+    const original = document.getElementById('originalText');
+    if (original) {
+      original.textContent = '行政部是预算归属方，设备部是需求提出方。2025 年智慧办公专项预算归口行政部。';
+    }
+    document.querySelectorAll('[data-apply]').forEach((button) => {
+      button.disabled = true;
+      button.textContent = '已应用';
+    });
+    document.querySelectorAll('[data-reject]').forEach((button) => { button.disabled = true; });
+    const badge = document.getElementById('proposalBadge');
+    if (badge) {
+      badge.textContent = '已应用';
+      badge.className = 'badge success';
+    }
+    document.querySelectorAll('[data-thread-for="view2"] .attachment-head .badge').forEach((item) => {
+      item.textContent = '已应用';
+      item.className = 'badge success';
+    });
+    setText('artifactStatus', '已确认');
+    const artifactStatus = document.getElementById('artifactStatus');
+    if (artifactStatus) artifactStatus.className = 'badge success';
+    const artifactDot = document.getElementById('artifactDot');
+    if (artifactDot) artifactDot.className = 'dot success';
+    setText('artifactMeta', '修改已应用 · 下游 3 处待重算');
+    setText('threadStatus', '已应用');
+    const threadStatus = document.getElementById('threadStatus');
+    if (threadStatus) threadStatus.className = 'badge success';
+    toast('修改已应用（原型演示）；下游 3 处引用将标记待重算');
+  }
+
+  // ===== 新建场景弹窗 =====
+  const newSceneDialog = document.getElementById('newSceneDialog');
+  const newSceneName = document.getElementById('newSceneName');
+  const newSceneError = document.getElementById('newSceneError');
+  const newSceneItem = document.getElementById('newSceneItem');
+  let newSceneFocus = null;
+  let newScenePrevOverflow = '';
+
+  function openNewScene() {
+    if (!newSceneDialog) return;
+    newSceneFocus = document.activeElement;
+    newScenePrevOverflow = document.body.style.overflow;
+    newSceneDialog.classList.add('open');
+    document.body.style.overflow = 'hidden';
+    if (newSceneError) newSceneError.hidden = true;
+    if (newSceneName) {
+      newSceneName.focus();
+      newSceneName.select();
+    }
+  }
+
+  function closeNewScene() {
+    if (!newSceneDialog) return;
+    newSceneDialog.classList.remove('open');
+    document.body.style.overflow = newScenePrevOverflow;
+    if (newSceneFocus && newSceneFocus.offsetParent !== null) newSceneFocus.focus();
+    newSceneFocus = null;
+  }
+
+  function createScene() {
+    const name = (newSceneName && newSceneName.value.trim()) || '';
+    if (!name) {
+      if (newSceneError) newSceneError.hidden = false;
+      if (newSceneName) newSceneName.focus();
+      return;
+    }
+    if (newSceneItem) {
+      newSceneItem.hidden = false;
+      newSceneItem.dataset.scene = name;
+      const title = newSceneItem.querySelector('.title');
+      if (title) title.textContent = name;
+    }
+    workspaceCopy.view3.title = name;
+    workspaceCopy.view3.scene = name;
+    setText('newSceneNameDisplay', name);
+    setText('threadNewSceneName', name);
+    const customer = document.getElementById('newSceneCustomer');
+    const demand = document.getElementById('newSceneDemand');
+    if (customer) setText('newSceneCustomerDisplay', customer.value.trim() || '待补充');
+    if (demand) setText('newSceneDemandDisplay', demand.value.trim() || '待补充');
+    closeNewScene();
+    setView('view3');
+    toast(`已创建「${name}」，右栏已定位到阶段 0 · 材料入库（原型演示）`);
+  }
+
+  if (newSceneDialog) {
+    newSceneDialog.addEventListener('click', (event) => {
+      if (event.target === newSceneDialog) closeNewScene();
+    });
+    // 弹窗内 Tab 循环，避免键盘焦点跑到背后的产物会话
+    newSceneDialog.addEventListener('keydown', (event) => {
+      if (event.key !== 'Tab') return;
+      const focusables = Array.from(newSceneDialog.querySelectorAll('button:not([disabled]), input, textarea'))
+        .filter((item) => item.offsetParent !== null);
+      if (!focusables.length) return;
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    });
+  }
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && newSceneDialog && newSceneDialog.classList.contains('open')) {
+      closeNewScene();
+    }
+  });
+
+  // ===== 本原型的补充交互 =====
+  document.addEventListener('click', (event) => {
+    const target = event.target.closest('button');
+    if (!target) return;
+
+    if (target.dataset.scene && !target.dataset.view) {
+      toast(`「${target.dataset.scene}」尚未展开（原型演示）`);
+      return;
+    }
+    if (target.hasAttribute('data-new-scene')) { openNewScene(); return; }
+    if (target.hasAttribute('data-new-scene-close')) { closeNewScene(); return; }
+    if (target.hasAttribute('data-new-scene-submit')) { createScene(); return; }
+    if (target.dataset.sourceOpen) {
+      toast(`正在打开「${target.dataset.sourceOpen}」（原型演示）`);
+      return;
+    }
+    if (target.hasAttribute('data-load-earlier')) {
+      toast('已加载更早 20 条消息（原型演示）');
+      return;
+    }
+    if (target.hasAttribute('data-summary-toggle')) {
+      const divider = target.closest('.compress-divider');
+      const summary = divider && divider.nextElementSibling;
+      if (summary && summary.classList.contains('summary-card')) {
+        summary.hidden = !summary.hidden;
+        target.textContent = summary.hidden ? '查看摘要' : '收起摘要';
+      }
+      return;
+    }
+    if (target.hasAttribute('data-apply')) { applyProposal(); return; }
+    if (target.hasAttribute('data-reject')) {
+      const badge = document.getElementById('proposalBadge');
+      if (badge) { badge.textContent = '已拒绝'; badge.className = 'badge'; }
+      toast('已拒绝修改，原文保持不变（原型演示）');
+      return;
+    }
+    if (target.hasAttribute('data-copy')) { toast('引用已复制（原型演示）'); return; }
+    if (target.dataset.toast) { toast(target.dataset.toast); return; }
+  });
+
+  syncChipAria();
+  syncCollapseAria();
+  setView('view1');
+</script>
+</body>
+</html>
