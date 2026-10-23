@@ -81,6 +81,28 @@ describe("createDb", () => {
           .all() as { title: string; kind: string }[];
         expect(rows[0]).toEqual({ title: "阶段 1 · 分析", kind: "阶段分析" });
         expect(rows[1]).toEqual({ title: "场景定义", kind: "用户" });
+
+        // v2 产物会话：旧库缺列时逐列补齐，唯一索引只能在补列之后建（变更表 #295）
+        const cols = (up.db.pragma("table_info(conversation)") as { name: string }[]).map(
+          (c) => c.name,
+        );
+        expect(cols).toEqual(
+          expect.arrayContaining([
+            "kind",
+            "scope_type",
+            "scope_id",
+            "step",
+            "block",
+            "purpose",
+            "summary",
+            "context_hash",
+            "last_activity_at",
+          ]),
+        );
+        const indexes = up.db
+          .prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'conversation'")
+          .all() as { name: string }[];
+        expect(indexes.map((i) => i.name)).toContain("ux_conversation_artifact_active");
       } finally {
         up.db.close();
       }

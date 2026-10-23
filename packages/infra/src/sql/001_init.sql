@@ -260,6 +260,15 @@ CREATE TABLE IF NOT EXISTS conversation (
   status           TEXT NOT NULL CHECK (status IN ('活跃','已归档')),
   kind             TEXT NOT NULL DEFAULT '用户',
   dsh_session_id   TEXT NOT NULL,
+  -- v2 产物会话：一个 (scenario_id, step, scope_type, scope_id) 只有一条活跃会话
+  scope_type       TEXT NOT NULL DEFAULT 'legacy',
+  scope_id         TEXT NOT NULL DEFAULT '',
+  step             INTEGER,
+  block            TEXT,
+  purpose          TEXT NOT NULL DEFAULT 'assistant',
+  summary          TEXT NOT NULL DEFAULT '',
+  context_hash     TEXT NOT NULL DEFAULT '',
+  last_activity_at TEXT,
   created_at       TEXT NOT NULL,
   updated_at       TEXT NOT NULL
 );

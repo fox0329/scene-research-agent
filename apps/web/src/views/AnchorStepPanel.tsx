@@ -172,6 +172,14 @@ export const AnchorStepPanel: React.FC<AnchorStepPanelProps> = ({
       summary,
       summaryLoading,
       brief,
+      artifact: {
+        step: 1,
+        type: "anchor",
+        id: "表1-1",
+        block: null,
+        title: "场景定义与边界",
+        revision: anchor.map((row) => `${row.item}=${row.content}`).join("\u0001"),
+      },
       onRefreshSummary: () => void loadSummary(true),
     };
   }, [projectId, summary, summaryLoading, brief, loadSummary]);

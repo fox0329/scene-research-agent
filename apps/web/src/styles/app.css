@@ -1837,7 +1837,7 @@ td.ed {
 .empty-hint { margin: 0; padding: var(--s4); font-size: var(--ts); color: var(--ct3); }
 
 /* ─────────────────────────────────────────────────────────────
-   右栏阶段总结（v2.10）：只有一个 Tab，正文只两块
+   右栏产物信息来源 / 备注（v2：#295 后与唯一会话同属产物面板）
    ① 调研信息来源（可点开的 http(s) 源地址）② 结论提醒（确定性规则推导）
    ───────────────────────────────────────────────────────────── */
 
@@ -2791,4 +2791,353 @@ td.ed {
   font-size: var(--tx);
   line-height: 1.55;
   overflow-wrap: anywhere;
+}
+
+/* ── 右栏 · 产物唯一会话（v2，变更表 #295） ───────────────── */
+.artifact-head {
+  flex-shrink: 0;
+  padding: var(--s3) var(--s4) var(--s2);
+  border-bottom: 1px solid var(--cb);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+}
+.artifact-eyebrow {
+  display: flex;
+  align-items: center;
+  gap: var(--s1);
+  font-size: var(--t2x);
+  color: var(--ct3);
+  min-width: 0;
+}
+.artifact-eyebrow > span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.artifact-title-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  min-width: 0;
+}
+.artifact-title {
+  margin: 0;
+  font-family: var(--fh);
+  font-size: var(--tb);
+  font-weight: var(--fb);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.artifact-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--s1);
+  font-size: var(--tx);
+  color: var(--ct3);
+  min-width: 0;
+}
+.artifact-meta > span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dot {
+  width: var(--size-7);
+  height: var(--size-7);
+  border-radius: var(--rp);
+  background: var(--ct3);
+  flex-shrink: 0;
+}
+.dot.success { background: var(--cs); }
+.dot.warning { background: var(--cw); }
+.dot.muted { background: var(--ct3); }
+
+.artifact-tabs {
+  flex-shrink: 0;
+  display: flex;
+  border-bottom: 1px solid var(--cb);
+  padding: 0 var(--s2);
+  gap: var(--s1);
+}
+.detail-tab {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--ct3);
+  font: inherit;
+  font-size: var(--tx);
+  padding: var(--s2) var(--s25);
+  min-height: var(--size-36);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s1);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: color var(--d) var(--e), border-color var(--d) var(--e);
+}
+.detail-tab:hover { color: var(--ct); }
+.detail-tab.active {
+  color: var(--cp);
+  border-bottom-color: var(--cp);
+  font-weight: var(--fm2);
+}
+.detail-tab .badge {
+  font-size: var(--t2x);
+  padding: 0 var(--s1);
+  min-width: var(--size-20);
+}
+
+.artifact-stack {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: 30% var(--size-8) minmax(0, 1fr);
+}
+.artifact-inspector {
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  padding: var(--s3) var(--s4);
+}
+.artifact-sec { display: flex; flex-direction: column; gap: var(--s2); }
+.artifact-sec-title {
+  font-size: var(--txs);
+  font-weight: var(--fm2);
+  color: var(--ct2);
+}
+.note-caption {
+  display: flex;
+  align-items: center;
+  gap: var(--s1);
+  font-size: var(--tx);
+  color: var(--ct3);
+  line-height: 1.5;
+}
+
+.artifact-split {
+  cursor: row-resize;
+  touch-action: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--cpg);
+  border-top: 1px solid var(--cb);
+  border-bottom: 1px solid var(--cb);
+  z-index: var(--z-sticky);
+}
+.artifact-split:hover,
+.artifact-split:focus-visible { background: var(--cp-s); }
+.artifact-split-grip {
+  width: var(--size-20);
+  height: var(--size-4);
+  border-top: 1px solid var(--ct3);
+  border-bottom: 1px solid var(--ct3);
+}
+
+.thread-pane {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--csr);
+}
+.thread-head {
+  flex-shrink: 0;
+  padding: var(--s2) var(--s4) var(--s1);
+  border-bottom: 1px solid var(--cb);
+}
+.thread-title-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  min-width: 0;
+}
+.thread-title-row strong {
+  font-size: var(--txs);
+  font-weight: var(--fb);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.thread-sub {
+  display: flex;
+  align-items: center;
+  gap: var(--s1);
+  flex-wrap: wrap;
+  margin-top: var(--s05);
+  font-size: var(--t2x);
+  color: var(--ct3);
+}
+.thread-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  padding: var(--s3) var(--s4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+}
+.thread-empty {
+  margin: auto 0;
+  padding: var(--s3) 0;
+  color: var(--ct3);
+  font-size: var(--txs);
+  line-height: 1.65;
+}
+.thread-empty strong {
+  display: block;
+  margin-bottom: var(--s1);
+  color: var(--ct2);
+  font-size: var(--txs);
+}
+.thread-empty p { margin: 0; }
+.thread-status {
+  font-size: var(--tx);
+  color: var(--ct3);
+  line-height: 1.5;
+}
+.thread-status.error { color: var(--ce); }
+.thread-stale {
+  padding: var(--s2) var(--s25);
+  border: 1px solid var(--cw);
+  border-radius: var(--r8);
+  background: var(--cw-s);
+  color: var(--ct2);
+  font-size: var(--tx);
+  line-height: 1.55;
+}
+.compress-divider {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s2);
+  padding: var(--s1) var(--s2);
+  border-top: 1px dashed var(--cb);
+  border-bottom: 1px dashed var(--cb);
+  color: var(--ct3);
+  font-size: var(--t2x);
+}
+.candidate-action {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--cp);
+  font: inherit;
+  font-size: var(--t2x);
+  cursor: pointer;
+  padding: 0;
+  min-height: var(--size-28);
+}
+.candidate-action:hover { text-decoration: underline; }
+.summary-card {
+  padding: var(--s2) var(--s25);
+  border: 1px solid var(--cb);
+  border-radius: var(--r8);
+  background: var(--cpg);
+  font-size: var(--tx);
+  color: var(--ct2);
+  line-height: 1.6;
+}
+.summary-card strong {
+  display: block;
+  margin-bottom: var(--s1);
+  color: var(--ct);
+  font-size: var(--tx);
+}
+.summary-card p {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.thread-msg {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--s05);
+  max-width: 100%;
+}
+.thread-msg.user { align-items: flex-end; }
+.thread-msg-meta {
+  font-size: var(--t2x);
+  color: var(--ct3);
+}
+.thread-msg-bubble {
+  max-width: 92%;
+  padding: var(--s2) var(--s25);
+  border: 1px solid var(--cb);
+  border-radius: var(--r8);
+  background: var(--cpg);
+  color: var(--ct);
+  font-size: var(--txs);
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.thread-msg.user .thread-msg-bubble {
+  background: var(--cp-s);
+  border-color: var(--cp);
+}
+
+.thread-composer {
+  flex-shrink: 0;
+  border-top: 1px solid var(--cb);
+  padding: var(--s2) var(--s3) var(--s3);
+  background: var(--csr);
+}
+.thread-input-shell {
+  border: 1px solid var(--cb);
+  border-radius: var(--r8);
+  background: var(--cf);
+  padding: var(--s1) var(--s2);
+  box-shadow: var(--sh);
+}
+.thread-input-shell:focus-within { border-color: var(--cp); }
+.thread-input-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s2);
+  padding: 0 var(--s05);
+}
+.thread-input-scope {
+  font-size: var(--t2x);
+  color: var(--ct3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.thread-textarea {
+  width: 100%;
+  border: none;
+  resize: none;
+  outline: none;
+  background: transparent;
+  color: var(--ct);
+  font: inherit;
+  font-size: var(--txs);
+  line-height: 1.55;
+  padding: var(--s1) var(--s05);
+  min-height: var(--size-48);
+  max-height: var(--size-100);
+}
+.thread-textarea::placeholder { color: var(--ct3); }
+.thread-input-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s2);
+  padding: 0 var(--s05) var(--s05);
+}
+.thread-input-hint {
+  font-size: var(--t2x);
+  color: var(--ct3);
+}
+
+@media (max-width: 900px) {
+  .artifact-inspector { padding: var(--s2) var(--s3); }
+  .thread-scroll { padding: var(--s2) var(--s3); }
+  .thread-composer { padding: var(--s2); }
 }

@@ -303,15 +303,24 @@ export interface StageData extends TraceableFields {
 }
 
 /**
- * 会话类型（变更表 #174）
+ * 会话类型（变更表 #174 / #295）
  *
  * `阶段分析` = 阶段分析跑一次登记的内部会话（历史上每个阶段一条，左侧栏不再显示——
  * 用户定调「场景下面不需要每个阶段生成一个会话，没有意义」）；`用户` = 用户自己开的对话。
+ * `产物会话` = 右栏某个阶段产物的唯一会话（一个产物一条，不出现在左栏）。
  * 缺省按 `用户` 处理，旧库补列时也回填成 `用户`。
  */
-export type ConversationKind = "用户" | "阶段分析";
+export type ConversationKind = "用户" | "阶段分析" | "产物会话";
 
-/** 会话（用户对话；阶段分析不再登记会话，历史行的 kind = 阶段分析） */
+/** 产物会话的作用域类型（与右栏最小单元一致） */
+export type ArtifactScopeType = "anchor" | "table" | "deliverable";
+
+/**
+ * 会话（用户对话；阶段分析 / 产物会话为内部会话，不进入左栏）
+ *
+ * v2 产物会话额外使用 scope_* / step / block / summary / context_hash 字段；
+ * 旧会话这些列为空，按 legacy 处理。
+ */
 export interface Conversation {
   id: string;
   scenario_id: string;
@@ -322,6 +331,41 @@ export interface Conversation {
   updated_at: string;
   /** 会话类型；缺省（旧数据）视为 `用户` */
   kind?: ConversationKind;
+  /** 产物作用域；旧会话为 legacy */
+  scope_type?: ArtifactScopeType | "legacy";
+  /** 产物 id：表号 / 表1-1 / solution */
+  scope_id?: string;
+  /** 流程步 1–6 */
+  step?: number | null;
+  /** 表内子块（展示用，不参与会话唯一性） */
+  block?: string | null;
+  /** 当前用途，默认 assistant；为后续 verify/optimize 预留 */
+  purpose?: string;
+  /** 最近一次上下文压缩摘要（确定性生成） */
+  summary?: string;
+  /** 生成摘要时使用的产物上下文指纹 */
+  context_hash?: string;
+  /** 最近一次发消息时间 */
+  last_activity_at?: string | null;
+}
+
+/**
+ * 阶段产物引用（右栏最小单元）
+ *
+ * 一个 ArtifactRef 对应一条「产物会话」；block 只用于展示与内容过滤，
+ * 不参与会话唯一性——同一张表的多个子块共享一条会话。
+ */
+export interface ArtifactRef {
+  /** 流程步 1–6 */
+  step: number;
+  /** 数据阶段 0–5；交付物为 5 */
+  stage: number | null;
+  type: ArtifactScopeType;
+  /** 表号 / 表1-1 / solution */
+  id: string;
+  block?: string | null;
+  /** 用户可见的产物名 */
+  title: string;
 }
 
 /** 消息 */

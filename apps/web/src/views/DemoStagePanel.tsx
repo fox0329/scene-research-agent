@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   tablesOfStage,
   tableDef,
+  tableDisplayName,
   rowBelongsToBlock,
   type InfoStageId,
 } from "@scene/contract";
@@ -119,9 +120,20 @@ export const DemoStagePanel: React.FC<DemoStagePanelProps> = ({
       summary,
       summaryLoading: false,
       brief,
+      ...(stepId !== undefined && activeTable
+        ? {
+            artifact: {
+              step: stepId,
+              type: "table" as const,
+              id: activeTable,
+              block,
+              title: tableDisplayName(activeTable),
+            },
+          }
+        : {}),
       onRefreshSummary: () => undefined,
     }),
-    [summary, brief],
+    [summary, brief, stepId, activeTable, block],
   );
 
   useEffect(() => {

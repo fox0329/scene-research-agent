@@ -341,6 +341,28 @@ function runMigrations(db: Database.Database): {
     db.exec("ALTER TABLE conversation ADD COLUMN kind TEXT NOT NULL DEFAULT '用户'");
     db.exec("UPDATE conversation SET kind = '阶段分析' WHERE title GLOB '阶段 * · 分析'");
   }
+  /**
+   * v2 产物会话（变更表 #295）
+   *
+   * 一个产物一条会话，作用域唯一键由 (scenario_id, step, scope_type, scope_id) 决定；
+   * 旧会话 scope_type='legacy'，不进唯一索引，也不改变原有读取路径。
+   * 逐列 ALTER 是幂等的：新库由 001_init.sql 建全，存量库只补缺列。
+   */
+  const addConvColumn = (name: string, ddl: string): void => {
+    if (convCols.some((c) => c.name === name)) return;
+    db.exec(`ALTER TABLE conversation ADD COLUMN ${ddl}`);
+  };
+  addConvColumn("scope_type", "scope_type TEXT NOT NULL DEFAULT 'legacy'");
+  addConvColumn("scope_id", "scope_id TEXT NOT NULL DEFAULT ''");
+  addConvColumn("step", "step INTEGER");
+  addConvColumn("block", "block TEXT");
+  addConvColumn("purpose", "purpose TEXT NOT NULL DEFAULT 'assistant'");
+  addConvColumn("summary", "summary TEXT NOT NULL DEFAULT ''");
+  addConvColumn("context_hash", "context_hash TEXT NOT NULL DEFAULT ''");
+  addConvColumn("last_activity_at", "last_activity_at TEXT");
+  db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS ux_conversation_artifact_active
+    ON conversation (scenario_id, step, scope_type, scope_id)
+    WHERE kind = '产物会话' AND status = '活跃'`);
   const scCols = db.pragma("table_info(scenario)") as { name: string }[];
   if (!scCols.some((c) => c.name === "description")) {
     db.exec("ALTER TABLE scenario ADD COLUMN description TEXT");

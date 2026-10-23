@@ -39,6 +39,15 @@ test("六步推进冒烟：新建场景 → 完成第 1 步 → 第 2 步解锁�
   await page.keyboard.press("Escape");
   await expect(defDlg).toHaveCount(0);
 
+  // 1.1) 关闭定义对话后，右栏必须回到「第 1 步产物 / 表1-1」；左栏仍只有场景
+  await expect(page.locator(".det .artifact-title")).toHaveText("场景定义与边界", {
+    timeout: 20_000,
+  });
+  await expect(page.locator(".det .artifact-tabs [role=tab]")).toHaveCount(2);
+  await expect(page.locator(".det .thread-empty")).toContainText(/还没有对话/);
+  await expect(page.locator(".det .thread-textarea")).toBeEnabled();
+  await expect(page.locator(".proj-convs, .cvi")).toHaveCount(0);
+
   // 2) 用与服务端「整理成定义」同形状的锚行写出第 1 步画像（避免依赖模型）
   const list = (await (await page.request.get(`${LIVE}/api/v1/projects`)).json()) as {
     id: string;

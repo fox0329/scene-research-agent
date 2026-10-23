@@ -460,6 +460,35 @@ describe("createConverseCommand", () => {
       expect(userMessages[0]!.content).toBe("你好");
     });
 
+    it("产物会话禁用命令块：不执行、不把命令写进消息", async () => {
+      const client = createMockDshClient([
+        { type: "text", text: "建议先补一条来源。\n\n【执行命令】{\"command\":\"no_such_command\"}" },
+        { type: "done" },
+      ]);
+      const local = createDeps(client);
+      const cmd = createConverseCommand(local.deps);
+      const conv = await cmd.create({ scenario_id: "s1", title: "产物" });
+
+      const events: FollowEvent[] = [];
+      for await (const e of cmd.sendMessage(conv.id, "改一下", {
+        allowCommands: false,
+      })) {
+        events.push(e);
+      }
+
+      const text = events
+        .filter((e): e is { type: "text"; text: string } => e.type === "text")
+        .map((e) => e.text)
+        .join("");
+      expect(text).toContain("建议先补一条来源");
+      expect(text).not.toContain("正在执行");
+      const persisted = local.db.messageRepo
+        .listByConversation(conv.id)
+        .filter((m) => m.role === "系统");
+      expect(persisted).toHaveLength(1);
+      expect(persisted[0]!.content).toBe("建议先补一条来源。");
+    });
+
     it("应 yield DSH 流式事件（text + done）", async () => {
       const cmd = createConverseCommand(deps);
       const conv = await cmd.create({ scenario_id: "s1", title: "测试" });
@@ -718,7 +747,9 @@ describe("对话上下文（多轮记忆，v1.7 接上）", () => {
     }));
     const block = buildHistoryBlock(many);
     expect(block).toContain("（更早的 5 条已省略）");
-    expect(block).not.toContain("第0条");
+    // 早先消息不再整条丢弃：被压成摘要后仍以「对话：…」保留关键记忆
+    expect(block).toContain("【更早对话摘要】");
+    expect(block).toContain("对话：第0条");
     expect(block).toContain(`第${HISTORY_MAX_MESSAGES + 4}条`);
   });
 

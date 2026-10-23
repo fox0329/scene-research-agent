@@ -17,12 +17,7 @@ export const STAGES: StageDef[] = STAGE_DEFS.map((s) => ({
   label: s.name,
 }));
 
-/* ═══ 项目与会话 ═══ */
-
-export type Conversation = {
-  id: string;
-  name: string;
-}
+/* ═══ 项目 ═══ */
 
 export type ProjectStatus = "active" | "done";
 
@@ -51,7 +46,6 @@ export type Project = {
     completedCount: number;
     finished: boolean;
   };
-  conversations: Conversation[];
 }
 
 export const projects: Project[] = [
@@ -61,12 +55,6 @@ export const projects: Project[] = [
     status: "active",
     stage: 2,
     productLine: "感知与控制产品线",
-    conversations: [
-      { id: "p1c1", name: "补充边界与限制" },
-      { id: "p1c2", name: "阶段 2 质量关检查" },
-      { id: "p1c3", name: "上传产品白皮书并解析" },
-      { id: "p1c4", name: "阶段 1 门槛筛查" },
-    ],
   },
   {
     id: "p2",
@@ -74,12 +62,6 @@ export const projects: Project[] = [
     status: "active",
     stage: 4,
     productLine: "IoT 产品线",
-    conversations: [
-      { id: "p2c1", name: "匹配矩阵分析" },
-      { id: "p2c2", name: "商业分析：利润池" },
-      { id: "p2c3", name: "门槛筛查：一票否决排查" },
-      { id: "p2c4", name: "上传 IoT 产品资料" },
-    ],
   },
   {
     id: "p3",
@@ -87,10 +69,6 @@ export const projects: Project[] = [
     status: "done",
     stage: 5, // 交付物（2026-10-20 价值验证阶段删除后，交付物为阶段 5）
     productLine: "综合解决方案",
-    conversations: [
-      { id: "p3c1", name: "生成交付物" },
-      { id: "p3c3", name: "方案与成本分析" },
-    ],
   },
 ];
 

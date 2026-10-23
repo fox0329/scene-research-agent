@@ -107,6 +107,22 @@
 | GET | `/conversations/{id}/messages?after_id=` | 断线补拉 |
 | GET | `/conversations/{id}/messages/events` | 回复流断线重连（`Last-Event-ID` 头或 `?lastEventId=` 增量重放，v1.5） |
 
+### 产物唯一会话（v2，变更表 #295）
+
+右栏的最小单元是「某个阶段产物」，一个产物只有一条会话。产物身份 `(scenario_id, step, scope_type, scope_id)`；`block` 只是显示/内容子块筛选，**不参与唯一性**，同一张表的不同子块共用一条讨论上下文。
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| GET | `/projects/{id}/artifacts/thread?step=&type=&id=&block=` | 读取该产物的会话；**没有会话时返回空历史，不创建**。响应 `{ conversation_id, messages, summary, compacted, kept, stale, artifact }` |
+| POST | `/projects/{id}/artifacts/thread/messages` | 发消息；body `{ step, type, id, block?, title?, content }`；**首次调用才创建会话**；**SSE** 流式回复 |
+| GET | `/projects/{id}/artifacts/thread/events?step=&type=&id=&block=&lastEventId=` | 回复流断线重连；也接受 `Last-Event-ID` 头 |
+
+- `type`：`anchor`（第 1 步 `表1-1`）/ `table`（该步注册表里的表）/ `deliverable`（第 6 步 `solution`）；不合法返回 400。
+- `stale`：会话创建后产物内容或更新时间变了（`context_hash` 不匹配）→ 前端显示「产物已更新」；**不重置会话**。
+- 历史完整落库并全部回显；只有模型上下文做确定性压缩：最近 12 条 / 6000 字符，更早的压成「决策 / 约束 / 未决 / 对话」摘要（最多 12 条）。
+- 会话列表接口仍只返回 `kind='用户'`（场景定义等）；`产物会话` 与 `阶段分析` 不进左栏。
+- 产物会话内**不执行**【执行命令】块：模型只能给建议，推进阶段 / 导出 / 改表仍由用户在中栏操作。
+
 ### 交付物 / 系统
 
 | 方法 | 路径 | 说明 |
@@ -368,4 +384,5 @@ interface DshClient {
 | v2.13 | 2026-10-04 | **列级变更（随 04 v1.32 / 05 v0.12）：表5-1 删 `effort`；表4-1 `proof` 中栏 → 右栏**。① `表5-1 架构与接口` 去掉 `effort`「适配工作量」——工作量口径统一在 `表5-3` 的 `man_days`「人天」，同一份表里两处口径会打架（实测该列写的是「行业通例量级 3~8 人天/触点」，是编的量级）；② `表4-1 能力底账` 的 `proof`「证明材料」由中栏改到右栏补充——用户定调「来源、引用什么的可以放到右栏」，中栏只留「能力项 / 成熟度 / 限制条件」。**API 形状不变**：`row` 是 JSON、列即键，前端按注册表渲染（`slot` 变了，键仍在，存量数据不丢、不迁移）。新增自检项「中栏夹带出处」「中栏太长」：内容格里的文件名/页码/`ingest-*`/`（M5）`/「材料未提供」由确定性层搬进右栏 `source`。；③ 新增自检项「依据未落到事实」（依据列复述结论／行业套话，确定性识别）。变更表 #93 |
 | v2.14 | 2026-10-04 | **自检新增两条跨表校验（随 04 v1.33）**：「判定与能力底账矛盾」（表4-2／4-3／4-5／5-1 等中栏写「无／不支持 X」且该行判「不能碰／不参与」时，拿 **表4-1 能力底账的能力名**比对，命中即点名；**只比能力名、不比限制条件**）、「硬结论无依据」（`can_touch=不能碰` 且本行 `verification_verdict ∈ {无法核实, 有反证}` → 硬伤）。**API 与列结构不变**：这是生成期自检，不改 `stage_data` 形状。变更表 #94 |
 | v2.16 | 2026-10-09 | **场景私有库改「按需创建 + 可删」：`scenario.product_line_id` 退役（变更表 #160）**：① **契约**：`Scenario.product_line_id` 与 `CreateScenarioRequest.product_line_id` **删除**（旧客户端传了忽略、不报错）；场景↔私有库的关系只留一处属主 = **`product_line.scenario_id`**（非空即"该场景的私有库"）。② **schema**：`scenario` 表去掉 `product_line_id`（原为 `NOT NULL REFERENCES product_line(id)`）；新库由 `sql/001_init.sql` 直接建新结构，存量库由 `runMigrations` 按 SQLite 官方流程**整表重建**（`PRAGMA foreign_keys=OFF` 在事务外 → 事务内建新表/搬列/DROP/RENAME → 开回外键 → `foreign_key_check` 自证干净），幂等。③ **API**：新增 `POST /projects/{id}/own-line`（幂等，确保本场景私有库存在，首次上传材料前由前端调用，返回 `{own_line_id, own_line, created}`）；`GET /projects`、`POST /projects`、`PATCH /projects/{id}` 响应新增**派生字段** `own_line_id`（可能为 `null`）；`GET /projects/{id}/material-sources` 的 `own` 可为 `null`。④ **删除资料库**：去掉"仍是场景归属库 → 409"这条闸门——关系在库这一侧，删库不再需要回头改场景；剩下的闸门是"还有 N 行"与"仍被活场景引用为共享输入"。 |
+| v2.16 | 2026-10-23 | **产物唯一会话（v2，变更表 #295）**：右栏改为「产物头 + 信息来源/备注 + 唯一会话」，新增 `GET/POST /projects/{id}/artifacts/thread...` 三个端点；会话身份 `(scenario_id, step, scope_type, scope_id)`，`block` 不拆分会话；唯一索引 `ux_conversation_artifact_active` 兜底；历史完整保留，模型上下文按最近 12 条 / 6000 字符压缩，更早消息压成「决策/约束/未决/对话」摘要；`context_hash` 不匹配只提示「产物已更新」，不重置会话 |
 | v2.15 | 2026-10-09 | **上传上限 50 → 300 MB（改流式落盘）+ 资料文件/资料库删除入口（变更表 #156）**：① `FILE_UPLOAD_LIMIT_MB = 300`（服务端 multipart 与前端预检同源），`POST /library/ingest` 由 `toBuffer()` 改 `pipeline()` 流式落盘；**超限时 multipart 只截断不抛错**，服务端查 `file.file.truncated` 兜住回中文 413；任务结束（成功/失败）都删临时文件；入库行的 `source` 写材料**真名**（此前写的是临时落盘名 `ingest-…`，实测 474 行都认不出是哪份材料）。② 新增 `GET /library/materials?product_line_id=`（按来源文件聚合 `{file,rows,tables,deletable}[]`）、`DELETE /library/materials?product_line_id=&file=`（按文件名**全等**删该文件全部行，返回 `{file,deleted,tables,stale_marked_stages}`，删完标下游待重算）、`DELETE /library/product-lines/{id}`（**仅空库**；通用库 / 非空库 / 仍被活场景引用三种情况都是 409 + 中文原因）。③ 删行与删资料同时清 `source_fts` 索引（该表只有 INSERT/UPDATE 触发器，原先删行不清会让来源自检假阳性）。前端资料库页新增「已导入资料」页签与「删除资料库」按钮（不可删时 `disabled` + `title` 说明原因，二次确认写明删几行/哪些表/下游标记待重算） |

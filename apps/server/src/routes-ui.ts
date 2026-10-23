@@ -78,6 +78,14 @@ import { exportReportPptx } from "./ppt-export.js";
 import { closePptRun, ensurePptRun, pptRunId } from "./ppt-progress.js";
 import { assertExportDir, pickFolder, safeStartDir } from "./folder-picker.js";
 import { createConverseCommand, type ChatImportOutcome } from "./converse.js";
+import {
+  ARTIFACT_SYSTEM_PROMPT,
+  buildArtifactContext,
+  ensureArtifactConversation,
+  normalizeArtifactRef,
+  readArtifactThread,
+  touchArtifactConversation,
+} from "./artifact-conversation.js";
 import { requestScenarioClarify } from "./scenario-clarify.js";
 import { makeSourceLookup, runPostcheck } from "./postcheck-pass.js";
 import {
@@ -1278,6 +1286,15 @@ function registerConversationRoutes(
   let defSeq = 0;
   /** 会话 → 最新回复流 runId（进程存续期内 Last-Event-ID 续传用，契约 v1.5） */
   const latestConvRuns = new Map<string, string>();
+  /** 产物作用域 → 最新回复流 runId（v2 产物唯一会话） */
+  const latestArtifactRuns = new Map<string, string>();
+  let artifactSeq = 0;
+
+  /** 产物作用域的稳定运行键：block 不参与，同一张表共用一个续传入口 */
+  const artifactRunKey = (
+    scenarioId: string,
+    ref: { step: number; type: string; id: string },
+  ): string => `${scenarioId}:${ref.step}:${ref.type}:${ref.id}`;
 
   app.get("/api/v1/projects/:id/conversations", async (request, reply) => {
     const { id } = request.params as { id: string };
@@ -1320,6 +1337,109 @@ function registerConversationRoutes(
     try {
       converseCmd.remove(id, query.force === "true" || query.force === "1");
       return { deleted: true };
+    } catch (err: unknown) {
+      return commandError(reply, err);
+    }
+  });
+
+  // ─── 产物唯一会话（v2，变更表 #295） ─────────────────────
+  //
+  // 右栏最小单元是阶段产物；一个产物只有一条会话（打开不创建，首次发送才创建）。
+  // block 只影响上下文过滤与展示，不参与会话唯一性。
+
+  app.get("/api/v1/projects/:id/artifacts/thread", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    if (!db.scenarioRepo.getById(id)) return notFound(reply, `场景 ${id} 不存在`);
+    const q = (request.query ?? {}) as Record<string, unknown>;
+    try {
+      const ref = normalizeArtifactRef({
+        step: Number(q.step),
+        stage: q.stage === undefined ? null : Number(q.stage),
+        type: q.type as never,
+        id: String(q.id ?? ""),
+        block: q.block === undefined ? null : String(q.block),
+        title: q.title === undefined ? undefined : String(q.title),
+      });
+      return readArtifactThread(db, id, ref);
+    } catch (err: unknown) {
+      return badRequest(reply, err instanceof Error ? err.message : String(err));
+    }
+  });
+
+  app.post("/api/v1/projects/:id/artifacts/thread/messages", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    if (!db.scenarioRepo.getById(id)) return notFound(reply, `场景 ${id} 不存在`);
+    const body = (request.body ?? {}) as Record<string, unknown>;
+    const content = String(body.content ?? "").trim();
+    if (!content) return badRequest(reply, "消息内容不能为空");
+
+    let ref;
+    try {
+      ref = normalizeArtifactRef({
+        step: Number(body.step),
+        stage: body.stage === undefined ? null : Number(body.stage),
+        type: body.type as never,
+        id: String(body.id ?? ""),
+        block: body.block === undefined ? null : String(body.block),
+        title: body.title === undefined ? undefined : String(body.title),
+      });
+    } catch (err: unknown) {
+      return badRequest(reply, err instanceof Error ? err.message : String(err));
+    }
+
+    try {
+      const conversation = await ensureArtifactConversation(db, deps.dshClient, id, ref);
+      const contextPrefix = buildArtifactContext(db, id, ref);
+      const runId = `${id}:artifact#${++artifactSeq}`;
+      latestArtifactRuns.set(artifactRunKey(id, ref), runId);
+
+      const source = (async function* () {
+        try {
+          yield* converseCmd.sendMessage(conversation.id, content, {
+            system: ARTIFACT_SYSTEM_PROMPT,
+            contextPrefix,
+            // 产物会话内不执行【执行命令】：推进阶段/导出/改表仍由用户在中栏发起
+            allowCommands: false,
+          });
+        } finally {
+          // 无论正常结束、报错还是客户端断开，都记录活动时间与当前产物指纹
+          touchArtifactConversation(db, conversation.id, id, ref);
+        }
+      })();
+
+      hub.start(runId, source);
+      await streamEvents(hub, runId, request, reply, null);
+    } catch (err: unknown) {
+      return commandError(reply, err);
+    }
+  });
+
+  app.get("/api/v1/projects/:id/artifacts/thread/events", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    if (!db.scenarioRepo.getById(id)) return notFound(reply, `场景 ${id} 不存在`);
+    const q = (request.query ?? {}) as Record<string, unknown>;
+    let ref;
+    try {
+      ref = normalizeArtifactRef({
+        step: Number(q.step),
+        stage: q.stage === undefined ? null : Number(q.stage),
+        type: q.type as never,
+        id: String(q.id ?? ""),
+        block: q.block === undefined ? null : String(q.block),
+        title: q.title === undefined ? undefined : String(q.title),
+      });
+    } catch (err: unknown) {
+      return badRequest(reply, err instanceof Error ? err.message : String(err));
+    }
+
+    try {
+      const runId = latestArtifactRuns.get(artifactRunKey(id, ref));
+      if (!runId || !hub.has(runId)) return notFound(reply, "该产物没有可续传的回复流");
+      const lastEventId =
+        (request.headers["last-event-id"] as string | undefined) ??
+        (q.lastEventId === undefined ? null : String(q.lastEventId)) ??
+        null;
+      await streamEvents(hub, runId, request, reply, lastEventId);
     } catch (err: unknown) {
       return commandError(reply, err);
     }

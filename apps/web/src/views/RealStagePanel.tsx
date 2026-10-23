@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   rowBelongsToBlock,
   tableDef,
+  tableDisplayName,
   tablesOfStage,
   type InfoStageId,
 } from "@scene/contract";
@@ -22,7 +23,7 @@ import { useToast } from "../components/Toast";
  *
  *  不在中栏：表1-1 场景锚（上一步的事，要回看自己回去看）、步标题、完整度、推进按钮
  *
- * 右栏（由 App 渲染 StageRightPanel）——只有「阶段总结」（来源地址 + 结论提醒）：
+ * 右栏（由 App 渲染 ArtifactRightPanel）——产物头 + 来源/备注 + 唯一会话：
  *  本组件把 `StageSnapshot` 冒泡给父级，右栏不重复计算。
  */
 
@@ -222,10 +223,22 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
       summary,
       summaryLoading,
       brief,
+      ...(stepId !== undefined && activeTable
+        ? {
+            artifact: {
+              step: stepId,
+              type: "table" as const,
+              id: activeTable,
+              block,
+              title: tableDisplayName(activeTable),
+            },
+          }
+        : {}),
       onRefreshSummary: () => void loadSummary(true),
       onResearch: handleResearch,
     };
-  }, [data, summary, summaryLoading, brief, handleResearch]);
+    // patched 也必须进依赖：单元格保存后产物内容变了，右栏要重新算「产物已更新」
+  }, [data, patched, summary, summaryLoading, brief, handleResearch, stepId, activeTable, block]);
 
   useEffect(() => {
     onStageSnapshot?.(snapshot);

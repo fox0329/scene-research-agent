@@ -13,64 +13,51 @@ test.beforeEach(async ({ page }) => {
   await expect(page.locator(".shell")).toBeVisible();
 });
 
-/* ───────────────────── §4.2 表头对齐：三栏头部统一 48px ───────────────────── */
+/* ───────────── §4.2 栏头：左右两栏 48px，右栏是产物头（变更表 #295） ───────────── */
 
-test("栏头统一 48px 且底边线水平对齐（三栏各有标题栏，变更表 #275）", async ({ page }) => {
-  const heads = [
-    page.locator(".side .side-hd"),
-    page.locator(".main .pgh"),
-    page.locator(".det .summary-hd"),
-  ];
-  const boxes = [];
-  for (const h of heads) {
+test("栏头结构：左/中栏 48px，右栏产物头 + 双页签 + 唯一会话", async ({ page }) => {
+  const left = page.locator(".side .side-hd");
+  const main = page.locator(".main .pgh");
+  for (const h of [left, main]) {
     await expect(h).toBeVisible();
     const box = await h.boundingBox();
     expect(box).not.toBeNull();
     expect(Math.round(box!.height)).toBe(H48);
-    boxes.push(box!);
   }
-  const bottoms = boxes.map((b) => Math.round(b.y + b.height));
-  expect(Math.max(...bottoms) - Math.min(...bottoms)).toBeLessThanOrEqual(1);
 
-  // 变更表 #275：右栏恢复一条独立标题栏——不是旧版「第 n/6 步」页头，只写「阶段总结」，
-  // 与左栏品牌同字号（16px/700），下方 1px 底边线与另两栏对齐
-  await expect(page.locator(".det .det-h")).toHaveCount(1);
-  await expect(page.locator(".det .summary-hd h3")).toHaveText("阶段总结");
+  // v2：右栏不再是一条「阶段总结」标题栏，而是「阶段/产物名/来源与提醒数」的产物头
+  const det = page.locator(".det");
+  await expect(det.locator(".artifact-head")).toBeVisible();
+  await expect(det.locator(".artifact-eyebrow")).toContainText(/阶段/);
+  await expect(det.locator(".artifact-title")).not.toBeEmpty();
+  await expect(det.locator(".artifact-tabs [role=tab]")).toHaveCount(2);
+  await expect(det.locator(".thread-pane")).toBeVisible();
 });
 
-/* ───────────────────── §4.2 会话管理 ───────────────────── */
+/* ───────────────────── §4.2 会话只属于右栏产物 ───────────────────── */
 
-async function setExpanded(proj: import("@playwright/test").Locator, want: boolean) {
+test("左栏只列场景：不再展开会话，也不提供会话 ⋯ 菜单", async ({ page }) => {
+  const proj = page.locator(".proj").first();
   const hd = proj.locator(".proj-hd");
-  if ((await hd.getAttribute("aria-expanded")) !== String(want)) await hd.click();
-  return hd;
-}
+  await expect(hd).not.toHaveAttribute("aria-expanded", /true|false/);
+  await expect(proj.locator(".proj-convs, .cvi")).toHaveCount(0);
 
-test("项目名点击展开/收起会话列表", async ({ page }) => {
-  const proj = page.locator(".proj").first();
-  const hd = await setExpanded(proj, false); // 当前项目默认展开 → 点击收起
-  await expect(proj.locator(".proj-convs")).toBeHidden();
+  // 场景行可直接选中；右栏产物会话随之存在，但左栏不出现任何会话入口
   await hd.click();
-  await expect(hd).toHaveAttribute("aria-expanded", "true");
-  await expect(proj.locator(".proj-convs .cvi").first()).toBeVisible();
+  await expect(hd).toHaveClass(/active/);
+  await expect(page.locator(".det .thread-pane")).toBeVisible();
 });
 
-test("项目与会话均有 ⋯ 菜单（重命名/归档/删除）", async ({ page }) => {
+test("场景 ⋯ 菜单仍保留项目动作（重命名/归档/删除）", async ({ page }) => {
   const proj = page.locator(".proj").first();
-  await setExpanded(proj, true); // 展开会话
   await proj.locator(".proj-hd-wrap .more-btn").first().click();
   const items = page.locator(".ctx-menu[role='menu'] .ctx-item");
   await expect(items).toHaveCount(3);
   await expect(items.nth(0)).toHaveText(/重命名/);
   await expect(items.nth(1)).toHaveText(/归档/);
   await expect(items.nth(2)).toHaveText(/删除/);
-  await page.keyboard.press("Escape"); // 项目菜单关闭后再操作会话 ⋯
+  await page.keyboard.press("Escape");
   await expect(page.locator(".ctx-menu[role='menu']")).toBeHidden();
-  const convMore = proj.locator(".proj-convs .more-btn").first();
-  await convMore.click();
-  const menu = page.locator(".ctx-menu[role='menu']");
-  await expect(menu).toBeVisible();
-  await expect(menu).toContainText("重命名");
 });
 
 /* ────────────── §4.2 信息版：右栏只有阶段总结（替代旧建议卡） ────────────── */
@@ -86,65 +73,127 @@ test("右栏不再有完整度裸数字条：进度只在中栏表与流程轴�
   expect(body).not.toContain("质量关");
 });
 
-test("右栏只有「阶段总结」：调研信息来源 + 结论提醒，不再有 Tab 与确认/缺口清单", async ({ page }) => {
+test("右栏以产物为最小单元：来源/备注双页签 + 唯一会话，不再有确认/缺口清单", async ({ page }) => {
   await gotoStep2(page);
   const det = page.locator(".det");
 
-  // 标题 + 两个小节；来源为空时给空态文案，不装成可点链接
-  await expect(det.locator(".summary-hd h3")).toHaveText("阶段总结");
-  const subTitles = (await det.locator(".summary-sub").allInnerTexts()).map((t) => t.trim());
-  expect(subTitles).toEqual(["调研信息来源", "结论提醒"]);
+  // 产物头：阶段 + 业务名 + 唯一会话；不再有「阶段总结」标题栏
+  await expect(det.locator(".artifact-eyebrow")).toContainText(/阶段/);
+  // 等第 2 步的产物真正挂上右栏：否则 artifact key 的 setTab("sources") 会在方向键之后才跑
+  await expect(det.locator(".artifact-title")).toContainText("门槛");
+  await expect(det.locator(".artifact-tabs [role=tab]").first()).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  const tabs = det.locator(".artifact-tabs [role=tab]");
+  await expect(tabs).toHaveCount(2);
+  await expect(tabs.nth(0)).toContainText("信息来源");
+  await expect(tabs.nth(1)).toContainText("备注");
+  await expect(det.locator(".thread-pane")).toBeVisible();
+  await expect(det.locator(".thread-textarea")).toBeVisible();
+
+  // 信息来源页：有可点链接就给链接，没有就明确空态，不装成可点链接
   const sources = det.locator(".summary-sources li a");
-  /* v2.10 文案：没有可打开的来源时给一句明确说明，不再是「本步暂无可以打开的来源地址」 */
-  const emptySources = det.locator(".summary-empty", { hasText: /本步没有取得可打开的来源/ });
-  expect((await sources.count()) > 0 || (await emptySources.count()) > 0).toBe(true);
-  // 结论提醒是纯文字列表（不再有可编辑条目）
-  await expect(det.locator(".summary-advice li").first()).not.toBeEmpty();
+  const emptySources = det.locator(".summary-empty", {
+    hasText: /本步没有取得可打开的来源/,
+  });
+  await expect
+    .poll(async () => (await sources.count()) + (await emptySources.count()))
+    .toBeGreaterThan(0);
+  if ((await sources.count()) > 0) {
+    await expect(sources.first()).toHaveAttribute("href", /^https?:\/\//);
+    await expect(sources.first()).toHaveAttribute("target", "_blank");
+  }
+
+  // Tab 组键盘：方向键在来源/备注之间切换并把焦点带过去
+  await tabs.nth(0).press("ArrowRight");
+  await expect(tabs.nth(1)).toHaveAttribute("aria-selected", "true");
+  await expect(tabs.nth(1)).toBeFocused();
+  await tabs.nth(1).press("ArrowLeft");
+  await expect(tabs.nth(0)).toHaveAttribute("aria-selected", "true");
+
+  // 备注页：纯文字提醒（或明确空态），没有任何可编辑控件
+  await tabs.nth(1).click();
+  await expect(tabs.nth(1)).toHaveAttribute("aria-selected", "true");
+  const advice = det.locator(".summary-advice li");
+  const emptyNotes = det.locator(".summary-empty", { hasText: /本步还没有可下结论的提醒/ });
+  expect((await advice.count()) > 0 || (await emptyNotes.count()) > 0).toBe(true);
   await expect(det.locator(".summary-advice input, .summary-advice textarea")).toHaveCount(0);
 
-  // **没有**确认清单，也没有缺口清单
+  // **没有**确认清单、缺口清单、全文折叠与下载
   await expect(det.locator(".confirm-list")).toHaveCount(0);
   await expect(det.locator(".gap-list")).toHaveCount(0);
-  await expect(det).not.toContainText("待确认");
-  await expect(det).not.toContainText("缺口");
-
-  // v2.11：全文（Markdown）整块删除，右栏不再有折叠区、不再提供下载
   await expect(det.locator(".md-body")).toHaveCount(0);
   await expect(det.locator(".fold-toggle")).toHaveCount(0);
   await expect(det.locator(".summary-download")).toHaveCount(0);
 });
 
-test("右栏不再有补充说明条目与表格：只剩来源链接与结论提醒（v2.10）", async ({ page }) => {
+test("右栏没有补充说明表格：来源/备注之外只有唯一会话，没有逐条核实编辑", async ({ page }) => {
   await gotoStep2(page);
   const det = page.locator(".det");
 
-  // ① 右栏**不再有任何表格**；补充说明的条目 / 字段已随它一起删除
+  // 右栏**不再有任何表格**
   await expect(det.locator("table")).toHaveCount(0);
 
-  // ② 正文只剩两块：调研信息来源（可点链接列表）+ 结论提醒（文字列表）
-  await expect(det.locator(".summary-hd h3")).toHaveText("阶段总结");
-  await expect(det.locator(".summary-sub").nth(0)).toHaveText("调研信息来源");
-  await expect(det.locator(".summary-sub").nth(1)).toHaveText("结论提醒");
-
-  // ③ 有来源时是能新窗口打开的 http(s) 链接；没有来源时给空态文案，二者都接受
-  const links = det.locator(".summary-sources li a");
-  const empty = det.locator(".summary-empty", { hasText: /本步没有取得可打开的来源/ });
-  if ((await links.count()) > 0) {
-    await expect(links.first()).toHaveAttribute("href", /^https?:\/\//);
-    await expect(links.first()).toHaveAttribute("target", "_blank");
-  } else {
-    await expect(empty).toBeVisible();
-  }
+  // 唯一允许的输入是会话输入框；备注不提供逐条核实编辑
+  await expect(det.locator("textarea")).toHaveCount(1);
+  await expect(det.locator(".thread-textarea")).toHaveCount(1);
+  await expect(det.locator("select, [contenteditable='true']")).toHaveCount(0);
 });
 
-test("右栏不再有核实段：结论提醒是纯文字，不提供逐条核实编辑（v2.10）", async ({ page }) => {
+test("产物会话空态说清归属：历史完整保留，第一次发送才创建", async ({ page }) => {
   await gotoStep2(page);
   const det = page.locator(".det");
+  await expect(det.locator(".thread-head")).toContainText("历史完整保留");
+  await expect(det.locator(".thread-title-row .badge")).toContainText(/唯一会话|演示模式/);
+  await expect(det.locator(".thread-empty")).toContainText(/演示模式|还没有对话/);
+  await expect(det.locator(".thread-input-scope")).toContainText("产物");
+  // 演示态不请求后端，输入框明确禁用；联真态才允许第一次发送创建会话
+  await expect(det.locator(".thread-textarea")).toBeDisabled();
+});
 
-  // 核实行 / 下拉 / 长文本编辑器已随补充说明一起删除：右栏不再有逐条核实编辑
-  // 结论提醒按条目给出文字，右栏内没有任何可编辑控件
-  await expect(det.locator(".summary-advice li").first()).not.toBeEmpty();
-  await expect(det.locator("textarea, select, [contenteditable='true']")).toHaveCount(0);
+test("右栏分隔条：鼠标拖动、键盘与双击复位，比例写 localStorage", async ({ page }) => {
+  await gotoStep2(page);
+  const split = page.locator(".artifact-split");
+  const stack = page.locator(".artifact-stack");
+  await expect(split).toHaveAttribute("role", "separator");
+  await expect(split).toHaveAttribute("aria-valuemin", "22");
+  await expect(split).toHaveAttribute("aria-valuemax", "58");
+
+  const box = (await split.boundingBox())!;
+  const stackBox = (await stack.boundingBox())!;
+  // 从默认 30% 拖到约 48%
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(
+    box.x + box.width / 2,
+    stackBox.y + stackBox.height * 0.48,
+    { steps: 6 },
+  );
+  await page.mouse.up();
+  const dragged = Number(await split.getAttribute("aria-valuenow"));
+  expect(dragged).toBeGreaterThan(35);
+  expect(dragged).toBeLessThan(55);
+  await expect
+    .poll(() => page.evaluate(() => localStorage.getItem("scene.artifact.split.v1")))
+    .toBe(String(dragged));
+
+  // 键盘：ArrowDown 增大上区，Home/End 到边界，双击回默认 30
+  await split.focus();
+  await page.keyboard.press("ArrowDown");
+  await expect(split).toHaveAttribute("aria-valuenow", String(dragged + 4));
+  await page.keyboard.press("End");
+  await expect(split).toHaveAttribute("aria-valuenow", "58");
+  await page.keyboard.press("Home");
+  await expect(split).toHaveAttribute("aria-valuenow", "22");
+  await split.dblclick();
+  await expect(split).toHaveAttribute("aria-valuenow", "30");
+
+  // 刷新后保留（同一 localStorage）
+  await split.focus();
+  await page.keyboard.press("ArrowDown");
+  await page.reload();
+  await expect(page.locator(".artifact-split")).toHaveAttribute("aria-valuenow", "34");
 });
 
 test("中栏表格：拖分格线只与右邻列互换宽度，表宽恒等于中栏宽、无横向滚动条", async ({ page }) => {
@@ -468,16 +517,16 @@ test("第 1 步：中栏只有表1-1；步标题/引导语/状态行/完整度/�
   await expect(anchor.locator("textarea.cell-input")).toHaveCount(6);
   await expect(anchor.locator(".owner-tag")).toHaveCount(1);
 
-  // 右栏（变更表 #149 / v2.10）：只剩「阶段总结」，正文是调研信息来源 + 结论提醒；
-  // 右栏不再有 Tab 条，也不再有任何表格
+  // 右栏 v2（变更表 #295）：第 1 步锚定「场景定义与边界 / 表1-1」，
+  // 上区是信息来源/备注，下区是这条产物的唯一会话；右栏没有任何表格
   const det = page.locator(".det");
-  await expect(det.locator(".summary-hd h3")).toHaveText("阶段总结");
-  await expect(det.locator(".summary-sub").nth(0)).toHaveText("调研信息来源");
-  await expect(det.locator(".summary-sub").nth(1)).toHaveText("结论提醒");
+  await expect(det.locator(".artifact-title")).toHaveText("场景定义与边界");
+  expect(await det.locator(".artifact-eyebrow").innerText()).toMatch(/表1-1|场景定义/);
+  await expect(det.locator(".artifact-tabs [role=tab]")).toHaveCount(2);
   await expect(det.locator("table")).toHaveCount(0);
   await expect(det.locator(".completeness-bar")).toHaveCount(0);
-  // 变更表 #275：右栏标题栏保留（只写「阶段总结」，不再有旧版步骤页头）
-  await expect(det.locator(".det-h")).toHaveCount(1);
+  await expect(det.locator(".thread-pane")).toBeVisible();
+  await expect(det.locator(".thread-textarea")).toBeVisible();
 
   // 独立弹窗（不是中栏、不是右下角抽屉）：入口是流程轴上的本步运行按钮（八步同形）
   const entry = page.locator(".flow-actions").getByRole("button", { name: /开始本步分析|重算本步/ });
@@ -816,7 +865,7 @@ test("表格列宽自动适配：生成即是最紧凑布局，未手动拖就�
 test("右栏不再有确认清单/缺口清单（智能体的待办不进用户界面）", async ({ page }) => {
   await gotoStep2(page);
   const det = page.locator(".det");
-  await expect(det.locator(".summary-hd h3")).toHaveText("阶段总结");
+  await expect(det.locator(".artifact-title")).not.toBeEmpty();
 
   await expect(det.locator(".confirm-list")).toHaveCount(0);
   await expect(det.locator(".gap-list")).toHaveCount(0);

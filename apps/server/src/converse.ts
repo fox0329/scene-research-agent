@@ -18,6 +18,11 @@ import type { Repo, MessageRepo } from "@scene/infra";
 import { parseCommandBlock, executeAppCommand } from "./scenario-commands.js";
 import { isUserConversation } from "./conversation-kind.js";
 import {
+  HISTORY_MAX_CHARS,
+  HISTORY_MAX_MESSAGES,
+  compactConversationHistory,
+} from "./conversation-compaction.js";
+import {
   validateSessionTitle,
   canArchive,
   normalizeConversationTitle,
@@ -25,6 +30,8 @@ import {
   SESSION_STATUS_ACTIVE,
   SESSION_STATUS_ARCHIVED,
 } from "@scene/domain";
+
+export { HISTORY_MAX_CHARS, HISTORY_MAX_MESSAGES };
 
 // ─── 依赖注入接口 ──────────────────────────────────────────
 
@@ -142,8 +149,9 @@ export function createConverseCommand(deps: ConverseDeps) {
        * 覆盖项（v1.5 场景定义对话复用本管道）：
        * - `system`：替换默认对话系统提示词
        * - `contextPrefix`：追加在用户消息前的场景上下文
+       * - `allowCommands=false`：不执行回复里的【执行命令】（产物会话用）
        */
-      override?: { system?: string; contextPrefix?: string },
+      override?: { system?: string; contextPrefix?: string; allowCommands?: boolean },
     ): AsyncIterable<FollowEvent> =>
       sendMessage(db, dshClient, conversationId, content, importFiles, override),
   };
@@ -317,13 +325,10 @@ export const CONVERSE_SYSTEM_PROMPT = `你是场景通的对话助手。基于�
 // 历史（2026-09-25 前）完全没带：用户第二轮问"我刚才说的客户是谁"，模型只能答"看不到"。
 // 现在按预算带最近若干条，超出部分丢弃并**显式标注省略**，避免撑爆上下文窗口。
 
-/** 注入的历史消息条数上限 */
-export const HISTORY_MAX_MESSAGES = 12;
-/** 注入的历史字符上限（按字符近似，中文为主） */
-export const HISTORY_MAX_CHARS = 6000;
-
 /**
  * 把会话历史拼成「对话历史」块（从最近往前取，超出预算截断）
+ *
+ * 被截断的早先消息会压成确定性摘要（决策/约束/未决），不再只剩一句「已省略」。
  *
  * @param messages 该会话**在本轮之前**的消息（调用方需在写入本轮用户消息前取好）
  * @returns 无历史时返回空串（不产生空块）
@@ -331,21 +336,7 @@ export const HISTORY_MAX_CHARS = 6000;
 export function buildHistoryBlock(
   messages: readonly { role: string; content: string }[],
 ): string {
-  const usable = messages.filter((m) => String(m.content ?? "").trim() !== "");
-  if (usable.length === 0) return "";
-
-  const picked: string[] = [];
-  let chars = 0;
-  for (let i = usable.length - 1; i >= 0; i--) {
-    const m = usable[i]!;
-    const line = `${m.role === "用户" ? "用户" : "助手"}：${m.content.trim()}`;
-    if (picked.length >= HISTORY_MAX_MESSAGES || chars + line.length > HISTORY_MAX_CHARS) break;
-    picked.unshift(line);
-    chars += line.length;
-  }
-  const omitted = usable.length - picked.length;
-  const note = omitted > 0 ? `（更早的 ${omitted} 条已省略）` : "";
-  return `【对话历史】${note}\n${picked.join("\n")}\n\n`;
+  return compactConversationHistory(messages).block;
 }
 
 async function* sendMessage(
@@ -354,7 +345,7 @@ async function* sendMessage(
   conversationId: string,
   content: string,
   importFiles?: (paths: string[]) => Promise<ChatImportOutcome[]>,
-  override?: { system?: string; contextPrefix?: string },
+  override?: { system?: string; contextPrefix?: string; allowCommands?: boolean },
 ): AsyncIterable<FollowEvent> {
   // 1. 校验会话存在且活跃
   const conversation = db.conversationRepo.getById(conversationId);
@@ -364,7 +355,16 @@ async function* sendMessage(
   }
 
   // 1.5 取本轮之前的历史（必须在写入本轮消息之前取，否则会把本轮算进历史）
-  const historyBlock = buildHistoryBlock(db.messageRepo.listByConversation(conversationId));
+  const history = compactConversationHistory(db.messageRepo.listByConversation(conversationId));
+  const historyBlock = history.block;
+  // 产物会话/长会话：把压缩摘要留在会话行上，右栏「上下文已压缩」可直接展示
+  if (history.compacted) {
+    try {
+      db.conversationRepo.update(conversationId, { summary: history.summary });
+    } catch {
+      /* 摘要回写失败不阻断本轮回答 */
+    }
+  }
 
   // 2. 写入用户消息
   db.messageRepo.insert({
@@ -461,8 +461,13 @@ async function* sendMessage(
   }
 
   // 3.5 应用命令块（v1.17）：解析【执行命令】→ 执行应用能力，结果随流回显并入消息
-  const { clean: replyWithoutCmd, command } = parseCommandBlock(fullReply);
+  // 产物会话只讨论当前产物，明确禁止模型借命令块推进阶段/导出/改表。
+  const parsed = parseCommandBlock(fullReply);
+  const allowCommands = override?.allowCommands !== false;
+  const command = allowCommands ? parsed.command : null;
+  const replyWithoutCmd = parsed.clean;
   let commandResult = "";
+  if (!allowCommands && parsed.command) fullReply = replyWithoutCmd;
   if (command) {
     yield {
       type: "text",

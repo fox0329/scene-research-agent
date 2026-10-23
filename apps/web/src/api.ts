@@ -103,6 +103,28 @@ export interface ApiConversation {
   updated_at: string;
 }
 
+/** 产物会话作用域（右栏最小单元；block 只影响内容过滤，不拆会话） */
+export type ApiArtifactType = "anchor" | "table" | "deliverable";
+
+export interface ApiArtifactRef {
+  step: number;
+  type: ApiArtifactType;
+  id: string;
+  block?: string | null;
+  title?: string;
+}
+
+/** 产物唯一会话的读取结果（打开不创建；conversation_id=null 即空态） */
+export interface ApiArtifactThread {
+  conversation_id: string | null;
+  messages: ApiDefinitionMessage[];
+  summary: string;
+  compacted: boolean;
+  kept: number;
+  stale: boolean;
+  artifact: { step: number; type: ApiArtifactType; id: string; title: string };
+}
+
 export interface ApiStageRow {
   id: string;
   scenario_id: string;
@@ -620,7 +642,7 @@ export const api = {
     );
   },
   /**
-   * 阶段总结要点（右栏「阶段总结」正文）：只给来源地址 + 结论提醒
+   * 阶段总结要点（右栏产物的「信息来源 / 备注」）：只给来源地址 + 结论提醒
    *
    * `step` 传了就是"只讲这一步"，与整篇总结同一套表集口径。
    */
@@ -730,6 +752,25 @@ export const api = {
     req<{ id: string; role: string; content: string; created_at: string }[]>(
       `/conversations/${encodeURIComponent(conversationId)}/messages`,
     ),
+
+  /**
+   * 读取某产物的唯一会话（打开不创建）。
+   *
+   * query 里带 step/type/id/block/title；title 只用于新建时生成展示标题，
+   * 身份仍是 step+type+id，block 不参与唯一性。
+   */
+  artifactThread: (projectId: string, ref: ApiArtifactRef) => {
+    const q = new URLSearchParams({
+      step: String(ref.step),
+      type: ref.type,
+      id: ref.id,
+      ...(ref.block ? { block: ref.block } : {}),
+      ...(ref.title ? { title: ref.title } : {}),
+    });
+    return req<ApiArtifactThread>(
+      `/projects/${encodeURIComponent(projectId)}/artifacts/thread?${q.toString()}`,
+    );
+  },
 
   productLines: () => req<ApiProductLine[]>("/library/product-lines"),
   /** 确保本场景私有库存在（幂等）：场景里第一次上传材料前调用，返回私有库 id */
@@ -1051,6 +1092,50 @@ export const reconnectConversationStream = (conversationId: string, lastEventId:
   sseRequest(
     `/conversations/${encodeURIComponent(conversationId)}/messages/events?lastEventId=${encodeURIComponent(lastEventId)}`,
   );
+
+/**
+ * 产物唯一会话的消息流（v2）
+ *
+ * POST + SSE，与 `conversationMessageStream` 同构；服务端会按产物组装上下文，
+ * 并在首次发送时创建该产物的唯一会话（打开右栏不创建）。
+ */
+export const artifactMessageStream = (
+  projectId: string,
+  ref: ApiArtifactRef,
+  content: string,
+  signal?: AbortSignal,
+) =>
+  sseRequest(
+    `/projects/${encodeURIComponent(projectId)}/artifacts/thread/messages`,
+    { ...ref, content },
+    { lastId: null },
+    "POST",
+    signal,
+  );
+
+/** 产物会话回复流断线续传（同一产物作用域） */
+export const reconnectArtifactStream = (
+  projectId: string,
+  ref: ApiArtifactRef,
+  lastEventId: string,
+  signal?: AbortSignal,
+) => {
+  const q = new URLSearchParams({
+    step: String(ref.step),
+    type: ref.type,
+    id: ref.id,
+    lastEventId,
+    ...(ref.block ? { block: ref.block } : {}),
+    ...(ref.title ? { title: ref.title } : {}),
+  });
+  return sseRequest(
+    `/projects/${encodeURIComponent(projectId)}/artifacts/thread/events?${q.toString()}`,
+    undefined,
+    { lastId: null },
+    "GET",
+    signal,
+  );
+};
 
 /**
  * 上传材料并接收入库进度流：

@@ -13,5 +13,6 @@ import type { Conversation } from "@scene/contract";
 
 /** 这条会话是否属于"用户能看见、能继续对话"的范围 */
 export function isUserConversation(conversation: Conversation): boolean {
-  return (conversation.kind ?? "用户") !== "阶段分析";
+  // 用户会话 = kind 缺省或显式「用户」；阶段分析、产物会话都是内部会话，不进左栏。
+  return (conversation.kind ?? "用户") === "用户";
 }

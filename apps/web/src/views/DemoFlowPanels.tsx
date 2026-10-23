@@ -63,6 +63,13 @@ export const DemoFirstStep: React.FC<DemoFirstStepProps> = ({
     () => ({
       summaryLoading: false,
       brief: demoStageBrief(1, 1),
+      artifact: {
+        step: 1,
+        type: "anchor",
+        id: "表1-1",
+        block: null,
+        title: "场景定义与边界",
+      },
       onRefreshSummary: () => undefined,
     }),
     [],

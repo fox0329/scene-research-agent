@@ -38,7 +38,7 @@ import {
   type DeliverableKind,
 } from "../api";
 import { useStageAnalysis, type StageAnalysisState } from "../hooks/useStageAnalysis";
-import { renderMarkdown } from "../components/StageRightPanel";
+import { renderMarkdown } from "../components/render-markdown";
 import { forgetExportDir, loadExportDir, saveExportDir } from "../components/export-dir-memory";
 import { DELIVERY_OUTPUTS, DELIVERY_OUTPUT_HINT } from "../components/step-outputs";
 import { DELIVERY_ROW_ID } from "../components/FlowRail";
@@ -515,6 +515,13 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
     () => ({
       summaryLoading: briefLoading,
       brief: apiBrief ?? fallbackBrief,
+      artifact: {
+        step: 6,
+        type: "deliverable",
+        id: "solution",
+        block: null,
+        title: "解决方案",
+      },
       onRefreshSummary: () => {
         void loadBrief();
         void loadReports();

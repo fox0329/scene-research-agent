@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { Sidebar } from "./components/Sidebar";
-import { StageRightPanel } from "./components/StageRightPanel";
+import { ArtifactRightPanel } from "./components/ArtifactRightPanel";
 import { ScenarioDefinitionDialog } from "./components/ScenarioDefinitionDialog";
 import { NewScenarioDialog } from "./components/NewScenarioDialog";
 import { OnboardingGuide } from "./components/OnboardingGuide";
@@ -14,7 +14,6 @@ import { SettingsView } from "./views/SettingsView";
 import { useColumnLayout } from "./hooks/useColumnLayout";
 import {
   api,
-  type ApiConversation,
   type ApiDefaultModelRef,
   type ApiProductLine,
   type ApiProject,
@@ -67,12 +66,8 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   ]);
 }
 
-/** API 项目 + 会话 → 工作台 Project 形状（联真/演示同构，视图层零分支） */
-function mapApiProject(
-  p: ApiProject,
-  conversations: ApiConversation[],
-  lineNames: Map<string, string>,
-): Project {
+/** API 项目 → 工作台 Project 形状（对话属于右栏产物，左栏不再挂会话） */
+function mapApiProject(p: ApiProject, lineNames: Map<string, string>): Project {
   return {
     id: p.id,
     name: p.name,
@@ -86,14 +81,14 @@ function mapApiProject(
     productLine: (p.own_line_id && lineNames.get(p.own_line_id)) || "",
     /* 流程进度（v1.5）：后端旧版本可能没有 flow 字段 → 可选，缺失即不显示 */
     ...(p.flow ? { flow: p.flow } : {}),
-    conversations: conversations.map((c) => ({ id: c.id, name: c.title })),
   };
 }
 
 /**
  * 场景通 — App 入口
  * 三栏布局骨架：左栏 256px / 中栏自适应 / 右栏 280px
- * 对话只有一处：`ScenarioDefinitionDialog` 独立弹窗（变更表 #58 定调、#180 落地）
+ * 对话有两处：新建后的 `ScenarioDefinitionDialog` 独立弹窗（#58/#180），
+ * 以及右栏每个阶段产物的唯一会话（v2，#295）；左栏不再挂会话。
  *
  * 联真模式（M5-T5.3）：挂载时探测 /api/v1/health——
  * 后端可达 → 项目/工作台走真实数据；不可达 → 演示模式（mock 数据，页头徽标提示）。
@@ -130,8 +125,6 @@ const AppShell: React.FC = () => {
   const [definitionRefresh, setDefinitionRefresh] = useState(0);
   /** 资料库行详情（右栏备注区，变更表 #19） */
   const [rowDetail, setRowDetail] = useState<RowDetail | null>(null);
-  /** 当前选中会话（左栏高亮用；用户可见的会话只有「场景定义」，点它开独立弹窗） */
-  const [activeConvId, setActiveConvId] = useState<string | null>(null);
   const layout = useColumnLayout();
 
   const live = liveProjects !== null;
@@ -139,21 +132,14 @@ const AppShell: React.FC = () => {
   const activeProject =
     shownProjects.find((p) => p.id === activeProjectId) ?? shownProjects[0];
 
-  /** 重新拉取项目列表（含会话），并保持/校正当前选中项 */
+  /** 重新拉取项目列表，并保持/校正当前选中项 */
   const refreshProjects = useCallback(async (selectId?: string) => {
     const [apiProjects, lines] = await Promise.all([
       api.listProjects(),
       api.productLines(),
     ]);
-    const convLists = await Promise.all(
-      apiProjects.map((p) =>
-        api.listConversations(p.id).catch(() => [] as ApiConversation[]),
-      ),
-    );
     const lineNames = new Map(lines.map((l) => [l.id, l.name]));
-    const mapped = apiProjects.map((p, i) =>
-      mapApiProject(p, convLists[i], lineNames),
-    );
+    const mapped = apiProjects.map((p) => mapApiProject(p, lineNames));
     setLiveProjects(mapped);
     setLines(lines);
     setLineCount(lines.length);
@@ -162,10 +148,6 @@ const AppShell: React.FC = () => {
       if (mapped.some((m) => m.id === cur)) return cur;
       return mapped[0]?.id ?? cur;
     });
-    /* 选中会话随刷新对账：所属项目/会话已删则清空 */
-    setActiveConvId((cur) =>
-      cur && mapped.some((m) => m.conversations.some((c) => c.id === cur)) ? cur : null,
-    );
     return mapped;
   }, []);
 
@@ -187,26 +169,10 @@ const AppShell: React.FC = () => {
     };
   }, [refreshProjects]);
 
-  /** 左栏选中项目：切换项目、清空会话选中并回到项目工作台 */
+  /** 左栏选中项目：切换项目并回到项目工作台 */
   const handleSelectProject = (id: string) => {
     setActiveProjectId(id);
-    setActiveConvId(null);
     setView("project");
-  };
-
-  /**
-   * 左栏选中会话：打开「场景定义」独立弹窗（变更表 #180）
-   *
-   * 用户可见的会话只有「场景定义」（变更表 #174 起阶段分析会话不再登记），而
-   * 变更表 #58 已定调「对话是独立弹窗/单独页面（不是中栏、不是右下角抽屉）」，
-   * 所以这里直接开那个弹窗，不再有第二套对话界面。
-   */
-  const handleSelectConversation = (projectId: string, convId: string) => {
-    const target = shownProjects.find((x) => x.id === projectId);
-    setActiveProjectId(projectId);
-    setActiveConvId(convId);
-    setView("project");
-    setDefinitionTarget({ id: projectId, name: target?.name ?? "" });
   };
 
   /** 左栏底部入口：切换主视图（收窄 string 到 ViewName） */
@@ -376,42 +342,6 @@ const AppShell: React.FC = () => {
     [live, refreshProjects, showToast],
   );
 
-  /** 会话 ⋯ 菜单动作（仅联真模式落地；删除带消息会话需 force，二次确认后强制删） */
-  const handleConversationAction = useCallback(
-    async (
-      project: Project,
-      convId: string,
-      convName: string,
-      action: "重命名" | "归档" | "删除",
-    ) => {
-      if (!live) {
-        showToast(`演示模式：${action}不会落库（连上后端才生效）`);
-        return;
-      }
-      try {
-        if (action === "重命名") {
-          const title = await promptText({ title: "重命名会话", defaultValue: convName, okText: "重命名" });
-          if (!title?.trim()) return;
-          await api.renameConversation(convId, title.trim());
-        } else if (action === "归档") {
-          await api.archiveConversation(convId);
-        } else {
-          if (
-            !window.confirm(`删除会话「${convName}」？其消息将一并删除，不可恢复。`)
-          )
-            return;
-          await api.deleteConversation(convId, true);
-        }
-        if (action !== "重命名" && convId === activeConvId) setActiveConvId(null);
-        await refreshProjects();
-        showToast(`已${action}：${convName}`);
-      } catch (err: unknown) {
-        showToast(`${action}失败：${err instanceof Error ? err.message : String(err)}`);
-      }
-    },
-    [live, refreshProjects, showToast, activeConvId],
-  );
-
   return (
     <div className={layout.shellClass} style={layout.shellStyle}>
       {/* 左栏：导航 + 项目列表 */}
@@ -420,14 +350,9 @@ const AppShell: React.FC = () => {
         onViewChange={handleViewChange}
         projects={shownProjects}
         activeProjectId={activeProject?.id ?? ""}
-        activeConvId={activeConvId}
         onSelectProject={handleSelectProject}
-        onSelectConversation={handleSelectConversation}
         onNewProject={live ? () => void handleNewProject() : undefined}
         onProjectAction={(p, a) => void handleProjectAction(p, a)}
-        onConversationAction={
-          (p, cid, cname, a) => void handleConversationAction(p, cid, cname, a)
-        }
         libraryCount={lineCount}
         onOpenGuide={openOnboarding}
       />
@@ -468,12 +393,12 @@ const AppShell: React.FC = () => {
         {view === "settings" && <SettingsView live={live} />}
       </main>
 
-      {/* 右栏：项目工作台显示阶段总结（来源地址 + 结论提醒）/ 资料库选中行显示行详情。
+      {/* 右栏：项目工作台以当前阶段产物为最小单元（信息来源 / 备注 / 唯一会话）/ 资料库选中行显示行详情。
           变更表 #149：没有可显示的内容时右栏就空着——不再放装饰性说明文案
           （「决策支撑 / 项目工作台专属」与库页引导都是重复或承诺做不到的废话） */}
       <aside className="det">
         {view === "project" ? (
-          <StageRightPanel snapshot={stageSnapshot} live={live} />
+          <ArtifactRightPanel snapshot={stageSnapshot} live={live} projectId={activeProject?.id} />
         ) : view === "library" && live && rowDetail ? (
           <RowDetailPanel detail={rowDetail} onClose={() => setRowDetail(null)} />
         ) : null}

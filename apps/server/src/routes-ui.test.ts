@@ -2795,3 +2795,101 @@ describe("静态托管", () => {
     expect(res.json().error).toContain("WEB_DIST");
   });
 });
+
+// ─── 产物唯一会话（v2，变更表 #295）────────────────────────
+
+describe("产物唯一会话路由", () => {
+  let h: Harness;
+  beforeEach(() => {
+    h = makeHarness();
+  });
+
+  it("打开不创建；首次发送创建唯一会话，block 不拆会话", async () => {
+    const { scenarioId } = seedScenario(h.db, "产物会话测试");
+    const q = (block: string): string =>
+      `step=2&type=table&id=${encodeURIComponent("表1-3")}&block=${encodeURIComponent(block)}&title=${encodeURIComponent("门槛与合规")}`;
+
+    const before = await h.app.inject({
+      method: "GET",
+      url: `/api/v1/projects/${scenarioId}/artifacts/thread?${q("门槛")}`,
+    });
+    expect(before.statusCode).toBe(200);
+    expect(before.json().conversation_id).toBeNull();
+    expect(before.json().messages).toEqual([]);
+
+    const sent = await h.app.inject({
+      method: "POST",
+      url: `/api/v1/projects/${scenarioId}/artifacts/thread/messages`,
+      payload: {
+        step: 2,
+        type: "table",
+        id: "表1-3",
+        block: "门槛",
+        title: "门槛与合规",
+        content: "这个门槛的依据是什么？",
+      },
+    });
+    expect(sent.statusCode).toBe(200);
+    expect(sent.payload).toContain("你好");
+
+    const after = await h.app.inject({
+      method: "GET",
+      url: `/api/v1/projects/${scenarioId}/artifacts/thread?${q("认证")}`,
+    });
+    const body = after.json();
+    expect(body.conversation_id).toBeTruthy();
+    expect(body.messages).toHaveLength(2);
+    expect(body.messages[0].role).toBe("用户");
+    expect(body.messages[1].role).toBe("系统");
+    expect(body.messages[1].content).toContain("你好");
+
+    // 同一产物、不同 block：还是同一条会话，不新建
+    const again = await h.app.inject({
+      method: "POST",
+      url: `/api/v1/projects/${scenarioId}/artifacts/thread/messages`,
+      payload: {
+        step: 2,
+        type: "table",
+        id: "表1-3",
+        block: "认证",
+        title: "门槛与合规",
+        content: "继续问",
+      },
+    });
+    expect(again.statusCode).toBe(200);
+    const list = h.db.conversationRepo.list({
+      where: "scenario_id = ? AND kind = '产物会话'",
+      params: [scenarioId],
+    });
+    expect(list).toHaveLength(1);
+  });
+
+  it("产物会话不出现在左栏会话列表；非法产物 400", async () => {
+    const { scenarioId } = seedScenario(h.db, "产物会话可见性");
+    await h.app.inject({
+      method: "POST",
+      url: `/api/v1/projects/${scenarioId}/artifacts/thread/messages`,
+      payload: { step: 2, type: "table", id: "表1-3", content: "你好" },
+    });
+    const conversations = await h.app.inject({
+      method: "GET",
+      url: `/api/v1/projects/${scenarioId}/conversations`,
+    });
+    expect(conversations.json()).toEqual([]);
+
+    const bad = await h.app.inject({
+      method: "GET",
+      url: `/api/v1/projects/${scenarioId}/artifacts/thread?step=2&type=table&id=${encodeURIComponent("表4-1")}`,
+    });
+    expect(bad.statusCode).toBe(400);
+    expect(bad.json().error).toContain("不属于");
+
+    const badPost = await h.app.inject({
+      method: "POST",
+      url: `/api/v1/projects/${scenarioId}/artifacts/thread/messages`,
+      payload: { step: 2, type: "table", id: "表4-1", content: "无效产物" },
+    });
+    expect(badPost.statusCode).toBe(400);
+    expect(badPost.json().error).toContain("不属于");
+  });
+});

@@ -244,9 +244,10 @@ test("交付物这一步：一份交付物与动作都在流程轴第二行（�
   expect(Math.abs(yAfter - yBefore)).toBeLessThanOrEqual(2);
   await expect(chips.first()).toBeVisible();
 
-  // v2.11：右栏只剩「阶段总结」的调研信息来源 + 结论提醒；全文（含装配原料统计）已从界面删除
-  await expect(page.locator(".det .summary-hd h3")).toHaveText("阶段总结");
-  await expect(page.locator(".det .summary-sub").first()).toBeVisible();
+  // v2：交付物步右栏锚定「解决方案」产物，上区来源/备注，下区唯一会话；全文仍不进界面
+  await expect(page.locator(".det .artifact-title")).toHaveText("解决方案");
+  await expect(page.locator(".det .artifact-tabs [role=tab]")).toHaveCount(2);
+  await expect(page.locator(".det .thread-pane")).toBeVisible();
   await expect(page.locator(".det .md-body")).toHaveCount(0);
   await expect(page.locator(".det .fold-toggle")).toHaveCount(0);
   await expect(page.locator(".det").locator("table")).toHaveCount(0);
