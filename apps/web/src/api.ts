@@ -681,11 +681,6 @@ export const api = {
       `/projects/${encodeURIComponent(id)}/ppt-outline`,
       { method: "PUT", body: { markdown } },
     ),
-  generatePptOutline: (id: string) =>
-    req<ApiPptOutline & { notice?: string }>(
-      `/projects/${encodeURIComponent(id)}/ppt-outline/generate`,
-      { method: "POST" },
-    ),
   /** 导出 Markdown（写盘内容 = 界面所见），回显写出的文件路径 */
   exportDeliverables: (id: string, dir?: string) =>
     req<{ files: string[]; notice?: string }>(

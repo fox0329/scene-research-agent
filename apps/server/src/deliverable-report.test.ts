@@ -33,6 +33,7 @@ import {
   VERIFY_PROMPT_MARKER,
 } from "./report-review.js";
 import { getReport, getReports } from "./report-service.js";
+import { getPptOutline } from "./ppt-outline.js";
 
 /** 章节 + 方案构件都齐的"好"报告（模拟模型照要求作答）；两个口径各生成一份 */
 function goodReport(kind: ReportKind): string {
@@ -128,7 +129,13 @@ async function run(
   kinds?: readonly ReportKind[],
   review: "on" | "off" = "on",
 ): Promise<FollowEvent[]> {
-  const cmd = createDeliverableReportCommand({ db, dshClient: dsh, keepaliveMs: 10_000, review });
+  const cmd = createDeliverableReportCommand({
+    db,
+    dshClient: dsh,
+    keepaliveMs: 10_000,
+    review,
+    includePptOutline: false,
+  });
   const events: FollowEvent[] = [];
   for await (const e of await cmd.execute({ scenarioId, kinds })) events.push(e);
   return events;
@@ -624,5 +631,42 @@ describe("splitReportChapters：同义章名与补写兜底", () => {
   it("补写多章时不套用整段兜底（避免把两章内容混成一章）", () => {
     const map = splitReportChapters("没有标题的正文", "solution", ["status", "next"]);
     expect(map.size).toBe(0);
+  });
+});
+
+
+describe("交付物同一次生成：解决方案 + PPT 大纲（#342）", () => {
+  it("写完解决方案后立刻按同一份正文写大纲并落盘", async () => {
+    const outline = `# 智慧会议室 PPT 大纲
+
+## 第 1 页｜一套平台管住会议全流程｜版式：封面
+- 标题：一套平台管住会议全流程
+- 要点：
+  - 预约、设备、纪要一条链
+- 结论：先看清现状再谈改造
+
+## 第 2 页｜设备与系统各管一摊｜版式：网格要点
+- 标题：设备与系统各管一摊
+- 要点：
+  - 预约系统不掌握设备状态
+- 结论：数据口径先统一
+`;
+    const { client } = dshByPrompt(({ user }) =>
+      user.startsWith("## 解决方案正文") ? outline : goodReport("solution"),
+    );
+    const cmd = createDeliverableReportCommand({
+      db: h.db,
+      dshClient: client,
+      keepaliveMs: 10_000,
+      review: "off",
+      includePptOutline: true,
+    });
+    const events: FollowEvent[] = [];
+    for await (const e of await cmd.execute({ scenarioId: h.scenarioId })) events.push(e);
+    const scenario = h.db.scenarioRepo.getById(h.scenarioId)!;
+    const saved = getPptOutline(scenario);
+    expect(saved.generated).toBe(true);
+    expect(saved.markdown).toContain("第 1 页");
+    expect(events.some((e) => String(e.message ?? "").includes("PPT 大纲已生成"))).toBe(true);
   });
 });

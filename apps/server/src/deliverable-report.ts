@@ -50,6 +50,7 @@ import {
 } from "@scene/domain";
 import { buildChapterPrompt, buildLeadFixPrompt, buildReportPrompt } from "./report-prompts.js";
 import { streamPrompt } from "./dsh-stream.js";
+import { writePptOutlineForSolution } from "./ppt-outline.js";
 import { reviewReport, type ReviewMode } from "./report-review.js";
 
 /**
@@ -85,6 +86,8 @@ export interface DeliverableReportDeps {
   keepaliveMs?: number;
   /** 交付物终检开关（变更表 #139，默认 `on`）：关掉就一次终检调用都不发 */
   review?: ReviewMode;
+  /** 是否在同一轮里同步生成 PPT 大纲（默认 true；测试只想验报告链路时置 false） */
+  includePptOutline?: boolean;
 }
 
 /** 生成结果（返回给调用方与测试）：两个口径各一份 */
@@ -630,6 +633,29 @@ export function createDeliverableReportCommand(deps: DeliverableReportDeps) {
             failures.push(
               `${REPORT_KIND_LABEL[kind]}：${err instanceof Error ? err.message : String(err)}`,
             );
+          }
+        }
+
+        /* PPT 大纲与解决方案属于同一次交付物生成（变更表 #342）：解决方案定稿后立刻按它写大纲，
+           用户看到的两份产物是同一批内容；大纲失败不推翻已生成的解决方案。 */
+        const solutionText = result.markdowns.solution;
+        if (deps.includePptOutline !== false && solutionText.trim() !== "") {
+          push({ type: "progress", message: "正在依据解决方案生成 PPT 大纲…" });
+          try {
+            const outline = await writePptOutlineForSolution({
+              scenario,
+              solution: solutionText,
+              dshClient,
+              keepaliveMs,
+              push,
+            });
+            push({
+              type: "progress",
+              message: `PPT 大纲已生成：${outline.chars} 字${outline.notice ? `；${outline.notice}` : ""}`,
+            });
+          } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : String(err);
+            push({ type: "progress", message: `PPT 大纲生成失败：${msg}（解决方案已生成，可重新生成）` });
           }
         }
       } catch (err: unknown) {

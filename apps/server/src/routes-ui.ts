@@ -75,7 +75,7 @@ import { createDeliverableReportCommand } from "./deliverable-report.js";
 import { getReports, saveReportFile, writeReportFiles } from "./report-service.js";
 import { exportReportDocx } from "./docx-export.js";
 import { exportReportPptx } from "./ppt-export.js";
-import { generatePptOutline, getPptOutline, savePptOutlineFile } from "./ppt-outline.js";
+import { getPptOutline, savePptOutlineFile } from "./ppt-outline.js";
 import { closePptRun, ensurePptRun, pptRunId } from "./ppt-progress.js";
 import { assertExportDir, pickFolder, safeStartDir } from "./folder-picker.js";
 import { createConverseCommand, type ChatImportOutcome } from "./converse.js";
@@ -491,27 +491,9 @@ export function registerUiRoutes(app: FastifyInstance, deps: UiRoutesDeps): void
     return savePptOutlineFile(scenario, body.markdown);
   });
 
-  app.post("/api/v1/projects/:id/ppt-outline/generate", async (request, reply) => {
-    const { id } = request.params as { id: string };
-    const scenario = db.scenarioRepo.getById(id);
-    if (!scenario) return notFound(reply, `场景 ${id} 不存在`);
-    try {
-      return await generatePptOutline({ db, scenario, dshClient });
-    } catch (err: unknown) {
-      return reply.code(400).send({ error: err instanceof Error ? err.message : String(err) });
-    }
-  });
-
-  /**
-   * 生成交付物（模型撰写 + 确定性校验，SSE 推进度）
-   *
-   * 为什么单独一条路由而不是走阶段推进：交付物这一步不产表（33 张表全在前面），
-   * 它是"把已有结论读成一份报告"，输入是全部表、输出是两份 Markdown。
-   */
   app.post("/api/v1/projects/:id/deliverables/generate", async (request, reply) => {
     const { id } = request.params as { id: string };
     if (!db.scenarioRepo.getById(id)) return notFound(reply, `场景 ${id} 不存在`);
-    // body.kind 可选：只重跑其中一份（不给就是两份都跑）；给了非法值按两份处理
     const body = (request.body ?? {}) as { kind?: unknown };
     const kinds =
       typeof body.kind === "string" && (REPORT_KINDS as readonly string[]).includes(body.kind)

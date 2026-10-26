@@ -10,11 +10,9 @@
 
 import { existsSync, mkdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { PPT_LAYOUTS, PPT_LIMITS, type DshClient, type Scenario } from "@scene/contract";
-import type { DbInstance } from "@scene/infra";
+import { PPT_LAYOUTS, PPT_LIMITS, type DshClient, type FollowEvent, type Scenario } from "@scene/contract";
 import { safeWriteFile } from "@scene/infra";
 import { deliverableDir } from "./deliverable-report.js";
-import { getReport } from "./report-service.js";
 import { streamPrompt } from "./dsh-stream.js";
 
 export interface PptOutlineView {
@@ -104,22 +102,22 @@ function stripFence(text: string): string {
 }
 
 /**
- * 根据已生成的解决方案写大纲并落盘。
+ * 用一份**刚刚生成好的**解决方案写大纲并落盘。
  *
- * 不自动重试：大纲是用户可改的交付物，失败就让用户看到原因、重试一次；
- * 页数越界只提示、不删内容（用户可能故意多写）。
+ * 交付物命令在写完解决方案后直接调它，避免再读磁盘拿到上一版；
+ * 单独点「重新生成大纲」的旧入口也复用它。
  */
-export async function generatePptOutline(args: {
-  db: DbInstance;
+export async function writePptOutlineForSolution(args: {
   scenario: Scenario;
+  solution: string;
   dshClient: DshClient;
+  keepaliveMs?: number;
+  push?: (event: FollowEvent) => void;
 }): Promise<{ markdown: string; chars: number; generated: true; notice?: string }> {
-  const solution = getReport(args.db, args.scenario, "solution").markdown.trim();
+  const solution = args.solution.trim();
   if (solution === "") throw new Error("解决方案还没有生成，请先生成解决方案，再生成 PPT 大纲");
 
-  const session = await args.dshClient.createSession({
-    title: `${args.scenario.name} · PPT 大纲`,
-  });
+  const session = await args.dshClient.createSession({ title: `${args.scenario.name} · PPT 大纲` });
   const prompt = buildPptOutlineDocPrompt(args.scenario.name, solution);
   const result = await streamPrompt({
     dshClient: args.dshClient,
@@ -127,8 +125,8 @@ export async function generatePptOutline(args: {
     system: prompt.system,
     user: prompt.user,
     label: "PPT 大纲",
-    keepaliveMs: 30_000,
-    push: () => {},
+    keepaliveMs: args.keepaliveMs ?? 30_000,
+    push: args.push ?? (() => {}),
   });
   if (result.error) throw new Error(result.error);
   const markdown = stripFence(result.text);
