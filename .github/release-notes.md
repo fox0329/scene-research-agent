@@ -129,7 +129,7 @@
 | 你的机器 | 下载这个 |
 |---|---|
 | Mac（Apple 芯片，M1/M2/M3/M4 等） | `SceneMaster-*-mac-arm64.dmg` |
-| Windows 10 / 11（64 位） | `SceneMaster-*-win-x64-setup.exe`（安装版，推荐）或 `…-win-x64-portable.exe`（免安装，解压即用） |
+| Windows 10 / 11（64 位） | `SceneMaster-*-win-x64-setup.exe`（安装版） |
 
 > 暂不支持 macOS Intel（x64）机型。
 
@@ -145,7 +145,7 @@
 
 ### Windows 首次安装
 
-- **安装版**：双击 exe 一路装完即可；**免安装版**：解压后直接运行目录里的 exe
+- **安装版**：双击 exe 一路装完即可
 - 若 SmartScreen 弹「Windows 已保护你的电脑」：点 **更多信息 → 仍要运行**
 
 ### 导出 PPT 的前提

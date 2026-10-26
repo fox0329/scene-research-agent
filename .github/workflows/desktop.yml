@@ -104,7 +104,6 @@ jobs:
             case "$b" in
               *mac-arm64.dmg)        n="SceneMaster-$VER-mac-arm64.dmg" ;;
               *win-x64-安装版.exe)   n="SceneMaster-$VER-win-x64-setup.exe" ;;
-              *win-x64-免安装版.exe) n="SceneMaster-$VER-win-x64-portable.exe" ;;
               *)                     n="$b" ;;
             esac
             cp "$f" "out/$n"

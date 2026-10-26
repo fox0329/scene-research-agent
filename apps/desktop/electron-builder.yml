@@ -53,7 +53,6 @@ win:
   icon: build/icon.png
   target:
     - target: nsis
-    - target: portable
 
 nsis:
   oneClick: false
@@ -63,7 +62,3 @@ nsis:
   createStartMenuShortcut: true
   shortcutName: 场景通
   artifactName: SceneMaster-${version}-win-${arch}-setup.${ext}
-
-# 免安装版（绿色包，网盘分发友好）
-portable:
-  artifactName: SceneMaster-${version}-win-${arch}-portable.${ext}
