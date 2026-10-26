@@ -12,7 +12,7 @@
 import { execFile } from "node:child_process";
 import { existsSync, statSync, accessSync, constants } from "node:fs";
 import { homedir } from "node:os";
-import { resolve, sep } from "node:path";
+import { isAbsolute, relative, resolve, sep } from "node:path";
 import { promisify } from "node:util";
 
 const run = promisify(execFile);
@@ -44,8 +44,53 @@ export function folderPickScript(prompt: string, startIn?: string | null): strin
   return `${head} default location POSIX file "${appleString(startIn)}")`;
 }
 
+/** PowerShell 单引号字符串转义：单引号本身写两遍 */
+function powerShellString(value: string): string {
+  return `'${value.replace(/'/g, "''")}'`;
+}
+
 /**
- * 弹系统「选择文件夹」对话框；取消返回 null，非 macOS 抛错由路由转成 501
+ * Windows 的「选择文件夹」脚本（纯函数，便于单测）。
+ *
+ * 用 Windows PowerShell 自带的 WinForms FolderBrowserDialog：不需要装 .NET SDK，
+ * 也不需要 electron 主进程参与（服务端是独立子进程，拿不到 Electron 的 dialog）。
+ * - `-STA` 必须：FolderBrowserDialog 是 COM/STA 组件；
+ * - `[Console]::OutputEncoding` 改成 UTF-8：中文路径经 stdout 回 Node 不乱码；
+ * - 取消时 stdout 为空（不写任何东西），由调用方转成「已取消」。
+ */
+export function folderPickPowerShell(prompt: string, startIn?: string | null): string {
+  const start = startIn ? powerShellString(startIn) : "''";
+  return [
+    "$ErrorActionPreference = 'Stop'",
+    "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8",
+    "Add-Type -AssemblyName System.Windows.Forms",
+    "$d = New-Object System.Windows.Forms.FolderBrowserDialog",
+    `$d.Description = ${powerShellString(prompt)}`,
+    "$d.ShowNewFolderButton = $true",
+    `$start = ${start}`,
+    "if ($start -ne '' -and (Test-Path -LiteralPath $start)) { $d.SelectedPath = $start }",
+    "if ($d.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { [Console]::Write($d.SelectedPath) }",
+  ].join("\n");
+}
+
+async function pickFolderWindows(prompt: string, startIn?: string | null): Promise<FolderPickResult> {
+  const encoded = Buffer.from(folderPickPowerShell(prompt, startIn), "utf16le").toString("base64");
+  try {
+    const { stdout } = await run(
+      "powershell.exe",
+      ["-NoProfile", "-STA", "-ExecutionPolicy", "Bypass", "-EncodedCommand", encoded],
+      { timeout: 120_000, windowsHide: true },
+    );
+    const dir = stdout.replace(/\r?\n/g, "").trim();
+    return { dir: dir === "" ? null : dir };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    return { dir: null, reason: `无法打开文件夹对话框：${message.slice(0, 120)}` };
+  }
+}
+
+/**
+ * 弹系统「选择文件夹」对话框；取消返回 null，不支持的平台回退手填
  *
  * `startIn` 见 `folderPickScript`（默认起点；调用方负责先校验它是不是合法的导出目录）。
  */
@@ -53,6 +98,7 @@ export async function pickFolder(
   prompt = "选择导出报告的文件夹",
   startIn?: string | null,
 ): Promise<FolderPickResult> {
+  if (process.platform === "win32") return pickFolderWindows(prompt, startIn);
   if (process.platform !== "darwin") {
     return { dir: null, reason: "当前系统不支持弹出文件夹对话框，请直接填写路径" };
   }
@@ -73,11 +119,14 @@ export async function pickFolder(
 /** 校验目标目录：绝对路径、存在、是目录、可写、在主目录下且不在敏感目录里 */
 export function assertExportDir(input: string): string {
   const dir = resolve(input.trim());
-  if (!dir.startsWith(homedir() + sep)) {
-    throw new Error(`只能导出到你的主目录下的文件夹（${homedir()}），收到：${dir}`);
+  const home = resolve(homedir());
+  const rel = relative(home, dir);
+  /* Windows 盘符大小写、分隔符都可能不同：用 relative 判断是否在家目录下 */
+  if (rel === "" || rel.startsWith("..") || isAbsolute(rel)) {
+    throw new Error(`只能导出到你的主目录下的文件夹（${home}），收到：${dir}`);
   }
-  const rel = dir.slice(homedir().length + 1);
-  if (DENY.some((d) => rel === d || rel.startsWith(`${d}${sep}`) || rel.startsWith(`${d}/`))) {
+  const relPosix = rel.split(sep).join("/");
+  if (DENY.some((d) => relPosix === d || relPosix.startsWith(`${d}/`))) {
     throw new Error(`这个目录受保护，不能作为导出目录：${dir}`);
   }
   if (!existsSync(dir)) throw new Error(`目录不存在：${dir}`);

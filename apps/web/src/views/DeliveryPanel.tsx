@@ -670,7 +670,7 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
               className="settings-input"
               type="text"
               value={manualDir}
-              placeholder="文件夹绝对路径，例如 /Users/you/Documents/报告"
+              placeholder="文件夹绝对路径，例如 /Users/you/Documents 或 C:\\Users\\you\\Documents"
               aria-label="导出文件夹路径"
               onChange={(e) => {
                 const next = e.target.value;

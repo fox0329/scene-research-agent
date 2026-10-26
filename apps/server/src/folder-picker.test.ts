@@ -12,7 +12,7 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { assertExportDir, folderPickScript, safeStartDir } from "./folder-picker.js";
+import { assertExportDir, folderPickPowerShell, folderPickScript, safeStartDir } from "./folder-picker.js";
 
 const made: string[] = [];
 
@@ -111,5 +111,27 @@ describe("记忆值当对话框起点（变更表 #151）", () => {
     ]) {
       expect(safeStartDir(value), String(value)).toBeNull();
     }
+  });
+});
+
+
+describe("Windows 文件夹对话框脚本（#336）", () => {
+  it("用 STA 的 PowerShell + WinForms，不依赖 Electron 主进程", () => {
+    const script = folderPickPowerShell("把「场景」的报告导出到哪个文件夹？");
+    expect(script).toContain("Add-Type -AssemblyName System.Windows.Forms");
+    expect(script).toContain("FolderBrowserDialog");
+    expect(script).toContain("DialogResult]::OK");
+    expect(script).toContain("[Console]::OutputEncoding");
+  });
+
+  it("场景名与起始路径里的单引号被转义，不会把脚本写坏", () => {
+    const script = folderPickPowerShell("导出 O'Brien 的报告", "C:\\Users\\O'Brien\\Documents");
+    expect(script).toContain("$d.Description = '导出 O''Brien 的报告'");
+    expect(script).toContain("$start = 'C:\\Users\\O''Brien\\Documents'");
+    expect(script).not.toContain("$d.Description = '导出 O'Brien");
+  });
+
+  it("不给起始路径时 start 为空串，对话框退回系统默认位置", () => {
+    expect(folderPickPowerShell("选择目录")).toContain("$start = ''");
   });
 });
