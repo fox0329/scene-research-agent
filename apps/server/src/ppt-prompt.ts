@@ -2,8 +2,8 @@
  * @scene/server — PPT 大纲提示词（变更表 #141 立、#142 升：信息量与排版；#146 升：大纲质量要求 + 优化评审）
  *
  * 一次模型调用产出**全部页面**（严格 JSON，无围栏、无解释）。口径见 `docs/PPT输出要求.md`：
- * 5–10 页（目标 7 页）、不要封面/目录/尾页、第一页直接进内容、问题 → 方案 → 价值、
- * **每页信息量 ≈ 4 块 × 3–4 行（至少 12 条有效短句）**、七种布局各按自己的字段给内容、
+ * 6–15 页（目标 10 页）、不要封面/目录/尾页、第一页直接进内容、问题 → 方案 → 价值、
+ * **每页信息量 ≈ 4 块 × 3–4 行（至少 12 条有效短句）**、八种布局各按自己的字段给内容、
  * **`layout` 与字段必须成套**（声明 `表格` 就必须给 `table`，声明 `流程阶段` 就必须给 `stages`）、
  * 只用报告正文里出现过的名词与数字。
  *
@@ -90,7 +90,7 @@ export const PPT_TEMPLATE_RULES: readonly string[] = [
 /** 页面口径（逐条写死，模型不用猜） */
 export const PPT_PAGE_RULES: readonly string[] = [
   `**共 ${PPT_LIMITS.minPages}–${PPT_LIMITS.maxPages} 页，目标 ${PPT_LIMITS.targetPages} 页**：第 1 页是 \`${PPT_OUTLINE_QUALITY.coverLayout}\`，`,
-  "第 2 页起是正文（6–9 页），**不要目录页、不要「谢谢 / 结束」这类尾页**。",
+  "第 2 页起是正文，**不要目录页、不要「谢谢 / 结束」这类尾页**。",
   "叙事走「问题 → 方案 → 价值」：封面之后 1–2 页讲现状与问题（读者今天的处境与代价），",
   "中间 3–4 页讲方案、建设内容与路径，最后 1–2 页讲价值与收益。",
   "",
@@ -341,19 +341,28 @@ export function buildPptOutlinePrompt(
   scenarioName: string,
   markdown: string,
   previousIssues: readonly PptIssue[] = [],
+  options: { outline?: boolean } = {},
 ): { system: string; user: string } {
   const system = [
     `你是给《${scenarioName}${kindLabel(kind)}》做汇报 PPT 的排版编辑，读者是客户的业务负责人与决策人。`,
     "你只做一件事：把这份报告压缩成几页**密排、能直接讲**的中间页。",
     "判断标准只有一条：**每一页都要写满有用的话**——读者扫一眼就知道这页在说什么、能不能落地。",
     "",
+    ...(options.outline
+      ? [
+          "## 已确认大纲（最高优先级）",
+          "下面给的是**用户已经确认过的 PPT 大纲**，不是报告正文。页数、每页标题、每页要点必须照大纲；",
+          "你只负责把每页内容展开成 JSON 的版式字段，**不得增删页、不得改标题、不得丢掉大纲里的要点**。",
+          "",
+        ]
+      : []),
     "## 页面口径",
     ...PPT_PAGE_RULES,
     "",
     ...PPT_OUTLINE_QUALITY_RULES,
     "",
     ...feedbackSection(previousIssues),
-    "## 七种布局怎么用",
+    "## 八种布局怎么用",
     ...PPT_LAYOUT_SPEC,
     "",
     ...PPT_ICON_RULES,
@@ -366,7 +375,7 @@ export function buildPptOutlinePrompt(
     `## 交付物`,
     `${scenarioName}${kindLabel(kind)}`,
     "",
-    "## 正文",
+    options.outline ? "## 已确认大纲" : "## 正文",
     markdown,
   ].join("\n");
   return { system, user };
@@ -392,7 +401,7 @@ export function buildPptRetryPrompt(
     `- **每一页都写到 ${PPT_LIMITS.targetSentencesPerPage} 条以上有效短句**：被点名的页要整页重写，不要只补一句；`,
     `  步骤 / 阶段类内容写成 \`流程阶段\`（${PPT_LIMITS.stages.min}–${PPT_LIMITS.stages.max} 个 \`stages\`，每个都有 \`note\`），表格式内容写成 \`表格\`（带完整 \`table\`）。`,
     `- **给不出某种版式的字段就改用 \`网格要点\` 写满 ${PPT_LIMITS.blocks.count} 块**（每块 ${PPT_LIMITS.blocks.minLines}–${PPT_LIMITS.blocks.maxLines} 行）——`,
-    "  **宁可用网格要点写满，也不要再交一页只有两三条的空页**。页数与叙事不变（5–10 页、问题 → 方案 → 价值、无封面目录尾页）。",
+    "  **宁可用网格要点写满，也不要再交一页只有两三条的空页**。页数与叙事不变（6–15 页、问题 → 方案 → 价值、不要目录与尾页）。",
     "- **每处内容都要有图标、每页都要有重点**：每一页、每个块 / 栏 / 阶段 / 层 / 卡片 / 表头列都必须给 `icon`（从下面白名单里挑，",
     "  分不清就写 `presentation`）；每页至少 4 处看得出重点（大写数字、关键结论、带数字的成效）。",
     "",
@@ -449,7 +458,7 @@ export function buildPptOutlineReviewPrompt(args: {
     "",
     ...PPT_OUTLINE_QUALITY_RULES,
     "",
-    "## 七种布局怎么用",
+    "## 八种布局怎么用",
     ...PPT_LAYOUT_SPEC,
     "",
     ...PPT_PAGE_RULES,

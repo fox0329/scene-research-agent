@@ -845,9 +845,9 @@ describe("exportReportPptx — 不合格就重跑（#146 修复闭环）", () =>
     expect(kept.map((i) => i.page)).toEqual([3, 4]);
   });
 
-  it("合同里的页数口径没被改歪（7–10 页、目标 8 页、三轮闭环）", () => {
-    expect(PPT_LIMITS.minPages).toBe(7);
-    expect(PPT_LIMITS.maxPages).toBe(10);
+  it("合同里的页数口径没被改歪（6–15 页、目标 10 页、三轮闭环）", () => {
+    expect(PPT_LIMITS.minPages).toBe(6);
+    expect(PPT_LIMITS.maxPages).toBe(15);
     expect(PPT_OUTLINE_ROUNDS).toBe(3);
   });
 });

@@ -1377,9 +1377,8 @@ function narrativeIssues(pages: readonly PptPage[]): PptOutlineQualityIssue[] {
  */
 function templateIssues(pages: readonly PptPage[]): PptOutlineQualityIssue[] {
   const out: PptOutlineQualityIssue[] = [];
-  // 只对成稿规模的整份（≥ minPages）判结构：少于 7 页本身已经被页数下限点名，
-  // 再叠一条「缺封面 / 版式单一」只是同一件事说三遍。
-  if (pages.length < PPT_LIMITS.minPages) return out;
+  // 6 页是最低规模，页数下限已经点名；结构性检查从 7 页起（变更表 #341）。
+  if (pages.length <= PPT_LIMITS.minPages) return out;
   const first = pages[0];
   if (first === undefined || first.layout !== PPT_OUTLINE_QUALITY.coverLayout) {
     out.push({

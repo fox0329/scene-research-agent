@@ -28,7 +28,7 @@ export const PPT_GENERATION_RULES: readonly PptGenerationRule[] = [
   {
     id: "pages",
     rule: `整份 ${PPT_LIMITS.minPages}–${PPT_LIMITS.maxPages} 页，目标 ${PPT_LIMITS.targetPages} 页；第 1 页必须是「${PPT_OUTLINE_QUALITY.coverLayout}」`,
-    why: "模版 6 页 5 种结构；少于 7 页讲不清「问题 → 方案 → 价值」，多于 10 页读者记不住",
+    why: "模版 6 页 5 种结构；少于 6 页讲不清「问题 → 方案 → 价值」，多于 15 页读者记不住",
   },
   {
     id: "narrative",
@@ -68,7 +68,7 @@ export const PPT_GENERATION_RULES: readonly PptGenerationRule[] = [
   {
     id: "no-toc",
     rule: "不做目录页、不做「谢谢 / 结束」尾页",
-    why: "7–8 页的篇幅，目录占一页就是浪费；结尾用「下一步」收，不用客套",
+    why: "6–15 页的篇幅，目录占一页就是浪费；结尾用「下一步」收，不用客套",
   },
   {
     id: "textbox",
@@ -197,7 +197,7 @@ export const PPT_CAUTIONS: readonly PptCaution[] = [
   },
   {
     id: "template-gate-scope",
-    note: "「缺封面 / 版式单一 / 版式重复」只对 ≥7 页的成稿判——少于 7 页本身已经被页数下限点名，不重复罚",
+    note: "「缺封面 / 版式单一 / 版式重复」只对 ≥6 页的成稿判——少于 6 页本身已经被页数下限点名，不重复罚",
     model: false,
   },
 ];
@@ -254,8 +254,8 @@ export const PPT_GATE_THRESHOLDS: readonly PptGateThreshold[] = [
   { code: "图标重复", layer: "outline", threshold: "同一页两个元素用同一个图标", action: "进下一轮反馈" },
   { code: "版式与字段不成套", layer: "outline", threshold: "layout 与字段不匹配（表格无 table、流程不足 3 段等）", action: "降级到可用版式后照渲染" },
   { code: "缺封面", layer: "outline", threshold: `第 1 页不是「${PPT_OUTLINE_QUALITY.coverLayout}」（或封面内容不全被降级）`, action: "进下一轮反馈" },
-  { code: "版式单一", layer: "outline", threshold: `整份结构 < ${PPT_OUTLINE_QUALITY.minLayoutVariety} 种（只判 ≥7 页成稿）`, action: "进下一轮反馈" },
-  { code: "版式重复", layer: "outline", threshold: `同一种结构连续 > ${PPT_OUTLINE_QUALITY.maxLayoutRun} 页（只判 ≥7 页成稿）`, action: "进下一轮反馈" },
+  { code: "版式单一", layer: "outline", threshold: `整份结构 < ${PPT_OUTLINE_QUALITY.minLayoutVariety} 种（只判 ≥6 页成稿）`, action: "进下一轮反馈" },
+  { code: "版式重复", layer: "outline", threshold: `同一种结构连续 > ${PPT_OUTLINE_QUALITY.maxLayoutRun} 页（只判 ≥6 页成稿）`, action: "进下一轮反馈" },
 ];
 
 /** 全部已登记的门禁 code（去重；单测与源码对账用） */

@@ -35,6 +35,7 @@ import {
   reconnectDeliverablesStream,
   type ApiDeliverables,
   type ApiFlowStatus,
+  type ApiPptOutline,
   type DeliverableKind,
 } from "../api";
 import { useStageAnalysis, type StageAnalysisState } from "../hooks/useStageAnalysis";
@@ -78,6 +79,9 @@ export interface DeliveryPanelProps {
 
 /** 默认打开的那一份 */
 const DEFAULT_TAB: DeliverableKind = "solution";
+
+/** 交付物页签：解决方案 + 它的 PPT 大纲（变更表 #341） */
+type DeliveryTab = DeliverableKind | "ppt-outline";
 
 /** 交付物的名字与说明与流程轴第二行共用一个来源（见 step-outputs） */
 function deliveryLabel(key: DeliverableKind): string {
@@ -156,9 +160,12 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
 }) => {
   const { showToast } = useToast();
   /** 当前在看哪一份（变更表 #137）：两份都是正式交付物，中栏一次只显示一份 */
-  const [tab, setTab] = useState<DeliverableKind>(DEFAULT_TAB);
+  const [tab, setTab] = useState<DeliveryTab>(DEFAULT_TAB);
   /** 两份一起取回：切份只换显示，不再发请求 */
   const [reports, setReports] = useState<ApiDeliverables["reports"] | null>(null);
+  /** PPT 大纲（变更表 #341）：依据解决方案生成，用户可改 */
+  const [outline, setOutline] = useState<ApiPptOutline | null>(null);
+  const [outlineBusy, setOutlineBusy] = useState(false);
   /** 服务端是否还有报告生成在跑：刷新/切页回来接回进度，不再重复发起 */
   const [serverGenerating, setServerGenerating] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -201,6 +208,11 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
       const r = await api.getDeliverables(projectId);
       setReports(r.reports);
       setServerGenerating(Boolean(r.generating));
+      try {
+        setOutline(await api.getPptOutline(projectId));
+      } catch {
+        // 大纲接口失败不拖垮解决方案正文；切到大纲页时再重试
+      }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -212,11 +224,29 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
     void loadReports();
   }, [loadReports, refreshToken]);
 
-  const current = reports?.[tab] ?? null;
-  /** true = 模型撰写的正式版；false = 确定性要点版（提示引导生成） */
+  /* 第一次切到大纲页且还没取到时补取一次（loadReports 失败过也不会一直空着） */
+  useEffect(() => {
+    if (tab !== "ppt-outline" || !live || !projectId || outline !== null) return;
+    let alive = true;
+    void api
+      .getPptOutline(projectId)
+      .then((r) => {
+        if (alive) setOutline(r);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [tab, live, projectId, outline]);
+
+  const solution = reports?.solution ?? null;
+  const current = tab === "solution" ? solution : outline;
+  /** true = 模型撰写的正式版；false = 还没生成 */
   const generated = current?.generated ?? false;
   const body = current?.markdown ?? "";
-  const label = deliveryLabel(tab);
+  const solutionGenerated = solution?.generated ?? false;
+  const outlineGenerated = outline?.generated ?? false;
+  const label = tab === "solution" ? deliveryLabel("solution") : "PPT大纲";
 
   /**
    * 外部一次性选择（`pick`）→ 切到那一份
@@ -238,7 +268,7 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
 
   /** 中栏顶部点交付物 chip：与外部 `pick` 同一条规则——切份丢弃未保存的草稿 */
   const handlePickReport = useCallback(
-    (next: DeliverableKind) => {
+    (next: DeliveryTab) => {
       if (next === tab) return;
       setDraft(null);
       setTab(next);
@@ -282,7 +312,33 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
     gen.startResume();
   }, [live, projectId, serverGenerating, gen.running, gen.startResume]);
 
+  const generateOutline = useCallback(async () => {
+    if (!live || !projectId) {
+      showToast("演示模式：PPT 大纲生成仅在实时数据模式可用");
+      return;
+    }
+    if (!solutionGenerated) {
+      showToast("请先生成解决方案，再生成 PPT 大纲");
+      return;
+    }
+    setOutlineBusy(true);
+    try {
+      const r = await api.generatePptOutline(projectId);
+      setOutline(r);
+      setDraft(null);
+      showToast(r.notice ? `PPT 大纲已生成；${r.notice}` : "PPT 大纲已生成，可编辑后导出 PPT");
+    } catch (err: unknown) {
+      showToast(`生成 PPT 大纲失败：${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setOutlineBusy(false);
+    }
+  }, [live, projectId, solutionGenerated, showToast]);
+
   const handleGenerate = useCallback(() => {
+    if (tab === "ppt-outline") {
+      void generateOutline();
+      return;
+    }
     if (!live || !projectId) {
       showToast("演示模式：报告生成仅在实时数据模式可用");
       return;
@@ -291,7 +347,7 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
       `开始生成「${deliveryLabel("solution")}」：模型会读完前面所有表格，一次写出七章（约几分钟）`,
     );
     gen.start();
-  }, [live, projectId, showToast, gen]);
+  }, [tab, generateOutline, live, projectId, showToast, gen]);
 
   /** 一次性自动生成哨兵：失败也不自动重试，避免用户切回交付物就再次消耗一次模型 */
   const autoStartedRef = useRef(false);
@@ -335,7 +391,10 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
     if (!projectId || draft === null) return;
     setSaving(true);
     try {
-      const r = await api.saveDeliverable(projectId, tab, draft);
+      const r =
+        tab === "solution"
+          ? await api.saveDeliverable(projectId, "solution", draft)
+          : await api.savePptOutline(projectId, draft);
       const head = `已保存「${label}」`;
       showToast(r.notice ? `${head}；${r.notice}` : head);
       setDraft(null);
@@ -399,7 +458,7 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
         }
       })();
       try {
-        const r = await api.exportPptx(projectId, dir, tab, run);
+        const r = await api.exportPptx(projectId, dir, "solution", run);
         const all = [...r.files, ...r.unchanged];
         if (all.length > 0) setPptPaths(all);
         // 变更表 #151：PPT 导出失败也只回 notice（不抛错），所以按"有没有产物"记目录——
@@ -558,6 +617,15 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
           {o.label}
         </button>
       ))}
+      <button
+        type="button"
+        className={`chip${tab === "ppt-outline" ? " active" : ""}`}
+        title="依据解决方案生成 6–15 页 PPT 大纲；可编辑，导出 PPT 时优先用它"
+        aria-pressed={tab === "ppt-outline"}
+        onClick={() => handlePickReport("ppt-outline")}
+      >
+        PPT大纲
+      </button>
     </div>
   );
 
@@ -568,15 +636,29 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
       <button
         className="btn primary"
         type="button"
-        disabled={gen.running}
-        title={gen.running ? `正在撰写报告…已用 ${gen.elapsedLabel}` : undefined}
+        disabled={tab === "ppt-outline" ? outlineBusy || !solutionGenerated : gen.running}
+        title={
+          tab === "ppt-outline"
+            ? solutionGenerated
+              ? "依据解决方案生成 6–15 页 PPT 大纲"
+              : "请先生成解决方案"
+            : gen.running
+              ? `正在撰写报告…已用 ${gen.elapsedLabel}`
+              : undefined
+        }
         onClick={handleGenerate}
       >
-        {gen.running
-          ? "撰写中"
-          : generated
-            ? "重新生成报告"
-            : "生成报告"}
+        {tab === "ppt-outline"
+          ? outlineBusy
+            ? "生成中"
+            : outlineGenerated
+              ? "重新生成大纲"
+              : "生成大纲"
+          : gen.running
+            ? "撰写中"
+            : generated
+              ? "重新生成报告"
+              : "生成报告"}
       </button>
       {draft !== null ? (
         <>
@@ -605,23 +687,25 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
       <button
         className="btn"
         type="button"
-        disabled={busyWord || busyPpt || !generated}
-        title={busyWord ? "正在导出 Word 文档…" : !generated ? "还没有生成报告" : undefined}
+        disabled={busyWord || busyPpt || !solutionGenerated}
+        title={busyWord ? "正在导出 Word 文档…" : !solutionGenerated ? "还没有生成解决方案" : undefined}
         onClick={() => void pickDirThen("word")}
       >
         {busyWord ? "导出中" : "导出Word文档"}
       </button>
-      {/* PPT（变更表 #141）：点一下全自动排中间页（5–10 页、无封面尾页）；等待期显示阶段文案 */}
+      {/* PPT：有 PPT 大纲就按大纲展开（6–15 页），没有才从解决方案抽 */}
       <button
         className="btn"
         type="button"
-        disabled={busyPpt || busyWord || !generated}
+        disabled={busyPpt || busyWord || (!solutionGenerated && !outlineGenerated)}
         title={
           busyPpt
             ? pptPhase ?? undefined
-            : !generated
-              ? "还没有生成报告"
-              : "按 B 站蓝色模版排中间页：5–10 页，不要封面与尾页，突出问题、方案与价值"
+            : !solutionGenerated && !outlineGenerated
+              ? "还没有生成解决方案或 PPT 大纲"
+              : outlineGenerated
+                ? "按 PPT 大纲展开：6–15 页，突出问题、方案与价值"
+                : "还没有 PPT 大纲，将从解决方案直接抽 6–15 页"
         }
         onClick={() => void pickDirThen("ppt")}
       >
@@ -630,8 +714,8 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
       <button
         className="btn"
         type="button"
-        disabled={busy || !generated}
-        title={busy ? "正在导出 Markdown…" : !generated ? "还没有生成报告" : undefined}
+        disabled={busy || !solutionGenerated}
+        title={busy ? "正在导出 Markdown…" : !solutionGenerated ? "还没有生成解决方案" : undefined}
         onClick={() => void pickDirThen("md")}
       >
         {busy ? "导出中" : "导出 Markdown"}
@@ -712,7 +796,7 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
           </div>
         ) : (
           <>
-            {gen.running ? (
+            {tab === "solution" && gen.running ? (
               <div className="report-progress" role="status" aria-label="报告生成进度">
                 {gen.streamLines.slice(-3).map((line, i) => (
                   <div key={`${i}-${line}`} className="report-progress-line">
@@ -721,12 +805,18 @@ export const DeliveryPanel: React.FC<DeliveryPanelProps> = ({
                 ))}
               </div>
             ) : null}
-            {!generated && !gen.running ? (
+            {tab === "ppt-outline" && outlineBusy ? (
+              <div className="report-progress" role="status" aria-label="PPT 大纲生成进度">
+                <div className="report-progress-line">正在依据解决方案生成 PPT 大纲（约 1–2 分钟）…</div>
+              </div>
+            ) : null}
+            {!generated && !(tab === "ppt-outline" ? outlineBusy : gen.running) ? (
               <div className="empty-state">
                 <div className="empty-state-title">「{label}」还没有生成</div>
                 <div className="empty-state-desc">
-                  点上方「生成报告」，模型会读完全部表格后一次写出《场景》解决方案的归纳正文；
-                  生成前不预填内容，避免把提纲当成稿子。
+                  {tab === "ppt-outline"
+                    ? "点上方「生成大纲」，模型会依据解决方案正文安排 6–15 页；生成后可在这里直接改，导出 PPT 时以这份大纲为准。"
+                    : "点上方「生成报告」，模型会读完全部表格后一次写出《场景》解决方案的归纳正文；生成前不预填内容，避免把提纲当成稿子。"}
                 </div>
               </div>
             ) : null}

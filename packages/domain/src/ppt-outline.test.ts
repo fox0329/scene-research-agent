@@ -175,18 +175,18 @@ describe("parsePptOutline — 合法输入", () => {
 });
 
 describe("parsePptOutline — 页数 clamp", () => {
-  it("超过 10 页 → 截到 10 页，尾部页面记入 dropped 并给提示", () => {
-    const r = parsePptOutline(deck(13));
+  it("超过 15 页 → 截到 15 页，尾部页面记入 dropped 并给提示", () => {
+    const r = parsePptOutline(deck(18));
     expect(r.pages).toBe(PPT_LIMITS.maxPages);
     expect(r.dropped).toBe(3);
-    expect(r.notes.join("｜")).toContain("超出 10 页上限");
+    expect(r.notes.join("｜")).toContain("超出 15 页上限");
   });
 
-  it("少于 5 页 → 保留（无法凭空造页），只记提示、不算失败", () => {
+  it("少于 6 页 → 保留（无法凭空造页），只记提示、不算失败", () => {
     const r = parsePptOutline(deck(3));
     expect(r.error).toBeUndefined();
     expect(r.pages).toBe(3);
-    expect(r.notes.join("｜")).toContain("少于 7 页下限");
+    expect(r.notes.join("｜")).toContain("少于 6 页下限");
   });
 });
 

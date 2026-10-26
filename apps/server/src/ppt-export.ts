@@ -64,6 +64,7 @@ import {
 } from "@scene/domain";
 import { getReport } from "./report-service.js";
 import { streamPrompt } from "./dsh-stream.js";
+import { getPptOutline } from "./ppt-outline.js";
 import {
   buildPptOutlinePrompt,
   buildPptOutlineReviewPrompt,
@@ -203,8 +204,10 @@ async function buildOutline(args: {
   push: (event: FollowEvent) => void;
   /** 上一轮判出的问题（变更表 #146：带进这一轮的生成 / 重试提示词，点对点改） */
   feedback: readonly PptIssue[];
+  /** 入参是用户确认过的大纲（不是解决方案正文）：提示词要求按页展开、不得增删页 */
+  outline?: boolean;
 }): Promise<OutlineOutcome> {
-  const { dshClient, scenario, kind, markdown, keepaliveMs, push, feedback } = args;
+  const { dshClient, scenario, kind, markdown, keepaliveMs, push, feedback, outline } = args;
   const label = REPORT_KIND_LABEL[kind];
   let session;
   try {
@@ -220,7 +223,7 @@ async function buildOutline(args: {
   const first = await streamPrompt({
     dshClient,
     session,
-    ...buildPptOutlinePrompt(kind, scenario.name, markdown, feedback),
+    ...buildPptOutlinePrompt(kind, scenario.name, markdown, feedback, { outline: outline === true }),
     label: `PPT 大纲（${label}）`,
     keepaliveMs,
     push,
@@ -431,7 +434,7 @@ function pickBetter(first: PptOutlineParse, again: PptOutlineParse): PptOutlineP
  * 要不要重试（只重试一次）
  *
  * 三种情形值得重试：**根本解析不出来**、**页数少于 5 页下限**、**有页面内容太少**（空页）。
- * 用户口径是 5–10 页且每页要写满，少页/空页多半是模型偷懒，重发一次比直接出一份稀薄的 PPT 更接近用户要的。
+ * 用户口径是 6–15 页且每页要写满，少页/空页多半是模型偷懒，重发一次比直接出一份稀薄的 PPT 更接近用户要的。
  * 页数只是略多（>10 截尾）不重试：确定性层已经能处理好，省一次模型调用。
  */
 function retryReason(parsed: PptOutlineParse, chars: number): string | null {
@@ -648,7 +651,9 @@ export async function exportReportPptx(args: PptExportArgs): Promise<PptExportRe
     push({ type: "progress", message: "PPT：导出组件未就绪" });
     return refuse("PPT 导出组件未就绪：找不到 ppt-master 技能（可用 PPT_MASTER_DIR 指定技能目录）");
   }
-  if (getReport(db, scenario, kind).markdown.trim() === "") {
+  const savedOutline = getPptOutline(scenario).markdown.trim();
+  const solutionMarkdown = getReport(db, scenario, kind).markdown.trim();
+  if (savedOutline === "" && solutionMarkdown === "") {
     return refuse(`PPT 未导出：「${scenario.name}${REPORT_KIND_LABEL[kind]}」还没有正文`);
   }
 
@@ -661,9 +666,19 @@ export async function exportReportPptx(args: PptExportArgs): Promise<PptExportRe
 
     for (let round = 1; round <= PPT_OUTLINE_ROUNDS; round += 1) {
       // ① 每轮重新读正文：用户在中栏改过报告，这一轮就要用新的
-      const markdown = getReport(db, scenario, kind).markdown;
+      /* 有用户确认过的大纲就用大纲；没有才退回从解决方案正文抽 */
+      const markdown = getPptOutline(scenario).markdown.trim() || getReport(db, scenario, kind).markdown;
       push({ type: "progress", message: `PPT：正在从正文提取大纲（第 ${round} 轮）…` });
-      const built = await buildOutline({ dshClient, scenario, kind, markdown, keepaliveMs, push, feedback });
+      const built = await buildOutline({
+        dshClient,
+        scenario,
+        kind,
+        markdown,
+        keepaliveMs,
+        push,
+        feedback,
+        outline: savedOutline !== "",
+      });
       if (built.outline === null) {
         lastError = built.error ?? "模型未返回合规 JSON";
         // 诊断（变更表 #146 补充）：整轮没拿到大纲时留一行日志，真跑复盘才说得清"这一轮为什么重来"

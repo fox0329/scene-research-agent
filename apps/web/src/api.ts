@@ -447,6 +447,14 @@ export interface ApiDeliverableReport {
   generated_at: string | null;
 }
 
+/** PPT 大纲（变更表 #341）：依据解决方案生成、可编辑，导出 PPT 时优先用它 */
+export interface ApiPptOutline {
+  markdown: string;
+  chars: number;
+  generated: boolean;
+  generated_at: string | null;
+}
+
 /** 交付物：只有一份（变更表 #246） */
 export interface ApiDeliverables {
   reports: Record<DeliverableKind, ApiDeliverableReport>;
@@ -666,6 +674,18 @@ export const api = {
    */
   getDeliverables: (id: string) =>
     req<ApiDeliverables>(`/projects/${encodeURIComponent(id)}/deliverables`),
+  getPptOutline: (id: string) =>
+    req<ApiPptOutline>(`/projects/${encodeURIComponent(id)}/ppt-outline`),
+  savePptOutline: (id: string, markdown: string) =>
+    req<{ path: string; written: boolean; overwritten: boolean; notice?: string }>(
+      `/projects/${encodeURIComponent(id)}/ppt-outline`,
+      { method: "PUT", body: { markdown } },
+    ),
+  generatePptOutline: (id: string) =>
+    req<ApiPptOutline & { notice?: string }>(
+      `/projects/${encodeURIComponent(id)}/ppt-outline/generate`,
+      { method: "POST" },
+    ),
   /** 导出 Markdown（写盘内容 = 界面所见），回显写出的文件路径 */
   exportDeliverables: (id: string, dir?: string) =>
     req<{ files: string[]; notice?: string }>(
@@ -696,7 +716,7 @@ export const api = {
       { method: "POST", body: { dir } },
     ),
   /**
-   * 导出 PPT（变更表 #141）：点一次自动产出 5–10 页中间页 PPT
+   * 导出 PPT（变更表 #141）：点一次自动产出 6–15 页中间页 PPT
    *
    * `kind` 默认 `solution`（服务端解析）；`run` 是进度通道 token——调用方先订阅
    * `exportPptProgressStream`，再把同一个 token 放进 body。

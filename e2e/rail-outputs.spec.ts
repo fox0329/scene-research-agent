@@ -175,11 +175,12 @@ test("交付物这一步：一份交付物与动作都在流程轴第二行（�
   await expect(row).toBeVisible();
   await expect(page.locator(".ws .flow-outputs")).toHaveCount(0);
 
-  // 变更表 #246：交付物合成**一份**《<场景>解决方案》，建设工作方案已下线
+  // 变更表 #246：交付物合成《<场景>解决方案》；#341 在它右边加「PPT大纲」
   const chips = row.locator(".chip");
-  await expect(chips).toHaveCount(1);
-  await expect(chips.first()).toHaveText("解决方案");
-  await expect(chips.first()).toHaveClass(/active/);
+  await expect(chips).toHaveCount(2);
+  await expect(chips.nth(0)).toHaveText("解决方案");
+  await expect(chips.nth(1)).toHaveText("PPT大纲");
+  await expect(chips.nth(0)).toHaveClass(/active/);
   await expect(row.locator('.pnl-actions[aria-label="交付物"]')).toHaveCount(1);
   await expect(row.locator(".pnl-actions--end")).toHaveCount(1);
 

@@ -75,6 +75,7 @@ import { createDeliverableReportCommand } from "./deliverable-report.js";
 import { getReports, saveReportFile, writeReportFiles } from "./report-service.js";
 import { exportReportDocx } from "./docx-export.js";
 import { exportReportPptx } from "./ppt-export.js";
+import { generatePptOutline, getPptOutline, savePptOutlineFile } from "./ppt-outline.js";
 import { closePptRun, ensurePptRun, pptRunId } from "./ppt-progress.js";
 import { assertExportDir, pickFolder, safeStartDir } from "./folder-picker.js";
 import { createConverseCommand, type ChatImportOutcome } from "./converse.js";
@@ -470,6 +471,35 @@ export function registerUiRoutes(app: FastifyInstance, deps: UiRoutesDeps): void
     // 变更表 #246：只有一份「<场景>解决方案」，按它的章节装配导出；
     // markdown / chars / generated / generated_at
     return { reports: getReports(db, scenario), generating: isDeliverableRunning(id) };
+  });
+
+  /** PPT 大纲（变更表 #341）：依据解决方案生成、用户可编辑，导出 PPT 时优先用它 */
+  app.get("/api/v1/projects/:id/ppt-outline", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const scenario = db.scenarioRepo.getById(id);
+    if (!scenario) return notFound(reply, `场景 ${id} 不存在`);
+    return getPptOutline(scenario);
+  });
+
+  app.put("/api/v1/projects/:id/ppt-outline", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const scenario = db.scenarioRepo.getById(id);
+    if (!scenario) return notFound(reply, `场景 ${id} 不存在`);
+    const body = (request.body ?? {}) as { markdown?: unknown };
+    if (typeof body.markdown !== "string") return reply.code(400).send({ error: "缺少大纲正文 markdown" });
+    if (body.markdown.length > 100_000) return reply.code(400).send({ error: "大纲过长（超过 10 万字）" });
+    return savePptOutlineFile(scenario, body.markdown);
+  });
+
+  app.post("/api/v1/projects/:id/ppt-outline/generate", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const scenario = db.scenarioRepo.getById(id);
+    if (!scenario) return notFound(reply, `场景 ${id} 不存在`);
+    try {
+      return await generatePptOutline({ db, scenario, dshClient });
+    } catch (err: unknown) {
+      return reply.code(400).send({ error: err instanceof Error ? err.message : String(err) });
+    }
   });
 
   /**
