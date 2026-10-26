@@ -213,6 +213,17 @@ async function startServer(): Promise<void> {
   };
   /* 只由本进程决定密钥来源：外面环境里若碰巧有同名变量，不能让服务端拿到一把错的主密钥
      （那会把登记表写成解不开的密文），所以没有就删掉。 */
+  /* Windows 安装包内置 PPT 组件（Python + ppt-master）：用户环境变量优先，
+     没有显式配置时用包内路径。macOS 仍用本机 ~/.dsh/skills/ppt-master。 */
+  if (process.platform === "win32") {
+    const bundledPpt = join(process.resourcesPath, "ppt");
+    const bundledPython = join(bundledPpt, "python", "python.exe");
+    const bundledSkill = join(bundledPpt, "skill");
+    if (!childEnv.PPT_PYTHON && existsSync(bundledPython)) childEnv.PPT_PYTHON = bundledPython;
+    if (!childEnv.PPT_MASTER_DIR && existsSync(join(bundledSkill, "scripts", "svg_to_pptx.py"))) {
+      childEnv.PPT_MASTER_DIR = bundledSkill;
+    }
+  }
   if (secretKey) childEnv.SCENE_SECRET_KEY = secretKey;
   else delete childEnv.SCENE_SECRET_KEY;
 

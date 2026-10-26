@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720">
+  <rect width="1280" height="720" fill="#FFFFFF"/>
+  <text x="80" y="160" font-family="Microsoft YaHei" font-size="44" fill="#0D47A1">PPT 组件自检</text>
+  <text x="80" y="240" font-family="Microsoft YaHei" font-size="24" fill="#37474F">Python + ppt-master</text>
+</svg>

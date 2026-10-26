@@ -64,6 +64,18 @@ jobs:
       - name: 装配桌面版运行时（含按 Electron ABI 重建 better-sqlite3）
         run: node apps/desktop/scripts/prepare-server.mjs --arch=${{ matrix.arch }}
 
+      - name: 解包 Windows 内置 PPT 组件
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Remove-Item -Recurse -Force apps/desktop/ppt-runtime -ErrorAction SilentlyContinue
+          Expand-Archive -Path apps/desktop/assets/ppt-runtime-win.zip -DestinationPath apps/desktop/ppt-runtime -Force
+          Test-Path apps/desktop/ppt-runtime/python/python.exe
+          Test-Path apps/desktop/ppt-runtime/skill/scripts/svg_to_pptx.py
+          & apps/desktop/ppt-runtime/python/python.exe -c "import sys, pptx; print('PPT runtime', sys.version.split()[0], pptx.__version__)"
+          & apps/desktop/ppt-runtime/python/python.exe apps/desktop/ppt-runtime/skill/scripts/svg_to_pptx.py apps/desktop/assets/ppt-smoke -o "$env:TEMP\ppt-smoke.pptx" --no-compat -f ppt169
+          if (-not (Test-Path "$env:TEMP\ppt-smoke.pptx")) { throw "PPT 组件转档自检失败" }
+
       - name: 编译桌面壳（冒烟依赖 dist/main.cjs）
         run: pnpm --filter @scene/desktop run build:shell
 

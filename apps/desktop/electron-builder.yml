@@ -29,6 +29,15 @@ files:
 asarUnpack:
   - runtime/**/*
 
+# PPT 组件（Windows）：内置 Python + ppt-master 导出脚本，装完即可导出 PPT。
+# 由 CI 的「解包 Windows 内置 PPT 组件」步骤从 assets/ppt-runtime-win.zip 展开；
+# 其它平台目录为空，不影响 mac 构建。
+extraResources:
+  - from: ppt-runtime
+    to: ppt
+    filter:
+      - "**/*"
+
 # 产物命名必须是 ASCII（AGENTS.md G-0.2）：GitHub Release 会剥离非 ASCII 字符，
 # 中文名一旦被剥成 `-0.2.3-arm64.dmg` 就会和别的产物同名冲突。
 # 中文只出现在 dmgs 的卷标（dmg.title）与发布说明里。

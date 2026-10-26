@@ -1,5 +1,8 @@
 # 场景通 PPT 组件（Windows）
 
+> **0.9.2 起已内置**：Windows 安装包自带这套组件，装完直接导出 PPT，不需要再单独安装。
+> 本文保留给 0.9.1 及更早版本，或需要单独重装组件的场景。
+
 ## 这是什么
 
 场景通的「导出 PPT」不是内置转换器：它调用 `ppt-master` 技能的 `svg_to_pptx.py`，还需要 Python 3.10+ 和 `python-pptx` 等依赖。macOS 开发机装了这套环境；Windows 安装包没带，所以点「导出 PPT」会提示「找不到 ppt-master 技能」。
