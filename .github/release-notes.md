@@ -10,6 +10,7 @@
 
 - Windows 安装包请先移到「下载」「桌面」等普通目录再运行；放在 DeepSeek Harness 工作区、公司管控/加密目录会被打「低完整性」标签，表现为双击无反应（详见安装说明）。
 - 旧版 Word `.doc` 不支持，请另存为 `.docx`；重复入库按行去重，冲突保留原值。
+- PPT 导出依赖本机 `ppt-master` 技能 + Python 3.10+（默认 `%USERPROFILE%\.dsh\skills\ppt-master`），Windows 安装包不自带；缺失时请先导出 Word/Markdown。
 - 本版无内置备份/恢复、无诊断导出；升级前请手动复制应用数据目录。
 - 未签名：macOS 首次需右键打开，Windows 需 SmartScreen「仍要运行」。
 
