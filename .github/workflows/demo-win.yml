@@ -1,0 +1,66 @@
+name: demo-win
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: temp/win-demo-build
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build packages
+        run: pnpm build
+
+      - name: Unpack Windows PPT runtime
+        shell: pwsh
+        run: |
+          Remove-Item -Recurse -Force apps/desktop/ppt-runtime -ErrorAction SilentlyContinue
+          Expand-Archive -Path apps/desktop/assets/ppt-runtime-win.zip -DestinationPath apps/desktop/ppt-runtime -Force
+          Test-Path apps/desktop/ppt-runtime/python/python.exe
+
+      - name: Fetch demo seed data from draft release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tmp = Join-Path $env:RUNNER_TEMP "demo-seed"
+          New-Item -ItemType Directory -Force -Path $tmp | Out-Null
+          $zip = "SceneTong-L1-Demo-Windows-x64-portable.zip"
+          gh release download v0.9.4-demo-win-temp --repo $env:GITHUB_REPOSITORY --pattern $zip --dir $tmp --clobber
+          Expand-Archive -Path (Join-Path $tmp $zip) -DestinationPath $tmp -Force
+          $seed = Join-Path $tmp "SceneTong-L1-Demo-Windows-x64/resources/demo-data"
+          if (-not (Test-Path $seed)) { throw "demo-data not found in draft asset" }
+          Copy-Item -Recurse -Force $seed apps/desktop/demo-data
+
+      - name: Build Windows NSIS installer
+        run: pnpm --filter @scene/desktop run pack:win:x64
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
+      - name: Upload installer to draft release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $exe = Get-ChildItem apps/desktop/release -Filter "*.exe" | Where-Object { $_.Name -notlike "*uninstaller*" } | Select-Object -First 1
+          if (-not $exe) { throw "installer exe not found" }
+          Write-Host "Uploading $($exe.Name) ($([math]::Round($exe.Length/1MB,1)) MB)"
+          gh release upload v0.9.4-demo-win-temp $exe.FullName --repo $env:GITHUB_REPOSITORY --clobber
