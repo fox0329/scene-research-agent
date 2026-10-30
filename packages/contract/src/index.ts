@@ -622,3 +622,4 @@ export * from "./ppt-standard.js";
 export * from "./ingest.js";
 export * from "./upstream.js";
 export * from "./gates.js";
+export * from "./tool-echo.js";

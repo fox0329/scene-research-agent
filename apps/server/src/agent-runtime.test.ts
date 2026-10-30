@@ -77,6 +77,21 @@ describe("createToolLeakFilter", () => {
     expect(out).toBe("先查 再答");
   });
 
+  it("剥除写表参数 JSON（表格操作指令，#347 用户实测形态）", () => {
+    const f = createToolLeakFilter();
+    const out =
+      f.push('好的，我来更新。{"table":"6-1","rows":[{"name":"充电桩","value":30}]}已完成。') +
+      f.flush();
+    expect(out).toBe("好的，我来更新。已完成。");
+  });
+
+  it("跨片的写表 JSON 也被剥", () => {
+    const f = createToolLeakFilter();
+    const a = f.push('正在更新 {"ta');
+    const b = f.push('ble":"6-1","rows":[]} 更新好了');
+    expect(a + b + f.flush()).toBe("正在更新 更新好了");
+  });
+
   it("正常长文本分片推进，内容不丢", () => {
     const f = createToolLeakFilter();
     const long = "这是一段很长的正常回答内容。".repeat(40);

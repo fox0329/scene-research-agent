@@ -157,7 +157,8 @@ export const ScenarioDefinitionDialog: React.FC<ScenarioDefinitionDialogProps> =
               notifyDataChanged();
             } else if (ev.type === "text") {
               reply += String(ev.text ?? "");
-              setStreamText(reply);
+              /* #347：流式与完成态同一清洗，杜绝「先显示后消失」 */
+              setStreamText(stripToolEcho(reply));
             } else if (ev.type === "error") {
               reply += `${reply ? "\n" : ""}【错误】${String(ev.message ?? "未知错误")}`;
               setStreamText(reply);

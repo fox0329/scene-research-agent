@@ -590,7 +590,8 @@ const ThreadPane: React.FC<{
         }
         if (ev.type === "text") {
           reply += String(ev.text ?? "");
-          setStreamText(reply);
+          /* #347：流式与完成态同一清洗（stripToolEcho），杜绝「先显示后消失」 */
+          setStreamText(stripToolEcho(reply));
         } else if (ev.type === "operation") {
           notifyDataChanged();
         } else if (ev.type === "error") {

@@ -10,7 +10,7 @@
  * 模型能准确看到「这个调用返回了什么」，从而自己决定重试、改用别的工具或收口。
  */
 
-import type { AgentMessage, DshClient, SessionHandle } from "@scene/contract";
+import { jsonBalancedEnd, looksLikeToolEchoJson, type AgentMessage, type DshClient, type SessionHandle } from "@scene/contract";
 
 export interface AgentToolOutcome {
   note: string;
@@ -19,95 +19,92 @@ export interface AgentToolOutcome {
   display?: boolean;
 }
 
-/* ─── 正文泄漏过滤（#346）───────────────────────────────────
- * 实测（0.9.5）：模型发起 web_search 时会在正文里复述调用参数
- * （`{"query": "…"}`，可连排多条，或 `` 整段）。提示词压不住
- * （模型行为），且 text 是分片流式下发的、JSON 会被切碎——必须下沉到
- * 确定性层：跨片缓冲 + 模式剥离，匹配到完整泄漏才剥，剥不到照常输出。
- * 兼容层的 guessTextCall（无 tool_calls 时整段即调用）不受影响：它读的
- * 是未过滤的全量累积文本。 */
+/* ─── 正文泄漏过滤（#346/#347）─────────────────────────────
+ * 实测：模型会把 function calling 的参数 JSON 复述进正文（web_search 的
+ * {"query":…}、写表的 {"table":…,"rows":[…]}，可连排多条、会被流式分片切碎），
+ * 也见过 <tool_call> 整段标签。提示词压不住（模型行为），必须下沉确定性层。
+ *
+ * #347 对齐 DSH 原则「流永远不携带耐久日志不包含的内容」：判定规则与 web 端
+ * 存档渲染（stripToolEcho）同源——任意 `{` 进入候选、等 JSON 闭合后按
+ * contract 的工具键判定，命中才剥；未闭合候选拖住后续输出直到闭合或 flush。
+ * 兼容层的 guessTextCall（无 tool_calls 时整段即调用）不受影响：它读的是
+ * 未过滤的全量累积文本。 */
 
-/** 缓冲尾部保留量：一条 {"query":"…"} 最长约 130 字符（query 已限 80 字），留 200 足够 */
-const LEAK_PENDING_CHARS = 200;
+/** 候选 JSON 缓冲上限：超过仍未闭合就放弃判定，当正文放行（防缓冲爆炸） */
+const LEAK_MAX_CANDIDATE = 8192;
 
 export interface ToolLeakFilter {
-  /** 返回本片可安全输出的部分（尾部余量留作缓冲） */
+  /** 返回本片可安全输出的部分 */
   push(piece: string): string;
-  /** 流结束：冲刷剩余（未完成的半截 JSON 已不可能补全，按普通文本输出） */
+  /** 流结束：冲刷剩余（未闭合的半截 JSON 已不可能补全，按普通文本输出） */
   flush(): string;
-}
-
-/** 从 start 起扫描平衡的 JSON 对象（字符串感知），返回结束下标（不含），不完整返回 -1 */
-function jsonEndIndex(buf: string, start: number): number {
-  let depth = 0;
-  let inString = false;
-  let escaped = false;
-  for (let i = start; i < buf.length; i += 1) {
-    const ch = buf[i]!;
-    if (inString) {
-      if (escaped) escaped = false;
-      else if (ch === "\\") escaped = true;
-      else if (ch === '"') inString = false;
-      continue;
-    }
-    if (ch === '"') inString = true;
-    else if (ch === "{") depth += 1;
-    else if (ch === "}") {
-      depth -= 1;
-      if (depth === 0) return i + 1;
-    }
-  }
-  return -1;
 }
 
 export function createToolLeakFilter(): ToolLeakFilter {
   let buf = "";
   const OPEN_TAG = "<tool_call>";
   const CLOSE_TAG = "</tool_call>";
-  /** 泄漏正文的开头：web_search 参数 JSON（query 键 / name+arguments 整体）与工具调用标签 */
-  const LEAD_RE = /<tool_call>|\{"query"|\{"name"/;
 
-  function strip(from: number): { out: string; keepFrom: number; pending: boolean } {
+  /** 扫描缓冲：剥掉完整泄漏；pending 时 rest 是未决部分（含候选 JSON 起点） */
+  function stripAll(): { out: string; rest: string; pending: boolean } {
     let out = "";
-    let i = from;
+    let i = 0;
     while (i < buf.length) {
-      const rest = buf.slice(i);
-      const m = rest.match(LEAD_RE);
-      if (!m || m.index === undefined) return { out: out + rest, keepFrom: buf.length, pending: false };
-      const start = i + m.index;
-      out += rest.slice(0, m.index);
-      if (buf.startsWith(OPEN_TAG, start)) {
-        const end = buf.indexOf(CLOSE_TAG, start);
-        if (end < 0) return { out, keepFrom: start, pending: true };
-        i = end + CLOSE_TAG.length;
-      } else {
-        const end = jsonEndIndex(buf, start);
-        if (end < 0) return { out, keepFrom: start, pending: true };
-        i = end;
+      const tool = buf.indexOf(OPEN_TAG, i);
+      const brace = buf.indexOf("{", i);
+      const starts = [tool, brace].filter((x) => x >= 0);
+      if (starts.length === 0) {
+        out += buf.slice(i);
+        return { out, rest: "", pending: false };
       }
-      while (i < buf.length && /\s/.test(buf[i]!)) i += 1;
+      const start = Math.min(...starts);
+      out += buf.slice(i, start);
+      if (start === tool) {
+        const end = buf.indexOf(CLOSE_TAG, start);
+        if (end < 0) return { out, rest: buf.slice(start), pending: true };
+        i = end + CLOSE_TAG.length;
+        while (i < buf.length && /\s/.test(buf[i]!)) i += 1;
+        continue;
+      }
+      const end = jsonBalancedEnd(buf, start);
+      if (end < 0) {
+        /* 未闭合：超限放弃判定当正文，否则等下一片拼装 */
+        if (buf.length - start > LEAK_MAX_CANDIDATE) {
+          out += buf.slice(start);
+          i = buf.length;
+          continue;
+        }
+        return { out, rest: buf.slice(start), pending: true };
+      }
+      const raw = buf.slice(start, end);
+      try {
+        if (looksLikeToolEchoJson(JSON.parse(raw))) {
+          i = end;
+          while (i < buf.length && /\s/.test(buf[i]!)) i += 1;
+          continue;
+        }
+      } catch {
+        /* 不是合法 JSON，原样保留 */
+      }
+      out += raw;
+      i = end;
     }
-    return { out, keepFrom: buf.length, pending: false };
+    return { out, rest: "", pending: false };
   }
 
   return {
     push(piece: string): string {
       buf += piece;
-      const { out, keepFrom, pending } = strip(0);
+      const { out, rest, pending } = stripAll();
       if (pending) {
-        /* 未完成的泄漏模式：只输出它之前已确认安全的部分，未决部分留缓冲等补全 */
-        buf = buf.slice(keepFrom);
+        buf = rest;
         return out;
       }
-      /* 无未决模式：out 是全量剥离结果；尾部 200 字符仍可能是被切碎的
-         泄漏开头（孤立 `{`、`{"qu`），留在缓冲等下一片拼装判定 */
-      const tailStart = Math.max(0, out.length - LEAK_PENDING_CHARS);
-      buf = out.slice(tailStart);
-      return out.slice(0, tailStart);
+      buf = "";
+      return out;
     },
     flush(): string {
-      const { out, keepFrom, pending } = strip(0);
-      const rest = pending ? buf.slice(keepFrom) : "";
+      const { out, rest } = stripAll();
       buf = "";
       return out + rest;
     },
