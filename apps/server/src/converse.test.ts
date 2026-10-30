@@ -812,8 +812,15 @@ describe("createConverseCommand", () => {
         events.push(e);
       }
 
-      // 4 个事件：3 text + 1 done
-      expect(events).toHaveLength(4);
+      // #346 后正文走泄漏过滤缓冲，短片会聚合输出：事件数不再等于分片数，
+      // 但拼接结果必须与分片一致，且 done 收尾
+      expect(events.length).toBeGreaterThanOrEqual(2);
+      const joined = events
+        .filter((e) => e.type === "text")
+        .map((e) => (e as { type: "text"; text: string }).text)
+        .join("");
+      expect(joined).toBe("你好，我是AI 助手。");
+      expect(events[events.length - 1]!.type).toBe("done");
 
       // 系统消息应拼接所有 text
       const messages = setup.db.messageRepo.listByConversation(conv.id);

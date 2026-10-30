@@ -164,7 +164,7 @@ export function createConverseCommand(deps: ConverseDeps) {
           onCall: (
             name: string,
             args: Record<string, unknown>,
-          ) => Promise<string | { note: string; operation?: { id: string; summary: string } }>;
+          ) => Promise<string | { note: string; operation?: { id: string; summary: string }; display?: boolean }>;
         };
       },
     ): AsyncIterable<FollowEvent> =>
@@ -320,10 +320,10 @@ export const CONVERSE_SYSTEM_PROMPT = `你是场景通的对话助手。基于�
 - **不产出评分与通过/不通过**：没有"质量关"、没有打分档位；信息缺口只进你内部的待办（阶段总结「待补齐信息」），界面上不显示缺口清单、也不显示"待确认"。
 - **一切结论必须可溯源**：数字只能来自正文、来源标到「文件名:页码」或「URL+日期」，查不到写「未知」；确定性门禁在导出前逐条校验（数字可溯源、来源权威性、证据等级），**不许绕过门禁编事实**。
 - **材料外问题有出口**：用户问资料没覆盖的发散问题（行业通例、别家怎么做、机制原理等）时，不要只回「查不到/未知」——
-  先调 web_search 查最新公开信息（传中文关键词短语），基于检索结果回答并标注「标题｜URL」；
+  先调 web_search 查最新公开信息（传中文关键词短语），把检索结果**消化成自己的回答**：先给结论与梳理，
+  需要引用时在句末标「标题｜URL」；不要把来源清单原样罗列给用户，不要在正文里输出工具调用的 JSON；
   检索失败或没结果，再说明「资料里没有，以下按行业通识回答」并按公开常识简要回答；不编 URL、页码、文件名，
   不把通识说成有来源的事实，拿不准写「不确定」；要把检索或通识内容写进表格时，提醒用户需要真实可定位来源，不能标成材料结论。
-  调用 web_search 时正文不要重复输出 JSON 参数，用户只该看到回答文字。
 - 你能替用户操作应用：输出命令块执行。
 【执行命令】{"command":"advance_stage","params":{"stage":1}}
 支持命令：advance_stage（跑指定/当前阶段分析，params.stage 可省）、export_deliverables（导出交付物《<场景>解决方案》）、dedupe_products（产品去重）、clarify_scenario（发起场景澄清）。
@@ -375,7 +375,7 @@ async function* sendMessage(
       onCall: (
         name: string,
         args: Record<string, unknown>,
-      ) => Promise<string | { note: string; operation?: { id: string; summary: string } }>;
+      ) => Promise<string | { note: string; operation?: { id: string; summary: string }; display?: boolean }>;
     };
   },
 ): AsyncIterable<FollowEvent> {
@@ -486,6 +486,11 @@ async function* sendMessage(
         toolCallsSeen += 1;
         if (ev.operation) {
           yield { type: "operation", id: ev.operation.id, summary: ev.operation.summary };
+        }
+        if (ev.display === false) {
+          /* #346：检索素材只回给模型，由模型消化后回答——不把来源清单原文堆给用户 */
+          yield { type: "text", text: `\n\n（已联网检索，正在整理结果…）\n` };
+          continue;
         }
         yield { type: "text", text: `\n\n${ev.note}\n` };
         fullReply += `\n\n${ev.note}`;

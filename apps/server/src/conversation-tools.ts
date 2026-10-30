@@ -27,6 +27,8 @@ import { syncDerivedDescription } from "./scenario-anchor.js";
 export interface ToolOutcome {
   note: string;
   operation?: { id: string; summary: string };
+  /** 缺省 true：结果原文直接显示。检索类给 false——素材只回给模型，由模型梳理后回答（#346） */
+  display?: boolean;
 }
 
 export interface ToolContext {

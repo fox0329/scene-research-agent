@@ -2056,7 +2056,7 @@ function registerLibraryRoutes(
     ];
     const runTool = async (name: string, args: Record<string, unknown>): Promise<ToolOutcome> =>
       name === "web_search"
-        ? { note: await runChatWebSearch(args) }
+        ? await runChatWebSearch(args)
         : name === "library_write"
         ? await libraryWrite(toolCtx, args)
         : name === "create_product_line"
@@ -2084,8 +2084,14 @@ function registerLibraryRoutes(
           if (ev.operation) {
             yield { type: "operation", id: ev.operation.id, summary: ev.operation.summary };
           }
-          reply += `\n\n${ev.note}`;
-          yield { type: "text", text: `\n\n${ev.note}\n` };
+          if (ev.display === false) {
+            /* #346：检索素材只回给模型，由模型消化后回答 */
+            reply += `\n\n（已联网检索，正在整理结果…）`;
+            yield { type: "text", text: `\n\n（已联网检索，正在整理结果…）\n` };
+          } else {
+            reply += `\n\n${ev.note}`;
+            yield { type: "text", text: `\n\n${ev.note}\n` };
+          }
         } else if (ev.type === "error") {
           yield { type: "error", message: ev.message };
         } else {

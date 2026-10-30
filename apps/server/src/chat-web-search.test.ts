@@ -71,7 +71,8 @@ describe("formatChatSearchHits", () => {
     expect(text).toContain("…"); // 摘要被截断
     expect(text).not.toContain("万台。".repeat(6)); // 完整原文不出现
     expect(text).toContain("标题｜URL");
-    expect(text).toContain("不要写进表格");
+    expect(text).toContain("不写进表格");
+    expect(text).toContain("消化后组织回答");
   });
 
   it("缺标题兜底、缺发布时间省略", () => {
@@ -84,8 +85,9 @@ describe("formatChatSearchHits", () => {
 
 describe("runChatWebSearch", () => {
   it("缺 query 时提示模型补参数", async () => {
-    const text = await runChatWebSearch({});
-    expect(text).toContain("缺少 query");
+    const out = await runChatWebSearch({});
+    expect(out.note).toContain("缺少 query");
+    expect(out.display).toBe(false);
     expect(searchByEngine).not.toHaveBeenCalled();
   });
 
@@ -95,10 +97,10 @@ describe("runChatWebSearch", () => {
       canSearch: false,
       detail: "未配置任何检索引擎",
     });
-    const text = await runChatWebSearch({ query: "测试" });
-    expect(text).toContain("联网检索当前不可用");
-    expect(text).toContain("未配置任何检索引擎");
-    expect(text).toContain("行业通识");
+    const out = await runChatWebSearch({ query: "测试" });
+    expect(out.note).toContain("联网检索当前不可用");
+    expect(out.note).toContain("未配置任何检索引擎");
+    expect(out.note).toContain("行业通识");
     expect(searchByEngine).not.toHaveBeenCalled();
   });
 
@@ -113,9 +115,11 @@ describe("runChatWebSearch", () => {
       hits: [{ title: "高德充电桩上图", url: "https://e.com/c", snippet: "3000 站" }],
       via: "必应",
     });
-    const text = await runChatWebSearch({ query: "高德 充电桩" });
-    expect(text).toContain("https://e.com/c");
-    expect(text).toContain("高德充电桩上图");
+    const out = await runChatWebSearch({ query: "高德 充电桩" });
+    expect(out.note).toContain("https://e.com/c");
+    expect(out.note).toContain("高德充电桩上图");
+    expect(out.display).toBe(false);
+    expect(out.note).toContain("消化后组织回答");
     expect(searchByEngine).toHaveBeenCalledWith(
       expect.objectContaining({ kind: "bing-html", canSearch: true }),
       expect.objectContaining({}),
@@ -129,10 +133,10 @@ describe("runChatWebSearch", () => {
   it("检索失败给失败话术，不假装有结果", async () => {
     vi.mocked(resolveEngine).mockReturnValue({ kind: "tavily", canSearch: true, detail: "" });
     vi.mocked(searchByEngine).mockResolvedValue({ ok: false, hits: [], error: "反爬拦截" });
-    const text = await runChatWebSearch({ query: "测试" });
-    expect(text).toContain("联网检索未取得结果");
-    expect(text).toContain("反爬拦截");
-    expect(text).toContain("行业通识");
+    const out = await runChatWebSearch({ query: "测试" });
+    expect(out.note).toContain("联网检索未取得结果");
+    expect(out.note).toContain("反爬拦截");
+    expect(out.note).toContain("行业通识");
   });
 
   it("检索超时给超时话术", async () => {
@@ -141,7 +145,10 @@ describe("runChatWebSearch", () => {
       vi.mocked(resolveEngine).mockReturnValue({ kind: "bing-html", canSearch: true, detail: "" });
       vi.mocked(searchByEngine).mockReturnValue(new Promise(() => {}));
       const pending = runChatWebSearch({ query: "慢查询" });
-      const assertion = expect(pending).resolves.toContain("超时");
+      const assertion = expect(pending).resolves.toMatchObject({
+        note: expect.stringContaining("超时"),
+        display: false,
+      });
       await vi.advanceTimersByTimeAsync(26_000);
       await assertion;
     } finally {
@@ -163,7 +170,8 @@ describe("chatWebSearchTools 分发", () => {
       hits: [{ title: "t", url: "https://e.com/d", snippet: "s" }],
     });
     const tools = chatWebSearchTools();
-    await expect(tools.onCall("web_search", { query: "q" })).resolves.toContain("https://e.com/d");
+    const dispatched = await tools.onCall("web_search", { query: "q" });
+    expect(typeof dispatched === "string" ? dispatched : dispatched.note).toContain("https://e.com/d");
     await expect(tools.onCall("write_table", {})).resolves.toEqual({
       note: "未知工具：write_table",
     });
