@@ -245,7 +245,13 @@ export async function searchByEngine(
   budget: WebBudget = DEFAULT_BUDGET,
   limit = 8,
   accept?: (query: string, hit: SearchHit) => boolean,
-): Promise<{ ok: boolean; hits: Array<SearchHit & { publishedAt?: string }>; error?: string }> {
+): Promise<{
+  ok: boolean;
+  hits: Array<SearchHit & { publishedAt?: string }>;
+  error?: string;
+  /** baidu/bing 回退链会带实际命中的通道标签；其余引擎没有 */
+  via?: string;
+}> {
   if (!engine.canSearch) return { ok: false, hits: [], error: engine.detail };
   if (engine.kind === "baidu-html") {
     if (counters.searches >= budget.maxSearches) {

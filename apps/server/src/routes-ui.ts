@@ -147,6 +147,7 @@ import {
 } from "./conversation-tools.js";
 import { recordOperation, undoOperation, type UndoAction } from "./operation-log.js";
 import { runAgent } from "./agent-runtime.js";
+import { WEB_SEARCH_TOOL, chatWebSearchTools, runChatWebSearch } from "./chat-web-search.js";
 import {
   assessQuality,
   checkCompleteness,
@@ -1460,17 +1461,20 @@ function registerConversationRoutes(
             chatTools:
               ref.type === "deliverable"
                 ? {
-                    defs: [OPTIMIZE_SOLUTION_TOOL],
-                    onCall: (_name: string, args: Record<string, unknown>) =>
-                      createSolutionOptimizer({ db, dshClient }).optimize(
-                        id,
-                        String(args.instruction ?? ""),
-                        args.section === undefined ? undefined : String(args.section),
-                      ).then((r: { note: string }) => r.note),
+                    defs: [OPTIMIZE_SOLUTION_TOOL, WEB_SEARCH_TOOL],
+                    onCall: (name: string, args: Record<string, unknown>) =>
+                      name === "web_search"
+                        ? runChatWebSearch(args)
+                        : createSolutionOptimizer({ db, dshClient }).optimize(
+                            id,
+                            String(args.instruction ?? ""),
+                            args.section === undefined ? undefined : String(args.section),
+                          ).then((r: { note: string }) => r.note),
                   }
                 : {
-                    defs: [WRITE_TABLE_TOOL, UNDO_LAST_TOOL],
+                    defs: [WRITE_TABLE_TOOL, UNDO_LAST_TOOL, WEB_SEARCH_TOOL],
                     onCall: async (name: string, args: Record<string, unknown>) => {
+                      if (name === "web_search") return runChatWebSearch(args);
                       if (name === "undo_last_operation") {
                         return undoLast({
                           db,
@@ -1698,8 +1702,9 @@ function registerConversationRoutes(
         system: DEFINITION_SYSTEM,
         contextPrefix: `${buildDefinitionContext(db, scenario)}\n`,
         chatTools: {
-          defs: [WRITE_ANCHOR_ROWS_TOOL, UNDO_LAST_TOOL],
+          defs: [WRITE_ANCHOR_ROWS_TOOL, UNDO_LAST_TOOL, WEB_SEARCH_TOOL],
           onCall: async (name: string, args: Record<string, unknown>) => {
+            if (name === "web_search") return runChatWebSearch(args);
             const toolCtx = {
               db,
               app,
@@ -1797,7 +1802,10 @@ function registerConversationRoutes(
 
     const runId = `conv:${id}#${++convSeq}`;
     latestConvRuns.set(id, runId);
-    hub.start(runId, converseCmd.sendMessage(id, content));
+    hub.start(
+      runId,
+      converseCmd.sendMessage(id, content, { chatTools: chatWebSearchTools() }),
+    );
     await streamEvents(hub, runId, request, reply);
   });
 
@@ -2044,9 +2052,12 @@ function registerLibraryRoutes(
       CREATE_PRODUCT_LINE_TOOL,
       CONFIRM_OPERATION_TOOL,
       UNDO_LAST_TOOL,
+      WEB_SEARCH_TOOL,
     ];
     const runTool = async (name: string, args: Record<string, unknown>): Promise<ToolOutcome> =>
-      name === "library_write"
+      name === "web_search"
+        ? { note: await runChatWebSearch(args) }
+        : name === "library_write"
         ? await libraryWrite(toolCtx, args)
         : name === "create_product_line"
           ? createProductLine(toolCtx, args)

@@ -15,6 +15,9 @@ import {
   createConverseCommand,
   type ConverseDb,
 } from "./converse.js";
+import { ARTIFACT_SYSTEM_PROMPT } from "./artifact-conversation.js";
+import { LIBRARY_SYSTEM_PROMPT } from "./library-chat.js";
+import { DEFINITION_SYSTEM } from "./scenario-definition.js";
 
 describe("对话助手操作手册口径", () => {
   it("描述现行 6 阶段（0-5）与 6 流程步", () => {
@@ -113,5 +116,39 @@ describe("场景定义只以表1-1 为准（不再由对话改写 description）
     expect(sys[0]!.content).not.toContain("场景定义已更新");
     // 原文保留（不再剥离"更新块"）
     expect(sys[0]!.content).toContain("【场景定义 v2】");
+  });
+});
+
+// ─── 口径守卫：材料外问题必须有出口（变更表 #343） ──────────────
+// 背景（2026-10-30 实测）：用户在产物对话问「高德怎么采集服务区信息推给用户」，
+// 助手按旧规则只回「当前产物里没有…未知」。用户定调：表格里没得到想要的信息、
+// 发散性提问时，应用应该解答——但通识不得冒充材料结论。
+
+describe("材料外问题出口口径（三个助手一致）", () => {
+  it("产物助手：发散问题按行业通识可答，且标明无材料来源", () => {
+    expect(ARTIFACT_SYSTEM_PROMPT).toContain("产物里没有 ≠ 闭口");
+    expect(ARTIFACT_SYSTEM_PROMPT).toContain("以下按行业通识回答");
+  });
+
+  it("主对话：同样允许按行业通识回答材料外问题", () => {
+    expect(CONVERSE_SYSTEM_PROMPT).toContain("材料外问题有出口");
+    expect(CONVERSE_SYSTEM_PROMPT).toContain("以下按行业通识回答");
+  });
+
+  it("资料助手：资料库外问题不硬拗回资料库", () => {
+    expect(LIBRARY_SYSTEM_PROMPT).toContain("资料库里没有，以下按行业通识回答");
+  });
+
+  it("通识不得冒充材料结论：写入前必须提醒真实可定位来源", () => {
+    expect(ARTIFACT_SYSTEM_PROMPT).toContain("需要可定位的真实来源");
+    expect(CONVERSE_SYSTEM_PROMPT).toContain("真实可定位来源");
+    expect(LIBRARY_SYSTEM_PROMPT).toContain("不能标成材料结论");
+  });
+
+  it("所有对话入口都先联网检索（变更表 #344：所有对话入口都要联网）", () => {
+    expect(ARTIFACT_SYSTEM_PROMPT).toContain("web_search");
+    expect(CONVERSE_SYSTEM_PROMPT).toContain("web_search");
+    expect(LIBRARY_SYSTEM_PROMPT).toContain("web_search");
+    expect(DEFINITION_SYSTEM).toContain("web_search");
   });
 });

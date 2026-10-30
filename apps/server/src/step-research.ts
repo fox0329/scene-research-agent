@@ -297,8 +297,8 @@ export function deriveScenarioKeywords(db: DbInstance, scenario: Scenario): stri
   }
 }
 
-/** 当前默认模型供应商（拿不到就返回 undefined——引擎自动选会退回免注册通道） */
-function currentModelProvider(): { baseUrl: string; apiKey: string } | undefined {
+/** 当前默认模型供应商（拿不到就返回 undefined——引擎自动选会退回免注册通道）；对话检索工具（#344）共用 */
+export function currentModelProvider(): { baseUrl: string; apiKey: string } | undefined {
   try {
     const registry = loadRegistry();
     const ref = registry.default_model;
