@@ -121,13 +121,9 @@ jobs:
             cp "$f" "out/$n"
             echo "$b  →  $n"
           done
-          # 校验和：发布检查单要求用户下完可自查（mac 有 shasum，win 的 Git Bash 有 sha256sum）
-          if command -v sha256sum >/dev/null 2>&1; then
-            (cd out && sha256sum * > SHA256SUMS.txt)
-          else
-            (cd out && shasum -a 256 * > SHA256SUMS.txt)
-          fi
-          cat out/SHA256SUMS.txt
+          # 注意：校验和**不在这里生成**——两平台 job 并行，各自只算得到自己的产物，
+          # 后上传的会覆盖先上传的（v0.9.7 首次发布真实踩过：SHA256SUMS 只剩 win 一行）。
+          # 汇总由下面单独的 checksums job 在两平台都上传完之后做。
           for f in out/*; do
             for attempt in 1 2 3 4 5; do
               if gh release upload "$TAG" "$f" --clobber; then break; fi
@@ -135,3 +131,36 @@ jobs:
               sleep 5
             done
           done
+
+  # 校验和汇总（发布检查单要求）：必须等两平台产物都挂上再算，
+  # 否则每个 job 只算得到自己的那份，互相覆盖（v0.9.7 首次发布踩过）。
+  # 用 GitHub 记录的 asset digest，不重复下载几百 MB。
+  checksums:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - name: 生成并上传 SHA256SUMS.txt
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="$GITHUB_REF_NAME"
+          mkdir -p out
+          gh api "repos/${{ github.repository }}/releases/tags/$TAG" \
+            --jq '.assets[] | select(.name != "SHA256SUMS.txt") | select(.digest != null) | "\(.digest | sub("sha256:"; "")) *\(.name)"' \
+            > out/SHA256SUMS.txt
+          # 兜底：digest 字段不可用（老 gh/企业版）时下载资产本地计算
+          if [ ! -s out/SHA256SUMS.txt ]; then
+            gh release download "$TAG" --dir dl --pattern "*.dmg" --pattern "*.exe"
+            (cd dl && sha256sum * > ../out/SHA256SUMS.txt)
+          fi
+          echo "—— 汇总结果 ——"
+          cat out/SHA256SUMS.txt
+          LINES=$(wc -l < out/SHA256SUMS.txt | tr -d ' ')
+          if [ "$LINES" -lt 2 ]; then
+            echo "::error::校验和只有 $LINES 行，两平台产物应各一行"
+            exit 1
+          fi
+          gh release upload "$TAG" out/SHA256SUMS.txt --clobber
