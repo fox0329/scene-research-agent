@@ -121,6 +121,13 @@ jobs:
             cp "$f" "out/$n"
             echo "$b  →  $n"
           done
+          # 校验和：发布检查单要求用户下完可自查（mac 有 shasum，win 的 Git Bash 有 sha256sum）
+          if command -v sha256sum >/dev/null 2>&1; then
+            (cd out && sha256sum * > SHA256SUMS.txt)
+          else
+            (cd out && shasum -a 256 * > SHA256SUMS.txt)
+          fi
+          cat out/SHA256SUMS.txt
           for f in out/*; do
             for attempt in 1 2 3 4 5; do
               if gh release upload "$TAG" "$f" --clobber; then break; fi
