@@ -29,13 +29,11 @@ function buildApp(): { app: FastifyInstance; db: DbInstance } {
 }
 
 function seedScenario(db: DbInstance): string {
-  // 通用 repo 强制生成 id（传入被忽略），必须用返回值里的真实 id
+  // 通用 repo 强制生成 id 与时间戳（传入被忽略），必须用返回值里的真实 id
   const scenario = db.scenarioRepo.insert({
     name: "埋点测试场景",
     status: "进行中",
     current_stage: 0,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
   });
   return scenario.id;
 }
