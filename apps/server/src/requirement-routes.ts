@@ -15,6 +15,7 @@ import {
   listUpgradeCandidates,
   updateRequirement,
 } from "./requirement-profile.js";
+import { gapFlowHints } from "./gap-flow.js";
 
 /** flag 读取：env 显式 "1" 才开（默认关，变更表红线） */
 export function isReflectionEnabled(): boolean {
@@ -27,6 +28,8 @@ export function registerRequirementRoutes(app: FastifyInstance, db: DbInstance):
     return {
       entries: listRequirements(db, id),
       upgrade_candidates: listUpgradeCandidates(db),
+      // 缺口流转（MR2-T5）：userGaps → 澄清提醒；agentGaps → 取证提示（复用既有研究入口）
+      ...gapFlowHints(db, id),
     };
   });
 

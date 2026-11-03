@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { requirements, type ApiRequirementEntry } from "../api";
+import { requirements, type ApiGapHints, type ApiRequirementEntry } from "../api";
 import { useToast } from "./Toast";
 
 /**
@@ -103,6 +103,7 @@ export function RequirementProfilePanel({ projectId }: RequirementProfilePanelPr
   const { showToast } = useToast();
   const [entries, setEntries] = useState<ApiRequirementEntry[]>([]);
   const [candidates, setCandidates] = useState<ApiRequirementEntry[]>([]);
+  const [clarifyHints, setClarifyHints] = useState<ApiGapHints["clarify_hints"]>([]);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [confirmClear, setConfirmClear] = useState(false);
@@ -112,6 +113,7 @@ export function RequirementProfilePanel({ projectId }: RequirementProfilePanelPr
       const data = await requirements.list(projectId);
       setEntries(data.entries);
       setCandidates(data.upgrade_candidates);
+      setClarifyHints(data.clarify_hints ?? []);
     } catch (err: unknown) {
       showToast(`画像加载失败：${err instanceof Error ? err.message : String(err)}`);
     }
@@ -211,6 +213,17 @@ export function RequirementProfilePanel({ projectId }: RequirementProfilePanelPr
         )}
       </div>
       <div className="det-body rp-body">
+        {clarifyHints.length > 0 && (
+          <div className="rp-group">
+            <h4>该你拍板（缺口澄清提醒）</h4>
+            {clarifyHints.map((h, i) => (
+              <div className="rp-finding" key={`${h.location}-${i}`}>
+                <span className="rp-badge rp-conf-用户原话">{h.location}</span>
+                <span className="rp-text">{h.detail}</span>
+              </div>
+            ))}
+          </div>
+        )}
         {entries.length === 0 && <p className="rp-empty">暂无条目——对话中提出的要求会自动记入。</p>}
         {entries.map(renderEntry)}
         {candidates.length > 0 && (

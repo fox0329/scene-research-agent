@@ -1279,9 +1279,20 @@ export interface ApiRequirementEntry {
   updated_at: string;
 }
 
+/** 缺口流转（MR2-T5）：userGaps → 澄清提醒；agentGaps → 取证提示 */
+export interface ApiGapHints {
+  clarify_hints: { location: string; detail: string }[];
+  research_hints: string[];
+}
+
 export const requirements = {
   list: (projectId: string) =>
-    req<{ entries: ApiRequirementEntry[]; upgrade_candidates: ApiRequirementEntry[] }>(
+    req<{
+      entries: ApiRequirementEntry[];
+      upgrade_candidates: ApiRequirementEntry[];
+      clarify_hints?: ApiGapHints["clarify_hints"];
+      research_hints?: ApiGapHints["research_hints"];
+    }>(
       `/projects/${encodeURIComponent(projectId)}/requirements`,
     ),
   patch: (id: string, patch: Partial<Pick<ApiRequirementEntry, "text" | "scope" | "status">>) =>
