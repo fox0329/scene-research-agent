@@ -448,6 +448,49 @@ function runMigrations(db: Database.Database): {
   addResearchCol("stale", "stale INTEGER NOT NULL DEFAULT 0");
 
   /**
+   * 需求理解与反思优化模块两张表（contract v1.5，变更表 #351–#353）
+   *
+   * 沿用 research_source 的增量模式：只加不删、CREATE TABLE IF NOT EXISTS
+   * 对存量库与新库都幂等。设计依据 docs/技术方案-需求理解与反思生成.md v1.2：
+   * - requirement_profile：画像条目，用户级 scope='user' 时 scenario_id 为 NULL
+   *   （评审修订 #353，消除 scope 与非空约束矛盾），origin_scenario_id 留升级溯源。
+   * - interaction_event：五处 UI 埋点，唯一写入口是 apps/server 的 event-recorder
+   *   （方案 6.5），intent-profile 模块是唯一读者。
+   */
+  db.exec(`CREATE TABLE IF NOT EXISTS requirement_profile (
+  id                  TEXT PRIMARY KEY,
+  scenario_id         TEXT,
+  origin_scenario_id  TEXT,
+  scope               TEXT NOT NULL CHECK (scope IN ('scene','user')),
+  kind                TEXT NOT NULL CHECK (kind IN ('explicit','preference','constraint','dimension_gap')),
+  text                TEXT NOT NULL,
+  check_anchor        TEXT,
+  status              TEXT NOT NULL CHECK (status IN ('active','superseded','dismissed')),
+  confidence          TEXT NOT NULL CHECK (confidence IN ('用户原话','用户操作','AI推断')),
+  source_json         TEXT NOT NULL DEFAULT '[]',
+  artifact_refs       TEXT NOT NULL DEFAULT '[]',
+  created_at          TEXT NOT NULL,
+  updated_at          TEXT NOT NULL
+)`);
+  db.exec(
+    "CREATE INDEX IF NOT EXISTS idx_req_scenario ON requirement_profile(scenario_id, status)",
+  );
+  db.exec("CREATE INDEX IF NOT EXISTS idx_req_scope ON requirement_profile(scope, status)");
+  db.exec(`CREATE TABLE IF NOT EXISTS interaction_event (
+  id                TEXT PRIMARY KEY,
+  scenario_id       TEXT,
+  conversation_id   TEXT,
+  surface           TEXT NOT NULL CHECK (surface IN ('ui','conversation')),
+  action            TEXT NOT NULL CHECK (action IN ('edit_cell','confirm','undo','rewrite','suggest_accept','suggest_reject')),
+  target            TEXT NOT NULL DEFAULT '',
+  detail_json       TEXT NOT NULL DEFAULT '{}',
+  created_at        TEXT NOT NULL
+)`);
+  db.exec(
+    "CREATE INDEX IF NOT EXISTS idx_evt_scenario ON interaction_event(scenario_id, created_at)",
+  );
+
+  /**
    * 历史「联网核验」记录表（0.8.1 功能下线）
    *
    * 功能（联网检索、提级、明细）已整条移除；这里只保留表与既有记录，

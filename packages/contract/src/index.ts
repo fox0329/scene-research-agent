@@ -637,3 +637,6 @@ export * from "./gates.js";
 export * from "./tool-echo.js";
 
 export { columnNeedsResearch, noResearchColumnsOf } from "./research-need.js";
+
+// ─── 需求理解与反思优化（v1.5，变更表 #351–#353） ─────────────
+export * from "./reflection.js";
