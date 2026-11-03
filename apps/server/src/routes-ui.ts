@@ -12,7 +12,7 @@ import { createWriteStream, existsSync, readFileSync, rmSync, writeFileSync } fr
 import { pipeline } from "node:stream/promises";
 import { join } from "node:path";
 import { tmpdir, homedir } from "node:os";
-import { recordInteractionEvent } from "./requirement-profile.js";
+import { listRequirements, recordInteractionEvent } from "./requirement-profile.js";
 import { createProfileExtractor, type ExtractorHandle } from "./profile-extract.js";
 import { createClarifyCommand, type ClarifyCommand } from "./clarify-command.js";
 import { isReflectionEnabled } from "./requirement-routes.js";
@@ -325,6 +325,8 @@ export function registerUiRoutes(app: FastifyInstance, deps: UiRoutesDeps): void
   const converseCmd = createConverseCommand({
     db,
     dshClient,
+    // 用户级画像冷启动注入（MR3-T3）：对话上下文带用户级条目（透明可移除）
+    coldstartEntries: (scenarioId) => listRequirements(db, scenarioId),
     // 对话即导入：消息里的本地文件路径 → ingest 管线入库（默认第一条产品线）
     importFiles: async (paths) => {
       // 优先通用库：场景专属库多了之后，对话导入默认落共享资料

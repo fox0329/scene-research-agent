@@ -11,6 +11,7 @@ import type {
   Conversation,
   DshClient,
   FollowEvent,
+  RequirementEntry,
   Scenario,
   SessionHandle,
 } from "@scene/contract";
@@ -23,6 +24,7 @@ import {
   compactConversationHistory,
 } from "./conversation-compaction.js";
 import { runAgent } from "./agent-runtime.js";
+import { buildColdstartBlock } from "./coldstart.js";
 import {
   validateSessionTitle,
   canArchive,
@@ -67,6 +69,8 @@ export interface ConverseDeps {
    * （解析文件 → DSH 归类 → 写库）。缺省 = 不支持导入，普通对话不受影响。
    */
   importFiles?: (paths: string[]) => Promise<ChatImportOutcome[]>;
+  /** 用户级画像冷启动注入（MR3-T3）：返回该场景生效条目；缺省 = 不注入 */
+  coldstartEntries?: (scenarioId: string) => RequirementEntry[];
 }
 
 // ─── 创建请求 ──────────────────────────────────────────────
@@ -86,7 +90,7 @@ export interface CreateConversationRequest {
  * @returns 包含 CRUD + sendMessage 方法的 command 对象
  */
 export function createConverseCommand(deps: ConverseDeps) {
-  const { db, dshClient, importFiles } = deps;
+  const { db, dshClient, importFiles, coldstartEntries } = deps;
 
   return {
     /**
@@ -168,7 +172,7 @@ export function createConverseCommand(deps: ConverseDeps) {
         };
       },
     ): AsyncIterable<FollowEvent> =>
-      sendMessage(db, dshClient, conversationId, content, importFiles, override),
+      sendMessage(db, dshClient, conversationId, content, importFiles, coldstartEntries, override),
   };
 }
 
@@ -365,6 +369,7 @@ async function* sendMessage(
   conversationId: string,
   content: string,
   importFiles?: (paths: string[]) => Promise<ChatImportOutcome[]>,
+  coldstartEntries?: (scenarioId: string) => RequirementEntry[],
   override?: {
     system?: string;
     contextPrefix?: string;
@@ -469,7 +474,11 @@ async function* sendMessage(
         "",
       ].join("\n");
     })();
-    const baseUser = `${historyBlock}${override?.contextPrefix ?? ""}${scenarioCtx}${importReport ? importReport : ""}${content}`;
+    // 用户级画像冷启动注入（MR3-T3）：scope=user 条目透明生效，可移除；钩子缺省不注入
+    const coldstartBlock = coldstartEntries
+      ? buildColdstartBlock(coldstartEntries(conversation.scenario_id))
+      : "";
+    const baseUser = `${historyBlock}${override?.contextPrefix ?? ""}${scenarioCtx}${coldstartBlock}${importReport ? importReport : ""}${content}`;
     const MARKER = "【执行命令】";
     let held = "";
 
