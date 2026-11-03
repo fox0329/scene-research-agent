@@ -1,18 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { isLowTrustRow, tableSummaryText } from "./SchemaTable.js";
 
-describe("表头上一行总结（用户定调 2026-11-03）", () => {
-  it("有模型摘要就用摘要，没有退回表定义 purpose", () => {
-    expect(tableSummaryText("十类交互，七类有材料", "客户侧要素怎么交互")).toBe("十类交互，七类有材料");
-    expect(tableSummaryText(undefined, "客户侧要素怎么交互")).toBe("客户侧要素怎么交互");
-    expect(tableSummaryText("   ", "兜底的用途说明")).toBe("兜底的用途说明");
+describe("表头上一行内容总结（用户定调 2026-11-03）", () => {
+  it("只有内容总结才显示；没有就不显示（不拿表定义说明充当总结）", () => {
+    expect(tableSummaryText("十类交互，七类有材料依据")).toBe("十类交互，七类有材料依据");
+    expect(tableSummaryText(undefined)).toBe("");
+    expect(tableSummaryText("   ")).toBe("");
   });
 
   it("去掉 markdown 记号，超 100 字截断成一行", () => {
-    expect(tableSummaryText(undefined, "**场景锚**——`用户给场景名称`")).toBe(
-      "场景锚——用户给场景名称",
-    );
-    const long = tableSummaryText(undefined, "一".repeat(150));
+    expect(tableSummaryText("**关键结论**：`交互`共十类")).toBe("关键结论：交互共十类");
+    const long = tableSummaryText("一".repeat(150));
     expect(Array.from(long)).toHaveLength(100);
     expect(long.endsWith("…")).toBe(true);
   });

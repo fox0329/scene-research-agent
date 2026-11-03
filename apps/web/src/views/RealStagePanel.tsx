@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   rowBelongsToBlock,
   tableDef,
@@ -152,6 +152,37 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
   useEffect(() => {
     setActiveRowId(null);
   }, [stage, stepId, activeTable, block, category]);
+
+  /**
+   * 表头上方一行「内容总结」（用户定调 2026-11-03）
+   *
+   * 生成时随表产出的摘要走 `table_summaries`；存量表没摘要的，打开这张表时按**已填内容**
+   * 现生成一次并缓存（空表不生成）。每张表只请求一次，生成中是后台请求，不挡表格显示。
+   */
+  const [summaries, setSummaries] = useState<Record<string, string>>({});
+  const summaryAsked = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (!activeTable) return;
+    const hasRows = rows.some((r) => r.table_code === activeTable);
+    if (!hasRows) return;
+    if (data?.table_summaries?.[activeTable] || summaries[activeTable]) return;
+    if (summaryAsked.current.has(activeTable)) return;
+    summaryAsked.current.add(activeTable);
+    let cancelled = false;
+    void api
+      .ensureTableSummary(projectId, activeTable)
+      .then((res) => {
+        if (cancelled || !res.summary) return;
+        setSummaries((prev) => ({ ...prev, [activeTable]: res.summary as string }));
+      })
+      .catch(() => {
+        /* 生成失败不打扰用户：这一行不显示即可，表格照常看 */
+        summaryAsked.current.delete(activeTable);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTable, rows, data, summaries, projectId]);
 
   /** 本表本块的行：多子块表按块过滤（否则接口块视图会带出一排架构块的空行） */
   const activeRows = useMemo(() => {
@@ -315,7 +346,7 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
               <SchemaTable
                 tableCode={activeTable}
                 /* 表头上一行总结：优先用生成时落库的摘要，缺失时 SchemaTable 退回表定义 purpose */
-                summary={data?.table_summaries?.[activeTable]}
+                summary={summaries[activeTable] ?? data?.table_summaries?.[activeTable]}
                 rows={activeRows.map((r) => ({ id: r.id, row: r.row }))}
                 block={block ?? undefined}
                 category={category ?? undefined}

@@ -566,6 +566,17 @@ export const api = {
       `/projects/${encodeURIComponent(id)}/stale/ack`,
       { method: "POST" },
     ),
+  /**
+   * 表头上方一行「内容总结」（用户定调 2026-11-03）
+   *
+   * 生成时已有摘要会走 stagePanel 一起返回；这里只给存量表用：没摘要就现生成一次并缓存。
+   * 空表返回 summary=null。
+   */
+  ensureTableSummary: (id: string, code: string) =>
+    req<{ table_code: string; summary: string | null }>(
+      `/projects/${encodeURIComponent(id)}/tables/${encodeURIComponent(code)}/summary`,
+      { method: "POST" },
+    ),
   /** 阶段面板数据；`step` 传了就按**本步表集**算完整度（右栏"只针对当前步骤"） */
   stagePanel: (id: string, stage: number, step?: number) =>
     req<ApiStagePanel>(

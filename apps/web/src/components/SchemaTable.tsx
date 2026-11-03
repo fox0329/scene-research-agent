@@ -213,13 +213,14 @@ export function isLowTrustRow(row: Record<string, unknown>): boolean {
   return /未知|待核实|待确认|行业通识|行业通用|通例|推断/iu.test(source);
 }
 
-/** 表头上一行总结：优先用生成时的表级摘要，没有就退回表定义的用途说明（去掉 markdown 记号） */
-export function tableSummaryText(
-  summary: string | undefined,
-  purpose: string | undefined,
-): string {
-  const pick = (summary ?? "").trim() || (purpose ?? "").trim();
-  const plain = pick.replace(/\*\*/gu, "").replace(/`/gu, "").replace(/\s+/gu, " ").trim();
+/**
+ * 表头上一行总结：**只显示对已填内容的总结**（用户定调 2026-11-03）
+ *
+ * 第一版拿表定义 `purpose` 兜底，被用户否掉：「不是让你对表格做说明，
+ * 而是对表格填写的内容用不到 100 字作总结」。没有内容摘要就不显示这一行。
+ */
+export function tableSummaryText(summary: string | undefined): string {
+  const plain = (summary ?? "").replace(/\*\*/gu, "").replace(/`/gu, "").replace(/\s+/gu, " ").trim();
   const chars = Array.from(plain);
   return chars.length <= 100 ? plain : `${chars.slice(0, 99).join("")}…`;
 }
@@ -254,7 +255,7 @@ export function SchemaTable(props: SchemaTableProps): React.ReactElement | null 
      用户既不知道这张表要填什么，也没法判断智能体漏了哪些列（表2-4 实跑踩过）。 */
   const isEmpty = rows.length === 0;
   const showGroupHeader = Boolean(def.groupBy);
-  const summaryText = tableSummaryText(summary, def.purpose);
+  const summaryText = tableSummaryText(summary);
   return (
     <div className="schema-table-wrap">
       {/* 用户定调 2026-10-09：表头只留**表名**，「表X-X」这个表号删掉——有名称就够了。
@@ -264,8 +265,8 @@ export function SchemaTable(props: SchemaTableProps): React.ReactElement | null 
         <span className="tier-badge">{def.tier}</span>
         <span className="row-unit">{def.rowUnit}</span>
       </div>
-      {/* 表头上一行总结（用户定调 2026-11-03）：100 字以内，一眼看到这张表在讲什么 */}
-      <p className="schema-table-summary">{summaryText}</p>
+      {/* 表头上一行总结（用户定调 2026-11-03）：总结已填内容，100 字以内；没有就不显示 */}
+      {summaryText !== "" ? <p className="schema-table-summary">{summaryText}</p> : null}
       {isEmpty ? (
         <p className="schema-table-note">
           本表还没有内容：列名就是这张表要填的字段，可以在对话里让智能体按这些列生成

@@ -32,11 +32,13 @@ import {
   flowStep,
   flowStepLabel,
   flowStepOfTable,
+  tableDef,
   type InfoStageId,
   type ReportKind,
 } from "@scene/contract";
 import { alignmentWithBrief, anchorFixedRows, buildFlowStatus, type InfoRow } from "@scene/domain";
 import type { DbInstance } from "@scene/infra";
+import { ensureTableSummary } from "./table-summary.js";
 import {
   ensureOwnLine,
   ownLineIdOf,
@@ -1173,6 +1175,20 @@ function registerProjectRoutes(app: FastifyInstance, deps: UiRoutesDeps) {
 
   // 阶段面板：表格行 + 质量关 + 建议卡（建议由领域层计算）
   // `?step=N`：完整度按**当前步骤**的表集算（右栏"只针对当前步骤"，阶段 1 横跨第 1、2 两步）
+  /**
+   * 表头上方一行「内容总结」（用户定调 2026-11-03）
+   *
+   * 生成时随表产出的摘要已落库，这里只服务存量表：打开表发现没摘要就现生成一次并缓存。
+   * 空表返回 null（没内容可总结）。
+   */
+  app.post("/api/v1/projects/:id/tables/:code/summary", async (request, reply) => {
+    const { id, code } = request.params as { id: string; code: string };
+    if (!db.scenarioRepo.getById(id)) return notFound(reply, `场景 ${id} 不存在`);
+    if (!tableDef(code)) return badRequest(reply, `未知的表号: ${code}`);
+    const summary = await ensureTableSummary({ db, dshClient: deps.dshClient }, id, code);
+    return { table_code: code, summary };
+  });
+
   app.get("/api/v1/projects/:id/stages/:stage", async (request, reply) => {
     const { id, stage: stageParam } = request.params as { id: string; stage: string };
     const stage = parseStage(stageParam);
