@@ -3247,3 +3247,17 @@ td.ai-filled .cell-text {
 .rp-src-snippet { color: var(--ct2); }
 .rp-src-empty { color: var(--ct3); font-size: var(--txs); }
 .rp-group h4 { margin: var(--s2) 0 var(--s1); font-size: var(--ts); }
+
+/* ── 差分预览面板（MR2-T4）：Token 全量走 var() ── */
+.rdp-panel { padding: var(--s3); border-top: 1px solid var(--ct3); }
+.rdp-body { display: flex; flex-direction: column; gap: var(--s2); }
+.rdp-findings h4, .rdp-diffs h4, .rdp-remaining h4 { margin: var(--s1) 0; font-size: var(--ts); }
+.rdp-finding { display: flex; align-items: baseline; gap: var(--s1); padding: var(--s1) 0; }
+.rdp-detail { font-size: var(--ts); color: var(--ct2); }
+.rdp-diffs-h { display: flex; align-items: baseline; justify-content: space-between; }
+.rdp-diff { border: 1px solid var(--ct3); border-radius: var(--t2x, 6px); padding: var(--s2); margin-top: var(--s1); }
+.rdp-diff-loc { font-size: var(--txs); color: var(--cp); margin-bottom: var(--s1); }
+.rdp-compare { display: flex; align-items: baseline; gap: var(--s2); flex-wrap: wrap; }
+.rdp-old { color: var(--ct3); text-decoration: line-through; }
+.rdp-arrow { color: var(--ct2); }
+.rdp-new { color: var(--cb); }

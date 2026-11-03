@@ -1294,3 +1294,43 @@ export const requirements = {
       { method: "POST" },
     ),
 };
+
+// ─── 反思重写（MR2-T4：差分预览 + 应用/忽略） ────────────────
+
+export interface ApiPipelineFinding {
+  source: "postcheck" | "reflection" | "completeness";
+  level: "mandatory" | "review" | "advisory";
+  location: string;
+  detail: string;
+  entryId?: string;
+}
+
+export interface ApiCellDiff {
+  tableCode: string;
+  rowId: string;
+  cell: string;
+  oldValue: string;
+  newValue: string;
+  entryId?: string;
+}
+
+export interface ApiRefineOutcome {
+  skipped: boolean;
+  reason?: "clean" | "over-limit" | "no-rows";
+  findings: ApiPipelineFinding[];
+  diffs: ApiCellDiff[];
+  remaining: { entryId: string; entryText: string; detail: string }[];
+}
+
+export const refine = {
+  run: (projectId: string, stage: number, tableCodes?: string[]) =>
+    req<ApiRefineOutcome>(`/projects/${encodeURIComponent(projectId)}/refine`, {
+      method: "POST",
+      body: { stage, ...(tableCodes !== undefined ? { tableCodes } : {}) },
+    }),
+  apply: (projectId: string, diffs: ApiCellDiff[]) =>
+    req<{ applied: number; ignored: number }>(
+      `/projects/${encodeURIComponent(projectId)}/refine/apply`,
+      { method: "POST", body: { diffs } },
+    ),
+};

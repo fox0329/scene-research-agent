@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { Sidebar } from "./components/Sidebar";
 import { ArtifactRightPanel } from "./components/ArtifactRightPanel";
+import { RefineDiffPanel } from "./components/RefineDiffPanel";
 import { RequirementProfilePanel } from "./components/RequirementProfilePanel";
 import { ScenarioDefinitionDialog } from "./components/ScenarioDefinitionDialog";
 import { NewScenarioDialog } from "./components/NewScenarioDialog";
@@ -403,6 +404,14 @@ const AppShell: React.FC = () => {
             <ArtifactRightPanel snapshot={stageSnapshot} live={live} projectId={activeProject?.id} />
             {/* 需求画像（反思优化模块 MR1-T5）：挂右栏底部，产物面板之下 */}
             {activeProject?.id && <RequirementProfilePanel projectId={activeProject.id} />}
+            {/* 差分预览（MR2-T4）：按需求重写 → 左右对照 → 应用/忽略 */}
+            {activeProject?.id && (
+              <RefineDiffPanel
+                projectId={activeProject.id}
+                stage={activeProject.stage}
+                onApplied={() => void refreshProjects()}
+              />
+            )}
           </>
         ) : view === "library" ? (
           <LibraryRightPanel lineId={libraryLineId} live={live} />
