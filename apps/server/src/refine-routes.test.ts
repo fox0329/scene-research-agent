@@ -106,3 +106,24 @@ describe("refine 路由（MR2-T4）", () => {
     expect(res.statusCode).toBe(400);
   });
 });
+
+describe("refine 阶段归一（MR2-T4 修正）", () => {
+  it("stage 6+（交付物阶段）归一到 5 查表数据", async () => {
+    const { app, db } = buildApp();
+    const sid = db.scenarioRepo.insert({ name: "t", status: "进行中", current_stage: 6 as never }).id;
+    db.stageDataRepo.insert({
+      scenario_id: sid,
+      stage: 5,
+      table_code: "表6-1",
+      row: { 方案: "示例内容" },
+    } as never);
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/projects/${sid}/refine`,
+      payload: { stage: 6 },
+    });
+    expect(res.statusCode).toBe(200);
+    // 无画像条目 → clean 而非 no-rows（说明表数据查到了）
+    expect((res.json() as { reason?: string }).reason).toBe("clean");
+  });
+});

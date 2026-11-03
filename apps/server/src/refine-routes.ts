@@ -21,9 +21,12 @@ export function registerRefineRoutes(app: FastifyInstance, db: DbInstance, dshCl
     if (!Number.isInteger(stage) || stage < 1) {
       return reply.code(400).send({ error: "stage 必须是正整数" });
     }
+    // 阶段归一（MR2-T4 修正）：业务流阶段 0-8，表数据只落 0-5；交付物阶段（6+）的
+    // 表数据留在 5，反思重写按 5 查——否则阶段 6+ 永远「没有表格数据」
+    const dataStage = Math.min(stage, 5);
     return refineCmd.refine({
       scenarioId: id,
-      stage: stage as never,
+      stage: dataStage as never,
       ...(body.tableCodes !== undefined ? { tableCodes: body.tableCodes } : {}),
     });
   });
