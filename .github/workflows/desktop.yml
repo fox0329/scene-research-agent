@@ -158,7 +158,9 @@ jobs:
           fi
           echo "—— 汇总结果 ——"
           cat out/SHA256SUMS.txt
-          LINES=$(wc -l < out/SHA256SUMS.txt | tr -d ' ')
+          # 用 awk 数非空行：jq 重定向时末行可能不带换行，wc -l 会少数一行（v0.9.26 真实踩过，
+          # 明明 2 行被判成 1 行、整个 job 失败）
+          LINES=$(awk 'NF{n++} END{print n+0}' out/SHA256SUMS.txt)
           if [ "$LINES" -lt 2 ]; then
             echo "::error::校验和只有 $LINES 行，两平台产物应各一行"
             exit 1
