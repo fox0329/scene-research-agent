@@ -19,6 +19,7 @@ import type { DbInstance } from "@scene/infra";
 import { planResume } from "@scene/domain";
 import { createAdvanceStageCommand } from "./advance-stage.js";
 import { createRollbackStageCommand } from "./rollback-stage.js";
+import { registerRequirementRoutes } from "./requirement-routes.js";
 import { createSseHub } from "./sse-hub.js";
 import type { SseHub } from "./sse-hub.js";
 import { parseStage, streamEvents, LAST_STAGE_ID } from "./sse-stream.js";
@@ -199,6 +200,8 @@ export function createApp(deps: AppDeps): FastifyInstance {
       return runId !== undefined && hub.has(runId) && !hub.isDone(runId);
     },
   });
+  // 反思优化模块端点（MR1-T6）：始终可用，flag 只控制自动抽取
+  registerRequirementRoutes(app, db);
 
   // ── web 构建产物同源托管（单端口起完整应用，SPA 回退） ──
   if (deps.webDist && existsSync(deps.webDist)) {

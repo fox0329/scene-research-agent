@@ -13,6 +13,8 @@ import { pipeline } from "node:stream/promises";
 import { join } from "node:path";
 import { tmpdir, homedir } from "node:os";
 import { recordInteractionEvent } from "./requirement-profile.js";
+import { createProfileExtractor, type ExtractorHandle } from "./profile-extract.js";
+import { isReflectionEnabled } from "./requirement-routes.js";
 import type {
   Boundary,
   Conversation,
@@ -301,6 +303,10 @@ function reportKindOf(raw: unknown): ReportKind | undefined {
 }
 
 export function registerUiRoutes(app: FastifyInstance, deps: UiRoutesDeps): void {
+  /* 反思优化（MR1-T6）：flag 开才挂抽取管道（红线：MR2 差分样本评审通过前默认关） */
+  const profileExtractor: ExtractorHandle | null = isReflectionEnabled()
+    ? createProfileExtractor({ db: deps.db, dshClient: deps.dshClient })
+    : null;
   /** 撤销一次对话写入（#312）：返回是否成功与说明 */
   app.post("/api/v1/operations/:id/undo", async (request, reply) => {
     const { id } = request.params as { id: string };
@@ -1864,6 +1870,10 @@ function registerConversationRoutes(
       runId,
       converseCmd.sendMessage(id, content, { chatTools: chatWebSearchTools() }),
     );
+    // 埋点（MR1-T2/T4）：用户消息进来 → 抽取管道攒批计数（flag 开才挂，异步不阻塞流）
+    if (profileExtractor) {
+      void profileExtractor.noteMessage(conversation.scenario_id, id).catch(() => {});
+    }
     await streamEvents(hub, runId, request, reply);
   });
 
