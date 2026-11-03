@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { Sidebar } from "./components/Sidebar";
 import { ArtifactRightPanel } from "./components/ArtifactRightPanel";
+import { RequirementProfilePanel } from "./components/RequirementProfilePanel";
 import { ScenarioDefinitionDialog } from "./components/ScenarioDefinitionDialog";
 import { NewScenarioDialog } from "./components/NewScenarioDialog";
 import { OnboardingGuide } from "./components/OnboardingGuide";
@@ -398,7 +399,11 @@ const AppShell: React.FC = () => {
           （「决策支撑 / 项目工作台专属」与库页引导都是重复或承诺做不到的废话） */}
       <aside className="det">
         {view === "project" ? (
-          <ArtifactRightPanel snapshot={stageSnapshot} live={live} projectId={activeProject?.id} />
+          <>
+            <ArtifactRightPanel snapshot={stageSnapshot} live={live} projectId={activeProject?.id} />
+            {/* 需求画像（反思优化模块 MR1-T5）：挂右栏底部，产物面板之下 */}
+            {activeProject?.id && <RequirementProfilePanel projectId={activeProject.id} />}
+          </>
         ) : view === "library" ? (
           <LibraryRightPanel lineId={libraryLineId} live={live} />
         ) : null}

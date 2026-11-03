@@ -1254,3 +1254,43 @@ export async function* ingestStream(
   }
   yield* sseRequest(`/library/ingest/${encodeURIComponent(data.ingest_job_id)}/events`);
 }
+
+// ─── 需求画像（反思优化模块，MR1-T5/T6） ─────────────────────
+
+export interface ApiRequirementSource {
+  type: "message" | "operation" | "clarify";
+  ref: string;
+  snippet: string;
+}
+
+export interface ApiRequirementEntry {
+  id: string;
+  scenario_id: string | null;
+  origin_scenario_id: string | null;
+  scope: "scene" | "user";
+  kind: "explicit" | "preference" | "constraint" | "dimension_gap";
+  text: string;
+  check_anchor: { type: string; terms?: string[]; pattern?: string; mode: string } | null;
+  status: "active" | "superseded" | "dismissed";
+  confidence: "用户原话" | "用户操作" | "AI推断";
+  sources: ApiRequirementSource[];
+  artifact_refs: string[];
+  created_at: string;
+  updated_at: string;
+}
+
+export const requirements = {
+  list: (projectId: string) =>
+    req<{ entries: ApiRequirementEntry[]; upgrade_candidates: ApiRequirementEntry[] }>(
+      `/projects/${encodeURIComponent(projectId)}/requirements`,
+    ),
+  patch: (id: string, patch: Partial<Pick<ApiRequirementEntry, "text" | "scope" | "status">>) =>
+    req<ApiRequirementEntry>(`/requirements/${encodeURIComponent(id)}`, { method: "PATCH", body: patch }),
+  dismiss: (id: string) =>
+    req<ApiRequirementEntry>(`/requirements/${encodeURIComponent(id)}`, { method: "DELETE" }),
+  demote: (id: string, scenarioId: string) =>
+    req<ApiRequirementEntry>(
+      `/requirements/${encodeURIComponent(id)}/demote/${encodeURIComponent(scenarioId)}`,
+      { method: "POST" },
+    ),
+};

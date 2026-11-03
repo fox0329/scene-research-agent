@@ -3227,3 +3227,23 @@ td.ai-filled .cell-text {
   flex-direction: column;
 }
 
+
+/* ── 需求画像面板（反思优化模块 MR1-T5）：Token 全量走 var() ── */
+.rp-panel { padding: var(--s3); border-top: 1px solid var(--ct3); }
+.rp-body { display: flex; flex-direction: column; gap: var(--s2); }
+.rp-empty { color: var(--ct2); font-size: var(--ts); }
+.rp-entry { border: 1px solid var(--ct3); border-radius: var(--t2x, 6px); padding: var(--s2); }
+.rp-entry[data-status="superseded"] { opacity: 0.62; }
+.rp-line { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--s1); }
+.rp-text.ed { cursor: text; min-width: var(--s10, 120px); flex: 1; }
+.rp-badge { font-size: var(--txs); color: var(--ct2); border: 1px solid var(--ct3); border-radius: var(--t2x, 6px); padding: 0 var(--s1); }
+.rp-badge.rp-user { color: var(--cb); border-color: var(--cb); }
+.rp-badge.rp-conf-用户原话 { color: var(--cb); }
+.rp-actions { display: flex; gap: var(--s1); margin-top: var(--s1); }
+.rp-danger { color: var(--ce); border-color: var(--ce); }
+.rp-sources { margin-top: var(--s1); padding-top: var(--s1); border-top: 1px dashed var(--ct3); display: flex; flex-direction: column; gap: var(--s1); }
+.rp-src { display: flex; gap: var(--s1); font-size: var(--txs); }
+.rp-src-type { color: var(--cp); flex-shrink: 0; }
+.rp-src-snippet { color: var(--ct2); }
+.rp-src-empty { color: var(--ct3); font-size: var(--txs); }
+.rp-group h4 { margin: var(--s2) 0 var(--s1); font-size: var(--ts); }
