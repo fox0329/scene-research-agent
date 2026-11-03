@@ -111,11 +111,22 @@ export function createApp(deps: AppDeps): FastifyInstance {
           ? flowStep(stepNum).tables
           : undefined;
 
+      /* `?tables=表3-3,表4-4`：只重算点名的这几张表（用户定调 2026-11-03「选几个表格重新生成」）。
+         没给就按流程步表集跑整步；给了就只跑这几张，别的表一个字节都不动。 */
+      const tablesParam = (request.query as { tables?: string }).tables;
+      const explicitTables =
+        typeof tablesParam === "string" && tablesParam.trim() !== ""
+          ? tablesParam
+              .split(",")
+              .map((t) => t.trim())
+              .filter((t) => t !== "")
+          : undefined;
+
       const runId = `${id}:stage:${stage}#${++runSeq}`;
       latestRuns.set(`${id}:stage:${stage}`, runId);
       hub.start(
         runId,
-        advanceCmd.execute({ scenarioId: id, stage, tables: stepTables }),
+        advanceCmd.execute({ scenarioId: id, stage, tables: explicitTables ?? stepTables }),
       );
 
       await streamEvents(hub, runId, request, reply);

@@ -140,7 +140,9 @@ describe("stage-prompts — 信息版口径（不给决策建议 + 每条信息�
     expect(p.system).toContain("禁止把核实推给读者");
     expect(p.system).toContain("不得自称「用户确认」");
     // 反编造与「行业行情要写满」是一对相反的要求，必须同时在场（见下方 market 用例）
-    expect(p.system).toContain("没有材料依据就写「未提供」");
+    // 反编造的要求（2026-11-03 改口径：不许拿「未提供」占位，改成"能给判断的写判断并标 T4/C，实在没有就留空"）
+    expect(p.system).toContain("没有材料依据就不许编造");
+    expect(p.system).toContain("中栏任何一列都不许写");
     expect(p.system).toContain("行业公共知识");
   });
 
