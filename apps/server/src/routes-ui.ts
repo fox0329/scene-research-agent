@@ -38,7 +38,7 @@ import {
 } from "@scene/contract";
 import { alignmentWithBrief, anchorFixedRows, buildFlowStatus, type InfoRow } from "@scene/domain";
 import type { DbInstance } from "@scene/infra";
-import { ensureTableSummary } from "./table-summary.js";
+import { ensureTableSummary, primeTableSummaries } from "./table-summary.js";
 import {
   ensureOwnLine,
   ownLineIdOf,
@@ -1203,10 +1203,12 @@ function registerProjectRoutes(app: FastifyInstance, deps: UiRoutesDeps) {
     const summaryReady = Boolean(
       db.stageSummaryRepo.get(id, ((stage as number) >= 6 ? 5 : stage) as InfoStageId),
     );
-    /* 表头上一行总结（用户定调 2026-11-03）：按表号给前端，缺的由前端退回表定义 purpose */
+    /* 表头上一行内容总结（用户定调 2026-11-03）：按表号给前端；
+       缺的在后台排队补（不阻塞本次响应），补好后前端下次取到就有 */
     const table_summaries = Object.fromEntries(
       db.tableSummaryRepo.listByScenario(id).map((r) => [r.table_code, r.summary]),
     );
+    if (rows.length > 0) primeTableSummaries({ db, dshClient: deps.dshClient }, id);
     return {
       rows,
       gates: [],

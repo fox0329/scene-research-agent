@@ -71,6 +71,36 @@ export function cleanSummary(raw: string): string {
 }
 
 /**
+ * 后台串行补齐一个场景的所有缺摘要表（不阻塞调用方）
+ *
+ * 用户反馈 2026-11-03：「为什么有的表格点进去的时候没有总结行，等会总结行才会出现？」
+ * ——因为原来只在打开单表时才现生成，等 30 秒。改成打开阶段就把缺的排队补上，
+ * 一次只跑一张（避免十几个模型请求同时打出去），补过的写库，下次直接有。
+ */
+const pendingScenarios = new Set<string>();
+export function primeTableSummaries(deps: TableSummaryDeps, scenarioId: string): void {
+  if (pendingScenarios.has(scenarioId)) return;
+  pendingScenarios.add(scenarioId);
+  void (async () => {
+    try {
+      const codes = [
+        ...new Set(
+          deps.db.stageDataRepo
+            .list({ where: "scenario_id = ?", params: [scenarioId] })
+            .map((r) => r.table_code),
+        ),
+      ];
+      for (const code of codes) {
+        if (deps.db.tableSummaryRepo.get(scenarioId, code)?.summary) continue;
+        await ensureTableSummary(deps, scenarioId, code).catch(() => null);
+      }
+    } finally {
+      pendingScenarios.delete(scenarioId);
+    }
+  })();
+}
+
+/**
  * 确保这张表有内容摘要：有就返回旧的，没有就现生成一次并落库
  *
  * 空表返回 null（没内容可总结，界面不显示这一行）。

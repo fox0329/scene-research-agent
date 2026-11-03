@@ -160,6 +160,8 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
    * 现生成一次并缓存（空表不生成）。每张表只请求一次，生成中是后台请求，不挡表格显示。
    */
   const [summaries, setSummaries] = useState<Record<string, string>>({});
+  /* 正在生成摘要的表：显示占位文字，别让那一行空着（用户反馈「点进去没有，等会才出现」） */
+  const [summaryPending, setSummaryPending] = useState<Record<string, boolean>>({});
   const summaryAsked = useRef<Set<string>>(new Set());
   useEffect(() => {
     if (!activeTable) return;
@@ -168,6 +170,7 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
     if (data?.table_summaries?.[activeTable] || summaries[activeTable]) return;
     if (summaryAsked.current.has(activeTable)) return;
     summaryAsked.current.add(activeTable);
+    setSummaryPending((prev) => ({ ...prev, [activeTable]: true }));
     let cancelled = false;
     void api
       .ensureTableSummary(projectId, activeTable)
@@ -178,6 +181,9 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
       .catch(() => {
         /* 生成失败不打扰用户：这一行不显示即可，表格照常看 */
         summaryAsked.current.delete(activeTable);
+      })
+      .finally(() => {
+        if (!cancelled) setSummaryPending((prev) => ({ ...prev, [activeTable]: false }));
       });
     return () => {
       cancelled = true;
@@ -347,6 +353,7 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
                 tableCode={activeTable}
                 /* 表头上一行总结：优先用生成时落库的摘要，缺失时 SchemaTable 退回表定义 purpose */
                 summary={summaries[activeTable] ?? data?.table_summaries?.[activeTable]}
+                summaryPending={summaryPending[activeTable] === true}
                 rows={activeRows.map((r) => ({ id: r.id, row: r.row }))}
                 block={block ?? undefined}
                 category={category ?? undefined}

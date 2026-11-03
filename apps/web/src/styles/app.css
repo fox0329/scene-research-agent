@@ -1785,9 +1785,12 @@ td.ed {
 }
 
 /* 低可信/待核实：蓝字提示，不删内容也不留空（用户定调 2026-11-03） */
-.schema-table td.low-trust,
-.schema-table td.low-trust .cell-text,
-.schema-table td.low-trust.ed {
+/* 表格容器类名是 .tw，不是 .schema-table —— 之前按后者写，规则一条都选不中（2026-11-03 修） */
+.schema-table-summary-pending { color: var(--ct3); font-style: normal; }
+
+td.low-trust,
+td.low-trust .cell-text,
+td.low-trust.ed {
   color: var(--c-unverified);
 }
 

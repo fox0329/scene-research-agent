@@ -56,6 +56,8 @@ export interface SchemaTableProps {
    * 缺省退回表定义的 purpose（旧数据没有摘要时的兜底，保证这行不空）。
    */
   summary?: string;
+  /** 摘要正在生成：显示占位提示，避免那一行先空着再突然出现 */
+  summaryPending?: boolean;
 }
 
 /** 单元格取值 → 单行展示文本（数组用顿号连接） */
@@ -236,6 +238,7 @@ export function SchemaTable(props: SchemaTableProps): React.ReactElement | null 
     onRowFocus,
     readOnly,
     summary,
+    summaryPending,
   } = props;
   const def = useMemo(() => tableDef(tableCode), [tableCode]);
 
@@ -266,7 +269,11 @@ export function SchemaTable(props: SchemaTableProps): React.ReactElement | null 
         <span className="row-unit">{def.rowUnit}</span>
       </div>
       {/* 表头上一行总结（用户定调 2026-11-03）：总结已填内容，100 字以内；没有就不显示 */}
-      {summaryText !== "" ? <p className="schema-table-summary">{summaryText}</p> : null}
+      {summaryText !== "" ? (
+        <p className="schema-table-summary">{summaryText}</p>
+      ) : summaryPending ? (
+        <p className="schema-table-summary schema-table-summary-pending">正在生成内容总结…</p>
+      ) : null}
       {isEmpty ? (
         <p className="schema-table-note">
           本表还没有内容：列名就是这张表要填的字段，可以在对话里让智能体按这些列生成
