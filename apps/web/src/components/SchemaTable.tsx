@@ -22,7 +22,7 @@ import {
   type TableColumn,
   type TableDef,
 } from "@scene/contract";
-import { isBlankOrFiller, isValuableCell } from "@scene/domain";
+import { cellTrustClass, cellTrustOf } from "@scene/domain";
 import { SceneTable, type ColumnDef } from "./SceneTable.js";
 import { plainText } from "./text-display";
 
@@ -144,8 +144,9 @@ export function AnchorTable({
       required: Boolean(fixed.required),
       mine: fixed.owner === "用户",
       content: cellText(r?.row["content"]),
-      /* 保留整行原始数据：格级低可信标记（__low_trust）在行 JSON 里 */
+      /* 保留整行原始数据与右栏来源：颜色按来源判定（用户定调 2026-11-03） */
       raw: r?.row ?? {},
+      source: r?.source ?? "",
     };
   });
 
@@ -185,11 +186,8 @@ export function AnchorTable({
       tableClassName="schema-table schema-table--anchor"
       storageKey="anchor:表1-1"
       rowEditable={(row) => editable && row.rowId !== null}
-      /* 推断补的格子标蓝（用户定调 2026-11-03）：场景锚也要能看出哪句是推断的 */
-      cellClassName={(row, key) => {
-        if (isWeakValueCell(tableDef("表1-1"), row.raw, key)) return "weak-value";
-        return isLowTrustCell(row.raw, key) ? "low-trust" : undefined;
-      }}
+      /* 颜色按来源判定（用户定调 2026-11-03）：场景锚也一样 */
+      cellClassName={(row, key) => cellColorClass(tableDef("表1-1"), row.raw, key, row.source)}
       {...(editable
         ? {
             onCellChange: (rowIndex, _key, value) => {
@@ -210,41 +208,19 @@ export function AnchorTable({
  * - 普通表 → 限制在中栏列内渲染
  */
 /**
- * 格级低可信判定（用户定调 2026-11-03）
+ * 单元格颜色（用户定调 2026-11-03）：
+ * 黑＝右栏有可验证链接/材料页码/用户输入；蓝＝查不到资料、按行业通识推断；红＝填了但没价值。
  *
- * 只标记**这一格**是"没来源、按行业通识或推断写的"：依据是模型输出时给的
- * `low_trust_fields`（落库为行 JSON 的 `__low_trust`）。
- *
- * 早前按整行 authority/evidence 标蓝，结果 T3（有来源的参考级）与整批降级重写的行
- * 全被染蓝，一整张表都是蓝的——用户原话「怎么全变成蓝色了？这样用户怎么分辨？」
+ * 颜色由**来源**决定，不由模型自报：模型自报会漏标也会误标，来源是落库的客观字段。
+ * 判定逻辑在领域层 `cellTrustOf`，这里只做 DOM 类名映射。
  */
-export function isLowTrustCell(row: Record<string, unknown>, key: string): boolean {
-  const cells = row["__low_trust"];
-  return Array.isArray(cells) && cells.map(String).includes(key);
-}
-
-/**
- * 格子里"填了但没信息量" → 红字（用户定调 2026-11-03）
- *
- * 和蓝字分工：蓝＝有判断但来源不可信（推断）；红＝「未知/不适用/单字答案」这类没价值的填充。
- *
- * **按当前内容实时判定，不读生成时写下的标记**：标记会在自检改写那一格之后失效
- * （实测表3-2 的「未知」被自检补成一句完整判断，红字却还留着），实时算才不会指错。
- * 规则与领域层 `tableValueScore` 一致：枚举列只看非空，其余看 `isValuableCell`。
- */
-export function isWeakValueCell(
+export function cellColorClass(
   def: TableDef | undefined,
   row: Record<string, unknown>,
   key: string,
-): boolean {
-  const raw = row[key];
-  const text = (Array.isArray(raw) ? raw.join("、") : String(raw ?? "")).trim();
-  /* 空格子不标红：它本来就是空的，染红没有意义 */
-  if (text === "") return false;
-  const col = def?.columns?.find((c: TableColumn) => c.key === key);
-  return col?.enum !== undefined && col?.enum !== null
-    ? isBlankOrFiller(raw)
-    : !isValuableCell(raw);
+  source: unknown,
+): string | undefined {
+  return cellTrustClass(cellTrustOf(def, row, key, source));
 }
 
 
@@ -314,18 +290,16 @@ export function SchemaTable(props: SchemaTableProps): React.ReactElement | null 
       ) : null}
       <SceneTable
         columns={toColumnDefs(cols)}
-        data={rows.map((r) => r.row)}
+        data={rows.map((r) => ({ ...r.row, __source: r.source ?? "" }))}
         storageKey={`schema:${tableCode}${block ? `:${block}` : ""}${category ? `:${category}` : ""}`}
         /* 联动按 rowId 对：这里的行顺序与 `data` 一一对应（同一份 rows.map） */
         rowIdOf={(_row, index) => rows[index]?.id ?? null}
         activeRowId={activeRowId}
         onRowFocus={onRowFocus}
         /* 只有"没来源、按推断写的"那一格标蓝；有依据的格子保持黑色（用户定调 2026-11-03） */
-        cellClassName={(row, key) => {
-          const r = row as Record<string, unknown>;
-          if (isWeakValueCell(def, r, key)) return "weak-value";
-          return isLowTrustCell(r, key) ? "low-trust" : undefined;
-        }}
+        cellClassName={(row, key) =>
+          cellColorClass(def, row, key, (row as Record<string, unknown>)["__source"])
+        }
         onCellChange={
           readOnly || !onCellChange
             ? undefined

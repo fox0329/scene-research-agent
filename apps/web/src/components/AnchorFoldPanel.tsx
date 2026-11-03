@@ -62,7 +62,7 @@ export const AnchorFoldPanel: React.FC<AnchorFoldPanelProps> = ({
       {open ? (
         <div className="pnl-b flush" id={bodyId}>
           <AnchorTable
-            rows={rows.map((row, i) => ({ id: `anchor-${i}`, row: { ...row } }))}
+            rows={rows.map((row, i) => ({ id: `anchor-${i}`, row: { ...row }, source: String(row.source ?? "") }))}
             {...(editable && onCellChange ? { onCellChange } : { readOnly: true })}
           />
         </div>

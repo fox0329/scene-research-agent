@@ -354,7 +354,7 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
                 /* 表头上一行总结：优先用生成时落库的摘要，缺失时 SchemaTable 退回表定义 purpose */
                 summary={summaries[activeTable] ?? data?.table_summaries?.[activeTable]}
                 summaryPending={summaryPending[activeTable] === true}
-                rows={activeRows.map((r) => ({ id: r.id, row: r.row }))}
+                rows={activeRows.map((r) => ({ id: r.id, row: r.row, source: r.source }))}
                 block={block ?? undefined}
                 category={category ?? undefined}
                 onCellChange={(rowId, cell, value) => void handleCellChange(rowId, cell, value)}

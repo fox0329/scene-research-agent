@@ -49,6 +49,8 @@ import {
   gradeAnalysisEvidence,
   gradeSource,
   parseCitations,
+  judgeSourceQuality,
+  normalizeSourceText,
   tableValueScore,
   validateIncomingRows,
   VALUE_RATIO_FLOOR,
@@ -553,16 +555,9 @@ async function generateOneTable(
   const parseOnce = (text: string): { rows: DshStageOutput["rows"]; summary: string } | null => {
     const parsed = parseDshOutput(text);
     // 只认本表自己的行：模型多写别的表号时按表归位，避免重复入库
-    const rows = parsed.rows
-      .filter((r) => String(r.table_code) === code)
-      .map((r) => {
-        /* 格级低可信标记存进行 JSON 的 __low_trust（与 __ai_cells 同一套约定），
-           界面只给这些格子标蓝——整行/整表标蓝等于没提示 */
-        const low = Array.isArray(r.low_trust_fields)
-          ? r.low_trust_fields.map(String).filter((k) => k !== "")
-          : [];
-        return low.length > 0 ? { ...r, fields: { ...r.fields, __low_trust: low } } : r;
-      });
+    /* 颜色由右栏来源决定（2026-11-03 定调），不再采信模型自报的 low_trust_fields：
+       实测会漏标（8 行里 4 行没标）、也会误标（整行 9 列全报成推断） */
+    const rows = parsed.rows.filter((r) => String(r.table_code) === code);
     return rows.length > 0 ? { rows, summary: String(parsed.summary ?? "").trim() } : null;
   };
 
@@ -1193,8 +1188,19 @@ async function* executeAdvanceStage(
     // v1.25：原来这里还会按列级 filledInStages 剥掉"后续阶段才填"的列（表2-5 实现路径/责任人等）。
     // 那套跨阶段补填已删——后面的步只跑自己的表，不会回头更新上游表，列永远填不上，留着只会让人以为"以后会填"。
     const { source_type: declared, confirm_state: _ignored, ...fields } = row.fields;
+    /**
+     * 来源质量门（用户定调 2026-11-03）：两类来源不许当依据——
+     * ① 只写了「未知（未检索到公开来源）」这类禁止措辞；② 指向百家号/百度知道/CSDN 等内容农场。
+     * 命中就改写成「推断：…」、强制 AI推断（→ T4/C），并把该行中栏**全部**格子标蓝：
+     * 整行都没有可定位来源，只标部分格子会让人以为剩下的有依据。
+     */
+    const sourceJudge = judgeSourceQuality(row.source);
+    const finalSource = sourceJudge.quality === "ok" ? row.source : normalizeSourceText(sourceJudge);
     // 来源标记（变更表 #162）：模型声明优先，未声明按出处如实判定，不替模型声称"材料提取"
-    const sourceType = resolveSourceType(declared ?? row.source_type, row.source);
+    const sourceType =
+      sourceJudge.quality === "ok"
+        ? resolveSourceType(declared ?? row.source_type, row.source)
+        : "AI推断";
     // 来源权威性 / 证据分级只出自领域层（AGENTS §3.5：分级是判定，LLM 不进入判定路径）。
     // 分析行按 A/B/C 三分（变更表 #167，用户定调 v1.35）——「D 不得入库」只管材料入库。
     // 两处同步写：库里是列，行 JSON 里也有这两个字段（阶段小结读它），
@@ -1216,7 +1222,7 @@ async function* executeAdvanceStage(
       row: normalized,
       is_stale: false,
       source_type: sourceType,
-      source: row.source,
+      source: finalSource,
       // 变更表 #162：来源权威性按 G-R1 的确定性映射派生（用户补充 T1 / 用户确认 T2 /
       // AI提取 T3 / AI推断 T4）。原来一律写死 T3，把"模型推断"伪装成"材料提取"，
       // 右栏的来源权威性列因此失去分辨力。

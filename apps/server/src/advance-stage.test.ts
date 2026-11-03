@@ -1426,9 +1426,77 @@ describe("json-extract — 逐行抢救（故障清单 #65）", () => {
   });
 });
 
-describe("格级低可信标记（用户定调 2026-11-03：只标那几格，别整行变蓝）", () => {
-  it("low_trust_fields 落成行 JSON 的 __low_trust，没给就不加", async () => {
-    // 用 mock 输出带 low_trust_fields 走一遍落库
+describe("来源质量门（用户定调 2026-11-03：内容农场只能当线索，不能当依据）", () => {
+  it("百家号这类来源不许当依据：改写为推断、强制 T4/C、整行中栏全标蓝", async () => {
+    const db = createMockDb({});
+    const dshClient = createMockDshClient(
+      JSON.stringify({
+        rows: [
+          {
+            table_code: "表1-3",
+            fields: {
+              barrier_type: "技术",
+              barrier_name: "鸿蒙生态认证",
+              criteria: "须过 HarmonyOS Connect 认证",
+              veto_holder: "华为生态准入",
+            },
+            source: "https://baijiahao.baidu.com/s?id=1878170997",
+            source_type: "AI提取",
+          },
+        ],
+      }),
+    );
+    const cmd = createAdvanceStageCommand({ db, dshClient });
+    await collectEvents(cmd.execute({ scenarioId: "sc-1", stage: 1 }));
+    const call = (db.stageDataRepo.insert as ReturnType<typeof vi.fn>).mock.calls[0]![0] as {
+      source: string;
+      source_type: string;
+      source_authority: string;
+      evidence_level: string;
+      row: Record<string, unknown>;
+    };
+    expect(call.source_type).toBe("AI推断");
+    expect(call.source_authority).toBe("T4");
+    expect(call.source).toContain("推断：仅有 baijiahao.baidu.com");
+    expect(call.source).toContain("未见权威来源");
+    expect(call.source).not.toContain("AI提取");
+  });
+
+  it("写了「未知（未检索到公开来源）」也拦下，不许落成材料提取", async () => {
+    const db = createMockDb({});
+    const dshClient = createMockDshClient(
+      JSON.stringify({
+        rows: [
+          {
+            table_code: "表1-3",
+            fields: {
+              barrier_type: "行业准入",
+              barrier_name: "安防资质",
+              criteria: "需二级资质",
+              veto_holder: "招标代理",
+            },
+            source: "未知（未检索到公开来源）",
+            source_type: "AI提取",
+          },
+        ],
+      }),
+    );
+    const cmd = createAdvanceStageCommand({ db, dshClient });
+    await collectEvents(cmd.execute({ scenarioId: "sc-1", stage: 1 }));
+    const call = (db.stageDataRepo.insert as ReturnType<typeof vi.fn>).mock.calls[0]![0] as {
+      source: string;
+      source_type: string;
+      source_authority: string;
+    };
+    expect(call.source_type).toBe("AI推断");
+    expect(call.source_authority).toBe("T4");
+    expect(call.source).toContain("本步未见可定位来源");
+    expect(call.source).not.toContain("未知");
+  });
+});
+
+describe("颜色不再采信模型自报的 low_trust_fields（2026-11-03 定调：按右栏来源判）", () => {
+  it("模型自报的低可信列表不写进行数据", async () => {
     const db = createMockDb({});
     const dshClient = createMockDshClient(
       JSON.stringify({
@@ -1439,7 +1507,7 @@ describe("格级低可信标记（用户定调 2026-11-03：只标那几格，�
               barrier_type: "技术",
               barrier_name: "AI 识别准确率",
               criteria: "≥ 95%",
-              judgment: "过得了",
+              veto_holder: "评标委员会",
             },
             source: "行业通识：GB 50395",
             source_type: "AI推断",
@@ -1453,7 +1521,8 @@ describe("格级低可信标记（用户定调 2026-11-03：只标那几格，�
     const call = (db.stageDataRepo.insert as ReturnType<typeof vi.fn>).mock.calls[0]![0] as {
       row: Record<string, unknown>;
     };
-    expect(call.row["__low_trust"]).toEqual(["criteria"]);
+    /* 颜色由右栏来源决定：本行来源是「行业通识」，前端整行判蓝，不需要模型点名 */
+    expect(call.row["__low_trust"]).toBeUndefined();
   });
 });
 

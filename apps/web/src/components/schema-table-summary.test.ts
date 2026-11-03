@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { tableDef } from "@scene/contract";
-import { isLowTrustCell, isWeakValueCell, tableSummaryText } from "./SchemaTable.js";
+import { cellColorClass, tableSummaryText } from "./SchemaTable.js";
 
 describe("表头上一行内容总结（用户定调 2026-11-03）", () => {
   it("只有内容总结才显示；没有就不显示（不拿表定义说明充当总结）", () => {
@@ -17,23 +17,20 @@ describe("表头上一行内容总结（用户定调 2026-11-03）", () => {
   });
 });
 
-describe("格级低可信标蓝（用户定调 2026-11-03）", () => {
-  it("只有被点名的那一格标蓝，同行其他格子不蓝", () => {
-    const row = { __low_trust: ["method"], interaction_type: "液位触发", method: "浮球启泵" };
-    expect(isLowTrustCell(row, "method")).toBe(true);
-    expect(isLowTrustCell(row, "interaction_type")).toBe(false);
+describe("单元格颜色按右栏来源判定（用户定调 2026-11-03）", () => {
+  it("有可验证链接 → 黑；推断来源 → 蓝；填了没价值 → 红（红优先）", () => {
+    const def = tableDef("表2-3");
+    const url = "https://jtyst.zj.gov.cn/art/2025/9/19/art_1.html";
+    const inferred = "推断：本步未见可定位来源，按场景逻辑与行业通识判断";
+    expect(cellColorClass(def, { layer: "感知层" }, "layer", url)).toBeUndefined();
+    expect(cellColorClass(def, { layer: "感知层" }, "layer", inferred)).toBe("low-trust");
+    expect(cellColorClass(def, { layer: "未知" }, "layer", inferred)).toBe("weak-value");
+    expect(cellColorClass(def, { layer: "未知" }, "layer", url)).toBe("weak-value");
   });
 
-  it("红字按当前内容实时判定：占位词标红、短名词与序号不标", () => {
-    const def = tableDef("表3-2");
-    expect(isWeakValueCell(def, { position: "未知" }, "position")).toBe(true);
-    expect(isWeakValueCell(def, { position: "1" }, "position")).toBe(false);
-    expect(isWeakValueCell(def, { key_points: "数据采集" }, "key_points")).toBe(false);
-    expect(isWeakValueCell(def, { key_points: "" }, "key_points")).toBe(false);
-  });
-
-  it("没有标记的行一个格子都不蓝（不再按整行 T3/T4 染色）", () => {
-    expect(isLowTrustCell({ source_authority: "T4", evidence_level: "C" }, "method")).toBe(false);
-    expect(isLowTrustCell({}, "method")).toBe(false);
+  it("短名词与序号不算没价值（不能被判成红）", () => {
+    const def = tableDef("表3-8");
+    expect(cellColorClass(def, { gap_name: "数据采集" }, "gap_name", "推断：x")).toBe("low-trust");
+    expect(cellColorClass(def, { rank: "3" }, "rank", "推断：x")).toBe("low-trust");
   });
 });
