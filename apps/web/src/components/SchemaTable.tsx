@@ -217,10 +217,10 @@ export function SchemaTable(props: SchemaTableProps): React.ReactElement | null 
   if (cols.length === 0) {
     return <p className="empty-hint">{tableCode} 暂无中栏列定义</p>;
   }
-  if (rows.length === 0) {
-    return <p className="empty-hint">本表暂无数据</p>;
-  }
-
+  /* 空表也渲染表头（用户定调 2026-11-03：「不管有没有内容，所有表格都应该建一张空表，
+     不要什么都没有」）：原来这里 return 一句"本表暂无数据"，连列名都看不到，
+     用户既不知道这张表要填什么，也没法判断智能体漏了哪些列（表2-4 实跑踩过）。 */
+  const isEmpty = rows.length === 0;
   const showGroupHeader = Boolean(def.groupBy);
   return (
     <div className="schema-table-wrap">
@@ -231,6 +231,11 @@ export function SchemaTable(props: SchemaTableProps): React.ReactElement | null 
         <span className="tier-badge">{def.tier}</span>
         <span className="row-unit">{def.rowUnit}</span>
       </div>
+      {isEmpty ? (
+        <p className="schema-table-note">
+          本表还没有内容：列名就是这张表要填的字段，可以在对话里让智能体按这些列生成
+        </p>
+      ) : null}
       <SceneTable
         columns={toColumnDefs(cols)}
         data={rows.map((r) => r.row)}

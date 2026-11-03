@@ -39,7 +39,7 @@ import {
   repairTruncatedJson,
   resolveSourceType,
 } from "./advance-stage.js";
-import { extractRowsBestEffort } from "./json-extract.js";
+import { closeUnbalanced, extractRowsBestEffort } from "./json-extract.js";
 import type { AdvanceStageDeps } from "./advance-stage.js";
 import type { StepResearchResult } from "./step-research.js";
 
@@ -1372,6 +1372,27 @@ describe("json-extract — 逐行抢救（故障清单 #65）", () => {
 
   it("压根没有 rows 时返回 null（真的没产出，不当格式问题处理）", () => {
     expect(extractRowsBestEffort("模型今天不想干活")).toBeNull();
+  });
+
+  /* 表2-4 实跑（2026-11-03）：模型给的 7 行**行行少写一个闭合 `}`**，
+     括号配对扫描永远找不到行边界 → 三层兜底全废、整表作废。 */
+  it("每行都少一个闭合括号时：按行锚点切分并补括号，仍能救回每一行", () => {
+    const broken =
+      '{"rows": [{"table_code":"表2-4","fields":{"from_to":"A→B","method":"MODBUS"}' +
+      ', {"table_code":"表2-4","fields":{"from_to":"C→D","method":"私有协议"}' +
+      ']}';
+    const out = extractRowsBestEffort(broken);
+    expect(out).not.toBeNull();
+    expect(out!.rows).toHaveLength(2);
+    const first = out!.rows[0] as { table_code: string; fields: { from_to: string } };
+    expect(first.table_code).toBe("表2-4");
+    expect(first.fields.from_to).toBe("A→B");
+  });
+
+  it("closeUnbalanced：字符串里的括号不算结构，不匹配的闭合返回 null", () => {
+    expect(closeUnbalanced('{"a":"含 { 和 } 的正文"')).toBe('{"a":"含 { 和 } 的正文"}');
+    expect(closeUnbalanced('{"a":1}}')).toBeNull();
+    expect(closeUnbalanced('{"a":"未闭合的串')).toBeNull();
   });
 });
 

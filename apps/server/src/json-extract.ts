@@ -79,6 +79,59 @@ export function repairTruncatedJson(text: string): unknown | null {
 }
 
 /**
+ * 补齐未闭合的 `}`/`]`（字符串感知）
+ *
+ * 用来抢救「每行都少写一个闭合括号」这种**系统性**结构缺陷（表2-4 实跑踩过：
+ * 模型给 7 行、行行少一个 `}`，括号配对扫描永远找不到行边界，整表作废）。
+ * 遇到「不匹配的闭合」或「字符串未结束」返回 null——那种文本不能安全补。
+ */
+export function closeUnbalanced(text: string): string | null {
+  const stack: string[] = [];
+  let inString = false;
+  let escaped = false;
+  for (const ch of text) {
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (ch === "\\") escaped = true;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') inString = true;
+    else if (ch === "{") stack.push("}");
+    else if (ch === "[") stack.push("]");
+    else if (ch === "}" || ch === "]") {
+      if (stack.length === 0 || stack[stack.length - 1] !== ch) return null;
+      stack.pop();
+    }
+  }
+  if (inString) return null;
+  return text.replace(/[,\s]+$/u, "") + stack.reverse().join("");
+}
+
+/**
+ * 按行锚点抢救一行：切到「下一个 `{"table_code"` 或 `]` 之前」，补括号后 parse
+ *
+ * 用于两种坏行：括号扫描找不到边界（行行少闭合），以及扫到了边界但 parse 失败
+ * （尾部多带了 `]}`）。返回 null 表示这一行救不回来，由调用方计 skipped。
+ */
+function salvageRowByAnchor(
+  candidate: string,
+  i: number,
+): { row: unknown | null; next: number } {
+  const nextAt = candidate.indexOf('{"table_code"', i + 1);
+  const tailAt = candidate.indexOf("]", i + 1);
+  const bound = [nextAt, tailAt].filter((x) => x > 0).sort((a, b) => a - b)[0];
+  if (bound === undefined) return { row: null, next: candidate.length };
+  const closed = closeUnbalanced(candidate.slice(i, bound));
+  if (closed === null) return { row: null, next: bound };
+  try {
+    return { row: JSON.parse(closed) as unknown, next: bound };
+  } catch {
+    return { row: null, next: bound };
+  }
+}
+
+/**
  * 逐行抢救 `rows` 数组：某一行 JSON 语法坏掉（少个逗号、引号没转义）时，整段解析全废
  *
  * 实测：表2-3 / 表2-5 各有一处 `Expecting property name enclosed in double quotes`
@@ -127,13 +180,26 @@ export function extractRowsBestEffort(text: string): { rows: unknown[]; skipped:
         }
       }
       if (end < 0) {
-        skipped += 1; // 尾部残缺
-        break;
+        /* 括号扫描找不到行边界：两种原因——
+           ① 尾部真被截断（后面没行了）：按残缺跳过并结束；
+           ② 每行都少闭合一个括号（系统性结构缺陷）：用下一个行的锚点切出这一段，
+              补上缺的括号再 parse，能救一行是一行。 */
+        const salvagedGap = salvageRowByAnchor(candidate, i);
+        if (salvagedGap.row !== null) rows.push(salvagedGap.row);
+        else skipped += 1;
+        i = salvagedGap.next;
+        if (i >= candidate.length) break;
+        continue;
       }
       try {
         rows.push(JSON.parse(candidate.slice(i, end + 1)) as unknown);
       } catch {
-        skipped += 1;
+        /* 扫到了边界但 parse 失败（常见：尾部多带了 `]}`）：按锚点重切一次 */
+        const salvaged = salvageRowByAnchor(candidate, i);
+        if (salvaged.row !== null) rows.push(salvaged.row);
+        else skipped += 1;
+        i = salvaged.next;
+        continue;
       }
       i = end + 1;
     }

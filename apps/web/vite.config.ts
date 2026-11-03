@@ -10,9 +10,10 @@ export default defineConfig({
   server: {
     port: 46173,
     // 开发态联真：/api → 应用主实例 46172（AGENTS 端口规则；preview 不配代理，E2E 走演示模式）
+    // DEV_API_PORT 可指向任意在跑的后端（联调桌面安装版用：它监听随机端口）
     proxy: {
       "/api": {
-        target: "http://127.0.0.1:46172",
+        target: `http://127.0.0.1:${process.env["DEV_API_PORT"] ?? "46172"}`,
         changeOrigin: true,
       },
     },
