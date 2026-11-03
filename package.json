@@ -40,6 +40,7 @@
     "migrate:info-model": "node scripts/copy-infra-sql.mjs && node scripts/migrate-info-model.mjs",
     "clean": "rm -rf packages/*/dist apps/*/dist *.tsbuildinfo packages/*/*.tsbuildinfo apps/*/*.tsbuildinfo && pnpm run clean:stray",
     "verify:m6": "bash scripts/verify-m5.sh",
+    "verify:mr1": "bash scripts/verify-mr1.sh",
     "desktop:runtime": "node apps/desktop/scripts/prepare-server.mjs",
     "desktop:dev": "pnpm --filter @scene/desktop run start",
     "desktop:pack:mac": "pnpm --filter @scene/desktop run pack:mac",
