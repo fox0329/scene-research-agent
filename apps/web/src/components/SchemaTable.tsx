@@ -187,7 +187,7 @@ export function AnchorTable({
       storageKey="anchor:表1-1"
       rowEditable={(row) => editable && row.rowId !== null}
       /* 颜色按来源判定（用户定调 2026-11-03）：场景锚也一样 */
-      cellClassName={(row, key) => cellColorClass(tableDef("表1-1"), row.raw, key, row.source)}
+      cellClassName={(row, key) => cellColorClass("表1-1", tableDef("表1-1"), row.raw, key, row.source)}
       {...(editable
         ? {
             onCellChange: (rowIndex, _key, value) => {
@@ -215,12 +215,13 @@ export function AnchorTable({
  * 判定逻辑在领域层 `cellTrustOf`，这里只做 DOM 类名映射。
  */
 export function cellColorClass(
+  tableCode: string,
   def: TableDef | undefined,
   row: Record<string, unknown>,
   key: string,
   source: unknown,
 ): string | undefined {
-  return cellTrustClass(cellTrustOf(def, row, key, source));
+  return cellTrustClass(cellTrustOf(tableCode, def, row, key, source));
 }
 
 
@@ -298,7 +299,7 @@ export function SchemaTable(props: SchemaTableProps): React.ReactElement | null 
         onRowFocus={onRowFocus}
         /* 只有"没来源、按推断写的"那一格标蓝；有依据的格子保持黑色（用户定调 2026-11-03） */
         cellClassName={(row, key) =>
-          cellColorClass(def, row, key, (row as Record<string, unknown>)["__source"])
+          cellColorClass(tableCode, def, row, key, (row as Record<string, unknown>)["__source"])
         }
         onCellChange={
           readOnly || !onCellChange

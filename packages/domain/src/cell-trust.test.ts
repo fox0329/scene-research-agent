@@ -18,21 +18,38 @@ describe("单元格颜色由来源决定（用户定调 2026-11-03）", () => {
 
   it("有内容但没价值 → 红，且红色优先于蓝色", () => {
     const def = tableDef("表2-3");
-    expect(cellTrustClass(cellTrustOf(def, { layer: "未知" }, "layer", "推断：xxx"))).toBe(
-      "weak-value",
-    );
-    expect(cellTrustClass(cellTrustOf(def, { layer: "感知层" }, "layer", "推断：xxx"))).toBe(
-      "low-trust",
-    );
+    expect(
+      cellTrustClass(cellTrustOf("表2-3", def, { note: "未知" }, "note", "推断：xxx")),
+    ).toBe("weak-value");
+  });
+
+  it("不需要调研的列（场景定义、技术实现）一律黑，哪怕来源是推断", () => {
+    const def = tableDef("表2-3");
+    /* 分层架构是技术实现，不该因为有"推断"来源就标蓝 */
+    expect(
+      cellTrustClass(cellTrustOf("表2-3", def, { layer: "感知层" }, "layer", "推断：xxx")),
+    ).toBeUndefined();
+    /* 表1-1 场景概述属定义 */
+    expect(
+      cellTrustClass(cellTrustOf("表1-1", tableDef("表1-1"), { content: "园区照明" }, "content", "")),
+    ).toBeUndefined();
+  });
+
+  it("需要调研的列没来源 → 蓝；有来源 → 黑", () => {
+    const def = tableDef("表3-1");
+    expect(
+      cellTrustClass(cellTrustOf("表3-1", def, { gross_margin: "40%–60%" }, "gross_margin", "推断：x")),
+    ).toBe("low-trust");
     expect(
       cellTrustClass(
-        cellTrustOf(def, { layer: "感知层" }, "layer", "https://jtyst.zj.gov.cn/a.html"),
+        cellTrustOf("表3-1", def, { gross_margin: "40%–60%" }, "gross_margin", "https://jtyst.zj.gov.cn/a.html"),
       ),
     ).toBeUndefined();
   });
 
   it("空格子不染色（没有文字可染）", () => {
-    const def = tableDef("表2-3");
-    expect(cellTrustClass(cellTrustOf(def, { layer: "" }, "layer", "推断：xxx"))).toBeUndefined();
+    expect(
+      cellTrustClass(cellTrustOf("表2-3", tableDef("表2-3"), { layer: "" }, "layer", "推断：xxx")),
+    ).toBeUndefined();
   });
 });

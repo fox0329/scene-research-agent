@@ -15,7 +15,7 @@
  */
 
 import { isBlankOrFiller, isValuableCell } from "./table-value.js";
-import type { TableDef } from "@scene/contract";
+import { columnNeedsResearch, type TableDef } from "@scene/contract";
 
 export type CellTrust = "verified" | "inferred" | "worthless";
 
@@ -41,9 +41,14 @@ export function isVerifiableSource(source: unknown): boolean {
 /**
  * 判一格颜色
  *
- * 空格不染色（没有文字，染了也看不见）。
+ * 空格不染色（没有文字，染了也看不见）。判定顺序：
+ *  1. 填了但没价值 → 红（「未知」「不适用」放哪都是垃圾，不看需不需要调研）
+ *  2. 这一列**不需要调研**（场景定义、技术实现、我方能力与计划）→ 黑
+ *     ——这类内容本来就该由模型写，标蓝会让人误以为这里本该有外部依据
+ *  3. 需要调研：有可验证来源 → 黑；没有 → 蓝
  */
 export function cellTrustOf(
+  tableCode: string,
   def: TableDef | undefined,
   row: Record<string, unknown>,
   key: string,
@@ -53,11 +58,10 @@ export function cellTrustOf(
   const text = (Array.isArray(raw) ? raw.join("、") : String(raw ?? "")).trim();
   if (text === "") return "verified";
   const col = def?.columns?.find((c) => c.key === key);
-  const worthless = col?.enum !== undefined && col?.enum !== null
-    ? isBlankOrFiller(raw)
-    : !isValuableCell(raw);
-  /* 红优先：填了但没价值，比"来源是推断"更严重 */
+  const worthless =
+    col?.enum !== undefined && col?.enum !== null ? isBlankOrFiller(raw) : !isValuableCell(raw);
   if (worthless) return "worthless";
+  if (!columnNeedsResearch(tableCode, key)) return "verified";
   return isVerifiableSource(source) ? "verified" : "inferred";
 }
 
