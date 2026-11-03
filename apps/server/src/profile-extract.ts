@@ -6,7 +6,7 @@
  * token 熔断：每场景每日抽取调用超上限直接跳过（方案 §7）。
  */
 
-import type { DshClient, FollowEvent, RequirementEntry, RequirementSource } from "@scene/contract";
+import type { DshClient, RequirementEntry, RequirementSource } from "@scene/contract";
 import type { DbInstance } from "@scene/infra";
 import { randomUUID } from "node:crypto";
 import {
@@ -204,7 +204,7 @@ function applyCandidates(
   const dismissed = listDismissedTexts(db);
   for (const c of candidates) {
     const ts = now().toISOString();
-    const source: RequirementSource = { type: "conversation", ref: c.sourceRef, snippet: c.sourceSnippet };
+    const source: RequirementSource = { type: "message", ref: c.sourceRef, snippet: c.sourceSnippet };
     const incoming: RequirementEntry = {
       id: randomUUID(),
       scenario_id: scenarioId,
@@ -221,7 +221,7 @@ function applyCandidates(
       updated_at: ts,
     };
     const gap = c.kind === "dimension_gap"
-      ? buildDimensionGapEntry({ ...incoming, kind: "explicit" }, source)
+      ? buildDimensionGapEntry(incoming, source)
       : null;
     const entry = gap ?? incoming;
     const outcome = resolveIncoming(entry, {
@@ -242,7 +242,7 @@ function applyOutcome(
 ): void {
   if (outcome.action === "kept") {
     insertRequirement(db, {
-      scenario_id: incoming.scenario_id,
+      scenario_id: scenarioId,
       scope: incoming.scope,
       kind: incoming.kind,
       text: incoming.text,
@@ -263,7 +263,7 @@ function applyOutcome(
   }
   if (outcome.action === "superseded") {
     insertRequirement(db, {
-      scenario_id: incoming.scenario_id,
+      scenario_id: scenarioId,
       scope: incoming.scope,
       kind: incoming.kind,
       text: incoming.text,
