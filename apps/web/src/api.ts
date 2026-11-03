@@ -1345,3 +1345,11 @@ export const refine = {
       { method: "POST", body: { diffs } },
     ),
 };
+
+// ─── 澄清（MR3-T2：maybe-clarify + 别再问） ──────────────────
+
+export const clarify = {
+  /** 本场景静音自动澄清（「别再问」） */
+  mute: (projectId: string) =>
+    req<{ ok: boolean }>(`/projects/${encodeURIComponent(projectId)}/clarify/mute`, { method: "POST" }),
+};

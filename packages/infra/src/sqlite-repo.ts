@@ -481,7 +481,7 @@ function runMigrations(db: Database.Database): {
   scenario_id       TEXT,
   conversation_id   TEXT,
   surface           TEXT NOT NULL CHECK (surface IN ('ui','conversation')),
-  action            TEXT NOT NULL CHECK (action IN ('edit_cell','confirm','undo','rewrite','suggest_accept','suggest_reject')),
+  action            TEXT NOT NULL CHECK (action IN ('edit_cell','confirm','undo','rewrite','suggest_accept','suggest_reject','clarify','clarify_mute')),
   target            TEXT NOT NULL DEFAULT '',
   detail_json       TEXT NOT NULL DEFAULT '{}',
   created_at        TEXT NOT NULL
@@ -489,6 +489,35 @@ function runMigrations(db: Database.Database): {
   db.exec(
     "CREATE INDEX IF NOT EXISTS idx_evt_scenario ON interaction_event(scenario_id, created_at)",
   );
+  // 增量迁移（MR3-T2）：旧库的 CHECK 不含 clarify/clarify_mute——重建表放宽约束（数据原样保留）
+  {
+    const evtCols = db.pragma("table_info(interaction_event)") as { name: string }[];
+    const hasClarify = evtCols.length > 0 && (() => {
+      try {
+        db.prepare("INSERT INTO interaction_event (id, scenario_id, surface, action, created_at) VALUES ('__probe__','__probe__','ui','clarify','__probe__')").run();
+        db.prepare("DELETE FROM interaction_event WHERE id = '__probe__'").run();
+        return true;
+      } catch {
+        return false;
+      }
+    })();
+    if (evtCols.length > 0 && !hasClarify) {
+      db.exec(`CREATE TABLE interaction_event_new (
+  id                TEXT PRIMARY KEY,
+  scenario_id       TEXT,
+  conversation_id   TEXT,
+  surface           TEXT NOT NULL CHECK (surface IN ('ui','conversation')),
+  action            TEXT NOT NULL CHECK (action IN ('edit_cell','confirm','undo','rewrite','suggest_accept','suggest_reject','clarify','clarify_mute')),
+  target            TEXT NOT NULL DEFAULT '',
+  detail_json       TEXT NOT NULL DEFAULT '{}',
+  created_at        TEXT NOT NULL
+)`);
+      db.exec("INSERT INTO interaction_event_new SELECT id, scenario_id, conversation_id, surface, action, target, detail_json, created_at FROM interaction_event");
+      db.exec("DROP TABLE interaction_event");
+      db.exec("ALTER TABLE interaction_event_new RENAME TO interaction_event");
+      db.exec("CREATE INDEX IF NOT EXISTS idx_evt_scenario ON interaction_event(scenario_id, created_at)");
+    }
+  }
 
   /**
    * 历史「联网核验」记录表（0.8.1 功能下线）

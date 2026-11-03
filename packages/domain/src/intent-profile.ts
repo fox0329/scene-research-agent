@@ -59,7 +59,7 @@ function firstTopic(text: string): string {
 }
 
 /** 同维度判定：Jaccard 达标 OR 首词组相同（覆盖「篇幅两页纸」→「篇幅不要两页纸要五页」这类改口） */
-function isSameDimension(a: string, b: string): boolean {
+export function isSameDimension(a: string, b: string): boolean {
   if (requirementSimilarity(a, b) >= SAME_DIMENSION_THRESHOLD) return true;
   const fa = firstTopic(a);
   return fa.length >= 2 && fa === firstTopic(b);

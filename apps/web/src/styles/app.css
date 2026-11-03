@@ -3262,3 +3262,4 @@ td.ai-filled .cell-text {
 .rdp-arrow { color: var(--ct2); }
 .rdp-new { color: var(--cb); }
 .rp-finding { display: flex; align-items: baseline; gap: var(--s1); padding: var(--s1) 0; }
+.rp-group-h { display: flex; align-items: baseline; justify-content: space-between; }

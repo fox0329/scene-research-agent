@@ -14,6 +14,7 @@ import { join } from "node:path";
 import { tmpdir, homedir } from "node:os";
 import { recordInteractionEvent } from "./requirement-profile.js";
 import { createProfileExtractor, type ExtractorHandle } from "./profile-extract.js";
+import { createClarifyCommand, type ClarifyCommand } from "./clarify-command.js";
 import { isReflectionEnabled } from "./requirement-routes.js";
 import type {
   Boundary,
@@ -1398,6 +1399,18 @@ function registerConversationRoutes(
   const profileExtractor: ExtractorHandle | null = isReflectionEnabled()
     ? createProfileExtractor({ db, dshClient })
     : null;
+  /* 澄清（MR3-T2）：同 flag 闸门——自动提问也属自动行为，flag 关时不问 */
+  const clarifyCmd: ClarifyCommand | null = isReflectionEnabled()
+    ? createClarifyCommand({ db, dshClient })
+    : null;
+
+  /* 「别再问」（MR3-T2）：静音本场景自动澄清，始终可用（用户手动操作） */
+  app.post("/api/v1/projects/:id/clarify/mute", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    if (!db.scenarioRepo.getById(id)) return notFound(reply, `场景 ${id} 不存在`);
+    createClarifyCommand({ db, dshClient }).mute(id);
+    return { ok: true };
+  });
   let convSeq = 0;
   /** 场景定义对话的 SSE 流序号（与普通会话互不干扰） */
   let defSeq = 0;
@@ -1873,6 +1886,12 @@ function registerConversationRoutes(
     // 埋点（MR1-T2/T4）：用户消息进来 → 抽取管道攒批计数（flag 开才挂，异步不阻塞流）
     if (profileExtractor) {
       void profileExtractor.noteMessage(conversation.scenario_id, id).catch(() => {});
+    }
+    // 澄清（MR3-T2）：回复流结束后裁决是否需要自动澄清（flag 开才挂，异步不阻塞流）
+    if (clarifyCmd && conversation.scenario_id) {
+      void clarifyCmd
+        .maybeClarify({ scenarioId: conversation.scenario_id, conversationId: id })
+        .catch(() => {});
     }
     await streamEvents(hub, runId, request, reply);
   });

@@ -79,7 +79,11 @@ export type InteractionAction =
   | "undo"
   | "rewrite"
   | "suggest_accept"
-  | "suggest_reject";
+  | "suggest_reject"
+  /** 澄清问题已注入会话（MR3-T2） */
+  | "clarify"
+  /** 用户选「别再问」：本场景自动澄清静音（MR3-T2） */
+  | "clarify_mute";
 
 export interface InteractionEventRecord {
   id: string;

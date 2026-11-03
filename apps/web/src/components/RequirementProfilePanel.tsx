@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { requirements, type ApiGapHints, type ApiRequirementEntry } from "../api";
+import { clarify, requirements, type ApiGapHints, type ApiRequirementEntry } from "../api";
 import { useToast } from "./Toast";
 
 /**
@@ -186,6 +186,16 @@ export function RequirementProfilePanel({ projectId }: RequirementProfilePanelPr
     void reload();
   }, [entries, reload, showToast]);
 
+  const muteClarify = useCallback(async () => {
+    try {
+      await clarify.mute(projectId);
+      showToast("已静音本场景自动澄清");
+      setClarifyHints([]);
+    } catch (err: unknown) {
+      showToast(`操作失败：${err instanceof Error ? err.message : String(err)}`);
+    }
+  }, [projectId, showToast]);
+
   const renderEntry = (e: ApiRequirementEntry) =>
     renderProfileEntry(e, {
       expanded: expandedId === e.id,
@@ -215,7 +225,12 @@ export function RequirementProfilePanel({ projectId }: RequirementProfilePanelPr
       <div className="det-body rp-body">
         {clarifyHints.length > 0 && (
           <div className="rp-group">
-            <h4>该你拍板（缺口澄清提醒）</h4>
+            <div className="rp-group-h">
+              <h4>该你拍板（缺口澄清提醒）</h4>
+              <button className="btn btn-sm" type="button" onClick={() => void muteClarify()} title="本场景不再自动弹出澄清提问">
+                别再问
+              </button>
+            </div>
             {clarifyHints.map((h, i) => (
               <div className="rp-finding" key={`${h.location}-${i}`}>
                 <span className="rp-badge rp-conf-用户原话">{h.location}</span>

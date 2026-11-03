@@ -361,7 +361,7 @@ export {
 export type { WebAuthorityVerdict, WebPageMeta, WebRuleId, DowngradeFactor, UpgradeFactor } from "./web-authority.js";
 export { chunkMarkdown, blocksToText, BLOCK_MAX, BLOCK_MIN } from "./web-chunk.js";
 export type { WebBlock } from "./web-chunk.js";
-export { normRequirementText, requirementSimilarity, confidenceRank, isBlacklisted, resolveIncoming, undoReviewTargets, applyUserEditWins, upgradeCandidates, buildDimensionGapEntry } from "./intent-profile.js";
+export { normRequirementText, requirementSimilarity, confidenceRank, isBlacklisted, resolveIncoming, undoReviewTargets, applyUserEditWins, upgradeCandidates, buildDimensionGapEntry, isSameDimension } from "./intent-profile.js";
 export type { ExtractionOutcome, ResolveContext, ReviewHint } from "./intent-profile.js";
 export { anchorViolated, evaluateEntry, evaluateEntries, excludeDismissed, decideRound, mergeFindings, DEFAULT_REFLECTION_ROUNDS, MAX_REFLECTION_ROUNDS } from "./reflection-loop.js";
 export type { AnchorTarget, AnchorViolation, RoundDecision } from "./reflection-loop.js";
