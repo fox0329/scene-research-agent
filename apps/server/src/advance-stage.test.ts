@@ -39,7 +39,7 @@ import {
   repairTruncatedJson,
   resolveSourceType,
 } from "./advance-stage.js";
-import { closeUnbalanced, extractRowsBestEffort } from "./json-extract.js";
+import { closeUnbalanced, extractRowsBestEffort, repairToolArguments } from "./json-extract.js";
 import type { AdvanceStageDeps } from "./advance-stage.js";
 import type { StepResearchResult } from "./step-research.js";
 
@@ -1393,6 +1393,31 @@ describe("json-extract — 逐行抢救（故障清单 #65）", () => {
     expect(closeUnbalanced('{"a":"含 { 和 } 的正文"')).toBe('{"a":"含 { 和 } 的正文"}');
     expect(closeUnbalanced('{"a":1}}')).toBeNull();
     expect(closeUnbalanced('{"a":"未闭合的串')).toBeNull();
+  });
+});
+
+describe("工具参数抢救（用户手写写表数据实跑，2026-11-03）", () => {
+  it("数组元素行行少一个 `}`：按元素锚点逐项补齐，全部救回", () => {
+    const broken =
+      '{"add_rows": [{"values": {"交互类型": "A", "方式": "M1"}, ' +
+      '{"values": {"交互类型": "B", "方式": "M2"}]}';
+    const out = repairToolArguments(broken);
+    expect(out).not.toBeNull();
+    const rows = out!["add_rows"] as Array<{ values: Record<string, string> }>;
+    expect(rows).toHaveLength(2);
+    expect(rows[0]!.values["交互类型"]).toBe("A");
+    expect(rows[1]!.values["方式"]).toBe("M2");
+  });
+
+  it("合法参数原样返回；救不回来时返回 null（不瞎造）", () => {
+    expect(repairToolArguments('{"add_rows": []}')).toEqual({ add_rows: [] });
+    expect(repairToolArguments("模型今天不想干活")).toBeNull();
+  });
+
+  it('fills 形态同样能救（元素锚点为 {"row"}）', () => {
+    const broken = '{"fills": [{"row": "A", "column": "方式", "value": "x"}, {"row": "B", "column": "方式", "value": "y"}]}';
+    const out = repairToolArguments(broken);
+    expect((out!["fills"] as unknown[]).length).toBe(2);
   });
 });
 

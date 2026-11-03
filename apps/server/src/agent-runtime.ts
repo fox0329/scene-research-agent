@@ -11,6 +11,7 @@
  */
 
 import { jsonBalancedEnd, looksLikeToolEchoJson, type AgentMessage, type DshClient, type SessionHandle } from "@scene/contract";
+import { repairToolArguments } from "./json-extract.js";
 
 export interface AgentToolOutcome {
   note: string;
@@ -282,16 +283,28 @@ export async function* runAgent(
     let executed = 0;
     for (const call of calls) {
       let args: Record<string, unknown> = {};
+      let repairedNote: string | null = null;
       try {
         args = call.arguments ? (JSON.parse(call.arguments) as Record<string, unknown>) : {};
       } catch {
-        messages.push({
-          role: "tool",
-          tool_call_id: call.id,
-          content: `参数不是合法 JSON：${call.arguments}`,
-        });
-        yield { type: "tool", name: call.name, note: "参数不是合法 JSON，已跳过" };
-        continue;
+        /* 模型/用户给的参数 JSON 常有结构缺陷（2026-11-03 实测：写表数据每行少一个 `}`）。
+           直接丢弃等于让人白写一遍，先按元素锚点补括号抢救。 */
+        const repaired = call.arguments ? repairToolArguments(call.arguments) : null;
+        if (repaired === null) {
+          messages.push({
+            role: "tool",
+            tool_call_id: call.id,
+            content: `参数不是合法 JSON：${call.arguments}`,
+          });
+          yield { type: "tool", name: call.name, note: "参数不是合法 JSON，已跳过" };
+          continue;
+        }
+        args = repaired;
+        repairedNote = "参数 JSON 有结构缺陷（缺闭合括号），已自动补齐";
+        yield {
+          type: "text",
+          text: `\n\n（${repairedNote}，继续执行…）\n`,
+        };
       }
       const signature = `${call.name}:${JSON.stringify(args)}`;
       if (seen.has(signature)) {

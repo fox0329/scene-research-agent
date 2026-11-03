@@ -207,3 +207,59 @@ export function extractRowsBestEffort(text: string): { rows: unknown[]; skipped:
   }
   return null;
 }
+
+/**
+ * 修复工具调用的 arguments（模型把参数 JSON 写坏时抢救）
+ *
+ * 实测两种坏法（2026-11-03 用户手写表2-4 数据、同一天阶段生成）：
+ *  - 整体少一个闭合括号（末尾被截断 / 少写一层）；
+ *  - **数组元素行行少一个 `}`**——`{"add_rows":[{...}, {...}]}` 每个元素都缺一层，
+ *    整体补括号会撞上「不匹配的闭合」而失败，必须按元素锚点逐项切分再补。
+ *
+ * 返回 null = 救不回来（调用方照旧报「参数不是合法 JSON」）。
+ */
+export function repairToolArguments(raw: string): Record<string, unknown> | null {
+  const text = raw.trim();
+  if (text === "") return null;
+  const whole = closeUnbalanced(text);
+  if (whole !== null) {
+    try {
+      return JSON.parse(whole) as Record<string, unknown>;
+    } catch {
+      /* 继续按元素抢救 */
+    }
+  }
+  /* 找形如 `"add_rows": [` / `"fills": [` 的数组，逐元素锚点切分 */
+  const m = /"(add_rows|fills|delete_rows|rows)"\s*:\s*\[/u.exec(text);
+  if (!m) return null;
+  const key = m[1]!;
+  const arrStart = text.indexOf("[", m.index + m[0].length - 1);
+  /* 元素锚点不能靠括号深度找：元素行行少闭合时深度会一路累积，后面元素就识别不出来了。
+     改用元素特征——写表工具的元素长这样：`{"values": …}`（新增行）/ `{"row": …}`（填格）。 */
+  const starts: number[] = [];
+  const anchorRe = /\{"(?:values|row)"\s*:/gu;
+  const region = text.slice(arrStart);
+  for (let hit = anchorRe.exec(region); hit !== null; hit = anchorRe.exec(region)) {
+    starts.push(arrStart + hit.index);
+  }
+  if (starts.length === 0) return null;
+  const items: unknown[] = [];
+  for (let idx = 0; idx < starts.length; idx += 1) {
+    const from = starts[idx]!;
+    const to = idx + 1 < starts.length ? starts[idx + 1]! : text.length;
+    /* 用**从本段往后第一个** `]`（最后一个会把结尾多余的 `]}` 带进片段，补括号就撞上不匹配闭合） */
+    const tail = text.indexOf("]", from);
+    const bound = tail > from && tail < to ? tail : to;
+    const frag = text.slice(from, bound);
+    const closed = closeUnbalanced(frag);
+    if (closed === null) return null;
+    try {
+      items.push(JSON.parse(closed) as unknown);
+    } catch {
+      return null;
+    }
+  }
+  if (items.length === 0) return null;
+  /* 还原成 `{"<key>": [...]}`：调用方要的就是这个数组，其他键救不回来也不影响执行 */
+  return { [key]: items };
+}
