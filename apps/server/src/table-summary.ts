@@ -59,6 +59,9 @@ export function summaryPromptOf(tableCode: string, rows: InfoRow[]): string {
 /** 去掉模型可能加的前缀、引号与换行，截到上限 */
 export function cleanSummary(raw: string): string {
   const text = raw
+    /* 「表5-1共13行：」这种开头是废话——用户要的是总结本身（用户定调 2026-11-03） */
+    .replace(/^\s*表\s*\d+\s*[-－]\s*\d+\s*(共\s*\d+\s*行)?\s*[：:，,]\s*/u, "")
+    .replace(/^\s*共\s*\d+\s*行\s*[：:，,]\s*/u, "")
     .replace(/^\s*(总结|摘要|一句话总结)\s*[:：]\s*/u, "")
     .replace(/^["'「『“]+|["'」』”]+$/gu, "")
     .replace(/\s+/gu, " ")

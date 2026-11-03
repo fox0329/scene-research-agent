@@ -54,6 +54,12 @@ describe("表级内容总结（用户定调 2026-11-03：总结的是已填内�
   it("清洗掉前缀、引号，超长截断", () => {
     expect(cleanSummary("总结：十类交互，七类有依据")).toBe("十类交互，七类有依据");
     expect(cleanSummary("“一句话”")).toBe("一句话");
+    // 用户定调 2026-11-03：不要「表5-1共13行：」这种开头，直接写总结
+    expect(cleanSummary("表5-1共13行：4个架构层加9条接口，核心是CT15控制器")).toBe(
+      "4个架构层加9条接口，核心是CT15控制器",
+    );
+    expect(cleanSummary("表 5-1（共 13 行）：摘要正文")).toBe("表 5-1（共 13 行）：摘要正文");
+    expect(cleanSummary("共13行：一句话内容")).toBe("一句话内容");
     expect(Array.from(cleanSummary("一".repeat(200)))).toHaveLength(SUMMARY_MAX_CHARS);
   });
 

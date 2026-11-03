@@ -49,7 +49,9 @@ import {
   gradeAnalysisEvidence,
   gradeSource,
   parseCitations,
+  tableValueScore,
   validateIncomingRows,
+  VALUE_RATIO_FLOOR,
 } from "@scene/domain";
 import type { InfoRow, PostcheckFinding, PostcheckReport, RowViolation } from "@scene/domain";
 import { hasCustomerFacts, missingMaterialHint } from "@scene/domain";
@@ -322,6 +324,25 @@ export function collectResearchKeywords(db: DbInstance, scenarioId: string): str
 }
 
 /**
+ * 第二轮补充模式提示词（用户定调 2026-11-03）
+ *
+ * 触发条件：第一轮严格口径写出来，中栏有效内容占比 < VALUE_RATIO_FLOOR。
+ * 这一轮**放宽来源要求换内容价值**，但保留「不许编造具体数字/型号/厂商名/URL/页码」的底线，
+ * 并强制 authority=T4 / evidence_level=C —— 前端据此把整行标蓝，用户一眼看出"这是降级补的"。
+ */
+const RELAXED_ROUND_APPENDIX = [
+  "## 补充模式（第二轮：上一轮严格按来源写，可用内容太少）",
+  "",
+  "上一轮你只写有把握、能定位来源的内容，结果这张表大量格子是空的或没信息量。这一轮换目标：**先把内容填满、填有价值**。",
+  "",
+  "- **每格都要给判断**：不许留空、不许写「未知」「不适用」「未提供」「待核实」。写不出精确值的，写你最有把握的判断或区间。",
+  "- **来源降级但要说清依据**：优先给标准号（如 GB 50055、CJJ 6）、通行做法、行业公认取值区间；",
+  "  `source` 写 `行业通识：<具体依据>` 或 `推断：<推论链条>`（不要只写「行业通识」四个字）。",
+  "- **强制标记**：本轮所有行 `authority` 一律 `T4`、`evidence_level` 一律 `C`、`verification_verdict` 一律 `行业通例`。",
+  "- **不许编造**：具体金额、型号、厂商名、URL、材料页码不许凭空造；没有就做定性描述、给区间，不要给假精确值。",
+].join("\n");
+
+/**
  * 纯填充词：这些值没有任何信息量，不许进业务列（用户定调 2026-11-03：
  * 「不要填不适用、未知之类的无价值的信息」）
  *
@@ -425,6 +446,16 @@ export function readyTables(args: {
  *
  * 进度事件通过 `push` 出口交给主循环统一编号——并发任务里不能 yield。
  */
+/**
+ * 第二轮结果的确定性标记（用户定调 2026-11-03）
+ *
+ * 降级模式产出的行**一律按 AI推断 落库**，于是 G-R1 映射给出 T4、G-R2 给出 C，
+ * 前端据此把整行标蓝。不依赖模型自己在字段里老实写 T4——它经常照抄第一轮的 T1/T2。
+ */
+function markRelaxed(rows: DshStageOutput["rows"]): DshStageOutput["rows"] {
+  return rows.map((row) => ({ ...row, source_type: "AI推断" }));
+}
+
 async function generateOneTable(
   code: string,
   d: {
@@ -437,6 +468,11 @@ async function generateOneTable(
     keepaliveMs: number;
     /** 本步联网调研上下文（先调研、再分析；没跑调研时不传） */
     research?: ResearchPromptContext;
+    /**
+     * 第二轮（放宽模式）：第一轮按严格来源要求写出来内容太薄，这一轮允许用行业通识/推断补，
+     * 产出的行统一 T4 + C，前端标蓝（用户定调 2026-11-03）
+     */
+    relaxed?: boolean;
     push: (event: FollowEvent) => void;
   },
 ): Promise<TableGenResult> {
@@ -449,7 +485,11 @@ async function generateOneTable(
     siblings: d.siblings,
     ...(d.research ? { research: d.research } : {}),
   });
-  progress(`正在生成 ${label}…`);
+  /* 第二轮补充模式：来源要求放宽，但"不许编造具体数字/URL"这条底线不退 */
+  const systemPrompt = d.relaxed
+    ? `${prompt.system}\n\n${RELAXED_ROUND_APPENDIX}`
+    : prompt.system;
+  progress(d.relaxed ? `正在补充 ${label}（降级来源，标蓝）…` : `正在生成 ${label}…`);
 
   /**
    * 流一次并返回原始文本（不做解析）
@@ -462,7 +502,7 @@ async function generateOneTable(
   let text = "";
   try {
     const stream = d.dshClient.prompt(d.session, {
-      system: prompt.system,
+      system: systemPrompt,
       user: prompt.user,
       outputContract: getStageOutputContract(d.stage, [code]),
     });
@@ -874,7 +914,7 @@ async function* executeAdvanceStage(
       })) {
         started.add(code);
         push({ type: "progress", stage, message: `开始生成 ${labelOf(code)}…` });
-        const task = generateOneTable(code, {
+        const genArgs = {
           dshClient,
           session,
           stage: effectiveStage,
@@ -891,8 +931,9 @@ async function* executeAdvanceStage(
           keepaliveMs,
           ...(researchContext ? { research: researchContext } : {}),
           push,
-        })
-          .then((result) => {
+        };
+        const task = generateOneTable(code, genArgs)
+          .then(async (result) => {
             /* 半张表（连接中断抢救出来的）与已有数据比一比：已有数据就保留旧的、只提示重算，
                绝不拿残缺结果覆盖完整数据；空表则可以落（救回来总比空着强） */
             let effective = result;
@@ -925,6 +966,45 @@ async function* executeAdvanceStage(
               needMaterial.set(effective.code, hint);
               push({ type: "progress", stage, message: `📋 ${hint}` });
               effective = { code: effective.code, rows: [], chars: effective.chars };
+            }
+
+            /**
+             * 两轮生成（用户定调 2026-11-03）
+             *
+             * 第一轮严格按来源写完之后查内容质量：中栏有效内容占比低于底线，说明这一轮没产出价值
+             * （一堆"未知/不适用/短词"），那就**放宽来源要求重跑这一张表**——补出来的行统一 T4/C，
+             * 前端标蓝，用户一眼看出哪些是降级补的。只重跑这一张，不牵动别的表。
+             */
+            if (effective.rows.length > 0 && !effective.error && !needMaterial.has(code)) {
+              const def = tableDef(code);
+              const score = def
+                ? tableValueScore(def, effective.rows.map((r) => r.fields as Record<string, unknown>))
+                : { ratio: 1 };
+              if (score.ratio < VALUE_RATIO_FLOOR) {
+                const pct = Math.round(score.ratio * 100);
+                push({
+                  type: "progress",
+                  stage,
+                  message: `🔁 ${labelOf(code)}：有效内容仅 ${pct}%，按行业通识补充一轮（补出来的标蓝）…`,
+                });
+                const retry = await generateOneTable(code, { ...genArgs, relaxed: true }).catch(
+                  () => null,
+                );
+                if (retry && retry.rows.length > 0 && !retry.error) {
+                  effective = { ...retry, rows: markRelaxed(retry.rows) };
+                  push({
+                    type: "progress",
+                    stage,
+                    message: `🔁 ${labelOf(code)}：补充完成，${retry.rows.length} 行（蓝色＝按行业通识补的，待核实）`,
+                  });
+                } else {
+                  push({
+                    type: "progress",
+                    stage,
+                    message: `🔁 ${labelOf(code)}：补充没成功，保留第一轮结果`,
+                  });
+                }
+              }
             }
 
             results.set(code, effective);
