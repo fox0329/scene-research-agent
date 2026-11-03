@@ -142,6 +142,8 @@ export function AnchorTable({
       required: Boolean(fixed.required),
       mine: fixed.owner === "用户",
       content: cellText(r?.row["content"]),
+      /* 保留整行原始数据：格级低可信标记（__low_trust）在行 JSON 里 */
+      raw: r?.row ?? {},
     };
   });
 
@@ -181,6 +183,8 @@ export function AnchorTable({
       tableClassName="schema-table schema-table--anchor"
       storageKey="anchor:表1-1"
       rowEditable={(row) => editable && row.rowId !== null}
+      /* 推断补的格子标蓝（用户定调 2026-11-03）：场景锚也要能看出哪句是推断的 */
+      cellClassName={(row, key) => (isLowTrustCell(row.raw, key) ? "low-trust" : undefined)}
       {...(editable
         ? {
             onCellChange: (rowIndex, _key, value) => {
@@ -201,18 +205,17 @@ export function AnchorTable({
  * - 普通表 → 限制在中栏列内渲染
  */
 /**
- * 来源不可信 / 待核实 → 中栏蓝字提示（用户定调 2026-11-03）
+ * 格级低可信判定（用户定调 2026-11-03）
  *
- * 不再把"没有可信来源"的信息留空或写成「未知」：内容照填，靠颜色提示可信度。
- * 判定看三处：来源权威性 T3/T4、证据等级 C/D、来源文本里写明"待核实/行业通识"。
+ * 只标记**这一格**是"没来源、按行业通识或推断写的"：依据是模型输出时给的
+ * `low_trust_fields`（落库为行 JSON 的 `__low_trust`）。
+ *
+ * 早前按整行 authority/evidence 标蓝，结果 T3（有来源的参考级）与整批降级重写的行
+ * 全被染蓝，一整张表都是蓝的——用户原话「怎么全变成蓝色了？这样用户怎么分辨？」
  */
-export function isLowTrustRow(row: Record<string, unknown>): boolean {
-  const authority = String(row["source_authority"] ?? "").trim();
-  if (authority === "T3" || authority === "T4") return true;
-  const evidence = String(row["evidence_level"] ?? "").trim();
-  if (evidence === "C" || evidence === "D") return true;
-  const source = String(row["source"] ?? "");
-  return /未知|待核实|待确认|行业通识|行业通用|通例|推断/iu.test(source);
+export function isLowTrustCell(row: Record<string, unknown>, key: string): boolean {
+  const cells = row["__low_trust"];
+  return Array.isArray(cells) && cells.map(String).includes(key);
 }
 
 /**
@@ -287,9 +290,9 @@ export function SchemaTable(props: SchemaTableProps): React.ReactElement | null 
         rowIdOf={(_row, index) => rows[index]?.id ?? null}
         activeRowId={activeRowId}
         onRowFocus={onRowFocus}
-        /* 低可信来源的格子用蓝字提示；不删内容、不留空（用户定调 2026-11-03） */
-        cellClassName={(row, _key) =>
-          isLowTrustRow(row as Record<string, unknown>) ? "low-trust" : undefined
+        /* 只有"没来源、按推断写的"那一格标蓝；有依据的格子保持黑色（用户定调 2026-11-03） */
+        cellClassName={(row, key) =>
+          isLowTrustCell(row as Record<string, unknown>, key) ? "low-trust" : undefined
         }
         onCellChange={
           readOnly || !onCellChange

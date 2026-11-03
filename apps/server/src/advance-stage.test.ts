@@ -1426,6 +1426,37 @@ describe("json-extract — 逐行抢救（故障清单 #65）", () => {
   });
 });
 
+describe("格级低可信标记（用户定调 2026-11-03：只标那几格，别整行变蓝）", () => {
+  it("low_trust_fields 落成行 JSON 的 __low_trust，没给就不加", async () => {
+    // 用 mock 输出带 low_trust_fields 走一遍落库
+    const db = createMockDb({});
+    const dshClient = createMockDshClient(
+      JSON.stringify({
+        rows: [
+          {
+            table_code: "表1-3",
+            fields: {
+              barrier_type: "技术",
+              barrier_name: "AI 识别准确率",
+              criteria: "≥ 95%",
+              judgment: "过得了",
+            },
+            source: "行业通识：GB 50395",
+            source_type: "AI推断",
+            low_trust_fields: ["criteria"],
+          },
+        ],
+      }),
+    );
+    const cmd = createAdvanceStageCommand({ db, dshClient });
+    await collectEvents(cmd.execute({ scenarioId: "sc-1", stage: 1 }));
+    const call = (db.stageDataRepo.insert as ReturnType<typeof vi.fn>).mock.calls[0]![0] as {
+      row: Record<string, unknown>;
+    };
+    expect(call.row["__low_trust"]).toEqual(["criteria"]);
+  });
+});
+
 describe("纯填充词不进业务列（用户定调 2026-11-03）", () => {
   it("业务列写「未知/不适用/暂无」直接当空去掉", () => {
     const out = stripFillerValues({

@@ -1302,6 +1302,12 @@ function registerProjectRoutes(app: FastifyInstance, deps: UiRoutesDeps) {
       : [];
     const nextRow = { ...row.row, [cell]: body.value };
     if (Array.isArray(row.row.__ai_cells)) nextRow.__ai_cells = aiCells;
+    /* 用户亲手填的这一格不再算"待核实推断"：清掉它的格级低可信标记，蓝字随之消失 */
+    if (Array.isArray(row.row.__low_trust)) {
+      const rest = (row.row.__low_trust as unknown[]).map(String).filter((k) => k !== cell);
+      if (rest.length > 0) nextRow.__low_trust = rest;
+      else delete nextRow.__low_trust;
+    }
     const updated = db.stageDataRepo.update(rowId, {
       row: nextRow,
       source_type: "用户确认",

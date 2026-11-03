@@ -107,6 +107,8 @@ interface DshStageOutput {
     source: string;
     /** AI提取 / AI推断（模型不得自称用户确认，由本地校验拦下） */
     source_type?: string;
+    /** 本行里哪些列是"没来源、按行业通识或推断写的"——只有这些格子标蓝（用户定调 2026-11-03） */
+    low_trust_fields?: string[];
   }>;
 }
 
@@ -339,6 +341,7 @@ const RELAXED_ROUND_APPENDIX = [
   "- **来源降级但要说清依据**：优先给标准号（如 GB 50055、CJJ 6）、通行做法、行业公认取值区间；",
   "  `source` 写 `行业通识：<具体依据>` 或 `推断：<推论链条>`（不要只写「行业通识」四个字）。",
   "- **强制标记**：本轮所有行 `authority` 一律 `T4`、`evidence_level` 一律 `C`、`verification_verdict` 一律 `行业通例`。",
+  "- **逐格标 `low_trust_fields`**：把真正靠行业通识/推断补出来的列键名列进去。哪怕在补充模式下，有材料或调研页面对得上的列也不要列——接口只给这些格子标蓝，标多了用户就分不清哪句有依据。",
   "- **不许编造**：具体金额、型号、厂商名、URL、材料页码不许凭空造；没有就做定性描述、给区间，不要给假精确值。",
 ].join("\n");
 
@@ -549,7 +552,16 @@ async function generateOneTable(
   const parseOnce = (text: string): { rows: DshStageOutput["rows"]; summary: string } | null => {
     const parsed = parseDshOutput(text);
     // 只认本表自己的行：模型多写别的表号时按表归位，避免重复入库
-    const rows = parsed.rows.filter((r) => String(r.table_code) === code);
+    const rows = parsed.rows
+      .filter((r) => String(r.table_code) === code)
+      .map((r) => {
+        /* 格级低可信标记存进行 JSON 的 __low_trust（与 __ai_cells 同一套约定），
+           界面只给这些格子标蓝——整行/整表标蓝等于没提示 */
+        const low = Array.isArray(r.low_trust_fields)
+          ? r.low_trust_fields.map(String).filter((k) => k !== "")
+          : [];
+        return low.length > 0 ? { ...r, fields: { ...r.fields, __low_trust: low } } : r;
+      });
     return rows.length > 0 ? { rows, summary: String(parsed.summary ?? "").trim() } : null;
   };
 
