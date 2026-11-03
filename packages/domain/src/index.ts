@@ -361,6 +361,8 @@ export {
 export type { WebAuthorityVerdict, WebPageMeta, WebRuleId, DowngradeFactor, UpgradeFactor } from "./web-authority.js";
 export { chunkMarkdown, blocksToText, BLOCK_MAX, BLOCK_MIN } from "./web-chunk.js";
 export type { WebBlock } from "./web-chunk.js";
+export { normRequirementText, requirementSimilarity, confidenceRank, isBlacklisted, resolveIncoming, undoReviewTargets, applyUserEditWins, upgradeCandidates, buildDimensionGapEntry } from "./intent-profile.js";
+export type { ExtractionOutcome, ResolveContext, ReviewHint } from "./intent-profile.js";
 export { scanInjection, shouldBlockInjection, BLOCK_AT_KINDS } from "./web-injection.js";
 export type { InjectionKind, InjectionScan } from "./web-injection.js";export { stripBoilerplate, extractPublishedAt } from "./web-clean.js";
 export { evaluateGates, type GateFinding, type GateRow } from "./output-gates.js";
