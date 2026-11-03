@@ -1,0 +1,16 @@
+import { chromium } from "@playwright/test";
+import { openApp } from "../port.mjs";
+import { settle } from "../shot.mjs";
+const { browser, page } = await openApp(chromium);
+const row = page.locator(".side .proj").filter({ hasText: "汽车零部件压铸车间" }).first();
+await row.locator(".proj-hd").click();
+await settle(page, { quiet: 1200 });
+await page.locator(".flow-node").nth(1).click();
+await settle(page, { quiet: 1600 });
+const t = await page.locator(".shell").innerText();
+console.log("=== shell 前 260 字 ===");
+console.log(JSON.stringify(t.slice(0, 260)));
+const i = t.indexOf("待重算");
+console.log("\n=== 横幅位置:", i, "===");
+console.log(JSON.stringify(t.slice(Math.max(0, i - 90), i + 80)));
+await browser.close();

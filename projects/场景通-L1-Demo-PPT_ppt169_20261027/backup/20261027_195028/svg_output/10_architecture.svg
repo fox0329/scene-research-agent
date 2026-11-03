@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 1280 720" width="1280" height="720">
+  <g id="bg">
+    <rect x="0" y="0" width="1280" height="720" fill="#FFFFFF"/>
+  </g>
+
+  <g id="chrome">
+    <rect x="0.09" y="37.64" width="22.74" height="34.02" fill="#1D2A8C"/>
+    <rect x="16.73" y="33.4" width="11.34" height="11.34" fill="#22943A"/>
+    <image href="../templates/assets/image1.png" x="1109.97" y="18.73" width="123.36" height="51.68" preserveAspectRatio="xMidYMid meet"/>
+    <text x="52.24" y="62.12" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="30" font-weight="bold" fill="#1D2A8C">场景通不是一个工具，是一套架构的实例</text>
+    <text x="52" y="98" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="16" fill="#6B7280">智能体参考架构：运行时 × 工具 × 方法 × 交付</text>
+    <rect x="1060" y="86" width="90" height="24" rx="12" fill="#E8F1FB"/>
+    <text x="1105" y="102" text-anchor="middle" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="12" font-weight="bold" fill="#0070C0">补充说明</text>
+  </g>
+
+  <g id="arch-stack">
+    <rect x="52" y="140" width="540" height="86" rx="8" fill="#F9FAFB" stroke="#D6E7F8" stroke-width="1"/>
+    <rect x="52" y="140" width="5" height="86" rx="2" fill="#1D2A8C"/>
+    <text x="74" y="170" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="18" font-weight="bold" fill="#1D2A8C">基础设施：DSH 运行时</text>
+    <text x="74" y="198" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="14" fill="#404040">会话 · 工具调用 · 流式输出 · 模型接入</text>
+
+    <rect x="52" y="240" width="540" height="86" rx="8" fill="#F9FAFB" stroke="#D6E7F8" stroke-width="1"/>
+    <rect x="52" y="240" width="5" height="86" rx="2" fill="#0070C0"/>
+    <text x="74" y="270" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="18" font-weight="bold" fill="#1D2A8C">工具层：把材料变成可处理的输入</text>
+    <text x="74" y="298" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="14" fill="#404040">文档解析 · 联网检索 · 模型 · Word/PPT 生成</text>
+
+    <rect x="52" y="340" width="540" height="86" rx="8" fill="#F9FAFB" stroke="#D6E7F8" stroke-width="1"/>
+    <rect x="52" y="340" width="5" height="86" rx="2" fill="#22943A"/>
+    <text x="74" y="370" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="18" font-weight="bold" fill="#1D2A8C">方法层：6 步 · 26 张表（可替换）</text>
+    <text x="74" y="398" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="14" fill="#404040">提示词 · 表结构 · 来源规则 · 质量门禁</text>
+    <text x="74" y="418" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="12" fill="#22943A">场景调研只是其中一种方法</text>
+
+    <rect x="52" y="440" width="540" height="86" rx="8" fill="#F9FAFB" stroke="#D6E7F8" stroke-width="1"/>
+    <rect x="52" y="440" width="5" height="86" rx="2" fill="#0070C0"/>
+    <text x="74" y="470" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="18" font-weight="bold" fill="#1D2A8C">交付/资产层：结果能交，也能留</text>
+    <text x="74" y="498" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="14" fill="#404040">解决方案 + PPT 大纲 · 产品库 · 模板 · 案例</text>
+
+    <polygon points="70,230 78,240 62,240" fill="#0070C0"/>
+    <polygon points="70,330 78,340 62,340" fill="#0070C0"/>
+    <polygon points="70,430 78,440 62,440" fill="#0070C0"/>
+  </g>
+
+  <g id="work-cards">
+    <rect x="650" y="140" width="578" height="110" rx="8" fill="#F9FAFB" stroke="#D6E7F8" stroke-width="1"/>
+    <text x="674" y="170" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="18" font-weight="bold" fill="#1D2A8C">01 / 场景调研（当前实例）</text>
+    <text x="674" y="198" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="14" fill="#404040">客户材料 + 产品资料</text>
+    <text x="674" y="220" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="14" fill="#404040">→ 6 步 / 26 张表 → 解决方案 + PPT 大纲</text>
+
+    <rect x="650" y="268" width="578" height="110" rx="8" fill="#F9FAFB" stroke="#D6E7F8" stroke-width="1"/>
+    <text x="674" y="298" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="18" font-weight="bold" fill="#1D2A8C">02 / 投标文件评审</text>
+    <text x="674" y="326" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="14" fill="#404040">招标 / 投标文件</text>
+    <text x="674" y="348" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="14" fill="#404040">→ 合规 / 参数 / 风险清单 → 评审意见</text>
+
+    <rect x="650" y="396" width="578" height="110" rx="8" fill="#F9FAFB" stroke="#D6E7F8" stroke-width="1"/>
+    <text x="674" y="426" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="18" font-weight="bold" fill="#1D2A8C">03 / 客户需求分析</text>
+    <text x="674" y="454" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="14" fill="#404040">访谈 / 纪要</text>
+    <text x="674" y="476" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="14" fill="#404040">→ 需求分类 / 优先级 → PRD</text>
+
+    <text x="650" y="548" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="14" fill="#6B7280">换工作类型，换的是方法层和输出契约；</text>
+    <text x="650" y="570" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="14" fill="#6B7280">运行时、工具链、交互壳复用。</text>
+  </g>
+
+  <g id="takeaway">
+    <text x="52" y="578" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="20" font-weight="bold" fill="#0D0D0D">不是通用低代码平台，是这套架构的第一个可运行实例。</text>
+    <text x="52" y="608" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="15" fill="#404040">工具会换，方法会变；可复用的产品化方式留下来。</text>
+  </g>
+
+  <g id="footer">
+    <rect x="0" y="656" width="1280" height="64" fill="#0070C0"/>
+    <text x="52" y="694" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="18" fill="#FFFFFF">从一次交付，到一套可复用的组织能力。</text>
+    <text x="1228" y="694" text-anchor="end" font-family="Arial, &quot;Microsoft YaHei&quot;, sans-serif" font-size="12" fill="#FFFFFF" fill-opacity="0.8">10 / 10</text>
+  </g>
+</svg>

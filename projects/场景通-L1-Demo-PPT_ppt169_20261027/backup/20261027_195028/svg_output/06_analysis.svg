@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 1280 720" width="1280" height="720">
+  <g id="bg">
+    <rect x="0" y="0" width="1280" height="720" fill="#FFFFFF"/>
+  </g>
+
+  <g id="chrome">
+    <rect x="0.09" y="37.64" width="22.74" height="34.02" fill="#1D2A8C"/>
+    <rect x="16.73" y="33.4" width="11.34" height="11.34" fill="#22943A"/>
+    <image href="../templates/assets/image1.png" x="1109.97" y="18.73" width="123.36" height="51.68" preserveAspectRatio="xMidYMid meet"/>
+    <text x="52.24" y="62.12" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="32" font-weight="bold" fill="#1D2A8C">每一步 AI 先调研、先填表</text>
+    <text x="52" y="100" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="16" fill="#6B7280">表格不是从零填，是 AI 先给初稿；每条结论都能回到来源</text>
+  </g>
+
+  <g id="left-copy">
+    <rect x="52" y="146" width="4" height="24" rx="2" fill="#0070C0"/>
+    <text x="70" y="166" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="20" font-weight="bold" fill="#1D2A8C">6 步分析、26 张表</text>
+    <text x="70" y="202" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="16" fill="#404040">从场景定义到交付物，</text>
+    <text x="70" y="226" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="16" fill="#404040">一步一张表，不漏项。</text>
+
+    <rect x="52" y="262" width="4" height="24" rx="2" fill="#0070C0"/>
+    <text x="70" y="282" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="20" font-weight="bold" fill="#1D2A8C">表格可确认、可修改</text>
+    <text x="70" y="318" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="16" fill="#404040">AI 给初稿，人逐格校对；</text>
+    <text x="70" y="342" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="16" fill="#404040">手改过的版本会留档。</text>
+
+    <rect x="52" y="378" width="4" height="24" rx="2" fill="#22943A"/>
+    <text x="70" y="398" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="20" font-weight="bold" fill="#1D2A8C">来源可追溯</text>
+    <text x="70" y="434" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="16" fill="#404040">右栏显示来源、权威性、</text>
+    <text x="70" y="458" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="16" fill="#404040">证据等级；查不到写“未知”。</text>
+
+    <rect x="52" y="506" width="300" height="82" rx="8" fill="#F9FAFB" stroke="#D6E7F8" stroke-width="1"/>
+    <text x="72" y="540" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="17" font-weight="bold" fill="#1D2A8C">人只做校对和判断。</text>
+    <text x="72" y="566" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="14" fill="#6B7280">不拿模型知识冒充客户事实。</text>
+  </g>
+
+  <g id="table-shot">
+    <text x="400" y="144" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="14" font-weight="bold" fill="#1D2A8C">表格：结论在中栏，来源在右栏</text>
+    <rect x="400" y="156" width="560" height="386" rx="8" fill="#F9FAFB" stroke="#D6E7F8" stroke-width="1"/>
+    <image href="../images/P6-table.png" x="404" y="160" width="552" height="378" preserveAspectRatio="xMidYMid meet"/>
+    <rect x="410" y="222" width="540" height="46" rx="4" fill="none" stroke="#0070C0" stroke-width="2"/>
+  </g>
+
+  <g id="source-shot">
+    <text x="980" y="144" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="14" font-weight="bold" fill="#1D2A8C">来源面板</text>
+    <rect x="980" y="156" width="220" height="304" rx="8" fill="#F9FAFB" stroke="#0070C0" stroke-width="2"/>
+    <image href="../images/P6-source-crop.png" x="986" y="162" width="208" height="292" preserveAspectRatio="xMidYMid meet"/>
+    <text x="980" y="482" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="12" fill="#6B7280">来源标题 / 日期 / 域名</text>
+    <text x="980" y="504" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="12" fill="#6B7280">点开可看为什么这么写</text>
+  </g>
+
+  <g id="takeaway">
+    <text x="400" y="590" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="19" font-weight="bold" fill="#0D0D0D">不是“AI 说得对”，是“这条结论从哪里来”。</text>
+    <text x="400" y="618" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="14" fill="#6B7280">来源可以是文件页码，也可以是网址；权威性 T1–T4、证据等级 A–D 都在右栏。</text>
+  </g>
+
+  <g id="footer">
+    <rect x="0" y="656" width="1280" height="64" fill="#0070C0"/>
+    <text x="52" y="694" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="18" fill="#FFFFFF">AI 先跑一遍，人做判断；每一步都留得下依据。</text>
+    <text x="1228" y="694" text-anchor="end" font-family="Arial, &quot;Microsoft YaHei&quot;, sans-serif" font-size="12" fill="#FFFFFF" fill-opacity="0.8">06 / 10</text>
+  </g>
+</svg>

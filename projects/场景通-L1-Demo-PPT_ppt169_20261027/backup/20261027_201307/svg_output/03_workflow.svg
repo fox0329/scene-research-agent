@@ -1,0 +1,88 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 1280 720" width="1280" height="720">
+  <g id="bg">
+    <rect x="0" y="0" width="1280" height="720" fill="#FFFFFF"/>
+  </g>
+
+  <g id="chrome">
+    <rect x="0.09" y="37.64" width="22.74" height="34.02" fill="#1D2A8C"/>
+    <rect x="16.73" y="33.4" width="11.34" height="11.34" fill="#22943A"/>
+    <image href="../images/logo.png" x="1109.97" y="18.73" width="123.36" height="51.68" preserveAspectRatio="xMidYMid meet"/>
+    <text x="52.24" y="62.12" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="32" font-weight="bold" fill="#1D2A8C">不是聊天框，是 6 步工作流</text>
+    <text x="52" y="100" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="16" fill="#6B7280">固定步骤、固定表、固定产物；AI 每一步先跑一遍</text>
+  </g>
+
+  <g id="steps">
+    <rect x="52" y="142" width="170" height="86" rx="10" fill="#F9FAFB" stroke="#D6E7F8" stroke-width="1"/>
+    <rect x="52" y="142" width="4" height="86" rx="2" fill="#0070C0"/>
+    <text x="70" y="166" font-family="Arial, &quot;Microsoft YaHei&quot;, sans-serif" font-size="16" font-weight="bold" fill="#6B7280">01</text>
+    <text x="70" y="196" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="17" font-weight="bold" fill="#1D2A8C">场景定义</text>
+    <text x="70" y="216" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="16" fill="#6B7280">定边界</text>
+
+    <rect x="242" y="142" width="170" height="86" rx="10" fill="#F9FAFB" stroke="#D6E7F8" stroke-width="1"/>
+    <rect x="242" y="142" width="4" height="86" rx="2" fill="#0070C0"/>
+    <text x="260" y="166" font-family="Arial, &quot;Microsoft YaHei&quot;, sans-serif" font-size="16" font-weight="bold" fill="#6B7280">02</text>
+    <text x="260" y="196" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="17" font-weight="bold" fill="#1D2A8C">认识场景</text>
+    <text x="260" y="216" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="16" fill="#6B7280">看结构</text>
+
+    <rect x="432" y="142" width="170" height="86" rx="10" fill="#F9FAFB" stroke="#D6E7F8" stroke-width="1"/>
+    <rect x="432" y="142" width="4" height="86" rx="2" fill="#0070C0"/>
+    <text x="450" y="166" font-family="Arial, &quot;Microsoft YaHei&quot;, sans-serif" font-size="16" font-weight="bold" fill="#6B7280">03</text>
+    <text x="450" y="196" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="17" font-weight="bold" fill="#1D2A8C">理解商业</text>
+    <text x="450" y="216" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="16" fill="#6B7280">算清账</text>
+
+    <rect x="622" y="142" width="170" height="86" rx="10" fill="#F9FAFB" stroke="#D6E7F8" stroke-width="1"/>
+    <rect x="622" y="142" width="4" height="86" rx="2" fill="#0070C0"/>
+    <text x="640" y="166" font-family="Arial, &quot;Microsoft YaHei&quot;, sans-serif" font-size="16" font-weight="bold" fill="#6B7280">04</text>
+    <text x="640" y="196" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="17" font-weight="bold" fill="#1D2A8C">能力匹配</text>
+    <text x="640" y="216" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="16" fill="#6B7280">能不能接</text>
+
+    <rect x="812" y="142" width="170" height="86" rx="10" fill="#F9FAFB" stroke="#D6E7F8" stroke-width="1"/>
+    <rect x="812" y="142" width="4" height="86" rx="2" fill="#0070C0"/>
+    <text x="830" y="166" font-family="Arial, &quot;Microsoft YaHei&quot;, sans-serif" font-size="16" font-weight="bold" fill="#6B7280">05</text>
+    <text x="830" y="196" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="17" font-weight="bold" fill="#1D2A8C">方案与实现</text>
+    <text x="830" y="216" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="16" fill="#6B7280">怎么落</text>
+
+    <rect x="1002" y="142" width="170" height="86" rx="10" fill="#F9FAFB" stroke="#D6E7F8" stroke-width="1"/>
+    <rect x="1002" y="142" width="4" height="86" rx="2" fill="#0070C0"/>
+    <text x="1020" y="166" font-family="Arial, &quot;Microsoft YaHei&quot;, sans-serif" font-size="16" font-weight="bold" fill="#6B7280">06</text>
+    <text x="1020" y="196" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="17" font-weight="bold" fill="#1D2A8C">交付物</text>
+    <text x="1020" y="216" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="16" fill="#6B7280">出文件</text>
+
+    <polygon points="226,180 236,185 226,190" fill="#0070C0"/>
+    <polygon points="416,180 426,185 416,190" fill="#0070C0"/>
+    <polygon points="606,180 616,185 606,190" fill="#0070C0"/>
+    <polygon points="796,180 806,185 796,190" fill="#0070C0"/>
+    <polygon points="986,180 996,185 986,190" fill="#0070C0"/>
+  </g>
+
+  <g id="left-evidence">
+    <text x="52" y="276" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="16" font-weight="bold" fill="#1D2A8C">真实界面：6 步流程轴</text>
+    <rect x="52" y="290" width="600" height="66" rx="6" fill="#F9FAFB" stroke="#D6E7F8" stroke-width="1"/>
+    <image href="../images/P3-steps.png" x="58" y="296" width="588" height="52" preserveAspectRatio="xMidYMid meet"/>
+    <text x="52" y="404" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="20" font-weight="bold" fill="#0D0D0D">每一步都有表、有来源、有确认。</text>
+    <text x="52" y="438" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="16" fill="#404040">不是让模型自由发挥，而是把调研拆成可检查的中间产物。</text>
+    <text x="52" y="470" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="16" fill="#404040">用户随时可以回到某一步，重算、补充、修改。</text>
+  </g>
+
+  <g id="right-stats">
+    <text x="700" y="294" font-family="Arial, &quot;Microsoft YaHei&quot;, sans-serif" font-size="56" font-weight="bold" fill="#0070C0">6</text>
+    <text x="790" y="278" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="20" font-weight="bold" fill="#1D2A8C">步分析</text>
+    <text x="790" y="302" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="16" fill="#6B7280">从定义到交付，一步不漏</text>
+    <line x1="700" y1="326" x2="1228" y2="326" stroke="#D6E7F8" stroke-width="1"/>
+
+    <text x="700" y="386" font-family="Arial, &quot;Microsoft YaHei&quot;, sans-serif" font-size="56" font-weight="bold" fill="#0070C0">26</text>
+    <text x="790" y="370" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="20" font-weight="bold" fill="#1D2A8C">张信息表</text>
+    <text x="790" y="394" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="16" fill="#6B7280">结构化、可确认、可修改</text>
+    <line x1="700" y1="418" x2="1228" y2="418" stroke="#D6E7F8" stroke-width="1"/>
+
+    <text x="700" y="478" font-family="Arial, &quot;Microsoft YaHei&quot;, sans-serif" font-size="56" font-weight="bold" fill="#0070C0">2</text>
+    <text x="790" y="462" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="20" font-weight="bold" fill="#1D2A8C">份产物</text>
+    <text x="790" y="486" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="16" fill="#6B7280">解决方案 + PPT 大纲，同一次生成</text>
+  </g>
+
+  <g id="footer">
+    <rect x="0" y="656" width="1280" height="64" fill="#0070C0"/>
+    <text x="52" y="694" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="18" fill="#FFFFFF">AI 先调研、先填表；人只做校对和判断。</text>
+    <text x="1228" y="694" text-anchor="end" font-family="Arial, &quot;Microsoft YaHei&quot;, sans-serif" font-size="16" fill="#FFFFFF" fill-opacity="0.8">03 / 10</text>
+  </g>
+</svg>

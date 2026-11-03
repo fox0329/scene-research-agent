@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720">
+  <defs>
+    <linearGradient id="coverGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0D47A1" />
+      <stop offset="1" stop-color="#1565C0" />
+    </linearGradient>
+  </defs>
+
+  <g id="background">
+    <rect x="0" y="0" width="1280" height="720" fill="url(#coverGrad)" />
+    <path d="M 0 646 C 106.67 626 213.33 626 320 646 C 426.67 666 533.33 666 640 646 C 746.67 626 853.33 626 960 646 C 1066.67 666 1173.33 666 1280 646" fill="none" stroke="#FFFFFF" stroke-width="1.5" stroke-opacity="0.15" />
+    <path d="M 0 662 C 106.67 642 213.33 642 320 662 C 426.67 682 533.33 682 640 662 C 746.67 642 853.33 642 960 662 C 1066.67 682 1173.33 682 1280 662" fill="none" stroke="#FFFFFF" stroke-width="1.5" stroke-opacity="0.10" />
+    <path d="M 0 678 C 106.67 658 213.33 658 320 678 C 426.67 698 533.33 698 640 678 C 746.67 658 853.33 658 960 678 C 1066.67 698 1173.33 698 1280 678" fill="none" stroke="#FFFFFF" stroke-width="1.5" stroke-opacity="0.06" />
+  </g>
+
+  <g id="tag">
+    <text x="640" y="98" text-anchor="middle" font-family="Arial, Microsoft YaHei, sans-serif" font-size="14" fill="#90CAF9">B 站 · 场景调研方法论 · 第 1 期</text>
+  </g>
+
+  <g id="title">
+    <text x="640" y="186" text-anchor="middle" font-family="Arial, Microsoft YaHei, sans-serif" font-size="56" font-weight="bold" fill="#FFFFFF">做解决方案的起点</text>
+    <text x="640" y="262" text-anchor="middle" font-family="Arial, Microsoft YaHei, sans-serif" font-size="56" font-weight="bold" fill="#FFFFFF">不是我们有什么产品</text>
+  </g>
+
+  <g id="subtitle">
+    <text x="640" y="312" text-anchor="middle" font-family="Arial, Microsoft YaHei, sans-serif" font-size="24" fill="#90CAF9">产品没问题、方案也合理，项目为什么还是做不成？</text>
+    <line x1="500" y1="340" x2="780" y2="340" stroke="#90CAF9" stroke-width="1.5" stroke-opacity="0.5" />
+  </g>
+
+  <g id="question-tags-row1">
+    <path fill="#FFFFFF" fill-opacity="0.14" d="M154,372 H360 A8,8 0 0 1 368,380 V410 A8,8 0 0 1 360,418 H154 A8,8 0 0 1 146,410 V380 A8,8 0 0 1 154,372 Z" />
+    <text x="257" y="401" text-anchor="middle" font-family="Arial, Microsoft YaHei, sans-serif" font-size="18" fill="#FFFFFF">这是一个什么场景</text>
+    <path fill="#FFFFFF" fill-opacity="0.14" d="M394,372 H600 A8,8 0 0 1 608,380 V410 A8,8 0 0 1 600,418 H394 A8,8 0 0 1 386,410 V380 A8,8 0 0 1 394,372 Z" />
+    <text x="497" y="401" text-anchor="middle" font-family="Arial, Microsoft YaHei, sans-serif" font-size="18" fill="#FFFFFF">传统解决方案是什么</text>
+    <path fill="#FFFFFF" fill-opacity="0.14" d="M634,372 H840 A8,8 0 0 1 848,380 V410 A8,8 0 0 1 840,418 H634 A8,8 0 0 1 626,410 V380 A8,8 0 0 1 634,372 Z" />
+    <text x="737" y="401" text-anchor="middle" font-family="Arial, Microsoft YaHei, sans-serif" font-size="18" fill="#FFFFFF">有什么真实的痛点</text>
+    <path fill="#FFFFFF" fill-opacity="0.14" d="M874,372 H1080 A8,8 0 0 1 1088,380 V410 A8,8 0 0 1 1080,418 H874 A8,8 0 0 1 866,410 V380 A8,8 0 0 1 874,372 Z" />
+    <text x="977" y="401" text-anchor="middle" font-family="Arial, Microsoft YaHei, sans-serif" font-size="18" fill="#FFFFFF">竞争方都有谁</text>
+  </g>
+
+  <g id="question-tags-row2">
+    <path fill="#FFFFFF" fill-opacity="0.14" d="M274,434 H480 A8,8 0 0 1 488,442 V472 A8,8 0 0 1 480,480 H274 A8,8 0 0 1 266,472 V442 A8,8 0 0 1 274,434 Z" />
+    <text x="377" y="463" text-anchor="middle" font-family="Arial, Microsoft YaHei, sans-serif" font-size="18" fill="#FFFFFF">有进入门槛吗</text>
+    <path fill="#FFFFFF" fill-opacity="0.14" d="M514,434 H720 A8,8 0 0 1 728,442 V472 A8,8 0 0 1 720,480 H514 A8,8 0 0 1 506,472 V442 A8,8 0 0 1 514,434 Z" />
+    <text x="617" y="463" text-anchor="middle" font-family="Arial, Microsoft YaHei, sans-serif" font-size="18" fill="#FFFFFF">产品有真实价值吗</text>
+    <path fill="#FFFFFF" fill-opacity="0.14" d="M754,434 H960 A8,8 0 0 1 968,442 V472 A8,8 0 0 1 960,480 H754 A8,8 0 0 1 746,472 V442 A8,8 0 0 1 754,434 Z" />
+    <text x="857" y="463" text-anchor="middle" font-family="Arial, Microsoft YaHei, sans-serif" font-size="18" fill="#FFFFFF">有成本优势吗</text>
+  </g>
+
+  <g id="conclusion">
+    <path fill="#FFFFFF" d="M148,516 H1132 A8,8 0 0 1 1140,524 V574 A8,8 0 0 1 1132,582 H148 A8,8 0 0 1 140,574 V524 A8,8 0 0 1 148,516 Z" />
+    <path fill="#FF9800" d="M143,516 H143 A3,3 0 0 1 146,519 V579 A3,3 0 0 1 143,582 H143 A3,3 0 0 1 140,579 V519 A3,3 0 0 1 143,516 Z" />
+    <text x="176" y="557" font-family="Arial, Microsoft YaHei, sans-serif" font-size="22" font-weight="bold" fill="#0D47A1">起点不是我们有什么产品，而是对这个需求的深入理解。</text>
+  </g>
+
+  <g id="interaction">
+    <text x="1200" y="626" text-anchor="end" font-family="Arial, Microsoft YaHei, sans-serif" font-size="14" fill="#90CAF9">弹幕告诉我：你是先写方案，还是先做调研？</text>
+  </g>
+</svg>

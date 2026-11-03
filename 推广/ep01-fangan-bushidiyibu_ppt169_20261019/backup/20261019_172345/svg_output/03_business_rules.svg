@@ -1,0 +1,81 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720">
+  <defs>
+    <linearGradient id="topBar" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#0D47A1"/>
+      <stop offset="1" stop-color="#1565C0"/>
+    </linearGradient>
+    <linearGradient id="axisGrad" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#90CAF9"/>
+      <stop offset="1" stop-color="#0D47A1"/>
+    </linearGradient>
+  </defs>
+
+  <g id="background">
+    <rect x="0" y="0" width="1280" height="720" fill="#FFFFFF"/>
+  </g>
+
+  <g id="header">
+    <rect x="0" y="0" width="1280" height="4" fill="url(#topBar)"/>
+    <rect x="80" y="30" width="4" height="76" fill="#0D47A1"/>
+    <text x="100" y="62" font-family="Arial, Microsoft YaHei, sans-serif" font-size="34" font-weight="bold" fill="#0D47A1">场景能不能进，先看这个场景卖多少钱</text>
+    <text x="100" y="94" font-family="Arial, Microsoft YaHei, sans-serif" font-size="14" fill="#6B7280">成本结构进不去的场景，产品再好也没用</text>
+  </g>
+
+  <g id="price-axis">
+    <use data-icon="tabler-outline/currency-yen" x="80" y="140" width="26" height="26" fill="#0D47A1" stroke-width="2"/>
+    <text x="118" y="160" font-family="Arial, Microsoft YaHei, sans-serif" font-size="14" fill="#6B7280">同一块手持终端 / 平板，价格带能差一个数量级</text>
+
+    <rect x="120" y="222" width="1040" height="6" rx="3" fill="url(#axisGrad)"/>
+    <circle cx="120" cy="225" r="7" fill="#90CAF9"/>
+    <circle cx="1160" cy="225" r="7" fill="#0D47A1"/>
+
+    <text x="120" y="266" text-anchor="middle" font-family="Arial, Microsoft YaHei, sans-serif" font-size="24" font-weight="bold" fill="#6B7280">500 元</text>
+    <text x="1148" y="266" text-anchor="middle" font-family="Arial, Microsoft YaHei, sans-serif" font-size="20" font-weight="bold" fill="#0D47A1">10000 元以上</text>
+
+    <line x1="328" y1="190" x2="328" y2="232" stroke="#FF9800" stroke-width="3"/>
+    <circle cx="328" cy="225" r="9" fill="#FF9800"/>
+    <text x="328" y="178" text-anchor="middle" font-family="Arial, Microsoft YaHei, sans-serif" font-size="18" font-weight="bold" fill="#FF9800">成本 2000 的平板</text>
+  </g>
+
+  <g id="scenario-cards">
+    <rect x="80" y="310" width="540" height="184" rx="12" fill="#FFFFFF" stroke="#1565C0" stroke-width="2"/>
+    <text x="108" y="352" font-family="Arial, Microsoft YaHei, sans-serif" font-size="22" font-weight="bold" fill="#0D47A1">教育场景</text>
+    <text x="108" y="390" font-family="Arial, Microsoft YaHei, sans-serif" font-size="20" fill="#333333">采购逻辑是走量</text>
+    <text x="108" y="424" font-family="Arial, Microsoft YaHei, sans-serif" font-size="20" fill="#333333">一台设备的预算可能只认几百块</text>
+    <rect x="108" y="446" width="86" height="30" rx="6" fill="#E3F2FD"/>
+    <text x="151" y="466" text-anchor="middle" font-family="Arial, Microsoft YaHei, sans-serif" font-size="14" fill="#0D47A1">预算敏感</text>
+    <rect x="206" y="446" width="60" height="30" rx="6" fill="#E3F2FD"/>
+    <text x="236" y="466" text-anchor="middle" font-family="Arial, Microsoft YaHei, sans-serif" font-size="14" fill="#0D47A1">走量</text>
+
+    <rect x="660" y="310" width="540" height="184" rx="12" fill="#FFFFFF" stroke="#1565C0" stroke-width="2"/>
+    <text x="688" y="352" font-family="Arial, Microsoft YaHei, sans-serif" font-size="22" font-weight="bold" fill="#0D47A1">会议室场景</text>
+    <text x="688" y="390" font-family="Arial, Microsoft YaHei, sans-serif" font-size="20" fill="#333333">看的是品牌和生态</text>
+    <text x="688" y="424" font-family="Arial, Microsoft YaHei, sans-serif" font-size="20" fill="#333333">配套、售后、系统兼容都在评估里</text>
+    <rect x="688" y="446" width="60" height="30" rx="6" fill="#E3F2FD"/>
+    <text x="718" y="466" text-anchor="middle" font-family="Arial, Microsoft YaHei, sans-serif" font-size="14" fill="#0D47A1">品牌</text>
+    <rect x="760" y="446" width="60" height="30" rx="6" fill="#E3F2FD"/>
+    <text x="790" y="466" text-anchor="middle" font-family="Arial, Microsoft YaHei, sans-serif" font-size="14" fill="#0D47A1">生态</text>
+  </g>
+
+  <g id="verdict">
+    <rect x="80" y="522" width="1080" height="62" rx="8" fill="#FFF7ED" stroke="#FF9800" stroke-width="2"/>
+    <path d="M 116 538 L 130 553 L 116 568 Z" fill="#FF9800"/>
+    <text x="146" y="562" font-family="Arial, Microsoft YaHei, sans-serif" font-size="22" font-weight="bold" fill="#333333">你拿一台成本两千的机器进去，不是「贵一点」，而是根本不成立。</text>
+  </g>
+
+  <g id="four-items">
+    <text x="80" y="620" font-family="Arial, Microsoft YaHei, sans-serif" font-size="14" fill="#6B7280">除了价格，商业规则还要查这四项：</text>
+    <rect x="380" y="598" width="150" height="34" rx="6" fill="#E3F2FD"/>
+    <text x="455" y="621" text-anchor="middle" font-family="Arial, Microsoft YaHei, sans-serif" font-size="14" fill="#0D47A1">上下游情况</text>
+    <rect x="546" y="598" width="150" height="34" rx="6" fill="#E3F2FD"/>
+    <text x="621" y="621" text-anchor="middle" font-family="Arial, Microsoft YaHei, sans-serif" font-size="14" fill="#0D47A1">利润分配</text>
+    <rect x="712" y="598" width="150" height="34" rx="6" fill="#E3F2FD"/>
+    <text x="787" y="621" text-anchor="middle" font-family="Arial, Microsoft YaHei, sans-serif" font-size="14" fill="#0D47A1">竞争对手</text>
+    <rect x="878" y="598" width="150" height="34" rx="6" fill="#E3F2FD"/>
+    <text x="953" y="621" text-anchor="middle" font-family="Arial, Microsoft YaHei, sans-serif" font-size="14" fill="#0D47A1">行业趋势</text>
+  </g>
+
+  <g id="footer">
+    <text x="1200" y="700" text-anchor="end" font-family="Arial, Microsoft YaHei, sans-serif" font-size="12" fill="#6B7280">03 / 05</text>
+  </g>
+</svg>

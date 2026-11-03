@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 1280 720" width="1280" height="720">
+  <g id="bg">
+    <rect x="0" y="0" width="1280" height="720" fill="#FFFFFF"/>
+  </g>
+
+  <g id="chrome">
+    <rect x="0.09" y="37.64" width="22.74" height="34.02" fill="#1D2A8C"/>
+    <rect x="16.73" y="33.4" width="11.34" height="11.34" fill="#22943A"/>
+    <image href="../images/logo.png" x="1109.97" y="18.73" width="123.36" height="51.68" preserveAspectRatio="xMidYMid meet"/>
+    <text x="52.24" y="62.12" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="32" font-weight="bold" fill="#1D2A8C">右栏一句话，中栏立即更新</text>
+    <text x="52" y="100" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="16" fill="#6B7280">发现哪条不对，不用找单元格；右栏直接说，AI 调工具改表</text>
+  </g>
+
+  <g id="left-shot">
+    <text x="52" y="176" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="15" font-weight="bold" fill="#1D2A8C">输入：一句话</text>
+    <rect x="52" y="188" width="500" height="300" rx="8" fill="#F9FAFB" stroke="#0070C0" stroke-width="2"/>
+    <image href="../images/P7-chat.png" x="58" y="194" width="488" height="288" preserveAspectRatio="xMidYMid meet"/>
+    <text x="52" y="512" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="16" fill="#404040">在右栏输入：“把这条改成按会议室逐间推进”。</text>
+  </g>
+
+  <g id="arrow">
+    <polygon points="584,326 620,326 620,314 652,338 620,362 620,350 584,350" fill="#0070C0"/>
+    <text x="618" y="302" text-anchor="middle" font-family="Arial, &quot;Microsoft YaHei&quot;, sans-serif" font-size="14" fill="#6B7280">AI 调工具</text>
+  </g>
+
+  <g id="right-shot">
+    <text x="700" y="176" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="15" font-weight="bold" fill="#1D2A8C">结果：表格已更新</text>
+    <rect x="700" y="188" width="500" height="300" rx="8" fill="#F9FAFB" stroke="#22943A" stroke-width="2"/>
+    <image href="../images/P5-definition.png" x="706" y="194" width="488" height="288" preserveAspectRatio="xMidYMid meet"/>
+    <rect x="722" y="366" width="450" height="56" rx="4" fill="none" stroke="#22943A" stroke-width="2"/>
+    <text x="700" y="512" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="16" fill="#404040">对话里出现“按会议室逐间推进”，场景概述同步落表。</text>
+  </g>
+
+  <g id="takeaway">
+    <text x="52" y="570" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="22" font-weight="bold" fill="#0D0D0D">不用找单元格，不用记字段名。</text>
+    <text x="52" y="600" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="16" fill="#404040">一句话就能改一行，也能让它补一条来源；改完继续追问，不用切页面。</text>
+  </g>
+
+  <g id="footer">
+    <rect x="0" y="656" width="1280" height="64" fill="#0070C0"/>
+    <text x="52" y="694" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="18" fill="#FFFFFF">表格不是终点，是一个能继续对话的工作面。</text>
+    <text x="1228" y="694" text-anchor="end" font-family="Arial, &quot;Microsoft YaHei&quot;, sans-serif" font-size="14" fill="#FFFFFF" fill-opacity="0.8">07 / 10</text>
+  </g>
+</svg>

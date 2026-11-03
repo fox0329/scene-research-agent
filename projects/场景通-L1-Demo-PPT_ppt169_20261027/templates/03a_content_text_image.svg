@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 1280 720" width="1280" height="720">
+  <!-- Content: 图文 + 资质条 — 左侧多行要点 + 右侧配图区 + 底部主蓝资质条（还原 slide3） -->
+
+  <!-- 背景 -->
+  <g id="bg">
+    <rect x="0" y="0" width="1280" height="720" fill="#FFFFFF"/>
+  </g>
+
+  <!-- 内容页 chrome：靛蓝竖条 + 绿方块 + 右上 logo + 页标题（还原 layout_12） -->
+  <g id="chrome-header">
+    <rect x="0.09" y="37.64" width="22.74" height="34.02" fill="#1D2A8C"/>
+    <rect x="16.73" y="33.4" width="11.34" height="11.34" fill="#22943A"/>
+    <image href="assets/image1.png" x="1109.97" y="18.73" width="123.36" height="51.68" preserveAspectRatio="none"/>
+    <text x="52.24" y="62.12" text-anchor="start" font-family="微软雅黑, &quot;Microsoft YaHei&quot;, sans-serif" font-size="32" font-weight="bold" fill="#1D2A8C">{{PAGE_TITLE}}</text>
+  </g>
+
+  <!-- 左侧多行要点 -->
+  <g id="body-text">
+    <text x="40" y="210" text-anchor="start" font-family="微软雅黑, &quot;Microsoft YaHei&quot;, sans-serif" font-size="21" fill="#404040">{{BODY_LINE_1}}</text>
+    <text x="40" y="255" text-anchor="start" font-family="微软雅黑, &quot;Microsoft YaHei&quot;, sans-serif" font-size="21" fill="#404040">{{BODY_LINE_2}}</text>
+    <text x="40" y="300" text-anchor="start" font-family="微软雅黑, &quot;Microsoft YaHei&quot;, sans-serif" font-size="21" fill="#404040">{{BODY_LINE_3}}</text>
+    <text x="40" y="345" text-anchor="start" font-family="微软雅黑, &quot;Microsoft YaHei&quot;, sans-serif" font-size="21" fill="#404040">{{BODY_LINE_4}}</text>
+  </g>
+
+  <!-- 右侧配图区（占位插槽，生成时由项目侧提供图片替换此区域） -->
+  <g id="image-area">
+    <rect x="740" y="145" width="460" height="330" fill="#F9FAFB" stroke="#0070C0" stroke-width="1" stroke-opacity="0.4"/>
+    <text x="970" y="315" text-anchor="middle" font-family="微软雅黑, &quot;Microsoft YaHei&quot;, sans-serif" font-size="18" fill="#0070C0" fill-opacity="0.6">{{IMAGE_AREA}}</text>
+  </g>
+
+  <!-- 底部主蓝资质条 + 圆形徽章 + 三项资质 -->
+  <g id="credential-bar">
+    <rect x="0" y="528" width="1280" height="121" fill="#0070C0"/>
+    <ellipse cx="114.76" cy="588.5" rx="51.73" ry="51.69" fill="#FFFFFF"/>
+    <text x="114.76" y="582" text-anchor="middle" font-family="微软雅黑, &quot;Microsoft YaHei&quot;, sans-serif" font-size="20" font-weight="bold" fill="#0070C0">荣誉</text>
+    <text x="114.76" y="606" text-anchor="middle" font-family="微软雅黑, &quot;Microsoft YaHei&quot;, sans-serif" font-size="20" font-weight="bold" fill="#0070C0">资质</text>
+    <text x="206" y="595" text-anchor="start" font-family="微软雅黑, &quot;Microsoft YaHei&quot;, sans-serif" font-size="22" font-weight="bold" fill="#FFFFFF" letter-spacing="2">{{CRED_1}}</text>
+    <text x="543" y="595" text-anchor="start" font-family="微软雅黑, &quot;Microsoft YaHei&quot;, sans-serif" font-size="22" font-weight="bold" fill="#FFFFFF" letter-spacing="2">{{CRED_2}}</text>
+    <text x="880" y="595" text-anchor="start" font-family="微软雅黑, &quot;Microsoft YaHei&quot;, sans-serif" font-size="22" font-weight="bold" fill="#FFFFFF" letter-spacing="2">{{CRED_3}}</text>
+  </g>
+</svg>

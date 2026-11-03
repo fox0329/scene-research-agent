@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 1280 720" width="1280" height="720">
+  <g id="bg">
+    <rect x="0" y="0" width="1280" height="720" fill="#FFFFFF"/>
+    <image href="../images/P1-workbench.png" x="0" y="0" width="1280" height="720" preserveAspectRatio="xMidYMid slice"/>
+    <rect x="0" y="0" width="1280" height="720" fill="#FFFFFF" fill-opacity="0.96"/>
+  </g>
+
+  <g id="chrome">
+    <rect x="0.09" y="37.64" width="22.74" height="34.02" fill="#1D2A8C"/>
+    <rect x="16.73" y="33.4" width="11.34" height="11.34" fill="#22943A"/>
+    <image href="../images/logo.png" x="1109.97" y="18.73" width="123.36" height="51.68" preserveAspectRatio="xMidYMid meet"/>
+    <text x="52.24" y="62.12" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="35" font-weight="bold" fill="#1D2A8C">省下的不只是时间，是团队资产</text>
+    <text x="52" y="100" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="19" fill="#6B7280">快只是结果；可信、可复用，才是能留下来的部分</text>
+  </g>
+
+  <g id="value-1">
+    <text x="180" y="300" text-anchor="middle" font-family="Arial, &quot;Microsoft YaHei&quot;, sans-serif" font-size="31" font-weight="bold" fill="#0070C0">1–2 周 → 1–2 天</text>
+    <text x="180" y="340" text-anchor="middle" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="23" font-weight="bold" fill="#1D2A8C">调研周期</text>
+    <text x="180" y="372" text-anchor="middle" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="19" fill="#6B7280">从开始调研到形成方案</text>
+  </g>
+
+  <g id="value-2">
+    <text x="640" y="300" text-anchor="middle" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="37" font-weight="bold" fill="#0070C0">每条结论有来源</text>
+    <text x="640" y="340" text-anchor="middle" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="23" font-weight="bold" fill="#1D2A8C">方案可信</text>
+    <text x="640" y="372" text-anchor="middle" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="19" fill="#6B7280">客户追问时，能回到原文</text>
+  </g>
+
+  <g id="value-3">
+    <text x="1060" y="300" text-anchor="middle" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="37" font-weight="bold" fill="#0070C0">越用越厚</text>
+    <text x="1060" y="340" text-anchor="middle" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="23" font-weight="bold" fill="#1D2A8C">资料与场景资产</text>
+    <text x="1060" y="372" text-anchor="middle" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="19" fill="#6B7280">经验留在团队，不留在个人</text>
+  </g>
+
+  <g id="dividers">
+    <line x1="410" y1="270" x2="410" y2="390" stroke="#D6E7F8" stroke-width="1"/>
+    <line x1="870" y1="270" x2="870" y2="390" stroke="#D6E7F8" stroke-width="1"/>
+  </g>
+
+  <g id="evidence-strip">
+    <rect x="52" y="420" width="1176" height="98" rx="10" fill="#F9FAFB" stroke="#D6E7F8" stroke-width="1"/>
+    <rect x="52" y="420" width="5" height="98" rx="2" fill="#22943A"/>
+    <text x="76" y="454" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="19" fill="#404040">以智慧教室为例：26 张表收口成解决方案 + PPT 大纲，来源全部可追溯。</text>
+    <text x="76" y="486" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="19" fill="#404040">产品资料和场景资产继续沉淀，下一个场景不用从零开始。</text>
+  </g>
+
+  <g id="quote">
+    <rect x="0" y="590" width="1280" height="92" fill="#0070C0"/>
+    <text x="52" y="636" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="27" font-weight="bold" fill="#FFFFFF">去掉 AI，产品只剩空表和空文档。</text>
+    <text x="52" y="664" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="19" fill="#FFFFFF" fill-opacity="0.86">这就是场景通，一个 AI 原生的售前调研工作台。</text>
+    <text x="1228" y="636" text-anchor="end" font-family="Arial, &quot;Microsoft YaHei&quot;, sans-serif" font-size="19" fill="#FFFFFF" fill-opacity="0.8">09 / 10</text>
+  </g>
+</svg>

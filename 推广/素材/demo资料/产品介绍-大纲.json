@@ -1,0 +1,260 @@
+{
+  "pages": [
+    {
+      "layout": "网格要点",
+      "kicker": "现场断层",
+      "icon": "alert-triangle",
+      "title": "设备数据出不了机台",
+      "subtitle": "四类断层让 OEE 只能靠人工估算",
+      "blocks": [
+        {
+          "head": "数据入口是断的",
+          "note": "设备能动作，数据出不来",
+          "icon": "plug",
+          "lines": ["28 台压铸机靠班末人工抄录", "产量次日汇总，口径不统一", "没有停机时长与节拍实测"]
+        },
+        {
+          "head": "停机归因不完整",
+          "note": "停多久、为什么停说不清",
+          "icon": "activity",
+          "lines": ["停机只分故障与计划两类", "换模待料与其他混在一起", "损失无法按机台拆分"]
+        },
+        {
+          "head": "关键参数散落各处",
+          "note": "参数留在控制器与纸卡上",
+          "icon": "file-text",
+          "lines": ["压射速度与模温留在设备侧", "纸质工艺卡难以追溯", "客户审核一次要翻一整天"]
+        },
+        {
+          "head": "改造窗口极短",
+          "note": "不许动原 PLC 与机械结构",
+          "icon": "clock",
+          "lines": ["老机控制器协议不开放", "只能在周末停线窗口施工", "单次窗口不超过 8 小时"]
+        }
+      ],
+      "columns": [],
+      "stages": [],
+      "layers": [],
+      "cards": [],
+      "table": null,
+      "chips": ["旁路改造", "不改 PLC", "按班次计量", "可追溯"],
+      "highlight": "数据入口不补上，OEE 永远是估算值"
+    },
+    {
+      "layout": "数据卡片",
+      "kicker": "公司与规模",
+      "icon": "building-skyscraper",
+      "title": "云枢智控做工业边缘",
+      "subtitle": "三条产品线覆盖端、边、云三层",
+      "blocks": [],
+      "columns": [],
+      "stages": [],
+      "layers": [],
+      "cards": [
+        { "value": "3 条", "label": "产品线", "icon": "hierarchy" },
+        { "value": "8 个", "label": "型号（6 个在售）", "icon": "devices" },
+        { "value": "2 个", "label": "行业方向", "icon": "target" },
+        { "value": "18 项", "label": "可交付能力", "icon": "list-check" }
+      ],
+      "table": null,
+      "chips": ["离散制造", "市政公用", "边缘智能"],
+      "highlight": "三条线各管一段，组合起来才是一套方案"
+    },
+    {
+      "layout": "表格",
+      "kicker": "型号总览",
+      "icon": "file-text",
+      "title": "八个型号各有各的位置",
+      "subtitle": "先看要不要控制，再看聚合几台设备",
+      "blocks": [],
+      "columns": [],
+      "stages": [],
+      "layers": [],
+      "cards": [],
+      "table": {
+        "head": ["产品线", "代表型号", "状态", "适合什么现场"],
+        "icons": ["hierarchy", "cpu", "list-check", "route"],
+        "rows": [
+          ["边缘控制器", "YS-EC3200", "在售", "单机台采集与联锁"],
+          ["边缘控制器", "YS-EC5200", "在售", "多机汇聚加边缘 AI"],
+          ["工业网关", "YS-GW2100", "在售", "只采集，不动控制逻辑"],
+          ["工业网关", "YS-GW4300", "在售", "无布线现场走 5G 上行"],
+          ["智能平台", "YS-CloudLink", "在售", "统一台账与远程配置"],
+          ["智能平台", "YS-VisionEdge", "在售", "小样本外观缺陷检测"]
+        ]
+      },
+      "chips": ["旁路接入", "软 PLC", "边缘推理"],
+      "highlight": "六个在售型号，按现场形态配组合"
+    },
+    {
+      "layout": "双栏对比",
+      "kicker": "边缘控制器",
+      "icon": "cpu",
+      "title": "EC3200 与 EC5200 别选错",
+      "subtitle": "看机台数量，也看要不要在现场推理",
+      "blocks": [],
+      "columns": [
+        {
+          "head": "YS-EC3200 紧凑型",
+          "note": "单机台、单工位的标准件",
+          "icon": "device-desktop",
+          "lines": [
+            "4 核 Cortex-A55 @1.8GHz",
+            "1GB 内存 / 8GB 存储",
+            "2×RS485、1×CAN 接入",
+            "6W 功耗，DIN35 导轨安装",
+            "无 NPU，不承担推理"
+          ]
+        },
+        {
+          "head": "YS-EC5200 高性能",
+          "note": "多机汇聚加边缘 AI 推理",
+          "icon": "server",
+          "lines": [
+            "8 核 @2.4GHz，4GB 内存",
+            "NPU 6 TOPS，可做缺陷检测",
+            "4×RS485、2×CAN 接入",
+            "4×千兆网口、2×SFP 光口",
+            "软 PLC 支持 IEC 61131-3"
+          ]
+        }
+      ],
+      "stages": [],
+      "layers": [],
+      "cards": [],
+      "table": null,
+      "chips": ["旁路采集", "软 PLC", "6 TOPS"],
+      "highlight": "一个工位多台设备就别拿 EC3200 硬拼"
+    },
+    {
+      "layout": "分层架构",
+      "kicker": "产品架构",
+      "icon": "sitemap",
+      "title": "端、边、云三层怎么分工",
+      "subtitle": "每层只干一件事，接口停在协议上",
+      "blocks": [],
+      "columns": [],
+      "stages": [],
+      "layers": [
+        { "head": "现场设备层", "icon": "devices", "items": ["压铸机与机器人", "PLC 与仪表", "智能电表"] },
+        { "head": "边缘接入层", "icon": "plug", "items": ["多协议接入", "旁路采集", "协议转换"] },
+        { "head": "边缘控制层", "icon": "settings", "items": ["软 PLC 逻辑", "本地联锁", "规则引擎"] },
+        { "head": "平台管理层", "icon": "cloud", "items": ["设备台账", "OTA 与告警", "数据服务"] }
+      ],
+      "cards": [],
+      "table": null,
+      "chips": ["Modbus", "OPC UA", "MQTT"],
+      "highlight": "旁路采集不动原程序，这是不停产的前提"
+    },
+    {
+      "layout": "流程阶段",
+      "kicker": "落地路径",
+      "icon": "route",
+      "title": "落地要先盘清点表和测点",
+      "subtitle": "每一步都有可交付的东西，全程不停产",
+      "blocks": [],
+      "columns": [],
+      "stages": [
+        { "head": "点表勘察", "note": "盘清协议与测点", "icon": "list-check" },
+        { "head": "旁路接入", "note": "不改原 PLC 程序", "icon": "plug" },
+        { "head": "台账统一", "note": "固定测点命名规范", "icon": "hierarchy" },
+        { "head": "看板上线", "note": "OEE 按班次拆分", "icon": "chart-bar" },
+        { "head": "对接回写", "note": "OpenAPI 回写 MES", "icon": "arrows-split" }
+      ],
+      "layers": [],
+      "cards": [],
+      "table": null,
+      "chips": ["周末窗口", "不停产", "旁路改造"],
+      "highlight": "改造只在周末停线窗口里做完"
+    },
+    {
+      "layout": "要点清单",
+      "kicker": "能力边界",
+      "icon": "shield-check",
+      "title": "这些事我们不做",
+      "subtitle": "提前说清楚，比实施期才发现好",
+      "blocks": [],
+      "columns": [],
+      "stages": [],
+      "layers": [],
+      "cards": [],
+      "table": null,
+      "bullets": [
+        "不做 PLC 下位的运动控制与安全回路",
+        "不提供自研 MES 或 ERP 业务系统",
+        "不做工业网络的三层交换与路由设备",
+        "不承接 OT 网络的整体设计与施工总包",
+        "不提供公有云多租户 SaaS 版本",
+        "不做机械臂与 AGV 的运动控制"
+      ],
+      "chips": ["只做数据", "边界清晰"],
+      "highlight": "边界写在白皮书里，责任划分才好谈"
+    },
+    {
+      "layout": "表格",
+      "kicker": "典型场景",
+      "icon": "briefcase",
+      "title": "两个场景靠旁路就能上线",
+      "subtitle": "一个离散制造，一个市政公用",
+      "blocks": [],
+      "columns": [],
+      "stages": [],
+      "layers": [],
+      "cards": [],
+      "table": {
+        "head": ["场景", "现场规模", "改造约束", "要用什么"],
+        "icons": ["building-community", "devices", "clock", "puzzle"],
+        "rows": [
+          ["汽车零部件压铸", "28 台压铸机", "周末窗口 8 小时", "GW2100 旁路加 EC5200"],
+          ["汽车零部件压铸", "6 台机器人", "不改原 PLC 程序", "EC5200 做前置判据"],
+          ["汽车零部件压铸", "4 条检测线", "参数留存 1 年", "CloudLink 留存与看板"],
+          ["市政污水处理", "2 厂区 6 座泵站", "不能停机改造", "GW4300 采集与续传"],
+          ["市政污水处理", "日处理 12 万吨", "既有 SCADA 不换", "GW2100 接入仪表电表"],
+          ["市政污水处理", "运维 9 人轮班", "质保期要求 3 年", "CloudLink 台账与告警"]
+        ]
+      },
+      "chips": ["离散制造", "市政公用", "能耗分项"],
+      "highlight": "两个场景都不是替换，而是旁路加一层"
+    },
+    {
+      "layout": "网格要点",
+      "kicker": "选型小结",
+      "icon": "checkup-list",
+      "title": "四句话定下产品组合",
+      "subtitle": "单机台、多机汇聚、只采集、要台账",
+      "blocks": [
+        {
+          "head": "单机台改造",
+          "note": "一台设备配一个盒子",
+          "icon": "device-desktop",
+          "lines": ["优先选 YS-EC3200", "替代小型 PLC 加网关", "沿用既有导轨与 6W 供电"]
+        },
+        {
+          "head": "多机汇聚",
+          "note": "一个区域五台设备以上",
+          "icon": "server",
+          "lines": ["选 YS-EC5200", "要推理时再配 VisionEdge", "软 PLC 承接前置联锁"]
+        },
+        {
+          "head": "只采集不改动",
+          "note": "原厂维保不让动程序",
+          "icon": "plug",
+          "lines": ["用 YS-GW2100 旁路采集", "2000 点/秒够中等车间", "协议不在列表就加转换器"]
+        },
+        {
+          "head": "要台账要远程",
+          "note": "多车间数据要能比",
+          "icon": "cloud",
+          "lines": ["配 YS-CloudLink 平台", "先固定测点命名规范", "OpenAPI 接客户工单系统"]
+        }
+      ],
+      "columns": [],
+      "stages": [],
+      "layers": [],
+      "cards": [],
+      "table": null,
+      "chips": ["EC3200", "EC5200", "GW2100", "CloudLink"],
+      "highlight": "先问要不要控制，再问聚合几台设备"
+    }
+  ]
+}

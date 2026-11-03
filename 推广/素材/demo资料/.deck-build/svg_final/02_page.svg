@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" version="1.1" width="1280" height="720" viewBox="0 0 1280 720"><rect x="0" y="0" width="1280" height="720" rx="0" fill="#FFFFFF" /><g id="kicker"><path fill="#E3F2FD" d="M95,36 H201 A15,15 0 0 1 216,51 V51 A15,15 0 0 1 201,66 H95 A15,15 0 0 1 80,51 V51 A15,15 0 0 1 95,36 Z" /><g id="kicker-icon">
+  <g transform="translate(92.0, 40.0) scale(0.9166666666666666)" fill="none" stroke="#0D47A1" stroke-width="2">
+    <path d="M3 21l18 0" />
+    <path d="M5 21v-14l8 -4v18" />
+    <path d="M19 21v-10l-6 -4" />
+    <path d="M9 9l0 .01" />
+    <path d="M9 12l0 .01" />
+    <path d="M9 15l0 .01" />
+    <path d="M9 18l0 .01" />
+  </g></g><text x="122" y="56.6" font-family="Arial, &quot;Microsoft YaHei&quot;, sans-serif" font-size="16" fill="#1565C0" font-weight="bold">公司与规模</text></g><g id="hd"><text x="80" y="98" font-family="Arial, &quot;Microsoft YaHei&quot;, sans-serif" font-size="36" fill="#0D47A1" font-weight="bold">云枢智控做工业边缘</text><g id="page-no"><path fill="#E3F2FD" d="M1057.80,42 H1188 A12,12 0 0 1 1200,54 V54 A12,12 0 0 1 1188,66 H1057.80 A12,12 0 0 1 1045.80,54 V54 A12,12 0 0 1 1057.80,42 Z" /><text x="1188" y="59.25" font-family="Arial, &quot;Microsoft YaHei&quot;, sans-serif" font-size="15" fill="#1565C0" text-anchor="end">第 2 页 / 共 9 页</text></g></g><g id="subtitle"><text x="80" y="132" font-family="Arial, &quot;Microsoft YaHei&quot;, sans-serif" font-size="18" fill="#5A7395">三条产品线覆盖端、边、云三层</text></g><g id="chip-1"><path fill="#E3F2FD" d="M933,113 H995 A13,13 0 0 1 1008,126 V126 A13,13 0 0 1 995,139 H933 A13,13 0 0 1 920,126 V126 A13,13 0 0 1 933,113 Z" /><text x="932" y="131.6" font-family="Arial, &quot;Microsoft YaHei&quot;, sans-serif" font-size="16" fill="#1565C0">离散制造</text></g><g id="chip-2"><path fill="#E3F2FD" d="M1029,113 H1091 A13,13 0 0 1 1104,126 V126 A13,13 0 0 1 1091,139 H1029 A13,13 0 0 1 1016,126 V126 A13,13 0 0 1 1029,113 Z" /><text x="1028" y="131.6" font-family="Arial, &quot;Microsoft YaHei&quot;, sans-serif" font-size="16" fill="#1565C0">市政公用</text></g><g id="chip-3"><path fill="#E3F2FD" d="M1125,113 H1187 A13,13 0 0 1 1200,126 V126 A13,13 0 0 1 1187,139 H1125 A13,13 0 0 1 1112,126 V126 A13,13 0 0 1 1125,113 Z" /><text x="1124" y="131.6" font-family="Arial, &quot;Microsoft YaHei&quot;, sans-serif" font-size="16" fill="#1565C0">边缘智能</text></g><g id="body"><g id="card-1"><path fill="#F7FAFE" stroke="#E3F2FD" stroke-width="1.5" d="M90,245 H332 A10,10 0 0 1 342,255 V535 A10,10 0 0 1 332,545 H90 A10,10 0 0 1 80,535 V255 A10,10 0 0 1 90,245 Z" /><path fill="#0D47A1" d="M82,245 H340 A2,2 0 0 1 342,247 V248 A2,2 0 0 1 340,250 H82 A2,2 0 0 1 80,248 V247 A2,2 0 0 1 82,245 Z" /><g id="card-1-icon">
+  <g transform="translate(197.0, 271.0) scale(1.1666666666666667)" fill="none" stroke="#0D47A1" stroke-width="2">
+    <path d="M10 5a2 2 0 1 0 4 0a2 2 0 1 0 -4 0" />
+    <path d="M3 19a2 2 0 1 0 4 0a2 2 0 1 0 -4 0" />
+    <path d="M17 19a2 2 0 1 0 4 0a2 2 0 1 0 -4 0" />
+    <path d="M6.5 17.5l5.5 -4.5l5.5 4.5" />
+    <path d="M12 7l0 6" />
+  </g></g><g id="card-1-value"><text x="211" y="385" font-family="Arial, &quot;Microsoft YaHei&quot;, sans-serif" font-size="34" fill="#0D47A1" font-weight="bold" text-anchor="middle">3 条</text></g><line x1="183" y1="431" x2="239" y2="431" stroke="#FF9800" stroke-width="3" /><g id="card-1-label"><text x="211" y="475" font-family="Arial, &quot;Microsoft YaHei&quot;, sans-serif" font-size="16" fill="#5A7395" text-anchor="middle">产品线</text></g></g><g id="card-2"><path fill="#F7FAFE" stroke="#E3F2FD" stroke-width="1.5" d="M376,245 H618 A10,10 0 0 1 628,255 V535 A10,10 0 0 1 618,545 H376 A10,10 0 0 1 366,535 V255 A10,10 0 0 1 376,245 Z" /><path fill="#1565C0" d="M368,245 H626 A2,2 0 0 1 628,247 V248 A2,2 0 0 1 626,250 H368 A2,2 0 0 1 366,248 V247 A2,2 0 0 1 368,245 Z" /><g id="card-2-icon">
+  <g transform="translate(483.0, 271.0) scale(1.1666666666666667)" fill="none" stroke="#0D47A1" stroke-width="2">
+    <path d="M13 9a1 1 0 0 1 1 -1h6a1 1 0 0 1 1 1v10a1 1 0 0 1 -1 1h-6a1 1 0 0 1 -1 -1v-10" />
+    <path d="M18 8v-3a1 1 0 0 0 -1 -1h-13a1 1 0 0 0 -1 1v12a1 1 0 0 0 1 1h9" />
+    <path d="M16 9h2" />
+  </g></g><g id="card-2-value"><text x="497" y="385" font-family="Arial, &quot;Microsoft YaHei&quot;, sans-serif" font-size="34" fill="#0D47A1" font-weight="bold" text-anchor="middle">8 个</text></g><line x1="469" y1="431" x2="525" y2="431" stroke="#FF9800" stroke-width="3" /><g id="card-2-label"><text x="497" y="475" font-family="Arial, &quot;Microsoft YaHei&quot;, sans-serif" font-size="16" fill="#5A7395" text-anchor="middle">型号（6 个在售）</text></g></g><g id="card-3"><path fill="#F7FAFE" stroke="#E3F2FD" stroke-width="1.5" d="M662,245 H904 A10,10 0 0 1 914,255 V535 A10,10 0 0 1 904,545 H662 A10,10 0 0 1 652,535 V255 A10,10 0 0 1 662,245 Z" /><path fill="#42A5F5" d="M654,245 H912 A2,2 0 0 1 914,247 V248 A2,2 0 0 1 912,250 H654 A2,2 0 0 1 652,248 V247 A2,2 0 0 1 654,245 Z" /><g id="card-3-icon">
+  <g transform="translate(769.0, 271.0) scale(1.1666666666666667)" fill="none" stroke="#0D47A1" stroke-width="2">
+    <path d="M11 12a1 1 0 1 0 2 0a1 1 0 1 0 -2 0" />
+    <path d="M7 12a5 5 0 1 0 10 0a5 5 0 1 0 -10 0" />
+    <path d="M3 12a9 9 0 1 0 18 0a9 9 0 1 0 -18 0" />
+  </g></g><g id="card-3-value"><text x="783" y="385" font-family="Arial, &quot;Microsoft YaHei&quot;, sans-serif" font-size="34" fill="#0D47A1" font-weight="bold" text-anchor="middle">2 个</text></g><line x1="755" y1="431" x2="811" y2="431" stroke="#FF9800" stroke-width="3" /><g id="card-3-label"><text x="783" y="475" font-family="Arial, &quot;Microsoft YaHei&quot;, sans-serif" font-size="16" fill="#5A7395" text-anchor="middle">行业方向</text></g></g><g id="card-4"><path fill="#F7FAFE" stroke="#E3F2FD" stroke-width="1.5" d="M948,245 H1190 A10,10 0 0 1 1200,255 V535 A10,10 0 0 1 1190,545 H948 A10,10 0 0 1 938,535 V255 A10,10 0 0 1 948,245 Z" /><path fill="#FF9800" d="M940,245 H1198 A2,2 0 0 1 1200,247 V248 A2,2 0 0 1 1198,250 H940 A2,2 0 0 1 938,248 V247 A2,2 0 0 1 940,245 Z" /><g id="card-4-icon">
+  <g transform="translate(1055.0, 271.0) scale(1.1666666666666667)" fill="none" stroke="#0D47A1" stroke-width="2">
+    <path d="M3.5 5.5l1.5 1.5l2.5 -2.5" />
+    <path d="M3.5 11.5l1.5 1.5l2.5 -2.5" />
+    <path d="M3.5 17.5l1.5 1.5l2.5 -2.5" />
+    <path d="M11 6l9 0" />
+    <path d="M11 12l9 0" />
+    <path d="M11 18l9 0" />
+  </g></g><g id="card-4-value"><text x="1069" y="385" font-family="Arial, &quot;Microsoft YaHei&quot;, sans-serif" font-size="34" fill="#0D47A1" font-weight="bold" text-anchor="middle">18 项</text></g><line x1="1041" y1="431" x2="1097" y2="431" stroke="#FF9800" stroke-width="3" /><g id="card-4-label"><text x="1069" y="475" font-family="Arial, &quot;Microsoft YaHei&quot;, sans-serif" font-size="16" fill="#5A7395" text-anchor="middle">可交付能力</text></g></g></g><g id="highlight"><path fill="#E3F2FD" d="M90,634 H1190 A10,10 0 0 1 1200,644 V674 A10,10 0 0 1 1190,684 H90 A10,10 0 0 1 80,674 V644 A10,10 0 0 1 90,634 Z" /><path fill="#FF9800" d="M93,644 H93 A3,3 0 0 1 96,647 V671 A3,3 0 0 1 93,674 H93 A3,3 0 0 1 90,671 V647 A3,3 0 0 1 93,644 Z" /><g id="highlight-icon">
+  <g transform="translate(104.0, 648.0) scale(0.9166666666666666)" fill="none" stroke="#0D47A1" stroke-width="2">
+    <path d="M3 12h1m8 -9v1m8 8h1m-15.4 -6.4l.7 .7m12.1 -.7l-.7 .7" />
+    <path d="M9 16a5 5 0 1 1 6 0a3.5 3.5 0 0 0 -1 3a2 2 0 0 1 -4 0a3.5 3.5 0 0 0 -1 -3" />
+    <path d="M9.7 17l4.6 0" />
+  </g></g><text x="136" y="666" font-family="Arial, &quot;Microsoft YaHei&quot;, sans-serif" font-size="19" fill="#0D47A1" font-weight="bold">三条线各管一段，组合起来才是一套方案</text></g><g id="footer"><text x="80" y="700" font-family="Arial, &quot;Microsoft YaHei&quot;, sans-serif" font-size="15" fill="#90CAF9">云枢智控 产品介绍</text></g></svg>

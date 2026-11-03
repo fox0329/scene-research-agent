@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 1280 720" width="1280" height="720">
+  <!-- Cover: 拓维信息蓝色宣讲风格 — 全幅品牌背景 + 居中白色主/副标题 + 页脚标签（literal 还原 slide1） -->
+
+  <!-- 背景：品牌封面图全幅 -->
+  <g id="bg">
+    <rect x="0" y="0" width="1280" height="720" fill="#FFFFFF"/>
+    <image href="assets/image18.png" x="0" y="0" width="1280" height="720" preserveAspectRatio="xMidYMid slice"/>
+  </g>
+
+  <!-- 主标题（居中白色，72px bold） -->
+  <g id="cover-title">
+    <text x="640" y="320" text-anchor="middle" font-family="微软雅黑, &quot;Microsoft YaHei&quot;, sans-serif" font-size="64" font-weight="bold" fill="#FFFFFF">{{TITLE}}</text>
+  </g>
+
+  <!-- 副标题 -->
+  <g id="cover-subtitle">
+    <text x="640" y="560" text-anchor="middle" font-family="微软雅黑, &quot;Microsoft YaHei&quot;, sans-serif" font-size="30" fill="#FFFFFF">{{SUBTITLE}}</text>
+  </g>
+
+  <!-- 页脚标签 -->
+  <g id="cover-footer">
+    <text x="640" y="620" text-anchor="middle" font-family="微软雅黑, &quot;Microsoft YaHei&quot;, sans-serif" font-size="26" fill="#FFFFFF">{{FOOTER_TAG}}</text>
+  </g>
+</svg>

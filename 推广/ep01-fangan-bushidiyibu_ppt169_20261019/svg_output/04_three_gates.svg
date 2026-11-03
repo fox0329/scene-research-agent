@@ -1,0 +1,83 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720">
+  <defs>
+    <linearGradient id="topBar" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#0D47A1"/>
+      <stop offset="1" stop-color="#1565C0"/>
+    </linearGradient>
+    <marker id="arrowBlue" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto">
+      <path d="M 0,0 L 10,5 L 0,10 Z" fill="#0D47A1"/>
+    </marker>
+    <marker id="arrowOrange" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto">
+      <path d="M 0,0 L 10,5 L 0,10 Z" fill="#FF9800"/>
+    </marker>
+  </defs>
+
+  <g id="background">
+    <rect x="0" y="0" width="1280" height="720" fill="#FFFFFF"/>
+  </g>
+
+  <g id="header">
+    <rect x="0" y="0" width="1280" height="4" fill="url(#topBar)"/>
+    <rect x="80" y="30" width="4" height="76" fill="#0D47A1"/>
+    <text x="100" y="62" font-family="Arial, Microsoft YaHei, sans-serif" font-size="34" font-weight="bold" fill="#0D47A1">先过三道门，再谈产品价值，最后才是方案</text>
+    <text x="100" y="94" font-family="Arial, Microsoft YaHei, sans-serif" font-size="14" fill="#6B7280">顺序就是方法 · 门没过就写方案，方案只会替自己找理由</text>
+  </g>
+
+  <g id="gate-chain">
+    <use data-icon="tabler-outline/door-enter" x="80" y="136" width="26" height="26" fill="#0D47A1" stroke-width="2"/>
+    <text x="118" y="156" font-family="Arial, Microsoft YaHei, sans-serif" font-size="14" fill="#6B7280">三道门并列，缺一不可</text>
+
+    <rect x="80" y="186" width="220" height="96" rx="10" fill="#0D47A1"/>
+    <use data-icon="tabler-outline/circle-check" x="272" y="196" width="22" height="22" fill="#4CAF50" stroke-width="2"/>
+    <text x="190" y="232" text-anchor="middle" font-family="Arial, Microsoft YaHei, sans-serif" font-size="22" font-weight="bold" fill="#FFFFFF">场景有钱赚</text>
+    <text x="190" y="262" text-anchor="middle" font-family="Arial, Microsoft YaHei, sans-serif" font-size="14" fill="#90CAF9">钱在哪个环节</text>
+
+    <rect x="330" y="186" width="220" height="96" rx="10" fill="#1565C0"/>
+    <use data-icon="tabler-outline/circle-check" x="522" y="196" width="22" height="22" fill="#4CAF50" stroke-width="2"/>
+    <text x="440" y="232" text-anchor="middle" font-family="Arial, Microsoft YaHei, sans-serif" font-size="22" font-weight="bold" fill="#FFFFFF">没有进入壁垒</text>
+    <text x="440" y="262" text-anchor="middle" font-family="Arial, Microsoft YaHei, sans-serif" font-size="14" fill="#E3F2FD">门槛过不过得去</text>
+
+    <rect x="580" y="186" width="220" height="96" rx="10" fill="#E3F2FD"/>
+    <use data-icon="tabler-outline/circle-check" x="772" y="196" width="22" height="22" fill="#4CAF50" stroke-width="2"/>
+    <text x="690" y="232" text-anchor="middle" font-family="Arial, Microsoft YaHei, sans-serif" font-size="22" font-weight="bold" fill="#0D47A1">产品有竞争力</text>
+    <text x="690" y="262" text-anchor="middle" font-family="Arial, Microsoft YaHei, sans-serif" font-size="14" fill="#6B7280">凭什么赢</text>
+
+    <line x1="832" y1="234" x2="900" y2="234" stroke="#0D47A1" stroke-width="3" marker-end="url(#arrowBlue)"/>
+    <text x="866" y="222" text-anchor="middle" font-family="Arial, Microsoft YaHei, sans-serif" font-size="14" font-weight="bold" fill="#4CAF50">全部通过</text>
+
+    <rect x="912" y="186" width="248" height="96" rx="10" fill="#FFFFFF" stroke="#FF9800" stroke-width="2"/>
+    <text x="1036" y="222" text-anchor="middle" font-family="Arial, Microsoft YaHei, sans-serif" font-size="14" fill="#FF9800">最后一步</text>
+    <text x="1036" y="256" text-anchor="middle" font-family="Arial, Microsoft YaHei, sans-serif" font-size="22" font-weight="bold" fill="#0D47A1">解决方案</text>
+    <text x="1036" y="278" text-anchor="middle" font-family="Arial, Microsoft YaHei, sans-serif" font-size="12" fill="#6B7280">架构 / 成本 / 计划</text>
+  </g>
+
+  <g id="value-questions">
+    <text x="80" y="330" font-family="Arial, Microsoft YaHei, sans-serif" font-size="20" font-weight="bold" fill="#0D47A1">门过了，才轮到谈「真实价值」——不是我们能做，是客户愿意为它掏钱</text>
+
+    <rect x="80" y="352" width="530" height="92" rx="10" fill="#F8FAFC" stroke="#E5E7EB" stroke-width="1.5"/>
+    <text x="108" y="390" font-family="Arial, Microsoft YaHei, sans-serif" font-size="22" font-weight="bold" fill="#0D47A1">能解决什么问题</text>
+    <text x="108" y="420" font-family="Arial, Microsoft YaHei, sans-serif" font-size="16" fill="#6B7280">对应第 2 页查出来的那个真痛点</text>
+
+    <rect x="630" y="352" width="530" height="92" rx="10" fill="#F8FAFC" stroke="#E5E7EB" stroke-width="1.5"/>
+    <text x="658" y="390" font-family="Arial, Microsoft YaHei, sans-serif" font-size="22" font-weight="bold" fill="#0D47A1">扮演什么角色</text>
+    <text x="658" y="420" font-family="Arial, Microsoft YaHei, sans-serif" font-size="16" fill="#6B7280">主力设备，还是配套的一环</text>
+
+    <rect x="80" y="462" width="530" height="92" rx="10" fill="#F8FAFC" stroke="#E5E7EB" stroke-width="1.5"/>
+    <text x="108" y="500" font-family="Arial, Microsoft YaHei, sans-serif" font-size="22" font-weight="bold" fill="#0D47A1">跟谁协作</text>
+    <text x="108" y="530" font-family="Arial, Microsoft YaHei, sans-serif" font-size="16" fill="#6B7280">和场景里已有的设备怎么配合</text>
+
+    <rect x="630" y="462" width="530" height="92" rx="10" fill="#F8FAFC" stroke="#E5E7EB" stroke-width="1.5"/>
+    <text x="658" y="500" font-family="Arial, Microsoft YaHei, sans-serif" font-size="22" font-weight="bold" fill="#0D47A1">比竞品强在哪</text>
+    <text x="658" y="530" font-family="Arial, Microsoft YaHei, sans-serif" font-size="16" fill="#6B7280">功能更全？性能更优？成本更低？</text>
+  </g>
+
+  <g id="warning">
+    <rect x="80" y="586" width="1080" height="58" rx="8" fill="#FFF7ED"/>
+    <rect x="80" y="586" width="6" height="58" rx="3" fill="#FF9800"/>
+    <text x="110" y="622" font-family="Arial, Microsoft YaHei, sans-serif" font-size="20" font-weight="bold" fill="#333333">顺序反了，你会不自觉地为了架构去找价值——这才是方案最容易翻车的地方。</text>
+  </g>
+
+  <g id="footer">
+    <text x="1200" y="700" text-anchor="end" font-family="Arial, Microsoft YaHei, sans-serif" font-size="12" fill="#6B7280">04 / 05</text>
+  </g>
+</svg>

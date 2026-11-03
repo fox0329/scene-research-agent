@@ -41,6 +41,7 @@
     "clean": "rm -rf packages/*/dist apps/*/dist *.tsbuildinfo packages/*/*.tsbuildinfo apps/*/*.tsbuildinfo && pnpm run clean:stray",
     "verify:m6": "bash scripts/verify-m5.sh",
     "verify:mr1": "bash scripts/verify-mr1.sh",
+    "verify:mr2": "bash scripts/verify-mr2.sh",
     "desktop:runtime": "node apps/desktop/scripts/prepare-server.mjs",
     "desktop:dev": "pnpm --filter @scene/desktop run start",
     "desktop:pack:mac": "pnpm --filter @scene/desktop run pack:mac",

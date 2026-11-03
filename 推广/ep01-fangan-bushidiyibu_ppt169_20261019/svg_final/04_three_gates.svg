@@ -1,0 +1,101 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720">
+  <defs>
+    <linearGradient id="topBar" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#0D47A1" />
+      <stop offset="1" stop-color="#1565C0" />
+    </linearGradient>
+    <marker id="arrowBlue" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto">
+      <path d="M 0,0 L 10,5 L 0,10 Z" fill="#0D47A1" />
+    </marker>
+    <marker id="arrowOrange" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto">
+      <path d="M 0,0 L 10,5 L 0,10 Z" fill="#FF9800" />
+    </marker>
+  </defs>
+
+  <g id="background">
+    <rect x="0" y="0" width="1280" height="720" fill="#FFFFFF" />
+  </g>
+
+  <g id="header">
+    <rect x="0" y="0" width="1280" height="4" fill="url(#topBar)" />
+    <rect x="80" y="30" width="4" height="76" fill="#0D47A1" />
+    <text x="100" y="62" font-family="Arial, Microsoft YaHei, sans-serif" font-size="34" font-weight="bold" fill="#0D47A1">先过三道门，再谈产品价值，最后才是方案</text>
+    <text x="100" y="94" font-family="Arial, Microsoft YaHei, sans-serif" font-size="14" fill="#6B7280">顺序就是方法 · 门没过就写方案，方案只会替自己找理由</text>
+  </g>
+
+  <g id="gate-chain">
+    
+  <g transform="translate(80.0, 136.0) scale(1.0833333333333333)" fill="none" stroke="#0D47A1" stroke-width="2">
+    <path d="M13 12v.01" />
+    <path d="M3 21h18" />
+    <path d="M5 21v-16a2 2 0 0 1 2 -2h6m4 10.5v7.5" />
+    <path d="M21 7h-7m3 -3l-3 3l3 3" />
+  </g>
+    <text x="118" y="156" font-family="Arial, Microsoft YaHei, sans-serif" font-size="14" fill="#6B7280">三道门并列，缺一不可</text>
+
+    <path fill="#0D47A1" d="M90,186 H290 A10,10 0 0 1 300,196 V272 A10,10 0 0 1 290,282 H90 A10,10 0 0 1 80,272 V196 A10,10 0 0 1 90,186 Z" />
+    
+  <g transform="translate(272.0, 196.0) scale(0.9166666666666666)" fill="none" stroke="#4CAF50" stroke-width="2">
+    <path d="M3 12a9 9 0 1 0 18 0a9 9 0 1 0 -18 0" />
+    <path d="M9 12l2 2l4 -4" />
+  </g>
+    <text x="190" y="232" text-anchor="middle" font-family="Arial, Microsoft YaHei, sans-serif" font-size="22" font-weight="bold" fill="#FFFFFF">场景有钱赚</text>
+    <text x="190" y="262" text-anchor="middle" font-family="Arial, Microsoft YaHei, sans-serif" font-size="14" fill="#90CAF9">钱在哪个环节</text>
+
+    <path fill="#1565C0" d="M340,186 H540 A10,10 0 0 1 550,196 V272 A10,10 0 0 1 540,282 H340 A10,10 0 0 1 330,272 V196 A10,10 0 0 1 340,186 Z" />
+    
+  <g transform="translate(522.0, 196.0) scale(0.9166666666666666)" fill="none" stroke="#4CAF50" stroke-width="2">
+    <path d="M3 12a9 9 0 1 0 18 0a9 9 0 1 0 -18 0" />
+    <path d="M9 12l2 2l4 -4" />
+  </g>
+    <text x="440" y="232" text-anchor="middle" font-family="Arial, Microsoft YaHei, sans-serif" font-size="22" font-weight="bold" fill="#FFFFFF">没有进入壁垒</text>
+    <text x="440" y="262" text-anchor="middle" font-family="Arial, Microsoft YaHei, sans-serif" font-size="14" fill="#E3F2FD">门槛过不过得去</text>
+
+    <path fill="#E3F2FD" d="M590,186 H790 A10,10 0 0 1 800,196 V272 A10,10 0 0 1 790,282 H590 A10,10 0 0 1 580,272 V196 A10,10 0 0 1 590,186 Z" />
+    
+  <g transform="translate(772.0, 196.0) scale(0.9166666666666666)" fill="none" stroke="#4CAF50" stroke-width="2">
+    <path d="M3 12a9 9 0 1 0 18 0a9 9 0 1 0 -18 0" />
+    <path d="M9 12l2 2l4 -4" />
+  </g>
+    <text x="690" y="232" text-anchor="middle" font-family="Arial, Microsoft YaHei, sans-serif" font-size="22" font-weight="bold" fill="#0D47A1">产品有竞争力</text>
+    <text x="690" y="262" text-anchor="middle" font-family="Arial, Microsoft YaHei, sans-serif" font-size="14" fill="#6B7280">凭什么赢</text>
+
+    <line x1="832" y1="234" x2="900" y2="234" stroke="#0D47A1" stroke-width="3" marker-end="url(#arrowBlue)" />
+    <text x="866" y="222" text-anchor="middle" font-family="Arial, Microsoft YaHei, sans-serif" font-size="14" font-weight="bold" fill="#4CAF50">全部通过</text>
+
+    <path fill="#FFFFFF" stroke="#FF9800" stroke-width="2" d="M922,186 H1150 A10,10 0 0 1 1160,196 V272 A10,10 0 0 1 1150,282 H922 A10,10 0 0 1 912,272 V196 A10,10 0 0 1 922,186 Z" />
+    <text x="1036" y="222" text-anchor="middle" font-family="Arial, Microsoft YaHei, sans-serif" font-size="14" fill="#FF9800">最后一步</text>
+    <text x="1036" y="256" text-anchor="middle" font-family="Arial, Microsoft YaHei, sans-serif" font-size="22" font-weight="bold" fill="#0D47A1">解决方案</text>
+    <text x="1036" y="278" text-anchor="middle" font-family="Arial, Microsoft YaHei, sans-serif" font-size="12" fill="#6B7280">架构 / 成本 / 计划</text>
+  </g>
+
+  <g id="value-questions">
+    <text x="80" y="330" font-family="Arial, Microsoft YaHei, sans-serif" font-size="20" font-weight="bold" fill="#0D47A1">门过了，才轮到谈「真实价值」——不是我们能做，是客户愿意为它掏钱</text>
+
+    <path fill="#F8FAFC" stroke="#E5E7EB" stroke-width="1.5" d="M90,352 H600 A10,10 0 0 1 610,362 V434 A10,10 0 0 1 600,444 H90 A10,10 0 0 1 80,434 V362 A10,10 0 0 1 90,352 Z" />
+    <text x="108" y="390" font-family="Arial, Microsoft YaHei, sans-serif" font-size="22" font-weight="bold" fill="#0D47A1">能解决什么问题</text>
+    <text x="108" y="420" font-family="Arial, Microsoft YaHei, sans-serif" font-size="16" fill="#6B7280">对应第 2 页查出来的那个真痛点</text>
+
+    <path fill="#F8FAFC" stroke="#E5E7EB" stroke-width="1.5" d="M640,352 H1150 A10,10 0 0 1 1160,362 V434 A10,10 0 0 1 1150,444 H640 A10,10 0 0 1 630,434 V362 A10,10 0 0 1 640,352 Z" />
+    <text x="658" y="390" font-family="Arial, Microsoft YaHei, sans-serif" font-size="22" font-weight="bold" fill="#0D47A1">扮演什么角色</text>
+    <text x="658" y="420" font-family="Arial, Microsoft YaHei, sans-serif" font-size="16" fill="#6B7280">主力设备，还是配套的一环</text>
+
+    <path fill="#F8FAFC" stroke="#E5E7EB" stroke-width="1.5" d="M90,462 H600 A10,10 0 0 1 610,472 V544 A10,10 0 0 1 600,554 H90 A10,10 0 0 1 80,544 V472 A10,10 0 0 1 90,462 Z" />
+    <text x="108" y="500" font-family="Arial, Microsoft YaHei, sans-serif" font-size="22" font-weight="bold" fill="#0D47A1">跟谁协作</text>
+    <text x="108" y="530" font-family="Arial, Microsoft YaHei, sans-serif" font-size="16" fill="#6B7280">和场景里已有的设备怎么配合</text>
+
+    <path fill="#F8FAFC" stroke="#E5E7EB" stroke-width="1.5" d="M640,462 H1150 A10,10 0 0 1 1160,472 V544 A10,10 0 0 1 1150,554 H640 A10,10 0 0 1 630,544 V472 A10,10 0 0 1 640,462 Z" />
+    <text x="658" y="500" font-family="Arial, Microsoft YaHei, sans-serif" font-size="22" font-weight="bold" fill="#0D47A1">比竞品强在哪</text>
+    <text x="658" y="530" font-family="Arial, Microsoft YaHei, sans-serif" font-size="16" fill="#6B7280">功能更全？性能更优？成本更低？</text>
+  </g>
+
+  <g id="warning">
+    <path fill="#FFF7ED" d="M88,586 H1152 A8,8 0 0 1 1160,594 V636 A8,8 0 0 1 1152,644 H88 A8,8 0 0 1 80,636 V594 A8,8 0 0 1 88,586 Z" />
+    <path fill="#FF9800" d="M83,586 H83 A3,3 0 0 1 86,589 V641 A3,3 0 0 1 83,644 H83 A3,3 0 0 1 80,641 V589 A3,3 0 0 1 83,586 Z" />
+    <text x="110" y="622" font-family="Arial, Microsoft YaHei, sans-serif" font-size="20" font-weight="bold" fill="#333333">顺序反了，你会不自觉地为了架构去找价值——这才是方案最容易翻车的地方。</text>
+  </g>
+
+  <g id="footer">
+    <text x="1200" y="700" text-anchor="end" font-family="Arial, Microsoft YaHei, sans-serif" font-size="12" fill="#6B7280">04 / 05</text>
+  </g>
+</svg>

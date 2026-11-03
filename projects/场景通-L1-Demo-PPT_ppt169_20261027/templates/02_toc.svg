@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 1280 720" width="1280" height="720">
+  <!-- TOC: 目录页 — 目录 chrome（蓝+绿装饰方块簇 + 微型 logo + 右上 logo）+ 目录头 + 三段编号列表（还原 slide2 结构语言） -->
+
+  <!-- 背景 -->
+  <g id="bg">
+    <rect x="0" y="0" width="1280" height="720" fill="#FFFFFF"/>
+  </g>
+
+  <!-- 目录页 chrome：左上装饰方块簇 + 微型 logo + 右上品牌 logo（还原 layout_32） -->
+  <g id="chrome">
+    <rect x="23.08" y="70.46" width="9.61" height="10.42" fill="#007BC6"/>
+    <rect x="32.69" y="47.28" width="14.42" height="15.63" fill="#2C9C4D"/>
+    <image href="assets/image4.png" x="-1.11" y="17.32" width="38.3" height="28.59" preserveAspectRatio="none"/>
+    <image href="assets/image5.png" x="-0.66" y="19.18" width="25.95" height="28.1" preserveAspectRatio="none"/>
+    <image href="assets/image9.png" x="1131.11" y="24.36" width="125.51" height="52.62" preserveAspectRatio="none"/>
+  </g>
+
+  <!-- 目录标题 -->
+  <g id="toc-header">
+    <text x="182.22" y="259.71" text-anchor="start" font-family="微软雅黑, &quot;Microsoft YaHei&quot;, sans-serif" font-size="42.67" font-weight="bold" fill="#0070C0">目录</text>
+    <text x="278" y="259.71" text-anchor="start" font-family="微软雅黑, &quot;Microsoft YaHei&quot;, sans-serif" font-size="42.67" font-weight="bold" fill="#0070C0" letter-spacing="2"> Contents</text>
+  </g>
+
+  <!-- 三段编号列表（每行：蓝色编号块 + 标题；垂直分隔线） -->
+  <line x1="329.07" y1="305" x2="329.07" y2="520" stroke="#0070C0" stroke-width="1" stroke-opacity="0.4"/>
+
+  <g id="toc-row-1">
+    <rect x="176.64" y="310" width="134.89" height="50" rx="4" fill="#0070C0"/>
+    <text x="244.09" y="343" text-anchor="middle" font-family="微软雅黑, &quot;Microsoft YaHei&quot;, sans-serif" font-size="24.87" fill="#FFFFFF">第一部分</text>
+    <text x="358.07" y="343" text-anchor="start" font-family="微软雅黑, &quot;Microsoft YaHei&quot;, sans-serif" font-size="26" font-weight="bold" fill="#1D2A8C">{{TOC_ITEM_1_TITLE}}</text>
+  </g>
+
+  <g id="toc-row-2">
+    <rect x="176.64" y="383" width="134.89" height="50" rx="4" fill="#0070C0"/>
+    <text x="244.09" y="416" text-anchor="middle" font-family="微软雅黑, &quot;Microsoft YaHei&quot;, sans-serif" font-size="24.87" fill="#FFFFFF">第二部分</text>
+    <text x="358.07" y="416" text-anchor="start" font-family="微软雅黑, &quot;Microsoft YaHei&quot;, sans-serif" font-size="26" font-weight="bold" fill="#1D2A8C">{{TOC_ITEM_2_TITLE}}</text>
+  </g>
+
+  <g id="toc-row-3">
+    <rect x="176.64" y="456" width="134.89" height="50" rx="4" fill="#0070C0"/>
+    <text x="244.09" y="489" text-anchor="middle" font-family="微软雅黑, &quot;Microsoft YaHei&quot;, sans-serif" font-size="24.87" fill="#FFFFFF">第三部分</text>
+    <text x="358.07" y="489" text-anchor="start" font-family="微软雅黑, &quot;Microsoft YaHei&quot;, sans-serif" font-size="26" font-weight="bold" fill="#1D2A8C">{{TOC_ITEM_3_TITLE}}</text>
+  </g>
+</svg>

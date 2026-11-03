@@ -1,0 +1,86 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720">
+  <defs>
+    <linearGradient id="topBar" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#0D47A1"/>
+      <stop offset="1" stop-color="#1565C0"/>
+    </linearGradient>
+  </defs>
+
+  <g id="background">
+    <rect x="0" y="0" width="1280" height="720" fill="#FFFFFF"/>
+  </g>
+
+  <g id="header">
+    <rect x="0" y="0" width="1280" height="4" fill="url(#topBar)"/>
+    <rect x="80" y="30" width="4" height="76" fill="#0D47A1"/>
+    <text x="100" y="62" font-family="Arial, Microsoft YaHei, sans-serif" font-size="34" font-weight="bold" fill="#0D47A1">产品能不能用，不由功能决定</text>
+    <text x="100" y="94" font-family="Arial, Microsoft YaHei, sans-serif" font-size="14" fill="#6B7280">由行业的门槛决定 · 第一步：把场景的行业属性查清</text>
+  </g>
+
+  <g id="left-compare">
+    <text x="80" y="160" font-family="Arial, Microsoft YaHei, sans-serif" font-size="14" fill="#6B7280">同一套 PLC 采集，两个场景</text>
+
+    <rect x="80" y="180" width="520" height="150" rx="12" fill="#FFFFFF" stroke="#1565C0" stroke-width="2"/>
+    <use data-icon="tabler-outline/building-factory" x="104" y="204" width="30" height="30" fill="#1565C0" stroke-width="2"/>
+    <text x="146" y="226" font-family="Arial, Microsoft YaHei, sans-serif" font-size="22" font-weight="bold" fill="#0D47A1">普通工业厂房</text>
+    <text x="104" y="268" font-family="Arial, Microsoft YaHei, sans-serif" font-size="20" fill="#333333">要的是实时性和可靠性</text>
+    <rect x="104" y="286" width="96" height="30" rx="6" fill="#E3F2FD"/>
+    <text x="152" y="306" text-anchor="middle" font-family="Arial, Microsoft YaHei, sans-serif" font-size="14" fill="#0D47A1">实时性</text>
+    <rect x="212" y="286" width="96" height="30" rx="6" fill="#E3F2FD"/>
+    <text x="260" y="306" text-anchor="middle" font-family="Arial, Microsoft YaHei, sans-serif" font-size="14" fill="#0D47A1">可靠性</text>
+
+    <line x1="340" y1="344" x2="340" y2="376" stroke="#6B7280" stroke-width="1.5" stroke-dasharray="6 4"/>
+    <text x="340" y="400" text-anchor="middle" font-family="Arial, Microsoft YaHei, sans-serif" font-size="30" font-weight="bold" fill="#0D47A1">≠</text>
+
+    <rect x="80" y="416" width="520" height="150" rx="12" fill="#FFFFFF" stroke="#FF9800" stroke-width="2"/>
+    <use data-icon="tabler-outline/alert-triangle" x="104" y="440" width="30" height="30" fill="#FF9800" stroke-width="2"/>
+    <text x="146" y="462" font-family="Arial, Microsoft YaHei, sans-serif" font-size="22" font-weight="bold" fill="#0D47A1">燃气场站</text>
+    <text x="104" y="504" font-family="Arial, Microsoft YaHei, sans-serif" font-size="20" fill="#333333">可能有严格的防爆等级要求</text>
+    <rect x="104" y="522" width="110" height="30" rx="6" fill="#FFFFFF" stroke="#FF9800" stroke-width="1.5"/>
+    <text x="159" y="542" text-anchor="middle" font-family="Arial, Microsoft YaHei, sans-serif" font-size="14" fill="#FF9800">防爆等级</text>
+  </g>
+
+  <g id="right-checklist">
+    <text x="640" y="160" font-family="Arial, Microsoft YaHei, sans-serif" font-size="14" fill="#6B7280">所以，一个场景要查这六样</text>
+    <use data-icon="tabler-outline/list-check" x="640" y="176" width="26" height="26" fill="#0D47A1" stroke-width="2"/>
+
+    <rect x="640" y="218" width="248" height="104" rx="10" fill="#E3F2FD"/>
+    <text x="660" y="252" font-family="Arial, Microsoft YaHei, sans-serif" font-size="20" font-weight="bold" fill="#0D47A1">技术门槛</text>
+    <text x="660" y="282" font-family="Arial, Microsoft YaHei, sans-serif" font-size="14" fill="#6B7280">这个行业的技术底线在哪</text>
+    <text x="660" y="304" font-family="Arial, Microsoft YaHei, sans-serif" font-size="14" fill="#6B7280">硬指标是什么</text>
+
+    <rect x="912" y="218" width="248" height="104" rx="10" fill="#E3F2FD"/>
+    <text x="932" y="252" font-family="Arial, Microsoft YaHei, sans-serif" font-size="20" font-weight="bold" fill="#0D47A1">商业门槛</text>
+    <text x="932" y="282" font-family="Arial, Microsoft YaHei, sans-serif" font-size="14" fill="#6B7280">这个场景怎么花钱</text>
+    <text x="932" y="304" font-family="Arial, Microsoft YaHei, sans-serif" font-size="14" fill="#6B7280">采购逻辑是什么</text>
+
+    <rect x="640" y="342" width="248" height="104" rx="10" fill="#E3F2FD"/>
+    <text x="660" y="376" font-family="Arial, Microsoft YaHei, sans-serif" font-size="20" font-weight="bold" fill="#0D47A1">合规门槛</text>
+    <text x="660" y="406" font-family="Arial, Microsoft YaHei, sans-serif" font-size="14" fill="#6B7280">有没有强制准入</text>
+    <text x="660" y="428" font-family="Arial, Microsoft YaHei, sans-serif" font-size="14" fill="#6B7280">要不要过认证</text>
+
+    <rect x="912" y="342" width="248" height="104" rx="10" fill="#E3F2FD"/>
+    <text x="932" y="376" font-family="Arial, Microsoft YaHei, sans-serif" font-size="20" font-weight="bold" fill="#0D47A1">供应商与头部</text>
+    <text x="932" y="406" font-family="Arial, Microsoft YaHei, sans-serif" font-size="14" fill="#6B7280">现在谁在供</text>
+    <text x="932" y="428" font-family="Arial, Microsoft YaHei, sans-serif" font-size="14" fill="#6B7280">谁是头部</text>
+
+    <rect x="640" y="466" width="248" height="100" rx="10" fill="#E3F2FD"/>
+    <text x="660" y="500" font-family="Arial, Microsoft YaHei, sans-serif" font-size="20" font-weight="bold" fill="#0D47A1">设备组成</text>
+    <text x="660" y="530" font-family="Arial, Microsoft YaHei, sans-serif" font-size="14" fill="#6B7280">场景由哪些设备组成</text>
+    <text x="660" y="552" font-family="Arial, Microsoft YaHei, sans-serif" font-size="14" fill="#6B7280">年代与接口</text>
+
+    <rect x="912" y="466" width="248" height="100" rx="10" fill="#E3F2FD"/>
+    <text x="932" y="500" font-family="Arial, Microsoft YaHei, sans-serif" font-size="20" font-weight="bold" fill="#0D47A1">如何协作</text>
+    <text x="932" y="530" font-family="Arial, Microsoft YaHei, sans-serif" font-size="14" fill="#6B7280">设备之间怎么连</text>
+    <text x="932" y="552" font-family="Arial, Microsoft YaHei, sans-serif" font-size="14" fill="#6B7280">数据怎么走</text>
+  </g>
+
+  <g id="conclusion">
+    <rect x="80" y="590" width="1080" height="56" rx="8" fill="#0D47A1"/>
+    <text x="104" y="626" font-family="Arial, Microsoft YaHei, sans-serif" font-size="20" font-weight="bold" fill="#FFFFFF">有了这些认识，你才能判断：自己的产品，能不能成为这个方案的一部分。</text>
+  </g>
+
+  <g id="footer">
+    <text x="1200" y="700" text-anchor="end" font-family="Arial, Microsoft YaHei, sans-serif" font-size="12" fill="#6B7280">02 / 05</text>
+  </g>
+</svg>

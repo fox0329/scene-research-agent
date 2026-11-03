@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 1280 720" width="1280" height="720">
+  <!-- Chapter: 章节分隔页 — 目录 chrome + 大号章号 + 章节标题 + 描述（源 PPT 无独立章节页，按品牌蓝色语言适配） -->
+
+  <!-- 背景 -->
+  <g id="bg">
+    <rect x="0" y="0" width="1280" height="720" fill="#FFFFFF"/>
+  </g>
+
+  <!-- 目录页 chrome（与 TOC 同源） -->
+  <g id="chrome">
+    <rect x="23.08" y="70.46" width="9.61" height="10.42" fill="#007BC6"/>
+    <rect x="32.69" y="47.28" width="14.42" height="15.63" fill="#2C9C4D"/>
+    <image href="assets/image4.png" x="-1.11" y="17.32" width="38.3" height="28.59" preserveAspectRatio="none"/>
+    <image href="assets/image5.png" x="-0.66" y="19.18" width="25.95" height="28.1" preserveAspectRatio="none"/>
+    <image href="assets/image9.png" x="1131.11" y="24.36" width="125.51" height="52.62" preserveAspectRatio="none"/>
+  </g>
+
+  <!-- 章号 + 标题 + 描述（堆叠式，不重叠） -->
+  <g id="chapter-title">
+    <text x="172" y="360" text-anchor="start" font-family="Arial, 微软雅黑, sans-serif" font-size="100" font-weight="bold" fill="#0070C0">{{CHAPTER_NUM}}</text>
+    <text x="178" y="440" text-anchor="start" font-family="微软雅黑, &quot;Microsoft YaHei&quot;, sans-serif" font-size="44" font-weight="bold" fill="#1D2A8C">{{CHAPTER_TITLE}}</text>
+    <text x="178" y="485" text-anchor="start" font-family="微软雅黑, &quot;Microsoft YaHei&quot;, sans-serif" font-size="24" fill="#404040">{{CHAPTER_DESC}}</text>
+  </g>
+</svg>

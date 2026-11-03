@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 1280 720" width="1280" height="720">
+  <g id="bg">
+    <rect x="0" y="0" width="1280" height="720" fill="#FFFFFF"/>
+  </g>
+
+  <g id="chrome">
+    <rect x="0.09" y="37.64" width="22.74" height="34.02" fill="#1D2A8C"/>
+    <rect x="16.73" y="33.4" width="11.34" height="11.34" fill="#22943A"/>
+    <image href="../images/logo.png" x="1109.97" y="18.73" width="123.36" height="51.68" preserveAspectRatio="xMidYMid meet"/>
+    <text x="52.24" y="62.12" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="32" font-weight="bold" fill="#1D2A8C">AI 先理解场景，再让用户确认</text>
+    <text x="52" y="100" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="16" fill="#6B7280">不是让用户先填 26 张表，而是 AI 先讲清、先提问</text>
+  </g>
+
+  <g id="flow">
+    <rect x="52" y="132" width="330" height="56" rx="10" fill="#F9FAFB" stroke="#D6E7F8" stroke-width="1"/>
+    <rect x="52" y="132" width="4" height="56" rx="2" fill="#0070C0"/>
+    <text x="74" y="166" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="17" font-weight="bold" fill="#1D2A8C">先讲清行业</text>
+
+    <rect x="414" y="132" width="330" height="56" rx="10" fill="#F9FAFB" stroke="#D6E7F8" stroke-width="1"/>
+    <rect x="414" y="132" width="4" height="56" rx="2" fill="#0070C0"/>
+    <text x="436" y="166" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="17" font-weight="bold" fill="#1D2A8C">问 2–3 个关键问题</text>
+
+    <rect x="776" y="132" width="330" height="56" rx="10" fill="#F9FAFB" stroke="#D6E7F8" stroke-width="1"/>
+    <rect x="776" y="132" width="4" height="56" rx="2" fill="#22943A"/>
+    <text x="798" y="166" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="17" font-weight="bold" fill="#1D2A8C">整理成场景定义</text>
+
+    <polygon points="390,160 402,166 390,172" fill="#0070C0"/>
+    <polygon points="752,160 764,166 752,172" fill="#0070C0"/>
+  </g>
+
+  <g id="new-scene">
+    <text x="52" y="224" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="15" font-weight="bold" fill="#1D2A8C">新建：只输场景名</text>
+    <rect x="52" y="236" width="560" height="326" rx="8" fill="#F9FAFB" stroke="#D6E7F8" stroke-width="1"/>
+    <image href="../images/P5-new-scene.png" x="56" y="240" width="552" height="318" preserveAspectRatio="xMidYMid meet"/>
+    <rect x="82" y="300" width="500" height="64" rx="6" fill="none" stroke="#0070C0" stroke-width="2"/>
+  </g>
+
+  <g id="table1">
+    <text x="650" y="224" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="15" font-weight="bold" fill="#1D2A8C">表 1-1：场景定义与边界</text>
+    <rect x="650" y="236" width="520" height="326" rx="8" fill="#F9FAFB" stroke="#D6E7F8" stroke-width="1"/>
+    <image href="../images/P5-table1.png" x="654" y="240" width="512" height="318" preserveAspectRatio="xMidYMid meet"/>
+    <rect x="670" y="304" width="470" height="44" rx="4" fill="none" stroke="#22943A" stroke-width="2"/>
+  </g>
+
+  <g id="takeaway">
+    <text x="52" y="610" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="22" font-weight="bold" fill="#0D0D0D">不是先填 26 张表，而是 AI 先理解，用户再确认。</text>
+    <text x="52" y="638" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="16" fill="#6B7280">用户只说个大概，AI 把回答整理成结构化定义；不想细说，也能先按材料整理，把推断标出来。</text>
+  </g>
+
+  <g id="footer">
+    <rect x="0" y="656" width="1280" height="64" fill="#0070C0"/>
+    <text x="52" y="694" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="18" fill="#FFFFFF">场景定义不是表单，是一段被整理过的对话。</text>
+    <text x="1228" y="694" text-anchor="end" font-family="Arial, &quot;Microsoft YaHei&quot;, sans-serif" font-size="14" fill="#FFFFFF" fill-opacity="0.8">05 / 10</text>
+  </g>
+</svg>

@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720">
+  <defs>
+    <linearGradient id="endGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0D47A1" />
+      <stop offset="1" stop-color="#1565C0" />
+    </linearGradient>
+  </defs>
+
+  <g id="background">
+    <rect x="0" y="0" width="1280" height="720" fill="url(#endGrad)" />
+    <path d="M 0 646 C 106.67 626 213.33 626 320 646 C 426.67 666 533.33 666 640 646 C 746.67 626 853.33 626 960 646 C 1066.67 666 1173.33 666 1280 646" fill="none" stroke="#FFFFFF" stroke-width="1.5" stroke-opacity="0.15" />
+    <path d="M 0 662 C 106.67 642 213.33 642 320 662 C 426.67 682 533.33 682 640 662 C 746.67 642 853.33 642 960 662 C 1066.67 682 1173.33 682 1280 662" fill="none" stroke="#FFFFFF" stroke-width="1.5" stroke-opacity="0.10" />
+    <path d="M 0 678 C 106.67 658 213.33 658 320 678 C 426.67 698 533.33 698 640 678 C 746.67 658 853.33 658 960 678 C 1066.67 698 1173.33 698 1280 678" fill="none" stroke="#FFFFFF" stroke-width="1.5" stroke-opacity="0.06" />
+  </g>
+
+  <g id="recap-steps">
+    <text x="640" y="76" text-anchor="middle" font-family="Arial, Microsoft YaHei, sans-serif" font-size="14" fill="#90CAF9">本期三步，回去就能用</text>
+
+    <circle cx="220" cy="140" r="20" fill="#FFFFFF" />
+    <text x="220" y="147" text-anchor="middle" font-family="Arial, Microsoft YaHei, sans-serif" font-size="18" font-weight="bold" fill="#0D47A1">1</text>
+    <text x="220" y="188" text-anchor="middle" font-family="Arial, Microsoft YaHei, sans-serif" font-size="18" font-weight="bold" fill="#FFFFFF">看清场景</text>
+    <text x="220" y="214" text-anchor="middle" font-family="Arial, Microsoft YaHei, sans-serif" font-size="14" fill="#90CAF9">技术 / 合规门槛</text>
+    <text x="220" y="236" text-anchor="middle" font-family="Arial, Microsoft YaHei, sans-serif" font-size="14" fill="#90CAF9">供应商 / 设备</text>
+
+    <line x1="300" y1="140" x2="420" y2="140" stroke="#90CAF9" stroke-width="1.5" stroke-dasharray="6 5" stroke-opacity="0.6" />
+
+    <circle cx="460" cy="140" r="20" fill="#FFFFFF" />
+    <text x="460" y="147" text-anchor="middle" font-family="Arial, Microsoft YaHei, sans-serif" font-size="18" font-weight="bold" fill="#1565C0">2</text>
+    <text x="460" y="188" text-anchor="middle" font-family="Arial, Microsoft YaHei, sans-serif" font-size="18" font-weight="bold" fill="#FFFFFF">看清商业规则</text>
+    <text x="460" y="214" text-anchor="middle" font-family="Arial, Microsoft YaHei, sans-serif" font-size="14" fill="#90CAF9">价格带 / 上下游</text>
+    <text x="460" y="236" text-anchor="middle" font-family="Arial, Microsoft YaHei, sans-serif" font-size="14" fill="#90CAF9">利润 / 对手</text>
+
+    <line x1="540" y1="140" x2="660" y2="140" stroke="#90CAF9" stroke-width="1.5" stroke-dasharray="6 5" stroke-opacity="0.6" />
+
+    <circle cx="700" cy="140" r="20" fill="#FFFFFF" />
+    <text x="700" y="147" text-anchor="middle" font-family="Arial, Microsoft YaHei, sans-serif" font-size="18" font-weight="bold" fill="#90CAF9">3</text>
+    <text x="700" y="188" text-anchor="middle" font-family="Arial, Microsoft YaHei, sans-serif" font-size="18" font-weight="bold" fill="#FFFFFF">拿这三条卡自己的产品</text>
+    <text x="700" y="214" text-anchor="middle" font-family="Arial, Microsoft YaHei, sans-serif" font-size="14" fill="#90CAF9">有钱赚 / 没壁垒</text>
+    <text x="700" y="236" text-anchor="middle" font-family="Arial, Microsoft YaHei, sans-serif" font-size="14" fill="#90CAF9">有竞争力</text>
+  </g>
+
+  <g id="hero-line">
+    
+  <g transform="translate(230.0, 316.0) scale(1.4166666666666667)" fill="none" stroke="#FF9800" stroke-width="2">
+    <path d="M11 12a1 1 0 1 0 2 0a1 1 0 1 0 -2 0" />
+    <path d="M12 7a5 5 0 1 0 5 5" />
+    <path d="M13 3.055a9 9 0 1 0 7.941 7.945" />
+    <path d="M15 6v3h3l3 -3h-3v-3l-3 3" />
+    <path d="M15 9l-3 3" />
+  </g>
+    <text x="640" y="410" text-anchor="middle" font-family="Arial, Microsoft YaHei, sans-serif" font-size="56" font-weight="bold" fill="#FFFFFF">隔行如隔山</text>
+    <line x1="500" y1="442" x2="780" y2="442" stroke="#90CAF9" stroke-width="1.5" stroke-opacity="0.5" />
+    <text x="640" y="482" text-anchor="middle" font-family="Arial, Microsoft YaHei, sans-serif" font-size="24" fill="#90CAF9">没有对行业的深入了解，方案大概率只是汇报材料</text>
+  </g>
+
+  <g id="next-episode">
+    <path fill="#FFFFFF" fill-opacity="0.14" d="M248,522 H1032 A8,8 0 0 1 1040,530 V572 A8,8 0 0 1 1032,580 H248 A8,8 0 0 1 240,572 V530 A8,8 0 0 1 248,522 Z" />
+    <path fill="#FF9800" d="M243,522 H243 A3,3 0 0 1 246,525 V577 A3,3 0 0 1 243,580 H243 A3,3 0 0 1 240,577 V525 A3,3 0 0 1 243,522 Z" />
+    <text x="272" y="558" font-family="Arial, Microsoft YaHei, sans-serif" font-size="20" font-weight="bold" fill="#FFFFFF">下期：如何用 AI 快速深入了解一个行业和场景</text>
+  </g>
+
+  <g id="interaction">
+    <circle cx="560" cy="630" r="24" fill="none" stroke="#FFFFFF" stroke-width="1.5" stroke-opacity="0.7" />
+    <text x="560" y="637" text-anchor="middle" font-family="Arial, Microsoft YaHei, sans-serif" font-size="14" fill="#FFFFFF">赞</text>
+    <circle cx="640" cy="630" r="24" fill="none" stroke="#FFFFFF" stroke-width="1.5" stroke-opacity="0.7" />
+    <text x="640" y="637" text-anchor="middle" font-family="Arial, Microsoft YaHei, sans-serif" font-size="14" fill="#FFFFFF">关</text>
+    <circle cx="720" cy="630" r="24" fill="none" stroke="#FFFFFF" stroke-width="1.5" stroke-opacity="0.7" />
+    <text x="720" y="637" text-anchor="middle" font-family="Arial, Microsoft YaHei, sans-serif" font-size="14" fill="#FFFFFF">币</text>
+  </g>
+</svg>

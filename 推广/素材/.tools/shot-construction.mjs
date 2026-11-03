@@ -1,0 +1,18 @@
+import { chromium } from "@playwright/test";
+import { openApp } from "./port.mjs";
+import { shot, settle } from "./shot.mjs";
+const { browser, page } = await openApp(chromium);
+const row = page.locator(".side .proj").filter({ hasText: "汽车零部件压铸车间" }).first();
+await row.locator(".proj-hd").click();
+await settle(page, { quiet: 1500 });
+await page.locator(".flow-node").nth(6).click();
+await settle(page, { quiet: 2000 });
+const b = page.getByRole("button", { name: "建设工作方案", exact: true }).first();
+console.log("按钮数:", await b.count());
+await b.click();
+await settle(page, { quiet: 1800 });
+await shot(page, "期5-上手", "04-交付物-建设工作方案");
+const t = await page.locator(".shell").innerText();
+const i = t.indexOf("建设背景与必要性");
+console.log(t.slice(i, i + 400));
+await browser.close();

@@ -1,0 +1,86 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720">
+  <defs>
+    <linearGradient id="topBar" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#0D47A1" />
+      <stop offset="1" stop-color="#1565C0" />
+    </linearGradient>
+    <linearGradient id="axisGrad" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#90CAF9" />
+      <stop offset="1" stop-color="#0D47A1" />
+    </linearGradient>
+  </defs>
+
+  <g id="background">
+    <rect x="0" y="0" width="1280" height="720" fill="#FFFFFF" />
+  </g>
+
+  <g id="header">
+    <rect x="0" y="0" width="1280" height="4" fill="url(#topBar)" />
+    <rect x="80" y="30" width="4" height="76" fill="#0D47A1" />
+    <text x="100" y="62" font-family="Arial, Microsoft YaHei, sans-serif" font-size="34" font-weight="bold" fill="#0D47A1">场景能不能进，先看这个场景卖多少钱</text>
+    <text x="100" y="94" font-family="Arial, Microsoft YaHei, sans-serif" font-size="14" fill="#6B7280">成本结构进不去的场景，产品再好也没用</text>
+  </g>
+
+  <g id="price-axis">
+    
+  <g transform="translate(80.0, 140.0) scale(1.0833333333333333)" fill="none" stroke="#0D47A1" stroke-width="2">
+    <path d="M12 19v-7l-5 -7m10 0l-5 7" />
+    <path d="M8 17l8 0" />
+    <path d="M8 13l8 0" />
+  </g>
+    <text x="118" y="160" font-family="Arial, Microsoft YaHei, sans-serif" font-size="14" fill="#6B7280">同一块手持终端 / 平板，价格带能差一个数量级</text>
+
+    <path fill="url(#axisGrad)" d="M123,222 H1157 A3,3 0 0 1 1160,225 V225 A3,3 0 0 1 1157,228 H123 A3,3 0 0 1 120,225 V225 A3,3 0 0 1 123,222 Z" />
+    <circle cx="120" cy="225" r="7" fill="#90CAF9" />
+    <circle cx="1160" cy="225" r="7" fill="#0D47A1" />
+
+    <text x="120" y="266" text-anchor="middle" font-family="Arial, Microsoft YaHei, sans-serif" font-size="24" font-weight="bold" fill="#6B7280">500 元</text>
+    <text x="1148" y="266" text-anchor="middle" font-family="Arial, Microsoft YaHei, sans-serif" font-size="20" font-weight="bold" fill="#0D47A1">10000 元以上</text>
+
+    <line x1="328" y1="190" x2="328" y2="232" stroke="#FF9800" stroke-width="3" />
+    <circle cx="328" cy="225" r="9" fill="#FF9800" />
+    <text x="328" y="178" text-anchor="middle" font-family="Arial, Microsoft YaHei, sans-serif" font-size="18" font-weight="bold" fill="#FF9800">成本 2000 的平板</text>
+  </g>
+
+  <g id="scenario-cards">
+    <path fill="#FFFFFF" stroke="#1565C0" stroke-width="2" d="M92,310 H608 A12,12 0 0 1 620,322 V482 A12,12 0 0 1 608,494 H92 A12,12 0 0 1 80,482 V322 A12,12 0 0 1 92,310 Z" />
+    <text x="108" y="352" font-family="Arial, Microsoft YaHei, sans-serif" font-size="22" font-weight="bold" fill="#0D47A1">教育场景</text>
+    <text x="108" y="390" font-family="Arial, Microsoft YaHei, sans-serif" font-size="20" fill="#333333">采购逻辑是走量</text>
+    <text x="108" y="424" font-family="Arial, Microsoft YaHei, sans-serif" font-size="20" fill="#333333">一台设备的预算可能只认几百块</text>
+    <path fill="#E3F2FD" d="M114,446 H188 A6,6 0 0 1 194,452 V470 A6,6 0 0 1 188,476 H114 A6,6 0 0 1 108,470 V452 A6,6 0 0 1 114,446 Z" />
+    <text x="151" y="466" text-anchor="middle" font-family="Arial, Microsoft YaHei, sans-serif" font-size="14" fill="#0D47A1">预算敏感</text>
+    <path fill="#E3F2FD" d="M212,446 H260 A6,6 0 0 1 266,452 V470 A6,6 0 0 1 260,476 H212 A6,6 0 0 1 206,470 V452 A6,6 0 0 1 212,446 Z" />
+    <text x="236" y="466" text-anchor="middle" font-family="Arial, Microsoft YaHei, sans-serif" font-size="14" fill="#0D47A1">走量</text>
+
+    <path fill="#FFFFFF" stroke="#1565C0" stroke-width="2" d="M672,310 H1188 A12,12 0 0 1 1200,322 V482 A12,12 0 0 1 1188,494 H672 A12,12 0 0 1 660,482 V322 A12,12 0 0 1 672,310 Z" />
+    <text x="688" y="352" font-family="Arial, Microsoft YaHei, sans-serif" font-size="22" font-weight="bold" fill="#0D47A1">会议室场景</text>
+    <text x="688" y="390" font-family="Arial, Microsoft YaHei, sans-serif" font-size="20" fill="#333333">看的是品牌和生态</text>
+    <text x="688" y="424" font-family="Arial, Microsoft YaHei, sans-serif" font-size="20" fill="#333333">配套、售后、系统兼容都在评估里</text>
+    <path fill="#E3F2FD" d="M694,446 H742 A6,6 0 0 1 748,452 V470 A6,6 0 0 1 742,476 H694 A6,6 0 0 1 688,470 V452 A6,6 0 0 1 694,446 Z" />
+    <text x="718" y="466" text-anchor="middle" font-family="Arial, Microsoft YaHei, sans-serif" font-size="14" fill="#0D47A1">品牌</text>
+    <path fill="#E3F2FD" d="M766,446 H814 A6,6 0 0 1 820,452 V470 A6,6 0 0 1 814,476 H766 A6,6 0 0 1 760,470 V452 A6,6 0 0 1 766,446 Z" />
+    <text x="790" y="466" text-anchor="middle" font-family="Arial, Microsoft YaHei, sans-serif" font-size="14" fill="#0D47A1">生态</text>
+  </g>
+
+  <g id="verdict">
+    <path fill="#FFF7ED" stroke="#FF9800" stroke-width="2" d="M88,522 H1152 A8,8 0 0 1 1160,530 V576 A8,8 0 0 1 1152,584 H88 A8,8 0 0 1 80,576 V530 A8,8 0 0 1 88,522 Z" />
+    <path d="M 116 538 L 130 553 L 116 568 Z" fill="#FF9800" />
+    <text x="146" y="562" font-family="Arial, Microsoft YaHei, sans-serif" font-size="22" font-weight="bold" fill="#333333">你拿一台成本两千的机器进去，不是「贵一点」，而是根本不成立。</text>
+  </g>
+
+  <g id="four-items">
+    <text x="80" y="620" font-family="Arial, Microsoft YaHei, sans-serif" font-size="14" fill="#6B7280">除了价格，商业规则还要查这四项：</text>
+    <path fill="#E3F2FD" d="M386,598 H524 A6,6 0 0 1 530,604 V626 A6,6 0 0 1 524,632 H386 A6,6 0 0 1 380,626 V604 A6,6 0 0 1 386,598 Z" />
+    <text x="455" y="621" text-anchor="middle" font-family="Arial, Microsoft YaHei, sans-serif" font-size="14" fill="#0D47A1">上下游情况</text>
+    <path fill="#E3F2FD" d="M552,598 H690 A6,6 0 0 1 696,604 V626 A6,6 0 0 1 690,632 H552 A6,6 0 0 1 546,626 V604 A6,6 0 0 1 552,598 Z" />
+    <text x="621" y="621" text-anchor="middle" font-family="Arial, Microsoft YaHei, sans-serif" font-size="14" fill="#0D47A1">利润分配</text>
+    <path fill="#E3F2FD" d="M718,598 H856 A6,6 0 0 1 862,604 V626 A6,6 0 0 1 856,632 H718 A6,6 0 0 1 712,626 V604 A6,6 0 0 1 718,598 Z" />
+    <text x="787" y="621" text-anchor="middle" font-family="Arial, Microsoft YaHei, sans-serif" font-size="14" fill="#0D47A1">竞争对手</text>
+    <path fill="#E3F2FD" d="M884,598 H1022 A6,6 0 0 1 1028,604 V626 A6,6 0 0 1 1022,632 H884 A6,6 0 0 1 878,626 V604 A6,6 0 0 1 884,598 Z" />
+    <text x="953" y="621" text-anchor="middle" font-family="Arial, Microsoft YaHei, sans-serif" font-size="14" fill="#0D47A1">行业趋势</text>
+  </g>
+
+  <g id="footer">
+    <text x="1200" y="700" text-anchor="end" font-family="Arial, Microsoft YaHei, sans-serif" font-size="12" fill="#6B7280">03 / 05</text>
+  </g>
+</svg>

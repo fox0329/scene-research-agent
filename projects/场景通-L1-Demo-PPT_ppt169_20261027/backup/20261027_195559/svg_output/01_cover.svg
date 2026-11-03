@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 1280 720" width="1280" height="720">
+  <g id="bg">
+    <rect x="0" y="0" width="1280" height="720" fill="#FFFFFF"/>
+    <image href="../images/P1-workbench.png" x="0" y="0" width="1280" height="720" preserveAspectRatio="xMidYMid slice"/>
+    <rect x="0" y="0" width="1280" height="720" fill="#1D2A8C" fill-opacity="0.62"/>
+  </g>
+
+  <g id="cover-brand">
+    <rect x="52" y="34" width="22" height="22" fill="#22943A"/>
+    <text x="86" y="52" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="16" fill="#FFFFFF" fill-opacity="0.86">拓维信息 · 场景通</text>
+  </g>
+
+  <g id="cover-title">
+    <text x="640" y="326" text-anchor="middle" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="64" font-weight="bold" fill="#FFFFFF">场景通</text>
+  </g>
+
+  <g id="cover-subtitle">
+    <text x="640" y="388" text-anchor="middle" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="26" fill="#FFFFFF" fill-opacity="0.94">AI 原生的售前调研工作台</text>
+  </g>
+
+  <g id="cover-line">
+    <rect x="520" y="430" width="240" height="2" fill="#FFFFFF" fill-opacity="0.45"/>
+  </g>
+
+  <g id="cover-footer">
+    <text x="640" y="620" text-anchor="middle" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="18" fill="#FFFFFF" fill-opacity="0.86">L1 产品 Demo｜2026.10</text>
+  </g>
+</svg>

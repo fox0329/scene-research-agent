@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720">
+  <defs>
+    <linearGradient id="coverGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0D47A1"/>
+      <stop offset="1" stop-color="#1565C0"/>
+    </linearGradient>
+  </defs>
+
+  <g id="background">
+    <rect x="0" y="0" width="1280" height="720" fill="url(#coverGrad)"/>
+    <path d="M 0 646 C 106.67 626 213.33 626 320 646 C 426.67 666 533.33 666 640 646 C 746.67 626 853.33 626 960 646 C 1066.67 666 1173.33 666 1280 646" fill="none" stroke="#FFFFFF" stroke-width="1.5" stroke-opacity="0.15"/>
+    <path d="M 0 662 C 106.67 642 213.33 642 320 662 C 426.67 682 533.33 682 640 662 C 746.67 642 853.33 642 960 662 C 1066.67 682 1173.33 682 1280 662" fill="none" stroke="#FFFFFF" stroke-width="1.5" stroke-opacity="0.10"/>
+    <path d="M 0 678 C 106.67 658 213.33 658 320 678 C 426.67 698 533.33 698 640 678 C 746.67 658 853.33 658 960 678 C 1066.67 698 1173.33 698 1280 678" fill="none" stroke="#FFFFFF" stroke-width="1.5" stroke-opacity="0.06"/>
+  </g>
+
+  <g id="tag">
+    <text x="640" y="98" text-anchor="middle" font-family="Arial, Microsoft YaHei, sans-serif" font-size="14" fill="#90CAF9">B 站 · 场景调研方法论 · 第 1 期</text>
+  </g>
+
+  <g id="title">
+    <text x="640" y="186" text-anchor="middle" font-family="Arial, Microsoft YaHei, sans-serif" font-size="56" font-weight="bold" fill="#FFFFFF">做解决方案的起点</text>
+    <text x="640" y="262" text-anchor="middle" font-family="Arial, Microsoft YaHei, sans-serif" font-size="56" font-weight="bold" fill="#FFFFFF">不是我们有什么产品</text>
+  </g>
+
+  <g id="subtitle">
+    <text x="640" y="312" text-anchor="middle" font-family="Arial, Microsoft YaHei, sans-serif" font-size="24" fill="#90CAF9">产品没问题、方案也合理，项目为什么还是做不成？</text>
+    <line x1="500" y1="340" x2="780" y2="340" stroke="#90CAF9" stroke-width="1.5" stroke-opacity="0.5"/>
+  </g>
+
+  <g id="question-tags-row1">
+    <rect x="146" y="372" width="222" height="46" rx="8" fill="#FFFFFF" fill-opacity="0.14"/>
+    <text x="257" y="401" text-anchor="middle" font-family="Arial, Microsoft YaHei, sans-serif" font-size="18" fill="#FFFFFF">这是一个什么场景</text>
+    <rect x="386" y="372" width="222" height="46" rx="8" fill="#FFFFFF" fill-opacity="0.14"/>
+    <text x="497" y="401" text-anchor="middle" font-family="Arial, Microsoft YaHei, sans-serif" font-size="18" fill="#FFFFFF">传统解决方案是什么</text>
+    <rect x="626" y="372" width="222" height="46" rx="8" fill="#FFFFFF" fill-opacity="0.14"/>
+    <text x="737" y="401" text-anchor="middle" font-family="Arial, Microsoft YaHei, sans-serif" font-size="18" fill="#FFFFFF">有什么真实的痛点</text>
+    <rect x="866" y="372" width="222" height="46" rx="8" fill="#FFFFFF" fill-opacity="0.14"/>
+    <text x="977" y="401" text-anchor="middle" font-family="Arial, Microsoft YaHei, sans-serif" font-size="18" fill="#FFFFFF">竞争方都有谁</text>
+  </g>
+
+  <g id="question-tags-row2">
+    <rect x="266" y="434" width="222" height="46" rx="8" fill="#FFFFFF" fill-opacity="0.14"/>
+    <text x="377" y="463" text-anchor="middle" font-family="Arial, Microsoft YaHei, sans-serif" font-size="18" fill="#FFFFFF">有进入门槛吗</text>
+    <rect x="506" y="434" width="222" height="46" rx="8" fill="#FFFFFF" fill-opacity="0.14"/>
+    <text x="617" y="463" text-anchor="middle" font-family="Arial, Microsoft YaHei, sans-serif" font-size="18" fill="#FFFFFF">产品有真实价值吗</text>
+    <rect x="746" y="434" width="222" height="46" rx="8" fill="#FFFFFF" fill-opacity="0.14"/>
+    <text x="857" y="463" text-anchor="middle" font-family="Arial, Microsoft YaHei, sans-serif" font-size="18" fill="#FFFFFF">有成本优势吗</text>
+  </g>
+
+  <g id="conclusion">
+    <rect x="140" y="516" width="1000" height="66" rx="8" fill="#FFFFFF"/>
+    <rect x="140" y="516" width="6" height="66" rx="3" fill="#FF9800"/>
+    <text x="176" y="557" font-family="Arial, Microsoft YaHei, sans-serif" font-size="22" font-weight="bold" fill="#0D47A1">起点不是我们有什么产品，而是对这个需求的深入理解。</text>
+  </g>
+
+  <g id="interaction">
+    <text x="1200" y="626" text-anchor="end" font-family="Arial, Microsoft YaHei, sans-serif" font-size="14" fill="#90CAF9">弹幕告诉我：你是先写方案，还是先做调研？</text>
+  </g>
+</svg>

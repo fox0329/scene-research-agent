@@ -1,0 +1,14 @@
+No,Filename,Width,Height,AspectRatio,PixelAspectRatio,RatioSource,UsageCount,DisplayRatioVariants,AssetKind,SvgRenderable,PptxNativeSupported,SizeKB,Category,ImageArea_SxS,TextArea_SxS
+1,P1-workbench.png,1600,900,1.78,1.78,pixel,1,,bitmap,True,True,236.4,Wide landscape,812x457,328x600
+2,P3-steps.png,1350,120,11.25,11.25,pixel,1,,bitmap,True,True,40.9,Ultra-wide,1160x103,1160x477
+3,P4-library-detail.png,1100,720,1.53,1.53,pixel,1,,bitmap,True,True,79.7,Wide landscape,812x531,328x600
+4,P4-library.png,1600,900,1.78,1.78,pixel,1,,bitmap,True,True,169.5,Wide landscape,812x457,328x600
+5,P5-definition.png,1600,900,1.78,1.78,pixel,1,,bitmap,True,True,224.4,Wide landscape,812x457,328x600
+6,P5-new-scene.png,1600,900,1.78,1.78,pixel,1,,bitmap,True,True,200.3,Wide landscape,812x457,328x600
+7,P5-table1.png,1050,650,1.62,1.62,pixel,1,,bitmap,True,True,102.5,Wide landscape,812x503,328x600
+8,P6-source-crop.png,320,430,0.74,0.74,pixel,1,,bitmap,True,True,31.1,Portrait,447x600,693x600
+9,P6-table.png,1050,700,1.50,1.50,pixel,1,,bitmap,True,True,134.9,Standard landscape,812x541,328x600
+10,P7-chat.png,1600,900,1.78,1.78,pixel,1,,bitmap,True,True,236.0,Wide landscape,812x457,328x600
+11,P8-export.png,560,80,7.00,7.00,pixel,1,,bitmap,True,True,9.7,Ultra-wide,1160x166,1160x414
+12,P8-outline.png,1600,900,1.78,1.78,pixel,1,,bitmap,True,True,242.7,Wide landscape,812x457,328x600
+13,P8-solution.png,1600,900,1.78,1.78,pixel,1,,bitmap,True,True,428.5,Wide landscape,812x457,328x600

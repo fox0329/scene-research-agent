@@ -1,0 +1,105 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720">
+  <defs>
+    <linearGradient id="topBar" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#0D47A1" />
+      <stop offset="1" stop-color="#1565C0" />
+    </linearGradient>
+  </defs>
+
+  <g id="background">
+    <rect x="0" y="0" width="1280" height="720" fill="#FFFFFF" />
+  </g>
+
+  <g id="header">
+    <rect x="0" y="0" width="1280" height="4" fill="url(#topBar)" />
+    <rect x="80" y="30" width="4" height="76" fill="#0D47A1" />
+    <text x="100" y="62" font-family="Arial, Microsoft YaHei, sans-serif" font-size="34" font-weight="bold" fill="#0D47A1">产品能不能用，不由功能决定</text>
+    <text x="100" y="94" font-family="Arial, Microsoft YaHei, sans-serif" font-size="14" fill="#6B7280">由行业的门槛决定 · 第一步：把场景的行业属性查清</text>
+  </g>
+
+  <g id="left-compare">
+    <text x="80" y="160" font-family="Arial, Microsoft YaHei, sans-serif" font-size="14" fill="#6B7280">同一套 PLC 采集，两个场景</text>
+
+    <path fill="#FFFFFF" stroke="#1565C0" stroke-width="2" d="M92,180 H588 A12,12 0 0 1 600,192 V318 A12,12 0 0 1 588,330 H92 A12,12 0 0 1 80,318 V192 A12,12 0 0 1 92,180 Z" />
+    
+  <g transform="translate(104.0, 204.0) scale(1.25)" fill="none" stroke="#1565C0" stroke-width="2">
+    <path d="M4 21c1.147 -4.02 1.983 -8.027 2 -12h6c.017 3.973 .853 7.98 2 12" />
+    <path d="M12.5 13h4.5c.025 2.612 .894 5.296 2 8" />
+    <path d="M9 5a2.4 2.4 0 0 1 2 -1a2.4 2.4 0 0 1 2 1a2.4 2.4 0 0 0 2 1a2.4 2.4 0 0 0 2 -1a2.4 2.4 0 0 1 2 -1a2.4 2.4 0 0 1 2 1" />
+    <path d="M3 21l19 0" />
+  </g>
+    <text x="146" y="226" font-family="Arial, Microsoft YaHei, sans-serif" font-size="22" font-weight="bold" fill="#0D47A1">普通工业厂房</text>
+    <text x="104" y="268" font-family="Arial, Microsoft YaHei, sans-serif" font-size="20" fill="#333333">要的是实时性和可靠性</text>
+    <path fill="#E3F2FD" d="M110,286 H194 A6,6 0 0 1 200,292 V310 A6,6 0 0 1 194,316 H110 A6,6 0 0 1 104,310 V292 A6,6 0 0 1 110,286 Z" />
+    <text x="152" y="306" text-anchor="middle" font-family="Arial, Microsoft YaHei, sans-serif" font-size="14" fill="#0D47A1">实时性</text>
+    <path fill="#E3F2FD" d="M218,286 H302 A6,6 0 0 1 308,292 V310 A6,6 0 0 1 302,316 H218 A6,6 0 0 1 212,310 V292 A6,6 0 0 1 218,286 Z" />
+    <text x="260" y="306" text-anchor="middle" font-family="Arial, Microsoft YaHei, sans-serif" font-size="14" fill="#0D47A1">可靠性</text>
+
+    <line x1="340" y1="344" x2="340" y2="376" stroke="#6B7280" stroke-width="1.5" stroke-dasharray="6 4" />
+    <text x="340" y="400" text-anchor="middle" font-family="Arial, Microsoft YaHei, sans-serif" font-size="30" font-weight="bold" fill="#0D47A1">≠</text>
+
+    <path fill="#FFFFFF" stroke="#FF9800" stroke-width="2" d="M92,416 H588 A12,12 0 0 1 600,428 V554 A12,12 0 0 1 588,566 H92 A12,12 0 0 1 80,554 V428 A12,12 0 0 1 92,416 Z" />
+    
+  <g transform="translate(104.0, 440.0) scale(1.25)" fill="none" stroke="#FF9800" stroke-width="2">
+    <path d="M12 9v4" />
+    <path d="M10.363 3.591l-8.106 13.534a1.914 1.914 0 0 0 1.636 2.871h16.214a1.914 1.914 0 0 0 1.636 -2.87l-8.106 -13.536a1.914 1.914 0 0 0 -3.274 0" />
+    <path d="M12 16h.01" />
+  </g>
+    <text x="146" y="462" font-family="Arial, Microsoft YaHei, sans-serif" font-size="22" font-weight="bold" fill="#0D47A1">燃气场站</text>
+    <text x="104" y="504" font-family="Arial, Microsoft YaHei, sans-serif" font-size="20" fill="#333333">可能有严格的防爆等级要求</text>
+    <path fill="#FFFFFF" stroke="#FF9800" stroke-width="1.5" d="M110,522 H208 A6,6 0 0 1 214,528 V546 A6,6 0 0 1 208,552 H110 A6,6 0 0 1 104,546 V528 A6,6 0 0 1 110,522 Z" />
+    <text x="159" y="542" text-anchor="middle" font-family="Arial, Microsoft YaHei, sans-serif" font-size="14" fill="#FF9800">防爆等级</text>
+  </g>
+
+  <g id="right-checklist">
+    <text x="640" y="160" font-family="Arial, Microsoft YaHei, sans-serif" font-size="14" fill="#6B7280">所以，一个场景要查这六样</text>
+    
+  <g transform="translate(640.0, 176.0) scale(1.0833333333333333)" fill="none" stroke="#0D47A1" stroke-width="2">
+    <path d="M3.5 5.5l1.5 1.5l2.5 -2.5" />
+    <path d="M3.5 11.5l1.5 1.5l2.5 -2.5" />
+    <path d="M3.5 17.5l1.5 1.5l2.5 -2.5" />
+    <path d="M11 6l9 0" />
+    <path d="M11 12l9 0" />
+    <path d="M11 18l9 0" />
+  </g>
+
+    <path fill="#E3F2FD" d="M650,218 H878 A10,10 0 0 1 888,228 V312 A10,10 0 0 1 878,322 H650 A10,10 0 0 1 640,312 V228 A10,10 0 0 1 650,218 Z" />
+    <text x="660" y="252" font-family="Arial, Microsoft YaHei, sans-serif" font-size="20" font-weight="bold" fill="#0D47A1">技术门槛</text>
+    <text x="660" y="282" font-family="Arial, Microsoft YaHei, sans-serif" font-size="14" fill="#6B7280">这个行业的技术底线在哪</text>
+    <text x="660" y="304" font-family="Arial, Microsoft YaHei, sans-serif" font-size="14" fill="#6B7280">硬指标是什么</text>
+
+    <path fill="#E3F2FD" d="M922,218 H1150 A10,10 0 0 1 1160,228 V312 A10,10 0 0 1 1150,322 H922 A10,10 0 0 1 912,312 V228 A10,10 0 0 1 922,218 Z" />
+    <text x="932" y="252" font-family="Arial, Microsoft YaHei, sans-serif" font-size="20" font-weight="bold" fill="#0D47A1">商业门槛</text>
+    <text x="932" y="282" font-family="Arial, Microsoft YaHei, sans-serif" font-size="14" fill="#6B7280">这个场景怎么花钱</text>
+    <text x="932" y="304" font-family="Arial, Microsoft YaHei, sans-serif" font-size="14" fill="#6B7280">采购逻辑是什么</text>
+
+    <path fill="#E3F2FD" d="M650,342 H878 A10,10 0 0 1 888,352 V436 A10,10 0 0 1 878,446 H650 A10,10 0 0 1 640,436 V352 A10,10 0 0 1 650,342 Z" />
+    <text x="660" y="376" font-family="Arial, Microsoft YaHei, sans-serif" font-size="20" font-weight="bold" fill="#0D47A1">合规门槛</text>
+    <text x="660" y="406" font-family="Arial, Microsoft YaHei, sans-serif" font-size="14" fill="#6B7280">有没有强制准入</text>
+    <text x="660" y="428" font-family="Arial, Microsoft YaHei, sans-serif" font-size="14" fill="#6B7280">要不要过认证</text>
+
+    <path fill="#E3F2FD" d="M922,342 H1150 A10,10 0 0 1 1160,352 V436 A10,10 0 0 1 1150,446 H922 A10,10 0 0 1 912,436 V352 A10,10 0 0 1 922,342 Z" />
+    <text x="932" y="376" font-family="Arial, Microsoft YaHei, sans-serif" font-size="20" font-weight="bold" fill="#0D47A1">供应商与头部</text>
+    <text x="932" y="406" font-family="Arial, Microsoft YaHei, sans-serif" font-size="14" fill="#6B7280">现在谁在供</text>
+    <text x="932" y="428" font-family="Arial, Microsoft YaHei, sans-serif" font-size="14" fill="#6B7280">谁是头部</text>
+
+    <path fill="#E3F2FD" d="M650,466 H878 A10,10 0 0 1 888,476 V556 A10,10 0 0 1 878,566 H650 A10,10 0 0 1 640,556 V476 A10,10 0 0 1 650,466 Z" />
+    <text x="660" y="500" font-family="Arial, Microsoft YaHei, sans-serif" font-size="20" font-weight="bold" fill="#0D47A1">设备组成</text>
+    <text x="660" y="530" font-family="Arial, Microsoft YaHei, sans-serif" font-size="14" fill="#6B7280">场景由哪些设备组成</text>
+    <text x="660" y="552" font-family="Arial, Microsoft YaHei, sans-serif" font-size="14" fill="#6B7280">年代与接口</text>
+
+    <path fill="#E3F2FD" d="M922,466 H1150 A10,10 0 0 1 1160,476 V556 A10,10 0 0 1 1150,566 H922 A10,10 0 0 1 912,556 V476 A10,10 0 0 1 922,466 Z" />
+    <text x="932" y="500" font-family="Arial, Microsoft YaHei, sans-serif" font-size="20" font-weight="bold" fill="#0D47A1">如何协作</text>
+    <text x="932" y="530" font-family="Arial, Microsoft YaHei, sans-serif" font-size="14" fill="#6B7280">设备之间怎么连</text>
+    <text x="932" y="552" font-family="Arial, Microsoft YaHei, sans-serif" font-size="14" fill="#6B7280">数据怎么走</text>
+  </g>
+
+  <g id="conclusion">
+    <path fill="#0D47A1" d="M88,590 H1152 A8,8 0 0 1 1160,598 V638 A8,8 0 0 1 1152,646 H88 A8,8 0 0 1 80,638 V598 A8,8 0 0 1 88,590 Z" />
+    <text x="104" y="626" font-family="Arial, Microsoft YaHei, sans-serif" font-size="20" font-weight="bold" fill="#FFFFFF">有了这些认识，你才能判断：自己的产品，能不能成为这个方案的一部分。</text>
+  </g>
+
+  <g id="footer">
+    <text x="1200" y="700" text-anchor="end" font-family="Arial, Microsoft YaHei, sans-serif" font-size="12" fill="#6B7280">02 / 05</text>
+  </g>
+</svg>

@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 1280 720" width="1280" height="720">
+  <!-- Content: 数据强调页 — 导语 + 4 组超大主蓝数字 + 标签 + 描述（抽自 slide4 头部统计 motif） -->
+
+  <!-- 背景 -->
+  <g id="bg">
+    <rect x="0" y="0" width="1280" height="720" fill="#FFFFFF"/>
+  </g>
+
+  <!-- 内容页 chrome -->
+  <g id="chrome-header">
+    <rect x="0.09" y="37.64" width="22.74" height="34.02" fill="#1D2A8C"/>
+    <rect x="16.73" y="33.4" width="11.34" height="11.34" fill="#22943A"/>
+    <image href="assets/image1.png" x="1109.97" y="18.73" width="123.36" height="51.68" preserveAspectRatio="none"/>
+    <text x="52.24" y="62.12" text-anchor="start" font-family="微软雅黑, &quot;Microsoft YaHei&quot;, sans-serif" font-size="32" font-weight="bold" fill="#1D2A8C">{{PAGE_TITLE}}</text>
+  </g>
+
+  <!-- 导语 -->
+  <g id="stat-intro">
+    <text x="640" y="210" text-anchor="middle" font-family="微软雅黑, &quot;Microsoft YaHei&quot;, sans-serif" font-size="28" font-weight="bold" fill="#0D0D0D">{{STAT_INTRO}}</text>
+    <line x1="490" y1="245" x2="790" y2="245" stroke="#0070C0" stroke-width="3"/>
+  </g>
+
+  <!-- 4 组数据（列中心 x: 200 / 480 / 760 / 1040） -->
+  <g id="stat-1">
+    <text x="200" y="400" text-anchor="middle" font-family="Arial, 微软雅黑, sans-serif" font-size="72" font-weight="bold" fill="#0070C0">{{STAT_1_NUM}}</text>
+    <text x="200" y="445" text-anchor="middle" font-family="微软雅黑, &quot;Microsoft YaHei&quot;, sans-serif" font-size="22" font-weight="bold" fill="#1D2A8C">{{STAT_1_LABEL}}</text>
+    <text x="200" y="480" text-anchor="middle" font-family="微软雅黑, &quot;Microsoft YaHei&quot;, sans-serif" font-size="16" fill="#404040">{{STAT_1_DESC}}</text>
+  </g>
+  <g id="stat-2">
+    <text x="480" y="400" text-anchor="middle" font-family="Arial, 微软雅黑, sans-serif" font-size="72" font-weight="bold" fill="#0070C0">{{STAT_2_NUM}}</text>
+    <text x="480" y="445" text-anchor="middle" font-family="微软雅黑, &quot;Microsoft YaHei&quot;, sans-serif" font-size="22" font-weight="bold" fill="#1D2A8C">{{STAT_2_LABEL}}</text>
+    <text x="480" y="480" text-anchor="middle" font-family="微软雅黑, &quot;Microsoft YaHei&quot;, sans-serif" font-size="16" fill="#404040">{{STAT_2_DESC}}</text>
+  </g>
+  <g id="stat-3">
+    <text x="760" y="400" text-anchor="middle" font-family="Arial, 微软雅黑, sans-serif" font-size="72" font-weight="bold" fill="#0070C0">{{STAT_3_NUM}}</text>
+    <text x="760" y="445" text-anchor="middle" font-family="微软雅黑, &quot;Microsoft YaHei&quot;, sans-serif" font-size="22" font-weight="bold" fill="#1D2A8C">{{STAT_3_LABEL}}</text>
+    <text x="760" y="480" text-anchor="middle" font-family="微软雅黑, &quot;Microsoft YaHei&quot;, sans-serif" font-size="16" fill="#404040">{{STAT_3_DESC}}</text>
+  </g>
+  <g id="stat-4">
+    <text x="1040" y="400" text-anchor="middle" font-family="Arial, 微软雅黑, sans-serif" font-size="72" font-weight="bold" fill="#0070C0">{{STAT_4_NUM}}</text>
+    <text x="1040" y="445" text-anchor="middle" font-family="微软雅黑, &quot;Microsoft YaHei&quot;, sans-serif" font-size="22" font-weight="bold" fill="#1D2A8C">{{STAT_4_LABEL}}</text>
+    <text x="1040" y="480" text-anchor="middle" font-family="微软雅黑, &quot;Microsoft YaHei&quot;, sans-serif" font-size="16" fill="#404040">{{STAT_4_DESC}}</text>
+  </g>
+
+  <!-- 底部分隔线 -->
+  <line x1="160" y1="600" x2="1120" y2="600" stroke="#0070C0" stroke-width="1" stroke-opacity="0.3"/>
+</svg>

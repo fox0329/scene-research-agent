@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 1280 720" width="1280" height="720">
+  <g id="bg">
+    <rect x="0" y="0" width="1280" height="720" fill="#1D2A8C"/>
+    <rect x="0" y="0" width="10" height="720" fill="#0070C0"/>
+    <rect x="0" y="0" width="10" height="240" fill="#22943A"/>
+  </g>
+
+  <g id="cover-brand">
+    <rect x="72" y="48" width="18" height="18" fill="#22943A"/>
+    <text x="102" y="64" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="16" fill="#FFFFFF" fill-opacity="0.86">拓维信息 · 场景通</text>
+  </g>
+
+  <g id="cover-copy">
+    <text x="72" y="306" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="64" font-weight="bold" fill="#FFFFFF">场景通</text>
+    <text x="72" y="362" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="26" fill="#FFFFFF" fill-opacity="0.94">AI 原生的售前调研工作台</text>
+    <rect x="72" y="400" width="300" height="3" fill="#22943A"/>
+    <text x="72" y="452" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="17" fill="#FFFFFF" fill-opacity="0.8">6 步分析 · 26 张信息表 · 2 份产物</text>
+    <text x="72" y="486" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="17" fill="#FFFFFF" fill-opacity="0.8">从客户材料，到解决方案和 PPT 大纲</text>
+  </g>
+
+  <g id="cover-shot">
+    <rect x="700" y="128" width="508" height="304" rx="10" fill="#FFFFFF" fill-opacity="0.12" stroke="#FFFFFF" stroke-opacity="0.28" stroke-width="1"/>
+    <image href="../images/P1-workbench.png" x="710" y="138" width="488" height="275" preserveAspectRatio="xMidYMid meet"/>
+    <rect x="710" y="138" width="488" height="275" rx="4" fill="none" stroke="#FFFFFF" stroke-opacity="0.42" stroke-width="1"/>
+    <text x="710" y="454" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="16" fill="#FFFFFF" fill-opacity="0.66">真实工作台：场景 / 表格 / 来源</text>
+  </g>
+
+  <g id="cover-footer">
+    <text x="72" y="620" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="18" fill="#FFFFFF" fill-opacity="0.82">L1 产品 Demo｜2026.10</text>
+    <text x="1208" y="620" text-anchor="end" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="16" fill="#FFFFFF" fill-opacity="0.55">场景通</text>
+  </g>
+</svg>
