@@ -238,6 +238,16 @@ export function updateRequirement(
     sets.push("check_anchor = ?");
     vals.push(patch.check_anchor ? JSON.stringify(patch.check_anchor) : null);
   }
+  if (patch.sources !== undefined) {
+    // 相似合并：来源追加（内容去重），不是整组替换——旧来源一条不丢
+    const currentSources = JSON.parse((row.source_json as string) || "[]") as RequirementSource[];
+    for (const s of patch.sources) {
+      const dup = currentSources.some((x) => JSON.stringify(x) === JSON.stringify(s));
+      if (!dup) currentSources.push(s);
+    }
+    sets.push("source_json = ?");
+    vals.push(JSON.stringify(currentSources));
+  }
   sets.push("updated_at = ?");
   vals.push(new Date().toISOString());
   vals.push(id);

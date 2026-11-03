@@ -108,4 +108,6 @@ export interface RequirementPatchRequest {
   status?: RequirementStatus;
   scope?: RequirementScope;
   check_anchor?: CheckAnchor | null;
+  /** 相似合并落库用：追加来源（内容去重由 repo 完成） */
+  sources?: RequirementSource[];
 }
