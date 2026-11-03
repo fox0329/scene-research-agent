@@ -303,10 +303,6 @@ function reportKindOf(raw: unknown): ReportKind | undefined {
 }
 
 export function registerUiRoutes(app: FastifyInstance, deps: UiRoutesDeps): void {
-  /* 反思优化（MR1-T6）：flag 开才挂抽取管道（红线：MR2 差分样本评审通过前默认关） */
-  const profileExtractor: ExtractorHandle | null = isReflectionEnabled()
-    ? createProfileExtractor({ db: deps.db, dshClient: deps.dshClient })
-    : null;
   /** 撤销一次对话写入（#312）：返回是否成功与说明 */
   app.post("/api/v1/operations/:id/undo", async (request, reply) => {
     const { id } = request.params as { id: string };
@@ -1398,6 +1394,10 @@ function registerConversationRoutes(
   converseCmd: ReturnType<typeof createConverseCommand>,
 ) {
   const { db, hub, dshClient } = deps;
+  /* 反思优化（MR1-T6）：flag 开才挂抽取管道（红线：MR2 差分样本评审通过前默认关） */
+  const profileExtractor: ExtractorHandle | null = isReflectionEnabled()
+    ? createProfileExtractor({ db, dshClient })
+    : null;
   let convSeq = 0;
   /** 场景定义对话的 SSE 流序号（与普通会话互不干扰） */
   let defSeq = 0;

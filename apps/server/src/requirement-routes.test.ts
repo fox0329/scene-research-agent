@@ -3,7 +3,6 @@
  */
 
 import { describe, expect, it, vi } from "vitest";
-import type { FastifyInstance } from "fastify";
 import { createDb } from "@scene/infra";
 import { createApp } from "./app.js";
 import { insertRequirement, listRequirements } from "./requirement-profile.js";
