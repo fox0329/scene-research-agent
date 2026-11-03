@@ -365,6 +365,8 @@ export { normRequirementText, requirementSimilarity, confidenceRank, isBlacklist
 export type { ExtractionOutcome, ResolveContext, ReviewHint } from "./intent-profile.js";
 export { anchorViolated, evaluateEntry, evaluateEntries, excludeDismissed, decideRound, mergeFindings, DEFAULT_REFLECTION_ROUNDS, MAX_REFLECTION_ROUNDS } from "./reflection-loop.js";
 export type { AnchorTarget, AnchorViolation, RoundDecision } from "./reflection-loop.js";
+export { shouldAskClarify, answerExistsInProfile, extractKeywords, CLARIFY_THRESHOLDS } from "./clarify-policy.js";
+export type { ClarifyContext, ClarifyDecision, ClarifyReason } from "./clarify-policy.js";
 export { scanInjection, shouldBlockInjection, BLOCK_AT_KINDS } from "./web-injection.js";
 export type { InjectionKind, InjectionScan } from "./web-injection.js";export { stripBoilerplate, extractPublishedAt } from "./web-clean.js";
 export { evaluateGates, type GateFinding, type GateRow } from "./output-gates.js";
