@@ -314,6 +314,8 @@ export const RealStagePanel: React.FC<RealStagePanelProps> = ({
             {activeTable ? (
               <SchemaTable
                 tableCode={activeTable}
+                /* 表头上一行总结：优先用生成时落库的摘要，缺失时 SchemaTable 退回表定义 purpose */
+                summary={data?.table_summaries?.[activeTable]}
                 rows={activeRows.map((r) => ({ id: r.id, row: r.row }))}
                 block={block ?? undefined}
                 category={category ?? undefined}

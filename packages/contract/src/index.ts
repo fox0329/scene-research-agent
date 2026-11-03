@@ -601,6 +601,18 @@ export const ANCHOR_TABLE_CODE = "表1-1";
 /** 场景锚所属阶段 */
 export const ANCHOR_STAGE: StageId = 1;
 
+// ─── 表级摘要（表头上一行总结，用户定调 2026-11-03） ──────────────
+
+/** 表级摘要行（一场景一表一行，≤100 字） */
+export interface TableSummaryRow {
+  scenario_id: string;
+  table_code: string;
+  /** 一句话总结：这张表讲什么、最关键的信息是什么 */
+  summary: string;
+  created_at: string;
+  updated_at: string;
+}
+
 // ─── 阶段总结文档（每阶段一份，右栏显示、可导出；见 04 §五） ──────
 
 /** 阶段总结文档行（一场景一阶段一份） */

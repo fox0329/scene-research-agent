@@ -180,6 +180,7 @@ function createMockDb(): DbInstance {
     scenarioRepo: createMockRepo<Scenario>(),
     scenarioBriefRepo: { get: () => undefined, upsert: () => ({}), remove: () => false } as never,
     stageSummaryRepo: { get: () => undefined, upsert: () => ({}), listByScenario: () => [], remove: () => false } as never,
+    tableSummaryRepo: { get: () => undefined, upsert: () => ({}), listByScenario: () => [], removeScenario: () => 0 } as never,
     scenarioStepRepo: {
       completedSteps: () => [],
       complete: () => undefined,

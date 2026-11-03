@@ -1187,7 +1187,18 @@ function registerProjectRoutes(app: FastifyInstance, deps: UiRoutesDeps) {
     const summaryReady = Boolean(
       db.stageSummaryRepo.get(id, ((stage as number) >= 6 ? 5 : stage) as InfoStageId),
     );
-    return { rows, gates: [], advice: null, completeness, summary_ready: summaryReady };
+    /* 表头上一行总结（用户定调 2026-11-03）：按表号给前端，缺的由前端退回表定义 purpose */
+    const table_summaries = Object.fromEntries(
+      db.tableSummaryRepo.listByScenario(id).map((r) => [r.table_code, r.summary]),
+    );
+    return {
+      rows,
+      gates: [],
+      advice: null,
+      completeness,
+      summary_ready: summaryReady,
+      table_summaries,
+    };
   });
 
   // 阶段表单元格编辑（落库 + source_type 转「用户确认」）

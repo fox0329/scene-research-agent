@@ -177,6 +177,8 @@ export interface ApiStagePanel {
   rows: ApiStageRow[];
   completeness: ApiCompleteness;
   summary_ready: boolean;
+  /** 表头上一行总结：表号 → 一句话（缺的表由前端退回表定义 purpose） */
+  table_summaries?: Record<string, string>;
   /** @deprecated 旧质量关，恒为空数组 */
   gates: ApiGate[];
   /** @deprecated 旧建议档位，恒为 null */

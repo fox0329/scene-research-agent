@@ -20,6 +20,7 @@ import type {
   Message,
   StageData,
   StageSummaryRow,
+  TableSummaryRow,
   QualityGate,
 } from "@scene/contract";
 import type {
@@ -27,6 +28,7 @@ import type {
   Repo,
   StageDataRepo,
   StageSummaryRepo,
+  TableSummaryRepo,
   ScenarioStepRepo,
   QualityGateRepo,
   MessageRepo,
@@ -38,6 +40,7 @@ import {
   readyTables,
   repairTruncatedJson,
   resolveSourceType,
+  stripFillerValues,
 } from "./advance-stage.js";
 import { closeUnbalanced, extractRowsBestEffort, repairToolArguments } from "./json-extract.js";
 import type { AdvanceStageDeps } from "./advance-stage.js";
@@ -281,6 +284,7 @@ function createMockDb(opts: {
       remove: vi.fn(() => false),
     },
     stageSummaryRepo: createMockStageSummaryRepo(),
+    tableSummaryRepo: createMockTableSummaryRepo(),
     scenarioStepRepo: createMockScenarioStepRepo(),
     stageDataRepo: createMockStageDataRepo(),
     qualityGateRepo: createMockQualityGateRepo(),
@@ -294,6 +298,32 @@ function createMockDb(opts: {
 }
 
 /** 阶段总结仓储 mock（内存实现） */
+/** 表级摘要仓储的内存实现（表头上一行总结；单测只关心"写进去了没"） */
+function createMockTableSummaryRepo(): TableSummaryRepo {
+  const store = new Map<string, TableSummaryRow>();
+  return {
+    get: (sid, code) => store.get(`${sid}:${code}`),
+    listByScenario: (sid) => [...store.values()].filter((r) => r.scenario_id === sid),
+    upsert: (sid, code, summary) => {
+      const stamp = new Date().toISOString();
+      const row: TableSummaryRow = {
+        scenario_id: sid,
+        table_code: code,
+        summary,
+        created_at: stamp,
+        updated_at: stamp,
+      };
+      store.set(`${sid}:${code}`, row);
+      return row;
+    },
+    removeScenario: (sid) => {
+      const hit = [...store.keys()].filter((k) => k.startsWith(`${sid}:`));
+      for (const k of hit) store.delete(k);
+      return hit.length;
+    },
+  };
+}
+
 function createMockStageSummaryRepo(): StageSummaryRepo {
   const store = new Map<string, StageSummaryRow>();
   const key = (s: string, st: number): string => `${s}#${st}`;
@@ -1393,6 +1423,28 @@ describe("json-extract — 逐行抢救（故障清单 #65）", () => {
     expect(closeUnbalanced('{"a":"含 { 和 } 的正文"')).toBe('{"a":"含 { 和 } 的正文"}');
     expect(closeUnbalanced('{"a":1}}')).toBeNull();
     expect(closeUnbalanced('{"a":"未闭合的串')).toBeNull();
+  });
+});
+
+describe("纯填充词不进业务列（用户定调 2026-11-03）", () => {
+  it("业务列写「未知/不适用/暂无」直接当空去掉", () => {
+    const out = stripFillerValues({
+      method: "未知",
+      key_params: "不适用",
+      interaction_type: "液位触发",
+      from_to: "暂无",
+    });
+    expect(out).toEqual({ interaction_type: "液位触发" });
+  });
+
+  it("溯源列不清：来源写「未知」是提示依据，前端据此标蓝", () => {
+    const out = stripFillerValues({ source: "未知", method: "待核实", authority: "T4" });
+    expect(out).toEqual({ source: "未知", authority: "T4" });
+  });
+
+  it("句子里含这些词的值保留（只清完全等于的格子）", () => {
+    const out = stripFillerValues({ method: "未知，需现场核实启泵逻辑" });
+    expect(out["method"]).toBe("未知，需现场核实启泵逻辑");
   });
 });
 

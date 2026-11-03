@@ -24,6 +24,7 @@ import type {
   Scenario,
   ScenarioBrief,
   StageSummaryRow,
+  TableSummaryRow,
   ScenarioMaterial,
   ScenarioLinkedLine,
   StageData,
@@ -826,6 +827,45 @@ export interface StageSummaryRepo {
   remove(scenarioId: string, stage: StageId): boolean;
 }
 
+/** 表级摘要仓储（表头上一行总结，用户定调 2026-11-03） */
+export interface TableSummaryRepo {
+  get(scenarioId: string, tableCode: string): TableSummaryRow | undefined;
+  listByScenario(scenarioId: string): TableSummaryRow[];
+  upsert(scenarioId: string, tableCode: string, summary: string): TableSummaryRow;
+  removeScenario(scenarioId: string): number;
+}
+
+function createTableSummaryRepo(db: Database.Database): TableSummaryRepo {
+  const get = (scenarioId: string, tableCode: string): TableSummaryRow | undefined =>
+    db
+      .prepare("SELECT * FROM table_summary WHERE scenario_id = ? AND table_code = ?")
+      .get(scenarioId, tableCode) as TableSummaryRow | undefined;
+
+  const listByScenario = (scenarioId: string): TableSummaryRow[] =>
+    db
+      .prepare("SELECT * FROM table_summary WHERE scenario_id = ? ORDER BY table_code ASC")
+      .all(scenarioId) as TableSummaryRow[];
+
+  const upsert = (scenarioId: string, tableCode: string, summary: string): TableSummaryRow => {
+    const timestamp = now();
+    if (get(scenarioId, tableCode)) {
+      db.prepare(
+        "UPDATE table_summary SET summary = ?, updated_at = ? WHERE scenario_id = ? AND table_code = ?",
+      ).run(summary, timestamp, scenarioId, tableCode);
+    } else {
+      db.prepare(
+        "INSERT INTO table_summary (scenario_id, table_code, summary, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+      ).run(scenarioId, tableCode, summary, timestamp, timestamp);
+    }
+    return get(scenarioId, tableCode)!;
+  };
+
+  const removeScenario = (scenarioId: string): number =>
+    db.prepare("DELETE FROM table_summary WHERE scenario_id = ?").run(scenarioId).changes;
+
+  return { get, listByScenario, upsert, removeScenario };
+}
+
 function createStageSummaryRepo(db: Database.Database): StageSummaryRepo {
   const get = (scenarioId: string, stage: StageId): StageSummaryRow | undefined =>
     db
@@ -1208,6 +1248,8 @@ export interface DbInstance {
   scenarioRepo: Repo<Scenario>;
   scenarioBriefRepo: ScenarioBriefRepo;
   stageSummaryRepo: StageSummaryRepo;
+  /** 表级摘要（表头上一行总结） */
+  tableSummaryRepo: TableSummaryRepo;
   scenarioStepRepo: ScenarioStepRepo;
   stageDataRepo: StageDataRepo;
   qualityGateRepo: QualityGateRepo;
@@ -1260,6 +1302,7 @@ export function createDb(dbPath?: string): DbInstance {
     scenarioRepo: createRepo<Scenario>(db, "scenario"),
     scenarioBriefRepo: createScenarioBriefRepo(db),
     stageSummaryRepo: createStageSummaryRepo(db),
+    tableSummaryRepo: createTableSummaryRepo(db),
     scenarioStepRepo: createScenarioStepRepo(db),
     stageDataRepo: createStageDataRepo(db),
     qualityGateRepo: createQualityGateRepo(db),

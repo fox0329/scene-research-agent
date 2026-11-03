@@ -220,6 +220,16 @@ CREATE TABLE IF NOT EXISTS stage_summary (
   PRIMARY KEY (scenario_id, stage)
 );
 
+-- 表头上一行总结（用户定调 2026-11-03）：每张表一句 ≤100 字的内容摘要，随生成一起落库
+CREATE TABLE IF NOT EXISTS table_summary (
+  scenario_id  TEXT NOT NULL REFERENCES scenario(id),
+  table_code   TEXT NOT NULL,
+  summary      TEXT NOT NULL,
+  created_at   TEXT NOT NULL,
+  updated_at   TEXT NOT NULL,
+  PRIMARY KEY (scenario_id, table_code)
+);
+
 CREATE TABLE IF NOT EXISTS scenario_material (
   id               TEXT PRIMARY KEY,
   scenario_id      TEXT NOT NULL REFERENCES scenario(id),

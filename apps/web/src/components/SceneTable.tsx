@@ -38,6 +38,13 @@ interface SceneTableProps<T> {
   /** 表格自身的类名（如 `schema-table--anchor`） */
   tableClassName?: string;
   /**
+   * 单元格附加类名（低可信来源的蓝字提示用）
+   *
+   * 用户定调 2026-11-03：来源不可信的信息不要留空或写「未知」，照常填有价值的内容，
+   * 但要在格子上给出**看得见的提示**——蓝字即「这条信息待核实」。
+   */
+  cellClassName?: (row: T, key: string) => string | undefined;
+  /**
    * 行级可编辑判定（缺省整行可编辑）
    *
    * 场景锚里有"表定义有、库里没有"的固定行——写了也没处落，
@@ -137,7 +144,14 @@ export function SceneTable<T extends Record<string, unknown>>({
   onRowFocus,
   tableClassName,
   rowEditable,
+  cellClassName,
 }: SceneTableProps<T>) {
+  /** 单元格附加类名：返回带前导空格的串，方便直接拼进 className */
+  const cellClassOf = (row: T, key: string): string => {
+    const extra = cellClassName?.(row, key);
+    return extra ? ` ${extra}` : "";
+  };
+
   const colKeys = columns.map((c) => c.key);
   const colKeysSig = colKeys.join(",");
   const [widths, setWidths] = useState<Widths | null>(() => loadWidths(storageKey, colKeys));
@@ -572,7 +586,10 @@ export function SceneTable<T extends Record<string, unknown>>({
                 if (col.multiline) {
                   if (canEdit) {
                     return (
-                      <td key={col.key} className="ed ed-multi">
+                      <td
+                        key={col.key}
+                        className={`ed ed-multi${cellClassOf(row, col.key)}`}
+                      >
                         <CellTextarea
                           value={String(value ?? "")}
                           placeholder={placeholderOf(col, row)}
@@ -585,7 +602,7 @@ export function SceneTable<T extends Record<string, unknown>>({
                   }
                   const text = String(value ?? "");
                   return (
-                    <td key={col.key}>
+                    <td key={col.key} className={cellClassOf(row, col.key).trim() || undefined}>
                       {text !== "" ? (
                         <span className="cell-text">{text}</span>
                       ) : (
@@ -600,7 +617,7 @@ export function SceneTable<T extends Record<string, unknown>>({
                   return (
                     <td
                       key={col.key}
-                      className={isAiFilled(row, col.key) ? "ed ai-filled" : "ed"}
+                      className={`${isAiFilled(row, col.key) ? "ed ai-filled" : "ed"}${cellClassOf(row, col.key)}`}
                       contentEditable
                       suppressContentEditableWarning
                       title={String(value ?? "")}

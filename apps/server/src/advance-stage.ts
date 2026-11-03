@@ -96,6 +96,8 @@ const RESEARCH_TIMEOUT_MS = 60_000;
 // ─── DSH 产出结构 ──────────────────────────────────────────
 
 interface DshStageOutput {
+  /** 表级一句话总结（≤100 字）：表头上一行显示，让用户不看表格也抓住中心思想 */
+  summary?: string;
   rows: Array<{
     /** 由输出契约约束枚举；服务端再用注册表本地校验（未知表号不入库） */
     table_code: string;
@@ -319,6 +321,45 @@ export function collectResearchKeywords(db: DbInstance, scenarioId: string): str
   return out.slice(0, 3);
 }
 
+/**
+ * 纯填充词：这些值没有任何信息量，不许进业务列（用户定调 2026-11-03：
+ * 「不要填不适用、未知之类的无价值的信息」）
+ *
+ * 只列"完全等于"这些词的格子——句子里含这些词（如「未知，需现场核实」）照旧保留。
+ */
+const FILLER_VALUES = new Set(["未知", "不适用", "暂无", "待确认", "待核实", "未提供"]);
+
+/**
+ * 溯源类列不清：这些列写"未知/待核实"是有意义的（说明这条没可信来源），
+ * 前端据此把整行标蓝提示，清掉反而丢了提示依据。
+ */
+const TRACE_COLUMN_KEYS = new Set([
+  "source",
+  "source_type",
+  "source_authority",
+  "authority",
+  "evidence_level",
+  "verification",
+  "verification_verdict",
+  "proof",
+  "baseline",
+  "confirm_state",
+]);
+
+/** 业务列里的纯填充词直接去掉（当空处理），不阻断入库 */
+export function stripFillerValues(fields: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(fields)) {
+    const isFiller =
+      typeof value === "string" &&
+      !TRACE_COLUMN_KEYS.has(key) &&
+      FILLER_VALUES.has(value.trim());
+    if (isFiller) continue;
+    out[key] = value;
+  }
+  return out;
+}
+
 /** 单张表的生成结果 */
 interface TableGenResult {
   code: string;
@@ -335,6 +376,8 @@ interface TableGenResult {
    * 是否落库由调用处按"这张表原本有没有数据"决定。
    */
   partial?: boolean;
+  /** 表级一句话总结（≤100 字）：模型随行产出，写库后显示在表头上方 */
+  summary?: string;
 }
 
 /**
@@ -463,11 +506,11 @@ async function generateOneTable(
 
   /** 解析一次输出；解析不出本表的行时返回 null（由调用方决定是否重试） */
   // 返回类型跟着 parseDshOutput 走（原始行形状），不要写成 InfoRow——那是落库后的形状
-  const parseOnce = (text: string) => {
+  const parseOnce = (text: string): { rows: DshStageOutput["rows"]; summary: string } | null => {
     const parsed = parseDshOutput(text);
     // 只认本表自己的行：模型多写别的表号时按表归位，避免重复入库
     const rows = parsed.rows.filter((r) => String(r.table_code) === code);
-    return rows.length > 0 ? rows : null;
+    return rows.length > 0 ? { rows, summary: String(parsed.summary ?? "").trim() } : null;
   };
 
   /**
@@ -492,16 +535,24 @@ async function generateOneTable(
       d.push({
         type: "progress",
         stage: d.stage,
-        message: `⚠️ ${label}：连接中断（${first.error}），已抢救出 ${salvagedFromError.length} 行`,
+        message: `⚠️ ${label}：连接中断（${first.error}），已抢救出 ${salvagedFromError.rows.length} 行`,
       });
-      dumpRawFailure(code, d.stage, first.text, `连接中断但抢救出 ${salvagedFromError.length} 行：${first.error}`);
-      return { code, rows: salvagedFromError, chars: first.text.length, partial: true };
+      dumpRawFailure(code, d.stage, first.text, `连接中断但抢救出 ${salvagedFromError.rows.length} 行：${first.error}`);
+      return {
+        code,
+        rows: salvagedFromError.rows,
+        summary: salvagedFromError.summary,
+        chars: first.text.length,
+        partial: true,
+      };
     }
     dumpRawFailure(code, d.stage, first.text, first.error);
     return { code, rows: [], chars: first.text.length, error: first.error };
   }
-  const rows = parseOnce(first.text);
-  if (rows) return { code, rows, chars: first.text.length };
+  const parsedFirst = parseOnce(first.text);
+  if (parsedFirst) {
+    return { code, rows: parsedFirst.rows, summary: parsedFirst.summary, chars: first.text.length };
+  }
 
   /**
    * 解析不出行 → 原样重试一次（只这一张表；实跑里 81 字/无 JSON 的失败重试后能出结果）
@@ -519,12 +570,13 @@ async function generateOneTable(
       d.push({
         type: "progress",
         stage: d.stage,
-        message: `⚠️ ${label}：连接中断（${second.error}），已抢救出 ${parsedSecond.length} 行`,
+        message: `⚠️ ${label}：连接中断（${second.error}），已抢救出 ${parsedSecond.rows.length} 行`,
       });
     }
     return {
       code,
-      rows: parsedSecond,
+      rows: parsedSecond.rows,
+      summary: parsedSecond.summary,
       chars: second.text.length,
       ...(second.error ? { partial: true } : {}),
     };
@@ -536,9 +588,15 @@ async function generateOneTable(
       d.push({
         type: "progress",
         stage: d.stage,
-        message: `⚠️ ${label}：重试仍中断（${second.error}），已抢救出 ${salvaged.length} 行`,
+        message: `⚠️ ${label}：重试仍中断（${second.error}），已抢救出 ${salvaged.rows.length} 行`,
       });
-      return { code, rows: salvaged, chars: first.text.length, partial: true };
+      return {
+        code,
+        rows: salvaged.rows,
+        summary: salvaged.summary,
+        chars: first.text.length,
+        partial: true,
+      };
     }
   }
 
@@ -996,6 +1054,13 @@ async function* executeAdvanceStage(
       db.stageDataRepo.deleteByScenarioStageTable(scenarioId, stage, code);
     }
   }
+  /* 表级摘要随表落库（表头上一行总结，用户定调 2026-11-03）：
+     只写本次真正产出并落库的表；摘要缺失就不动旧值，避免把有用的一句话清掉 */
+  for (const r of tableResults) {
+    if (succeededCodes.has(r.code) && r.summary && r.summary !== "") {
+      db.tableSummaryRepo.upsert(scenarioId, r.code, r.summary);
+    }
+  }
   db.qualityGateRepo.deleteByScenarioStage(scenarioId, stage);
 
   // 未知表号的产出行不入库（无 schema 就无法渲染，入库只会污染数据）
@@ -1027,7 +1092,11 @@ async function* executeAdvanceStage(
       sourceType,
       parseCitations(row.source ?? "").length > 0,
     );
-    const normalized: InfoRow = { ...fields, authority, evidence_level: evidenceLevel };
+    const normalized: InfoRow = {
+      ...stripFillerValues(fields),
+      authority,
+      evidence_level: evidenceLevel,
+    };
     const inserted = db.stageDataRepo.insert({
       scenario_id: scenarioId,
       stage,

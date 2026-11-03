@@ -20,6 +20,7 @@ export type {
   CreateStageDataInput,
   ScenarioBriefRepo,
   StageSummaryRepo,
+  TableSummaryRepo,
   ScenarioStepRepo,
   ResearchSource,
   ResearchRepo,

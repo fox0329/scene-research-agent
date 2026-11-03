@@ -1779,6 +1779,18 @@ td.ed {
 
 .schema-table-note { margin: 0; font-size: var(--txs); color: var(--ct3); }
 
+/* 表头上一行总结（用户定调 2026-11-03）：≤100 字，说清这张表讲什么 */
+.schema-table-summary {
+  margin: 0; font-size: var(--ts); color: var(--ct2); line-height: var(--lh-relaxed, 1.6);
+}
+
+/* 低可信/待核实：蓝字提示，不删内容也不留空（用户定调 2026-11-03） */
+.schema-table td.low-trust,
+.schema-table td.low-trust .cell-text,
+.schema-table td.low-trust.ed {
+  color: var(--c-unverified);
+}
+
 /* 表格本体：固定布局 + 100% 宽，默认不出现横向滚动 */
 .schema-table {
   width: 100%; table-layout: fixed; border-collapse: collapse;

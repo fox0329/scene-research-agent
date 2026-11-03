@@ -51,6 +51,11 @@ export interface SchemaTableProps {
   /** 行被点击或行内单元格获得焦点时上报（父级据此更新当前行） */
   onRowFocus?: (rowId: string) => void;
   readOnly?: boolean;
+  /**
+   * 表头上一行总结（≤100 字）：生成时由模型随表产出，概括这张表讲什么；
+   * 缺省退回表定义的 purpose（旧数据没有摘要时的兜底，保证这行不空）。
+   */
+  summary?: string;
 }
 
 /** 单元格取值 → 单行展示文本（数组用顿号连接） */
@@ -193,6 +198,32 @@ export function AnchorTable({
  * - 多子块表 → 每块一张表（无数据的块不渲染）
  * - 普通表 → 限制在中栏列内渲染
  */
+/**
+ * 来源不可信 / 待核实 → 中栏蓝字提示（用户定调 2026-11-03）
+ *
+ * 不再把"没有可信来源"的信息留空或写成「未知」：内容照填，靠颜色提示可信度。
+ * 判定看三处：来源权威性 T3/T4、证据等级 C/D、来源文本里写明"待核实/行业通识"。
+ */
+export function isLowTrustRow(row: Record<string, unknown>): boolean {
+  const authority = String(row["source_authority"] ?? "").trim();
+  if (authority === "T3" || authority === "T4") return true;
+  const evidence = String(row["evidence_level"] ?? "").trim();
+  if (evidence === "C" || evidence === "D") return true;
+  const source = String(row["source"] ?? "");
+  return /未知|待核实|待确认|行业通识|行业通用|通例|推断/iu.test(source);
+}
+
+/** 表头上一行总结：优先用生成时的表级摘要，没有就退回表定义的用途说明（去掉 markdown 记号） */
+export function tableSummaryText(
+  summary: string | undefined,
+  purpose: string | undefined,
+): string {
+  const pick = (summary ?? "").trim() || (purpose ?? "").trim();
+  const plain = pick.replace(/\*\*/gu, "").replace(/`/gu, "").replace(/\s+/gu, " ").trim();
+  const chars = Array.from(plain);
+  return chars.length <= 100 ? plain : `${chars.slice(0, 99).join("")}…`;
+}
+
 export function SchemaTable(props: SchemaTableProps): React.ReactElement | null {
   const {
     tableCode,
@@ -203,6 +234,7 @@ export function SchemaTable(props: SchemaTableProps): React.ReactElement | null 
     activeRowId,
     onRowFocus,
     readOnly,
+    summary,
   } = props;
   const def = useMemo(() => tableDef(tableCode), [tableCode]);
 
@@ -222,6 +254,7 @@ export function SchemaTable(props: SchemaTableProps): React.ReactElement | null 
      用户既不知道这张表要填什么，也没法判断智能体漏了哪些列（表2-4 实跑踩过）。 */
   const isEmpty = rows.length === 0;
   const showGroupHeader = Boolean(def.groupBy);
+  const summaryText = tableSummaryText(summary, def.purpose);
   return (
     <div className="schema-table-wrap">
       {/* 用户定调 2026-10-09：表头只留**表名**，「表X-X」这个表号删掉——有名称就够了。
@@ -231,6 +264,8 @@ export function SchemaTable(props: SchemaTableProps): React.ReactElement | null 
         <span className="tier-badge">{def.tier}</span>
         <span className="row-unit">{def.rowUnit}</span>
       </div>
+      {/* 表头上一行总结（用户定调 2026-11-03）：100 字以内，一眼看到这张表在讲什么 */}
+      <p className="schema-table-summary">{summaryText}</p>
       {isEmpty ? (
         <p className="schema-table-note">
           本表还没有内容：列名就是这张表要填的字段，可以在对话里让智能体按这些列生成
@@ -244,6 +279,10 @@ export function SchemaTable(props: SchemaTableProps): React.ReactElement | null 
         rowIdOf={(_row, index) => rows[index]?.id ?? null}
         activeRowId={activeRowId}
         onRowFocus={onRowFocus}
+        /* 低可信来源的格子用蓝字提示；不删内容、不留空（用户定调 2026-11-03） */
+        cellClassName={(row, _key) =>
+          isLowTrustRow(row as Record<string, unknown>) ? "low-trust" : undefined
+        }
         onCellChange={
           readOnly || !onCellChange
             ? undefined
