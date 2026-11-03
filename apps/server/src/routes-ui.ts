@@ -12,6 +12,7 @@ import { createWriteStream, existsSync, readFileSync, rmSync, writeFileSync } fr
 import { pipeline } from "node:stream/promises";
 import { join } from "node:path";
 import { tmpdir, homedir } from "node:os";
+import { recordInteractionEvent } from "./requirement-profile.js";
 import type {
   Boundary,
   Conversation,
@@ -305,6 +306,13 @@ export function registerUiRoutes(app: FastifyInstance, deps: UiRoutesDeps): void
     const { id } = request.params as { id: string };
     const result = undoOperation(deps.db, id);
     if (!result.ok) return badRequest(reply, result.message);
+    /* 埋点（MR1-T2）：用户撤销模型操作——最强负反馈信号 */
+    recordInteractionEvent(deps.db, {
+      surface: "ui",
+      action: "undo",
+      target: id,
+      detail: { conversation_id: result.operation?.conversation_id ?? null },
+    });
     return result;
   });
 
@@ -1157,7 +1165,7 @@ function registerProjectRoutes(app: FastifyInstance, deps: UiRoutesDeps) {
 
   // 用户决定：继续 → current_stage 前进一步；其余动作仅确认回执
   app.post("/api/v1/projects/:id/stages/:stage/decide", async (request, reply) => {
-    const { id } = request.params as { id: string };
+    const { id, stage } = request.params as { id: string; stage: string };
     const body = (request.body ?? {}) as { action?: unknown };
     const action = String(body.action ?? "");
     if (!["继续", "补充", "停止", "重算"].includes(action)) {
@@ -1165,6 +1173,14 @@ function registerProjectRoutes(app: FastifyInstance, deps: UiRoutesDeps) {
     }
     const scenario = db.scenarioRepo.getById(id);
     if (!scenario) return notFound(reply, `场景 ${id} 不存在`);
+    /* 埋点（MR1-T2）：质量关决策——「重算」即重写指令（rewrite），其余为确认（confirm） */
+    recordInteractionEvent(deps.db, {
+      scenario_id: id,
+      surface: "ui",
+      action: action === "重算" ? "rewrite" : "confirm",
+      target: `stage:${stage}`,
+      detail: { action },
+    });
     if (action === "继续" && scenario.current_stage < 8) {
       return db.scenarioRepo.update(id, {
         current_stage: (scenario.current_stage + 1) as StageId,
@@ -1311,6 +1327,14 @@ function registerProjectRoutes(app: FastifyInstance, deps: UiRoutesDeps) {
     const updated = db.stageDataRepo.update(rowId, {
       row: nextRow,
       source_type: "用户确认",
+    });
+    /* 埋点（MR1-T2）：用户编辑单元格 → 需求画像的输入信号（event-recorder 唯一写入口） */
+    recordInteractionEvent(deps.db, {
+      scenario_id: id,
+      surface: "ui",
+      action: "edit_cell",
+      target: `${String(row.table_code)}:${rowId}:${cell}`,
+      detail: { value: body.value },
     });
     /* 改了这一格 → 引用这张表的下游阶段标「待重算」（如 表2-2 → 阶段 2、4）
        依据是 TABLE_DEPENDENCIES；本阶段自身不吃自己的依赖，故只标下游。 */

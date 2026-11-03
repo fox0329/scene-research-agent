@@ -23,6 +23,7 @@ import {
 } from "./operation-log.js";
 import { takePending } from "./pending-ops.js";
 import { syncDerivedDescription } from "./scenario-anchor.js";
+import { recordInteractionEvent } from "./requirement-profile.js";
 
 export interface ToolOutcome {
   note: string;
@@ -438,6 +439,14 @@ export function undoLast(ctx: ToolContext): ToolOutcome {
   if (!rec) throw new Error("没有可撤销的修改");
   const result = undoOperation(ctx.db, rec.id);
   if (!result.ok) throw new Error(result.message);
+  /* 埋点（MR1-T2）：对话撤销也是用户撤销——surface=conversation 区别于 UI 端点 */
+  recordInteractionEvent(ctx.db, {
+    conversation_id: ctx.conversationId,
+    surface: "conversation",
+    action: "undo",
+    target: rec.id,
+    detail: { summary: rec.summary },
+  });
   return {
     note: `已撤销上一次修改：${rec.summary}。`,
     operation: { id: rec.id, summary: `撤销：${rec.summary}` },
