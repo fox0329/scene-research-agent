@@ -306,12 +306,11 @@ export function registerUiRoutes(app: FastifyInstance, deps: UiRoutesDeps): void
     const { id } = request.params as { id: string };
     const result = undoOperation(deps.db, id);
     if (!result.ok) return badRequest(reply, result.message);
-    /* 埋点（MR1-T2）：用户撤销模型操作——最强负反馈信号 */
+    /* 埋点（MR1-T2）：用户撤销模型操作——最强负反馈信号（undo 端点无会话上下文，scenario_id 空） */
     recordInteractionEvent(deps.db, {
       surface: "ui",
       action: "undo",
       target: id,
-      detail: { conversation_id: result.operation?.conversation_id ?? null },
     });
     return result;
   });
