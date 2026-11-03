@@ -165,4 +165,6 @@ jobs:
             echo "::error::校验和只有 $LINES 行，两平台产物应各一行"
             exit 1
           fi
-          gh release upload "$TAG" out/SHA256SUMS.txt --clobber
+          # 必须显式给 --repo：本 job 不 checkout，没有 git 上下文，
+          # gh 会报 "fatal: not a git repository"（v0.9.26 真实踩过）
+          gh release upload "$TAG" out/SHA256SUMS.txt --clobber --repo "$GITHUB_REPOSITORY"
