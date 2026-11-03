@@ -363,6 +363,8 @@ export { chunkMarkdown, blocksToText, BLOCK_MAX, BLOCK_MIN } from "./web-chunk.j
 export type { WebBlock } from "./web-chunk.js";
 export { normRequirementText, requirementSimilarity, confidenceRank, isBlacklisted, resolveIncoming, undoReviewTargets, applyUserEditWins, upgradeCandidates, buildDimensionGapEntry } from "./intent-profile.js";
 export type { ExtractionOutcome, ResolveContext, ReviewHint } from "./intent-profile.js";
+export { anchorViolated, evaluateEntry, evaluateEntries, excludeDismissed, decideRound, mergeFindings, DEFAULT_REFLECTION_ROUNDS, MAX_REFLECTION_ROUNDS } from "./reflection-loop.js";
+export type { AnchorTarget, AnchorViolation, RoundDecision } from "./reflection-loop.js";
 export { scanInjection, shouldBlockInjection, BLOCK_AT_KINDS } from "./web-injection.js";
 export type { InjectionKind, InjectionScan } from "./web-injection.js";export { stripBoilerplate, extractPublishedAt } from "./web-clean.js";
 export { evaluateGates, type GateFinding, type GateRow } from "./output-gates.js";
