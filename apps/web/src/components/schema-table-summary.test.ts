@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { isLowTrustCell, tableSummaryText } from "./SchemaTable.js";
+import { tableDef } from "@scene/contract";
+import { isLowTrustCell, isWeakValueCell, tableSummaryText } from "./SchemaTable.js";
 
 describe("表头上一行内容总结（用户定调 2026-11-03）", () => {
   it("只有内容总结才显示；没有就不显示（不拿表定义说明充当总结）", () => {
@@ -21,6 +22,14 @@ describe("格级低可信标蓝（用户定调 2026-11-03）", () => {
     const row = { __low_trust: ["method"], interaction_type: "液位触发", method: "浮球启泵" };
     expect(isLowTrustCell(row, "method")).toBe(true);
     expect(isLowTrustCell(row, "interaction_type")).toBe(false);
+  });
+
+  it("红字按当前内容实时判定：占位词标红、短名词与序号不标", () => {
+    const def = tableDef("表3-2");
+    expect(isWeakValueCell(def, { position: "未知" }, "position")).toBe(true);
+    expect(isWeakValueCell(def, { position: "1" }, "position")).toBe(false);
+    expect(isWeakValueCell(def, { key_points: "数据采集" }, "key_points")).toBe(false);
+    expect(isWeakValueCell(def, { key_points: "" }, "key_points")).toBe(false);
   });
 
   it("没有标记的行一个格子都不蓝（不再按整行 T3/T4 染色）", () => {

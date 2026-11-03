@@ -19,7 +19,7 @@ export {
 export type { SourceCategory } from "./evidence.js";
 
 // 表格内容价值判定（两轮生成的触发依据）
-export { VALUE_RATIO_FLOOR, isBlankOrFiller, isValuableCell, tableValueScore } from "./table-value.js";
+export { VALUE_RATIO_FLOOR, isBlankOrFiller, isValuableCell, tableValueScore, weakCellKeys } from "./table-value.js";
 export type { TableValueScore } from "./table-value.js";
 
 // 资料库入库标准（新导入共用）

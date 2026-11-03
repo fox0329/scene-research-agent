@@ -1794,6 +1794,13 @@ td.low-trust.ed {
   color: var(--c-unverified);
 }
 
+/* 填了但没价值（二轮降级后仍是无信息量的占位/短词）：红字，比蓝字更严重 */
+td.weak-value,
+td.weak-value .cell-text,
+td.weak-value.ed {
+  color: var(--ce);
+}
+
 /* 表格本体：固定布局 + 100% 宽，默认不出现横向滚动 */
 .schema-table {
   width: 100%; table-layout: fixed; border-collapse: collapse;

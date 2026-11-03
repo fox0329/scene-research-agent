@@ -14,16 +14,18 @@ const FILLER = /^(未知|不适用|暂无|待确认|待核实|未提供|无|N\/A
 /**
  * 一格算不算"有价值"
  *
- * 判据（任一即算）：
- *  - 长度 ≥ 5 个字（"浮球启泵"这种 4 字短语信息量太低）；
- *  - 含数字或型号（`≥25000 小时`、`CT15`、`1/1000` 这类短但精确）。
- * 空、纯填充词、单字答案（是/否/高/低）都不算。
+ * 判据：**非空、非占位词、不是单字答案**就算有价值。
+ *
+ * 早前用"≥5 个字"当门槛，结果把「数据采集」「设备控制」「快速上云」这些**能力名**
+ * 全判成没价值标了红——名词本来就短，短不等于空。用户要的是"不要空洞地说不适用/未知"，
+ * 不是"不许写短名词"，所以门槛只拦真正的空话：占位词与单字是非答案。
  */
 export function isValuableCell(raw: unknown): boolean {
   const text = (Array.isArray(raw) ? raw.join("、") : String(raw ?? "")).trim();
   if (text === "" || FILLER.test(text)) return false;
-  if (/[\dA-Za-z]/u.test(text) && Array.from(text).length >= 2) return true;
-  return Array.from(text).length >= 5;
+  /* 单个字符：纯数字是有效内容（序号/排名 1、2、3…），单个汉字或字母不是答案（是/否/高/低） */
+  if (Array.from(text).length < 2) return /^\d$/u.test(text);
+  return true;
 }
 
 /** 空或纯填充词（枚举列只看这个） */
@@ -61,5 +63,30 @@ export function tableValueScore(def: TableDef, rows: ReadonlyArray<Record<string
   return { total, valuable, ratio: valuable / total };
 }
 
-/** 低于这个有效占比就认为"这一轮没产出价值"，值得降级重来一遍 */
-export const VALUE_RATIO_FLOOR = 0.6;
+/**
+ * 达标线（用户定调 2026-11-03：「按单个单元格统计，90% 以上达标」）
+ *
+ * 低于它 → 降低可信度做二轮检索/填表；二轮后仍不达标的格子标红。
+ */
+export const VALUE_RATIO_FLOOR = 0.9;
+
+/**
+ * 一行里"有内容但没价值"的列（空格子不算——没有文字可染红）
+ *
+ * 「填了但等于没填」：占位词（未知/不适用/待核实）、单字答案（是/否/高/低）、空话。
+ * 这些是**已经花了模型 token 却没产出信息**的格子，用户要能一眼看见（红字）。
+ */
+export function weakCellKeys(def: TableDef, row: Record<string, unknown>): string[] {
+  const weak: string[] = [];
+  for (const col of middleColumns(def)) {
+    const raw = row[col.key];
+    const text = (Array.isArray(raw) ? raw.join("、") : String(raw ?? "")).trim();
+    /* 真空的格子不标：界面上它本来就是空的，没有文字可染红 */
+    if (text === "") continue;
+    const isEnum = col.enum !== undefined && col.enum !== null;
+    /* 「未知」「不适用」「是/否」这些**填了但没信息量**的才算弱格——用户要的正是把它们标红 */
+    const ok = isEnum ? !isBlankOrFiller(raw) : isValuableCell(raw);
+    if (!ok) weak.push(col.key);
+  }
+  return weak;
+}

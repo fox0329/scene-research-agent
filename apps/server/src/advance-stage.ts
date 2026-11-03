@@ -52,6 +52,7 @@ import {
   tableValueScore,
   validateIncomingRows,
   VALUE_RATIO_FLOOR,
+  weakCellKeys,
 } from "@scene/domain";
 import type { InfoRow, PostcheckFinding, PostcheckReport, RowViolation } from "@scene/domain";
 import { hasCustomerFacts, missingMaterialHint } from "@scene/domain";
@@ -1014,6 +1015,25 @@ async function* executeAdvanceStage(
                     type: "progress",
                     stage,
                     message: `🔁 ${labelOf(code)}：补充没成功，保留第一轮结果`,
+                  });
+                }
+              }
+            }
+
+            /* 二轮之后仍没价值的格子：只统计出来提示，**不把标记写进数据**——
+               前端按当前内容实时判定（标记会在自检改写那一格之后失效，实测表3-2 就是这样） */
+            if (effective.rows.length > 0 && !effective.error) {
+              const def = tableDef(code);
+              if (def) {
+                const weakTotal = effective.rows.reduce(
+                  (n, r) => n + weakCellKeys(def, r.fields).length,
+                  0,
+                );
+                if (weakTotal > 0) {
+                  push({
+                    type: "progress",
+                    stage,
+                    message: `⚠️ ${labelOf(code)}：仍有 ${weakTotal} 个格子没填出价值（会标红，建议重算或补材料）`,
                   });
                 }
               }

@@ -20,7 +20,9 @@ import {
   middleColumnsByBlock,
   tableDef,
   type TableColumn,
+  type TableDef,
 } from "@scene/contract";
+import { isBlankOrFiller, isValuableCell } from "@scene/domain";
 import { SceneTable, type ColumnDef } from "./SceneTable.js";
 import { plainText } from "./text-display";
 
@@ -184,7 +186,10 @@ export function AnchorTable({
       storageKey="anchor:表1-1"
       rowEditable={(row) => editable && row.rowId !== null}
       /* 推断补的格子标蓝（用户定调 2026-11-03）：场景锚也要能看出哪句是推断的 */
-      cellClassName={(row, key) => (isLowTrustCell(row.raw, key) ? "low-trust" : undefined)}
+      cellClassName={(row, key) => {
+        if (isWeakValueCell(tableDef("表1-1"), row.raw, key)) return "weak-value";
+        return isLowTrustCell(row.raw, key) ? "low-trust" : undefined;
+      }}
       {...(editable
         ? {
             onCellChange: (rowIndex, _key, value) => {
@@ -217,6 +222,31 @@ export function isLowTrustCell(row: Record<string, unknown>, key: string): boole
   const cells = row["__low_trust"];
   return Array.isArray(cells) && cells.map(String).includes(key);
 }
+
+/**
+ * 格子里"填了但没信息量" → 红字（用户定调 2026-11-03）
+ *
+ * 和蓝字分工：蓝＝有判断但来源不可信（推断）；红＝「未知/不适用/单字答案」这类没价值的填充。
+ *
+ * **按当前内容实时判定，不读生成时写下的标记**：标记会在自检改写那一格之后失效
+ * （实测表3-2 的「未知」被自检补成一句完整判断，红字却还留着），实时算才不会指错。
+ * 规则与领域层 `tableValueScore` 一致：枚举列只看非空，其余看 `isValuableCell`。
+ */
+export function isWeakValueCell(
+  def: TableDef | undefined,
+  row: Record<string, unknown>,
+  key: string,
+): boolean {
+  const raw = row[key];
+  const text = (Array.isArray(raw) ? raw.join("、") : String(raw ?? "")).trim();
+  /* 空格子不标红：它本来就是空的，染红没有意义 */
+  if (text === "") return false;
+  const col = def?.columns?.find((c: TableColumn) => c.key === key);
+  return col?.enum !== undefined && col?.enum !== null
+    ? isBlankOrFiller(raw)
+    : !isValuableCell(raw);
+}
+
 
 /**
  * 表头上一行总结：**只显示对已填内容的总结**（用户定调 2026-11-03）
@@ -291,9 +321,11 @@ export function SchemaTable(props: SchemaTableProps): React.ReactElement | null 
         activeRowId={activeRowId}
         onRowFocus={onRowFocus}
         /* 只有"没来源、按推断写的"那一格标蓝；有依据的格子保持黑色（用户定调 2026-11-03） */
-        cellClassName={(row, key) =>
-          isLowTrustCell(row as Record<string, unknown>, key) ? "low-trust" : undefined
-        }
+        cellClassName={(row, key) => {
+          const r = row as Record<string, unknown>;
+          if (isWeakValueCell(def, r, key)) return "weak-value";
+          return isLowTrustCell(r, key) ? "low-trust" : undefined;
+        }}
         onCellChange={
           readOnly || !onCellChange
             ? undefined
