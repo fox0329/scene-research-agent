@@ -59,6 +59,20 @@ export interface SourceJudgement {
  * - `ugc`：指向内容农场/UGC 站点（给了链接但撑不住）
  * - `ok`：材料页码、官方/媒体 URL 等，交给既有权威性分级继续判
  */
+/**
+ * 把 source 里的 URL 与粘连的正文切开
+ *
+ * 实测（地铁能源管控表3-1）：模型会写成
+ * `https://max.book118.com/html/...shtm；能耗统计须按标准分项计量`——
+ * URL 后面黏了一句正文。URL 只到第一个非 URL 字符为止，后面的说明属于右栏核实说明，不进来源列。
+ */
+export function cleanSourceText(source: unknown): string {
+  const text = typeof source === "string" ? source.trim() : "";
+  const matched = text.match(/https?:\/\/[^\s，。；、）)】\]"'<>]+/u);
+  if (!matched) return text;
+  return matched[0];
+}
+
 export function judgeSourceQuality(source: unknown): SourceJudgement {
   const text = typeof source === "string" ? source.trim() : "";
   if (text === "") return { quality: "no-source" };

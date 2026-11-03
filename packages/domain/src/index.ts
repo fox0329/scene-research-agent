@@ -22,6 +22,7 @@ export type { SourceCategory } from "./evidence.js";
 export { VALUE_RATIO_FLOOR, isBlankOrFiller, isValuableCell, tableValueScore, weakCellKeys } from "./table-value.js";
 export { cellTrustClass, cellTrustOf, isVerifiableSource, type CellTrust } from "./cell-trust.js";
 export {
+  cleanSourceText,
   judgeSourceQuality,
   normalizeSourceText,
   type SourceJudgement,

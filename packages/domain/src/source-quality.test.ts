@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { judgeSourceQuality, normalizeSourceText } from "./source-quality.js";
+import { cleanSourceText, judgeSourceQuality, normalizeSourceText } from "./source-quality.js";
 
 describe("来源质量门（用户定调 2026-11-03：内容农场只能当线索）", () => {
   it("禁止措辞一律判成没来源", () => {
@@ -45,5 +45,20 @@ describe("来源质量门（用户定调 2026-11-03：内容农场只能当线�
     const ugc = normalizeSourceText({ quality: "ugc", domain: "baijiahao.baidu.com" });
     expect(ugc).toContain("baijiahao.baidu.com");
     expect(ugc).toContain("未见权威来源");
+  });
+});
+
+describe("来源列里 URL 与正文粘连要切开（地铁能源管控实测）", () => {
+  it("URL 后面的中文说明不进来源列", () => {
+    expect(
+      cleanSourceText("https://max.book118.com/html/2025/1119/5124314330013014.shtm；能耗统计须按标准分项计量"),
+    ).toBe("https://max.book118.com/html/2025/1119/5124314330013014.shtm");
+  });
+
+  it("正常来源原样返回", () => {
+    expect(cleanSourceText("招标文件.pdf:12")).toBe("招标文件.pdf:12");
+    expect(cleanSourceText("http://finance.sina.cn/2026-01-07/detail-inhfnqzp4657681.d.html")).toBe(
+      "http://finance.sina.cn/2026-01-07/detail-inhfnqzp4657681.d.html",
+    );
   });
 });

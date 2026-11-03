@@ -49,6 +49,7 @@ import {
   gradeAnalysisEvidence,
   gradeSource,
   parseCitations,
+  cleanSourceText,
   judgeSourceQuality,
   normalizeSourceText,
   tableValueScore,
@@ -993,7 +994,7 @@ async function* executeAdvanceStage(
                 push({
                   type: "progress",
                   stage,
-                  message: `🔁 ${labelOf(code)}：有效内容仅 ${pct}%，按行业通识补充一轮（补出来的标蓝）…`,
+                  message: `🔁 ${labelOf(code)}：有效内容仅 ${pct}%，按行业通识补充一轮…`,
                 });
                 const retry = await generateOneTable(code, { ...genArgs, relaxed: true }).catch(
                   () => null,
@@ -1003,7 +1004,7 @@ async function* executeAdvanceStage(
                   push({
                     type: "progress",
                     stage,
-                    message: `🔁 ${labelOf(code)}：补充完成，${retry.rows.length} 行（蓝色＝按行业通识补的，待核实）`,
+                    message: `🔁 ${labelOf(code)}：补充完成，${retry.rows.length} 行（来源标记为推断；需调研的列会标蓝，技术实现类仍为黑）`,
                   });
                 } else {
                   push({
@@ -1195,7 +1196,8 @@ async function* executeAdvanceStage(
      * 整行都没有可定位来源，只标部分格子会让人以为剩下的有依据。
      */
     const sourceJudge = judgeSourceQuality(row.source);
-    const finalSource = sourceJudge.quality === "ok" ? row.source : normalizeSourceText(sourceJudge);
+    const finalSource =
+      sourceJudge.quality === "ok" ? cleanSourceText(row.source) : normalizeSourceText(sourceJudge);
     // 来源标记（变更表 #162）：模型声明优先，未声明按出处如实判定，不替模型声称"材料提取"
     const sourceType =
       sourceJudge.quality === "ok"
