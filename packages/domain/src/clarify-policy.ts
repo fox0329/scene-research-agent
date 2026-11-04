@@ -65,9 +65,10 @@ export function shouldAskClarify(ctx: ClarifyContext): ClarifyDecision {
 const TOKEN_MIN_LENGTH = 2;
 
 /**
- * 确定性检查：条目文本的 2-gram 片段出现在问句中 → 答案已存在 → 丢弃候选。
- * 中文无分词依赖（不引第三方库），反向匹配（条目短句片段 ⊂ 问句）比正向抽词可靠；
- * 常用词误命中方向是「多丢不误问」，与宁可漏改不可误改同向。
+ * 确定性检查：条目文本的 2-gram 片段在问句中的**覆盖率**达阈值 → 答案已存在 → 丢弃候选。
+ * 中文无分词依赖（不引第三方库），反向匹配（条目短句片段 ⊂ 问句）比正向抽词可靠。
+ * 真机教训（#365）：单 2-gram 命中即判存在会过度拦截（条目 10 个 2-gram，问题含「对比」就被拦），
+ * 三轮真机澄清全被误拦 → 改覆盖率：命中数 ≥ max(3, 40%) 才算该条目有答案。
  * 材料库全文索引检查由应用层补（领域层不碰 IO），本函数只做画像侧。
  */
 export function answerExistsInProfile(question: string, entries: readonly { text: string }[]): boolean {
@@ -75,10 +76,13 @@ export function answerExistsInProfile(question: string, entries: readonly { text
   return entries.some((e) => {
     const t = e.text.replace(/[\s，,。.、；;：:"'「」]/gu, "");
     if (t.length < TOKEN_MIN_LENGTH) return false;
+    const grams = Math.max(0, t.length - TOKEN_MIN_LENGTH + 1);
+    const need = Math.max(3, Math.ceil(grams * 0.4));
+    let hit = 0;
     for (let i = 0; i + TOKEN_MIN_LENGTH <= t.length; i++) {
-      if (question.includes(t.slice(i, i + TOKEN_MIN_LENGTH))) return true;
+      if (question.includes(t.slice(i, i + TOKEN_MIN_LENGTH))) hit++;
     }
-    return false;
+    return hit >= need;
   });
 }
 

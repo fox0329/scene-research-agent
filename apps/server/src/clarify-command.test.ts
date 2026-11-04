@@ -60,7 +60,8 @@ describe("maybe-clarify（MR3-T2）", () => {
       confidence: "用户原话",
       sources: [],
     });
-    const dsh = mockDsh("项目预算大概多少？");
+    // #365 覆盖率修正：问题须与条目高重合（多个 2-gram 命中）才判「答案已存在」
+    const dsh = mockDsh("预算控制在五十万以内可以吗？");
     const cmd = createClarifyCommand({ db, dshClient: dsh });
     const out = await cmd.maybeClarify({ scenarioId: sid, conversationId: convId });
     expect(out.asked).toBe(false);
