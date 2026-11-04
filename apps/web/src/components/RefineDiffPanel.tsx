@@ -31,6 +31,7 @@ export function RefineDiffPanel({ projectId, stage, onApplied }: RefineDiffPanel
   const [running, setRunning] = useState(false);
   const [outcome, setOutcome] = useState<ApiRefineOutcome | null>(null);
   const [ignoredIds, setIgnoredIds] = useState<Set<string>>(new Set());
+  const [collapsed, setCollapsed] = useState(true);
 
   const run = useCallback(async () => {
     setRunning(true);
@@ -89,17 +90,24 @@ export function RefineDiffPanel({ projectId, stage, onApplied }: RefineDiffPanel
 
   const mandatory = outcome?.findings.filter((f) => f.level === "mandatory") ?? [];
   const pendingDiffs = outcome?.diffs.filter((d) => !ignoredIds.has(diffKey(d))) ?? [];
+  // 默认折叠成一行（后台能力不占右栏空间）；有必改或差分时强制展开（差分要人确认）
+  const hasContent = (outcome?.findings.length ?? 0) > 0 || (outcome?.diffs.length ?? 0) > 0 || (outcome?.remaining.length ?? 0) > 0;
+  const expanded = hasContent || !collapsed;
 
   return (
     <div className="rdp-panel">
       <div className="det-h">
-        <h3>按需求重写</h3>
+        <h3 style={{ cursor: "pointer" }} onClick={() => setCollapsed((c) => !c)}>按需求重写</h3>
         <button className="btn btn-sm" type="button" disabled={running} onClick={() => void run()}>
           {running ? "重写中…" : "检查并重写"}
         </button>
       </div>
-      <div className="det-body rdp-body">
-        {outcome && mandatory.length > 0 && (
+      {expanded && (
+        <div className="det-body rdp-body">
+          {outcome && mandatory.length === 0 && pendingDiffs.length === 0 && outcome.remaining.length === 0 && (
+            <div className="rdp-finding"><span className="rdp-detail">没有必改项，直接通过</span></div>
+          )}
+          {outcome && mandatory.length > 0 && (
           <div className="rdp-findings">
             <h4>必改清单（{mandatory.length}）</h4>
             {mandatory.map((f) => (
@@ -150,7 +158,8 @@ export function RefineDiffPanel({ projectId, stage, onApplied }: RefineDiffPanel
             ))}
           </div>
         )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }

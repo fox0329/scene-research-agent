@@ -88,11 +88,11 @@ describe("反思优化 API（MR1-T6）", () => {
     expect(res.statusCode).toBe(404);
   });
 
-  it("flag：默认关，env 显式 1 才开", () => {
+  it("flag：默认开（真机验证后用户定调），显式 0 才关", () => {
     const prev = process.env.SCENE_REFLECTION_ENABLED;
     try {
       delete process.env.SCENE_REFLECTION_ENABLED;
-      expect(isReflectionEnabled()).toBe(false);
+      expect(isReflectionEnabled()).toBe(true);
       process.env.SCENE_REFLECTION_ENABLED = "1";
       expect(isReflectionEnabled()).toBe(true);
       process.env.SCENE_REFLECTION_ENABLED = "0";

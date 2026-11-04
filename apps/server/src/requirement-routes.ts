@@ -17,9 +17,9 @@ import {
 } from "./requirement-profile.js";
 import { gapFlowHints } from "./gap-flow.js";
 
-/** flag 读取：env 显式 "1" 才开（默认关，变更表红线） */
+/** flag 读取：默认开（2026-11-04 用户定调，真机四场景验证通过后）；显式 "0" 可关 */
 export function isReflectionEnabled(): boolean {
-  return process.env.SCENE_REFLECTION_ENABLED === "1";
+  return process.env.SCENE_REFLECTION_ENABLED !== "0";
 }
 
 export function registerRequirementRoutes(app: FastifyInstance, db: DbInstance): void {
