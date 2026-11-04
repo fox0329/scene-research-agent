@@ -1,8 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { Sidebar } from "./components/Sidebar";
 import { ArtifactRightPanel } from "./components/ArtifactRightPanel";
-import { RefineDiffPanel } from "./components/RefineDiffPanel";
-import { RequirementProfilePanel } from "./components/RequirementProfilePanel";
 import { ScenarioDefinitionDialog } from "./components/ScenarioDefinitionDialog";
 import { NewScenarioDialog } from "./components/NewScenarioDialog";
 import { OnboardingGuide } from "./components/OnboardingGuide";
@@ -402,16 +400,8 @@ const AppShell: React.FC = () => {
         {view === "project" ? (
           <>
             <ArtifactRightPanel snapshot={stageSnapshot} live={live} projectId={activeProject?.id} />
-            {/* 需求画像（反思优化模块 MR1-T5）：挂右栏底部，产物面板之下 */}
-            {activeProject?.id && <RequirementProfilePanel projectId={activeProject.id} />}
-            {/* 差分预览（MR2-T4）：按需求重写 → 左右对照 → 应用/忽略 */}
-            {activeProject?.id && (
-              <RefineDiffPanel
-                projectId={activeProject.id}
-                stage={activeProject.stage}
-                onApplied={() => void refreshProjects()}
-              />
-            )}
+            {/* 需求画像/按需求重写面板已下线（2026-11-04 用户定调：后台能力不进右栏）——
+                自动反思、自动澄清、锚点重写照常在后台跑，端点保留 */}
           </>
         ) : view === "library" ? (
           <LibraryRightPanel lineId={libraryLineId} live={live} />
