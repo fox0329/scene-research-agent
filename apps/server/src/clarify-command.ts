@@ -165,7 +165,14 @@ async function generateQuestion(dshClient: DshClient, reasons: ClarifyReason[], 
     for await (const ev of dshClient.prompt(session, {
       system: CLARIFY_SYSTEM,
       user,
-      outputContract: { type: "json" },
+      // 真 JSON Schema：Function Calling parameters 不认口头标记（会 Bad Request）
+      outputContract: {
+        type: "object",
+        required: ["question"],
+        properties: {
+          question: { type: "string", description: "一句话澄清问题" },
+        },
+      },
     })) {
       const e = ev as { type: string; text?: string };
       if (e.type === "text" && e.text) out += e.text;

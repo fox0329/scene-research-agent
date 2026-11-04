@@ -128,7 +128,48 @@ export function createProfileExtractor(deps: ExtractorDeps): ExtractorHandle {
 const EXTRACT_SYSTEM = `你是需求抽取器。从对话中提取用户对产出物的明确要求（篇幅、口径、重点、禁忌、偏好）。
 只提取有依据的，输出 JSON 数组，每项：
 {"text":"要求原文归纳","kind":"explicit|preference|constraint|dimension_gap","confidence":"用户原话|用户操作|AI推断","anchor":{"type":"keyword","terms":["词"],"mode":"命中即违反"}|null,"sourceRef":"消息id","sourceSnippet":"原话片段"}
-规则：confidence 只在用户原话明确说出时给"用户原话"；从行为推断给"AI推断"；用户说"不要提X"用 constraint 且 anchor terms 含 X。没有要求就输出 []。`;
+规则：
+- confidence 只在用户原话明确说出时给"用户原话"；从行为推断给"AI推断"
+- 禁忌/负向约束（"不要提X""别出现X"）→ kind=constraint，anchor={type:"keyword",terms:["X"],mode:"命中即违反"}（产物出现 X 才违反）
+- 正向要求（"要有X""篇幅两页以内""重点讲X"）→ kind=explicit，anchor mode 必须是"未出现即违反"（要求的内容没出现才算违反），terms 放要求的关键词；能用 numeric 就用 numeric（如 {type:"numeric",field:"页数",op:"<=",value:2,mode:"未出现即违反"}）
+- **mode 语义自检**：constraint 的锚点命中=违反；explicit 的锚点未命中=违反。拿不准就不给 anchor（null），宁缺勿错
+- 偏好/习惯（"我总是…""习惯…"）→ kind=preference，anchor 给 null
+- 没有要求就输出 []。`;
+
+/** 抽取输出契约：object 根包数组（DeepSeek function calling 的 parameters 不认根数组 Schema） */
+const EXTRACT_CONTRACT: Record<string, unknown> = {
+  type: "object",
+  required: ["items"],
+  properties: {
+    items: {
+      type: "array",
+      items: {
+        type: "object",
+        required: ["text", "kind", "confidence"],
+        properties: {
+          text: { type: "string", description: "要求原文归纳" },
+          kind: { type: "string", enum: ["explicit", "preference", "constraint", "dimension_gap"] },
+          confidence: { type: "string", enum: ["用户原话", "用户操作", "AI推断"] },
+          anchor: {
+            type: "object",
+            description: "检测锚点，无法给出时省略",
+            properties: {
+              type: { type: "string", enum: ["keyword", "regex", "numeric"] },
+              terms: { type: "array", items: { type: "string" } },
+              pattern: { type: "string" },
+              field: { type: "string" },
+              op: { type: "string", enum: [">", "<", ">=", "<=", "=="] },
+              value: { type: "number" },
+              mode: { type: "string", enum: ["命中即违反", "未出现即违反"] },
+            },
+          },
+          sourceRef: { type: "string" },
+          sourceSnippet: { type: "string" },
+        },
+      },
+    },
+  },
+};
 
 async function extractViaDsh(dshClient: DshClient, lines: string[]): Promise<string | null> {
   try {
@@ -137,7 +178,7 @@ async function extractViaDsh(dshClient: DshClient, lines: string[]): Promise<str
     for await (const ev of dshClient.prompt(session, {
       system: EXTRACT_SYSTEM,
       user: lines.join("\n"),
-      outputContract: { type: "json_array" },
+      outputContract: EXTRACT_CONTRACT,
     })) {
       const e = ev as { type: string; text?: string };
       if (e.type === "text" && e.text) out += e.text;

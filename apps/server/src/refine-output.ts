@@ -138,9 +138,11 @@ function groupByTable(rows: StageData[]): Record<string, { id: string; row: Reco
 }
 
 const REWRITE_SYSTEM = `你是产出物修订器。按必改清单重写表格行的中栏内容。
-输入：行的现状（JSON）+ 必改清单。输出 JSON 数组：
-[{"rowId":"行id","cell":"要改的列名","newValue":"改后的内容"}]
-规则：只改必改清单涉及的格子；一格一句话、结论先行、来源写右栏不进中栏；没把握的格子不动。没有可改的就输出 []。`;
+输入：行的现状（JSON，键名就是可用列名）+ 必改清单。输出 JSON 对象 {"items":[{"rowId":"行id","cell":"列名","newValue":"改后内容"}]}。
+规则：
+- cell 必须是行 JSON 里**真实存在的键名**（如「方案」「要点」），不许发明「中栏」这类泛称
+- 必改清单点名了违反内容的行——直接给出该行违反格子的改法：禁忌词换成场景合规表述、语义与信息量保持
+- 一格一句话、说结果；来源写右栏不进中栏；没有必改清单点名的行就输出 {"items":[]}`;
 
 async function rewriteOnce(
   dshClient: DshClient,
@@ -164,7 +166,25 @@ async function rewriteOnce(
     for await (const ev of dshClient.prompt(session, {
       system: REWRITE_SYSTEM,
       user,
-      outputContract: { type: "json_array" },
+      // 真 JSON Schema 且 object 根（DeepSeek function calling 的 parameters 不认根数组）
+      outputContract: {
+        type: "object",
+        required: ["items"],
+        properties: {
+          items: {
+            type: "array",
+            items: {
+              type: "object",
+              required: ["rowId", "cell", "newValue"],
+              properties: {
+                rowId: { type: "string", description: "要改的行 id" },
+                cell: { type: "string", description: "要改的列名" },
+                newValue: { type: "string", description: "改后的内容" },
+              },
+            },
+          },
+        },
+      },
     })) {
       const e = ev as { type: string; text?: string };
       if (e.type === "text" && e.text) out += e.text;
